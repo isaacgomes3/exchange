@@ -1,5 +1,9 @@
 import { getBetBraConfig } from "./config";
 import { scheduleRequest } from "./rate-limiter";
+import {
+  getLocalProxyErrorMessage,
+  isLocalProxyAvailable,
+} from "./proxy-health";
 import { getEventDetailReferer } from "./urls";
 import type {
   BetBraEvent,
@@ -125,10 +129,27 @@ async function betbraFetch<T>(
 
   if (config.useLocalProxy) {
     return scheduleRequest(async () => {
-      const response = await fetch(url, {
-        headers: { Accept: "application/json" },
-      });
-      return await parseResponse<T>(response, url);
+      const available = await isLocalProxyAvailable();
+      if (!available) {
+        throw new BetBraFetchError(
+          getLocalProxyErrorMessage(),
+          "NETWORK_ERROR",
+          undefined,
+          url
+        );
+      }
+
+      try {
+        const response = await fetch(url, {
+          headers: { Accept: "application/json" },
+        });
+        return await parseResponse<T>(response, url);
+      } catch (error) {
+        if (error instanceof BetBraFetchError) throw error;
+        const message =
+          error instanceof Error ? error.message : "Erro de rede";
+        throw new BetBraFetchError(message, "NETWORK_ERROR", undefined, url);
+      }
     }, config.requestSpacingMs);
   }
 

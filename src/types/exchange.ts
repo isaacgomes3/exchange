@@ -89,5 +89,6 @@ export type BetBraStatusState =
 export interface BetBraStatus {
   state: BetBraStatusState;
   error?: string;
+  info?: string;
   lastPollAt?: string;
 }

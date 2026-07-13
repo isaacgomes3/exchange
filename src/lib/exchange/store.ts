@@ -19,6 +19,7 @@ interface ExchangeStore {
   rules: AlertRule[];
   subscribers: Set<Subscriber>;
   pollerRunning: boolean;
+  pollInFlight: boolean;
   betbraStatus: BetBraStatus;
 }
 
@@ -33,6 +34,7 @@ function createStore(): ExchangeStore {
     rules: structuredClone(DEFAULT_ALERT_RULES),
     subscribers: new Set(),
     pollerRunning: false,
+    pollInFlight: false,
     betbraStatus: { state: "idle" },
   };
 }
@@ -111,9 +113,19 @@ function notifySubscribers(
   }
 }
 
-function setBetBraStatus(state: BetBraConnectionStatus, error?: string, lastPollAt?: string) {
+function setBetBraStatus(
+  state: BetBraConnectionStatus,
+  message?: string,
+  lastPollAt?: string
+) {
   const store = getStore();
-  store.betbraStatus = { state, error, lastPollAt };
+  const isInfo = state === "connected" && message?.includes("Nenhum jogo");
+  store.betbraStatus = {
+    state,
+    error: !isInfo ? message : undefined,
+    info: isInfo ? message : undefined,
+    lastPollAt,
+  };
   notifySubscribers(getLiveGames(), undefined, store.betbraStatus);
 }
 
@@ -128,37 +140,47 @@ function pushAlert(alert: Alert) {
 
 async function runPoll() {
   const store = getStore();
+  if (store.pollInFlight) return;
+
+  store.pollInFlight = true;
   setBetBraStatus("polling");
 
-  const result = await pollLiveGames(store.games);
+  try {
+    const result = await pollLiveGames(store.games);
+    setBetBraStatus(result.status, result.error, result.lastPollAt);
 
-  setBetBraStatus(result.status, result.error, result.lastPollAt);
+    if (result.games.length === 0) {
+      notifySubscribers(getLiveGames(), undefined, store.betbraStatus);
+      return;
+    }
 
-  if (result.games.length === 0 && result.status !== "connected") {
+    const newGameIds = new Set(result.games.map((g) => g.id));
+
+    for (const game of result.games) {
+      const prev = store.games.get(game.id);
+      const alerts = evaluateGameUpdate(prev, game, store.rules);
+
+      store.games.set(game.id, game);
+
+      for (const alert of alerts) {
+        pushAlert(alert);
+      }
+    }
+
+    for (const [id] of store.games) {
+      if (!newGameIds.has(id)) {
+        store.games.delete(id);
+      }
+    }
+
     notifySubscribers(getLiveGames(), undefined, store.betbraStatus);
-    return;
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Erro inesperado no polling";
+    setBetBraStatus("error", message, new Date().toISOString());
+  } finally {
+    store.pollInFlight = false;
   }
-
-  const newGameIds = new Set(result.games.map((g) => g.id));
-
-  for (const game of result.games) {
-    const prev = store.games.get(game.id);
-    const alerts = evaluateGameUpdate(prev, game, store.rules);
-
-    store.games.set(game.id, game);
-
-    for (const alert of alerts) {
-      pushAlert(alert);
-    }
-  }
-
-  for (const [id] of store.games) {
-    if (!newGameIds.has(id)) {
-      store.games.delete(id);
-    }
-  }
-
-  notifySubscribers(getLiveGames(), undefined, store.betbraStatus);
 }
 
 export function startBetBraPoller() {

@@ -76,22 +76,34 @@ export function BetBraStatusBanner({ status }: BetBraStatusBannerProps) {
         <p className="mt-2 text-sm text-zinc-400">{status.error}</p>
       )}
       <div className="mt-3 space-y-2 text-xs text-zinc-500">
-        <p className="font-medium text-zinc-400">
-          Use o IP da sua máquina (Brasil):
-        </p>
-        <ol className="list-decimal space-y-1 pl-4">
-          <li>
-            Na sua máquina, rode:{" "}
+        {status.error?.includes("Proxy local") ? (
+          <p>
+            Rode em um terminal:{" "}
+            <code className="rounded bg-zinc-800 px-1">npm run proxy:local</code>{" "}
+            ou tudo junto:{" "}
             <code className="rounded bg-zinc-800 px-1">npm run dev:local</code>
-          </li>
-          <li>
-            Isso inicia o proxy local (porta 8787) + painel (porta 3000)
-          </li>
-          <li>
-            O proxy usa <strong className="text-zinc-300">seu IP brasileiro</strong>{" "}
-            para falar com a BetBra
-          </li>
-        </ol>
+          </p>
+        ) : (
+          <>
+            <p className="font-medium text-zinc-400">
+              Use o IP da sua máquina (Brasil):
+            </p>
+            <ol className="list-decimal space-y-1 pl-4">
+              <li>
+                Na sua máquina, rode:{" "}
+                <code className="rounded bg-zinc-800 px-1">npm run dev:local</code>
+              </li>
+              <li>
+                Isso inicia o proxy local (porta 8787) + painel (porta 3000)
+              </li>
+              <li>
+                O proxy usa{" "}
+                <strong className="text-zinc-300">seu IP brasileiro</strong> para
+                falar com a BetBra
+              </li>
+            </ol>
+          </>
+        )}
         <p className="pt-1">
           Ou só o proxy:{" "}
           <code className="rounded bg-zinc-800 px-1">npm run proxy:local</code>{" "}

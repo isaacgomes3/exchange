@@ -94,6 +94,11 @@ export function LiveGamesPanel() {
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
               Jogos ao Vivo — BetBra
+              {betbraStatus.info && (
+                <span className="ml-2 text-xs font-normal normal-case text-zinc-500">
+                  ({betbraStatus.info})
+                </span>
+              )}
             </h2>
             <div className="flex gap-1 rounded-lg border border-zinc-800 bg-zinc-900 p-1">
               {SPORT_FILTERS.map((f) => (
