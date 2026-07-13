@@ -1,9 +1,14 @@
-import { getLiveGames, startSimulator, subscribe } from "@/lib/exchange/store";
+import {
+  getBetBraStatus,
+  getLiveGames,
+  startBetBraPoller,
+  subscribe,
+} from "@/lib/exchange/store";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  startSimulator();
+  startBetBraPoller();
 
   const encoder = new TextEncoder();
   let unsubscribe: (() => void) | null = null;
@@ -19,14 +24,33 @@ export async function GET() {
       send({
         type: "games",
         games: getLiveGames(),
+        betbraStatus: getBetBraStatus(),
         timestamp: new Date().toISOString(),
       });
 
-      unsubscribe = subscribe(({ games, alert }) => {
+      unsubscribe = subscribe(({ games, alert, betbraStatus }) => {
         if (alert) {
-          send({ type: "alert", alert, games, timestamp: new Date().toISOString() });
+          send({
+            type: "alert",
+            alert,
+            games,
+            betbraStatus,
+            timestamp: new Date().toISOString(),
+          });
+        } else if (betbraStatus) {
+          send({
+            type: "status",
+            games,
+            betbraStatus,
+            timestamp: new Date().toISOString(),
+          });
         } else {
-          send({ type: "games", games, timestamp: new Date().toISOString() });
+          send({
+            type: "games",
+            games,
+            betbraStatus: getBetBraStatus(),
+            timestamp: new Date().toISOString(),
+          });
         }
       });
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Alert, LiveGame } from "@/types/exchange";
+import type { Alert, BetBraStatus, LiveGame } from "@/types/exchange";
 
 type ConnectionStatus = "connecting" | "connected" | "disconnected";
 
@@ -9,12 +9,14 @@ interface UseLiveStreamResult {
   games: LiveGame[];
   alerts: Alert[];
   status: ConnectionStatus;
+  betbraStatus: BetBraStatus;
   acknowledgeAlert: (id: string) => void;
 }
 
 function createEventSource(
   onGames: (games: LiveGame[]) => void,
   onAlert: (alert: Alert) => void,
+  onBetBraStatus: (status: BetBraStatus) => void,
   onStatus: (status: ConnectionStatus) => void,
   onReconnect: () => void
 ): EventSource {
@@ -28,10 +30,15 @@ function createEventSource(
       type: string;
       games?: LiveGame[];
       alert?: Alert;
+      betbraStatus?: BetBraStatus;
     };
 
     if (data.games) {
       onGames(data.games);
+    }
+
+    if (data.betbraStatus) {
+      onBetBraStatus(data.betbraStatus);
     }
 
     if (data.type === "alert" && data.alert) {
@@ -52,6 +59,9 @@ export function useLiveStream(): UseLiveStreamResult {
   const [games, setGames] = useState<LiveGame[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
+  const [betbraStatus, setBetBraStatus] = useState<BetBraStatus>({
+    state: "idle",
+  });
   const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
@@ -60,6 +70,7 @@ export function useLiveStream(): UseLiveStreamResult {
       eventSourceRef.current = createEventSource(
         setGames,
         (alert) => setAlerts((prev) => [alert, ...prev].slice(0, 50)),
+        setBetBraStatus,
         setStatus,
         connect
       );
@@ -70,6 +81,16 @@ export function useLiveStream(): UseLiveStreamResult {
     fetch("/api/alerts")
       .then((r) => r.json())
       .then((data: { alerts: Alert[] }) => setAlerts(data.alerts))
+      .catch(() => {});
+
+    fetch("/api/live/games")
+      .then((r) => r.json())
+      .then(
+        (data: { games: LiveGame[]; betbraStatus: BetBraStatus }) => {
+          if (data.games) setGames(data.games);
+          if (data.betbraStatus) setBetBraStatus(data.betbraStatus);
+        }
+      )
       .catch(() => {});
 
     return () => {
@@ -88,5 +109,5 @@ export function useLiveStream(): UseLiveStreamResult {
     );
   }, []);
 
-  return { games, alerts, status, acknowledgeAlert };
+  return { games, alerts, status, betbraStatus, acknowledgeAlert };
 }

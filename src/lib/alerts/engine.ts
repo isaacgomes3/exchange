@@ -112,7 +112,7 @@ export function evaluateGameUpdate(
             "HIGH_VOLUME",
             "info",
             current,
-            `Volume alto em ${current.homeTeam} vs ${current.awayTeam}: £${(current.totalVolume / 1000).toFixed(0)}k`,
+            `Volume alto em ${current.homeTeam} vs ${current.awayTeam}: R$${(current.totalVolume / 1000).toFixed(0)}k`,
             { volume: current.totalVolume }
           )
         );

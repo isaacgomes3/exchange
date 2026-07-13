@@ -1,13 +1,39 @@
-# Exchange Live
+# Exchange Live — BetBra
 
-Painel de alertas para jogos ao vivo da exchange de apostas.
+Painel de alertas para jogos ao vivo da exchange **BetBra** (mexchange), seguindo o mesmo padrão de integração do Arbitrex.
 
 ## Funcionalidades
 
-- **Jogos ao vivo** — tabela em tempo real com placar, odds (back/lay), volume e status
+- **API BetBra** — eventos, odds (back/lay) e feed inplay em tempo real
 - **Alertas automáticos** — gols, movimentação de odds, volume alto, mercado suspenso
-- **Streaming SSE** — atualizações em tempo real via Server-Sent Events
-- **Regras configuráveis** — ative/desative regras de alerta pelo painel
+- **Streaming SSE** — painel atualiza sem refresh
+- **Deep links** — clique no jogo abre `betbra.bet.br/b/exchange/sport/...`
+- **Teste de conectividade** — `GET /api/exchange/connectivity-test`
+
+## Requisitos BetBra
+
+1. **User-Agent aprovado** no formato `BOT/SOFTWARE;NomeApp;Versao`
+2. **IP brasileiro** — fora do BR a API retorna HTML/Cloudflare (403)
+3. **Proxy BR** — configure se o servidor não estiver no Brasil
+
+## Configuração
+
+Copie `.env.example` para `.env.local`:
+
+```bash
+cp .env.example .env.local
+```
+
+Variáveis principais:
+
+```env
+MEXCHANGE_BOT_USER_AGENT=BOT/SOFTWARE;ExchangeLive;1.0
+MEXCHANGE_BIAB_LANGUAGE=PT_BR
+
+# Se estiver fora do Brasil:
+FULLTBET_USE_OUTBOUND_PROXY=1
+FULLTBET_PROXY=http://user:pass@vps-br:port
+```
 
 ## Como rodar
 
@@ -18,33 +44,58 @@ npm run dev
 
 Acesse [http://localhost:3000](http://localhost:3000).
 
+## Testar conectividade
+
+```bash
+curl http://localhost:3000/api/exchange/connectivity-test | jq
+```
+
+Ou direto na BetBra:
+
+```bash
+UA='BOT/SOFTWARE;ExchangeLive;1.0'
+NOW=$(date +%s)
+curl -sS \
+  -H "Accept: application/json" \
+  -H "User-Agent: $UA" \
+  -H "Referer: https://mexchange.betbra.bet.br/" \
+  -H "Cookie: BIAB_LANGUAGE=PT_BR" \
+  "https://mexchange-api.betbra.bet.br/api/events?offset=0&per-page=5&after=$((NOW-7200))&before=$((NOW+86400))&sport-ids=15&sort-by=volume&sort-direction=desc"
+```
+
 ## Arquitetura
 
 ```
-src/
-├── app/
-│   ├── api/
-│   │   ├── live/games/    # GET jogos ao vivo
-│   │   ├── live/stream/   # SSE tempo real
-│   │   └── alerts/        # Alertas e regras
-│   └── page.tsx           # Painel principal
-├── components/panel/        # UI do painel
-├── hooks/useLiveStream.ts # Hook SSE client-side
-├── lib/
-│   ├── exchange/          # Store + simulador (mock)
-│   └── alerts/            # Engine de alertas
-└── types/exchange.ts      # Tipos
+src/lib/betbra/
+├── client.ts      # HTTP com headers, proxy, rate limit
+├── poller.ts      # Poll events + inplay + detalhes
+├── mapper.ts      # BetBra → LiveGame
+├── config.ts      # Variáveis de ambiente
+└── urls.ts        # Deep links
+
+src/lib/exchange/store.ts   # Estado + alertas + SSE
 ```
 
-## Integração com exchange real
+## Fluxo de dados
 
-O simulador em `src/lib/exchange/store.ts` pode ser substituído por um cliente da API da exchange (Betfair, Matchbook, etc.). Mantenha a interface `LiveGame` e o fluxo de `evaluateGameUpdate` para reutilizar o painel e as regras de alerta.
+1. `GET /api/events` — lista jogos (futebol=15, tênis=9)
+2. `GET /api/events/{id}` — odds detalhadas para jogos ao vivo
+3. `GET inplay-info` — placar e minuto
+4. Engine de alertas compara com estado anterior
+5. SSE envia atualizações ao painel
 
-## Regras de alerta padrão
+## Endpoints internos
 
-| Regra | Descrição |
-|-------|-----------|
-| Gol marcado | Alerta quando o placar muda |
-| Movimento de odds > 10% | Alerta em variações significativas |
-| Volume alto (> £300k) | Alerta quando o volume ultrapassa o limite |
-| Odds acima de 5.0 | Alerta quando odds atingem valor alto |
+| Rota | Descrição |
+|------|-----------|
+| `GET /api/live/games` | Jogos ao vivo |
+| `GET /api/live/stream` | SSE tempo real |
+| `GET /api/alerts` | Alertas |
+| `GET /api/exchange/connectivity-test` | Diagnóstico BetBra |
+
+## Sport IDs
+
+| Esporte | ID |
+|---------|-----|
+| Futebol | 15 |
+| Tênis | 9 |

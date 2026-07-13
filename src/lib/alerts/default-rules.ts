@@ -16,7 +16,7 @@ export const DEFAULT_ALERT_RULES: AlertRule[] = [
   },
   {
     id: "rule-3",
-    name: "Volume alto (> £300k)",
+    name: "Volume alto (> R$300k)",
     minVolume: 300000,
     scoreChange: false,
     enabled: true,

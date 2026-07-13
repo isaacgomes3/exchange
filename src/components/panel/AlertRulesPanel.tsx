@@ -59,7 +59,7 @@ export function AlertRulesPanel({ open, onClose }: AlertRulesPanelProps) {
                 <p className="text-xs text-zinc-500">
                   {rule.scoreChange && "Gols · "}
                   {rule.oddsMovePct && `Odds > ${rule.oddsMovePct}% · `}
-                  {rule.minVolume && `Vol > £${rule.minVolume / 1000}k · `}
+                  {rule.minVolume && `Vol > R$${rule.minVolume / 1000}k · `}
                   {rule.minOdds && `Odds > ${rule.minOdds}`}
                 </p>
               </div>

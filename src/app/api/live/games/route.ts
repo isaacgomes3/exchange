@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
-import { getLiveGames, startSimulator } from "@/lib/exchange/store";
+import { getLiveGames, getBetBraStatus, startBetBraPoller } from "@/lib/exchange/store";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  startSimulator();
+  startBetBraPoller();
   const games = getLiveGames();
-  return NextResponse.json({ games, timestamp: new Date().toISOString() });
+  const betbraStatus = getBetBraStatus();
+  return NextResponse.json({
+    games,
+    betbraStatus,
+    timestamp: new Date().toISOString(),
+  });
 }

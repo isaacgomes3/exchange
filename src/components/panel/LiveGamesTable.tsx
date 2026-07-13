@@ -26,16 +26,17 @@ function statusBadge(status: LiveGame["status"]) {
   );
 }
 
-function formatVolume(volume: number): string {
-  if (volume >= 1000000) return `£${(volume / 1000000).toFixed(1)}M`;
-  if (volume >= 1000) return `£${(volume / 1000).toFixed(0)}k`;
-  return `£${volume}`;
+function formatVolume(volume: number, currency: string): string {
+  const symbol = currency === "BRL" ? "R$" : currency;
+  if (volume >= 1000000) return `${symbol}${(volume / 1000000).toFixed(1)}M`;
+  if (volume >= 1000) return `${symbol}${(volume / 1000).toFixed(0)}k`;
+  return `${symbol}${volume.toFixed(0)}`;
 }
 
 function formatMinute(game: LiveGame): string {
-  if (game.sport === "tenis") return "Set ao vivo";
+  if (game.sport === "tenis") return "Ao vivo";
   if (game.sport === "basquete") return "Ao vivo";
-  return `${game.minute}'`;
+  return game.minute > 0 ? `${game.minute}'` : "—";
 }
 
 export function LiveGamesTable({ games, sportFilter }: LiveGamesTableProps) {
@@ -47,7 +48,8 @@ export function LiveGamesTable({ games, sportFilter }: LiveGamesTableProps) {
   if (filtered.length === 0) {
     return (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-8 text-center text-zinc-500">
-        Nenhum jogo ao vivo para o filtro selecionado.
+        Nenhum jogo ao vivo no momento. Os dados vêm da API BetBra em tempo
+        real.
       </div>
     );
   }
@@ -74,19 +76,30 @@ export function LiveGamesTable({ games, sportFilter }: LiveGamesTableProps) {
                 className="border-b border-zinc-800/50 transition-colors hover:bg-zinc-800/30"
               >
                 <td className="px-4 py-3">
-                  <div className="font-medium text-zinc-100">
-                    {game.homeTeam}{" "}
-                    <span className="text-zinc-600">vs</span> {game.awayTeam}
-                  </div>
-                  <div className="text-xs text-zinc-500">{game.competition}</div>
+                  <a
+                    href={game.deepLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group"
+                  >
+                    <div className="font-medium text-zinc-100 group-hover:text-emerald-400">
+                      {game.homeTeam}{" "}
+                      <span className="text-zinc-600">vs</span> {game.awayTeam}
+                    </div>
+                    <div className="text-xs text-zinc-500">
+                      {game.competition}
+                    </div>
+                  </a>
                 </td>
                 <td className="px-4 py-3 font-mono text-base font-semibold text-zinc-100">
                   {game.score.home} - {game.score.away}
                 </td>
-                <td className="px-4 py-3 text-zinc-400">{formatMinute(game)}</td>
+                <td className="px-4 py-3 text-zinc-400">
+                  {formatMinute(game)}
+                </td>
                 <td className="px-4 py-3">{statusBadge(game.status)}</td>
                 <td className="px-4 py-3">
-                  {mainSelection ? (
+                  {mainSelection && mainSelection.backOdds > 0 ? (
                     <div>
                       <div className="mb-0.5 text-xs text-zinc-500">
                         {mainSelection.name}
@@ -102,7 +115,7 @@ export function LiveGamesTable({ games, sportFilter }: LiveGamesTableProps) {
                   )}
                 </td>
                 <td className="px-4 py-3 text-right font-mono text-zinc-300">
-                  {formatVolume(game.totalVolume)}
+                  {formatVolume(game.totalVolume, game.currency)}
                 </td>
               </tr>
             );

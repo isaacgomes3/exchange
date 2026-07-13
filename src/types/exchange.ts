@@ -43,6 +43,8 @@ export interface LiveGame {
   minute: number;
   markets: Market[];
   totalVolume: number;
+  currency: string;
+  deepLink: string;
   lastUpdated: string;
 }
 
@@ -70,8 +72,22 @@ export interface Alert {
 }
 
 export interface LiveUpdate {
-  type: "games" | "alert" | "heartbeat";
+  type: "games" | "alert" | "heartbeat" | "status";
   games?: LiveGame[];
   alert?: Alert;
+  betbraStatus?: BetBraStatus;
   timestamp: string;
+}
+
+export type BetBraStatusState =
+  | "idle"
+  | "polling"
+  | "connected"
+  | "blocked"
+  | "error";
+
+export interface BetBraStatus {
+  state: BetBraStatusState;
+  error?: string;
+  lastPollAt?: string;
 }
