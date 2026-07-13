@@ -12,7 +12,7 @@ const HOST = process.env.BETBRA_PROXY_HOST ?? "0.0.0.0";
 
 const UA =
   process.env.MEXCHANGE_BOT_USER_AGENT ??
-  "BOT/SOFTWARE;ExchangeLive;1.0";
+  "BOT/SOFTWARE;Arbitrex;1.0";
 const BIAB_LANGUAGE = process.env.MEXCHANGE_BIAB_LANGUAGE ?? "PT_BR";
 const API_BASE =
   process.env.MEXCHANGE_API_BASE_URL ??
