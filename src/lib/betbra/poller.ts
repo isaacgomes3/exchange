@@ -27,42 +27,37 @@ export interface PollResult {
   lastPollAt: string;
 }
 
-function classifyError(error: unknown): {
-  status: BetBraConnectionStatus;
-  message: string;
-} {
-  if (error instanceof BetBraFetchError) {
-    if (error.code === "BLOCKED") {
-      return { status: "blocked", message: error.message };
-    }
-    if (error.message.includes("Proxy local não está rodando")) {
-      return { status: "error", message: error.message };
-    }
-    return { status: "error", message: error.message };
+function trackBlocked(
+  error: unknown,
+  current: BetBraFetchError | null
+): BetBraFetchError | null {
+  if (error instanceof BetBraFetchError && error.code === "BLOCKED") {
+    return error;
   }
-
-  const message =
-    error instanceof Error ? error.message : "Erro ao consultar BetBra";
-  return { status: "error", message };
+  return current;
 }
 
 export async function pollLiveGames(
   previousGames: Map<string, LiveGame>
 ): Promise<PollResult> {
   const lastPollAt = new Date().toISOString();
+  const config = getBetBraConfig();
 
-  const proxyOk = await isLocalProxyAvailable();
-  if (!proxyOk) {
-    return {
-      games: [],
-      status: "error",
-      error: getLocalProxyErrorMessage(),
-      lastPollAt,
-    };
+  if (config.useLocalProxy) {
+    const proxyOk = await isLocalProxyAvailable();
+    if (!proxyOk) {
+      return {
+        games: [],
+        status: "error",
+        error: getLocalProxyErrorMessage(),
+        lastPollAt,
+      };
+    }
   }
 
-  let lastBlocked: BetBraFetchError | null = null;
-  let hadSuccess = false;
+  let blockedError: BetBraFetchError | null = null;
+  let eventsReachable = false;
+  let inplayReachable = false;
 
   try {
     const sportIds = getMonitoredSportIds();
@@ -70,11 +65,9 @@ export async function pollLiveGames(
 
     try {
       inplayList = await fetchInplayInfo();
-      hadSuccess = true;
+      inplayReachable = true;
     } catch (error) {
-      if (error instanceof BetBraFetchError && error.code === "BLOCKED") {
-        lastBlocked = error;
-      }
+      blockedError = trackBlocked(error, blockedError);
     }
 
     const inplayMap = new Map(
@@ -87,41 +80,52 @@ export async function pollLiveGames(
 
     for (const sportId of sportIds) {
       try {
-        const response = await fetchEvents(sportId, { sortBy: "volume", inRunningOnly: true });
+        const response = await fetchEvents(sportId, {
+          sortBy: "volume",
+          inRunningOnly: true,
+        });
         allEvents.push(...response.events);
-        hadSuccess = true;
+        eventsReachable = true;
       } catch (error) {
-        if (error instanceof BetBraFetchError && error.code === "BLOCKED") {
-          lastBlocked = error;
-        }
+        blockedError = trackBlocked(error, blockedError);
       }
     }
 
     if (allEvents.length === 0) {
       for (const sportId of sportIds) {
         try {
-          const response = await fetchEvents(sportId, { sortBy: "volume", inRunningOnly: false });
+          const response = await fetchEvents(sportId, {
+            sortBy: "volume",
+            inRunningOnly: false,
+          });
           const candidates = response.events.filter(
             (e) =>
               e["in-running-flag"] ||
               e["allow-live-betting"] ||
               inplayMap.has(e.id)
           );
-          allEvents.push(...candidates.slice(0, 20));
-          if (candidates.length > 0) hadSuccess = true;
+          allEvents.push(...candidates.slice(0, 30));
+          eventsReachable = true;
         } catch (error) {
-          if (error instanceof BetBraFetchError && error.code === "BLOCKED") {
-            lastBlocked = error;
-          }
+          blockedError = trackBlocked(error, blockedError);
         }
       }
     }
 
-    if (!hadSuccess && lastBlocked) {
+    if (!eventsReachable && !inplayReachable && blockedError) {
       return {
         games: [],
         status: "blocked",
-        error: lastBlocked.message,
+        error: blockedError.message,
+        lastPollAt,
+      };
+    }
+
+    if (!eventsReachable && blockedError && allEvents.length === 0 && inplayMap.size === 0) {
+      return {
+        games: [],
+        status: "blocked",
+        error: blockedError.message,
         lastPollAt,
       };
     }
@@ -144,29 +148,36 @@ export async function pollLiveGames(
     const games: LiveGame[] = [];
 
     for (const event of allEvents) {
-      let detailed = event;
+      const inplay = inplayMap.get(event.id);
+      const isLiveCandidate =
+        event["in-running-flag"] ||
+        inplayMap.has(event.id) ||
+        event["allow-live-betting"];
 
+      if (!isLiveCandidate) continue;
+
+      let detailed = event;
       if (event["in-running-flag"] || inplayMap.has(event.id)) {
         try {
           detailed = await fetchEventDetail(event.id, event["sport-id"]);
-          hadSuccess = true;
         } catch {
           detailed = event;
         }
       }
 
       const prev = previousGames.get(event.id);
-      const inplay = inplayMap.get(event.id);
       const game = mapBetBraEventToLiveGame(detailed, inplay, prev);
+
+      if (inplayMap.has(event.id)) {
+        game.status = "LIVE";
+      }
 
       if (
         game.status === "LIVE" ||
         game.status === "SUSPENDED" ||
-        inplayMap.has(event.id)
+        inplayMap.has(event.id) ||
+        event["in-running-flag"]
       ) {
-        if (inplayMap.has(event.id) && game.status === "FINISHED") {
-          game.status = "LIVE";
-        }
         games.push(game);
       }
     }
@@ -174,10 +185,14 @@ export async function pollLiveGames(
     games.sort((a, b) => b.totalVolume - a.totalVolume);
 
     if (games.length === 0) {
+      const message = eventsReachable || inplayReachable
+        ? "Nenhum jogo ao vivo no momento na BetBra"
+        : blockedError?.message ?? "Não foi possível carregar jogos";
+
       return {
         games: [],
-        status: "connected",
-        error: "Nenhum jogo ao vivo no momento na BetBra",
+        status: eventsReachable || inplayReachable ? "connected" : "blocked",
+        error: message,
         lastPollAt,
       };
     }
@@ -188,10 +203,20 @@ export async function pollLiveGames(
       lastPollAt,
     };
   } catch (error) {
-    const { status, message } = classifyError(error);
+    if (error instanceof BetBraFetchError && error.code === "BLOCKED") {
+      return {
+        games: [],
+        status: "blocked",
+        error: error.message,
+        lastPollAt,
+      };
+    }
+
+    const message =
+      error instanceof Error ? error.message : "Erro ao consultar BetBra";
     return {
       games: [],
-      status,
+      status: "error",
       error: message,
       lastPollAt,
     };

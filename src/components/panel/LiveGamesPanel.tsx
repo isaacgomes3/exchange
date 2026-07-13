@@ -54,6 +54,15 @@ export function LiveGamesPanel() {
           <BetBraStatusBanner status={betbraStatus} />
         )}
 
+        {betbraStatus.state === "connected" &&
+          games.length === 0 &&
+          betbraStatus.info && (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 text-sm text-zinc-400">
+              {betbraStatus.info}. A API respondeu, mas não há jogos com status
+              ao vivo agora.
+            </div>
+          )}
+
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <StatCard label="Jogos ao vivo" value={liveCount} accent="emerald" />
           <StatCard
