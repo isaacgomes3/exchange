@@ -75,21 +75,40 @@ export function BetBraStatusBanner({ status }: BetBraStatusBannerProps) {
       {status.error && (
         <p className="mt-2 text-sm text-zinc-400">{status.error}</p>
       )}
-      <p className="mt-2 text-xs text-zinc-500">
-        Verifique{" "}
-        <code className="rounded bg-zinc-800 px-1">MEXCHANGE_BOT_USER_AGENT</code>{" "}
-        aprovado, IP brasileiro ou configure{" "}
-        <code className="rounded bg-zinc-800 px-1">FULLTBET_PROXY</code>. Teste
-        em{" "}
+      <div className="mt-3 space-y-2 text-xs text-zinc-500">
+        <p className="font-medium text-zinc-400">
+          Use o IP da sua máquina (Brasil):
+        </p>
+        <ol className="list-decimal space-y-1 pl-4">
+          <li>
+            Na sua máquina, rode:{" "}
+            <code className="rounded bg-zinc-800 px-1">npm run dev:local</code>
+          </li>
+          <li>
+            Isso inicia o proxy local (porta 8787) + painel (porta 3000)
+          </li>
+          <li>
+            O proxy usa <strong className="text-zinc-300">seu IP brasileiro</strong>{" "}
+            para falar com a BetBra
+          </li>
+        </ol>
+        <p className="pt-1">
+          Ou só o proxy:{" "}
+          <code className="rounded bg-zinc-800 px-1">npm run proxy:local</code>{" "}
+          e configure{" "}
+          <code className="rounded bg-zinc-800 px-1">
+            MEXCHANGE_LOCAL_PROXY_URL=http://SEU_IP:8787
+          </code>
+        </p>
         <a
           href="/api/exchange/connectivity-test"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-sky-400 underline"
+          className="inline-block text-sky-400 underline"
         >
-          /api/exchange/connectivity-test
+          Testar conectividade
         </a>
-      </p>
+      </div>
     </div>
   );
 }

@@ -10,6 +10,8 @@ export interface BetBraConfig {
   useProxy: boolean;
   proxyUrl: string | null;
   directFallback: boolean;
+  useLocalProxy: boolean;
+  localProxyUrl: string;
   requestSpacingMs: number;
   eventsPerPage: number;
   pollIntervalMs: number;
@@ -42,6 +44,9 @@ export function getBetBraConfig(): BetBraConfig {
     useProxy: envBool("FULLTBET_USE_OUTBOUND_PROXY", false),
     proxyUrl: process.env.FULLTBET_PROXY ?? null,
     directFallback: envBool("FULLTBET_DIRECT_FALLBACK", true),
+    useLocalProxy: envBool("MEXCHANGE_USE_LOCAL_PROXY", false),
+    localProxyUrl:
+      process.env.MEXCHANGE_LOCAL_PROXY_URL ?? "http://127.0.0.1:8787",
     requestSpacingMs: Number(process.env.MEXCHANGE_REQUEST_SPACING_MS ?? "200"),
     eventsPerPage: Number(process.env.MEXCHANGE_EVENTS_PER_PAGE ?? "50"),
     pollIntervalMs: Number(process.env.MEXCHANGE_POLL_INTERVAL_MS ?? "10000"),

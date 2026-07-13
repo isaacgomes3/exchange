@@ -16,7 +16,36 @@ Painel de alertas para jogos ao vivo da exchange **BetBra** (mexchange), seguind
 2. **IP brasileiro** — fora do BR a API retorna HTML/Cloudflare (403)
 3. **Proxy BR** — configure se o servidor não estiver no Brasil
 
-## Configuração
+## Ambiente local (usa seu IP brasileiro)
+
+A BetBra bloqueia IPs fora do Brasil. Rode **na sua máquina**:
+
+```bash
+npm install
+npm run dev:local
+```
+
+Isso inicia automaticamente:
+1. **Proxy local** (porta 8787) — faz requests à BetBra usando **seu IP**
+2. **Painel** (porta 3000) — http://localhost:3000
+
+### Só o proxy (terminal separado)
+
+```bash
+npm run proxy:local
+```
+
+O proxy mostra seu IP na rede. Configure no `.env.local`:
+
+```env
+MEXCHANGE_USE_LOCAL_PROXY=1
+MEXCHANGE_LOCAL_PROXY_URL=http://127.0.0.1:8787
+# ou na rede local: http://192.168.x.x:8787
+```
+
+Depois rode `npm run dev` em outro terminal.
+
+## Configuração manual
 
 Copie `.env.example` para `.env.local`:
 

@@ -123,6 +123,15 @@ async function betbraFetch<T>(
 ): Promise<T> {
   const config = getBetBraConfig();
 
+  if (config.useLocalProxy) {
+    return scheduleRequest(async () => {
+      const response = await fetch(url, {
+        headers: { Accept: "application/json" },
+      });
+      return await parseResponse<T>(response, url);
+    }, config.requestSpacingMs);
+  }
+
   return scheduleRequest(async () => {
     const attempts: boolean[] = [];
 
@@ -182,8 +191,13 @@ export async function fetchEvents(
     "en-market-names": "Moneyline,Match Odds,Winner",
   });
 
-  const url = `${config.apiBaseUrl}/events?${params}`;
-  const data = await betbraFetch<BetBraEventsResponse>(url, buildMexchangeHeaders());
+  const url = config.useLocalProxy
+    ? `${config.localProxyUrl}/mexchange/events?${params}`
+    : `${config.apiBaseUrl}/events?${params}`;
+  const data = await betbraFetch<BetBraEventsResponse>(
+    url,
+    buildMexchangeHeaders()
+  );
 
   if (options?.inRunningOnly) {
     data.events = data.events.filter((e) => e["in-running-flag"]);
@@ -197,7 +211,9 @@ export async function fetchEventDetail(
   sportId: number
 ): Promise<BetBraEvent> {
   const config = getBetBraConfig();
-  const url = `${config.apiBaseUrl}/events/${eventId}`;
+  const url = config.useLocalProxy
+    ? `${config.localProxyUrl}/mexchange/events/${eventId}?sport-id=${sportId}`
+    : `${config.apiBaseUrl}/events/${eventId}`;
   return betbraFetch<BetBraEvent>(
     url,
     buildEventDetailHeaders(sportId, eventId)
@@ -206,8 +222,11 @@ export async function fetchEventDetail(
 
 export async function fetchInplayInfo(): Promise<InplayInfo[]> {
   const config = getBetBraConfig();
+  const url = config.useLocalProxy
+    ? `${config.localProxyUrl}/inplay`
+    : config.inplayFeedUrl;
   const data = await betbraFetch<InplayInfo[]>(
-    config.inplayFeedUrl,
+    url,
     buildInplayHeaders()
   );
   return Array.isArray(data) ? data : [];
@@ -217,6 +236,8 @@ export async function runConnectivityTest(): Promise<{
   config: {
     userAgent: string;
     useProxy: boolean;
+    useLocalProxy: boolean;
+    localProxyUrl: string;
     apiBaseUrl: string;
   };
   results: ConnectivityTestResult[];
@@ -295,6 +316,8 @@ export async function runConnectivityTest(): Promise<{
     config: {
       userAgent: config.userAgent,
       useProxy: config.useProxy,
+      useLocalProxy: config.useLocalProxy,
+      localProxyUrl: config.localProxyUrl,
       apiBaseUrl: config.apiBaseUrl,
     },
     results,
