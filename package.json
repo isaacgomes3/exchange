@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:local": "bash scripts/start-local.sh",
+    "start:local": "node scripts/start-local.mjs",
     "proxy:local": "node scripts/betbra-local-proxy.mjs",
     "build": "next build",
     "start": "next start",
