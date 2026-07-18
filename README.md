@@ -9,6 +9,29 @@ Painel de alertas para jogos ao vivo da exchange **BetBra** (mexchange), seguind
 - **Streaming SSE** — painel atualiza sem refresh
 - **Deep links** — clique no jogo abre `betbra.bet.br/b/exchange/sport/...`
 - **Teste de conectividade** — `GET /api/exchange/connectivity-test`
+- **Supabase** — persistência de alertas e regras (`GET /api/supabase/health`)
+
+## Conectar Supabase
+
+1. Crie um projeto em [supabase.com/dashboard](https://supabase.com/dashboard)
+2. Em **Project Settings → API**, copie URL e anon key
+3. Configure o `.env.local`:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+# opcional (servidor):
+# SUPABASE_SERVICE_ROLE_KEY=eyJ...
+```
+
+4. Rode a migration SQL em `supabase/migrations/20260718210000_exchange_alerts.sql` (SQL Editor do dashboard)
+5. Teste:
+
+```bash
+curl http://localhost:3000/api/supabase/health | jq
+```
+
+Detalhes em [`supabase/README.md`](supabase/README.md). Sem essas variáveis, o painel continua em memória.
 
 ## Requisitos BetBra
 
@@ -121,6 +144,7 @@ src/lib/exchange/store.ts   # Estado + alertas + SSE
 | `GET /api/live/stream` | SSE tempo real |
 | `GET /api/alerts` | Alertas |
 | `GET /api/exchange/connectivity-test` | Diagnóstico BetBra |
+| `GET /api/supabase/health` | Diagnóstico Supabase |
 
 ## Sport IDs
 

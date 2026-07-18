@@ -5,6 +5,15 @@ import {
   pollLiveGames,
   type BetBraConnectionStatus,
 } from "@/lib/betbra/poller";
+import {
+  acknowledgeAlertRemote,
+  fetchAlertRules,
+  fetchAlerts,
+  insertAlert,
+  seedDefaultRules,
+  upsertAlertRule,
+} from "@/lib/supabase/alerts-repository";
+import { isSupabasePersistenceEnabled } from "@/lib/supabase/config";
 import type { Alert, AlertRule, BetBraStatus, LiveGame } from "@/types/exchange";
 
 type Subscriber = (data: {
@@ -21,6 +30,8 @@ interface ExchangeStore {
   pollerRunning: boolean;
   pollInFlight: boolean;
   betbraStatus: BetBraStatus;
+  supabaseHydrated: boolean;
+  supabaseHydrating: Promise<void> | null;
 }
 
 declare global {
@@ -36,6 +47,8 @@ function createStore(): ExchangeStore {
     pollerRunning: false,
     pollInFlight: false,
     betbraStatus: { state: "idle" },
+    supabaseHydrated: false,
+    supabaseHydrating: null,
   };
 }
 
@@ -44,6 +57,44 @@ export function getStore(): ExchangeStore {
     globalThis.__exchangeStore = createStore();
   }
   return globalThis.__exchangeStore;
+}
+
+/** Carrega regras/alertas do Supabase (uma vez) quando configurado. */
+export async function ensureSupabaseHydrated(): Promise<void> {
+  const store = getStore();
+  if (!isSupabasePersistenceEnabled() || store.supabaseHydrated) return;
+
+  if (store.supabaseHydrating) {
+    await store.supabaseHydrating;
+    return;
+  }
+
+  store.supabaseHydrating = (async () => {
+    const [remoteRules, remoteAlerts] = await Promise.all([
+      fetchAlertRules(),
+      fetchAlerts(100),
+    ]);
+
+    if (remoteRules && remoteRules.length > 0) {
+      store.rules = remoteRules;
+    } else if (remoteRules && remoteRules.length === 0) {
+      const defaults = structuredClone(DEFAULT_ALERT_RULES);
+      store.rules = defaults;
+      await seedDefaultRules(defaults);
+    }
+
+    if (remoteAlerts) {
+      store.alerts = remoteAlerts;
+    }
+
+    store.supabaseHydrated = true;
+  })();
+
+  try {
+    await store.supabaseHydrating;
+  } finally {
+    store.supabaseHydrating = null;
+  }
 }
 
 export function getLiveGames(): LiveGame[] {
@@ -74,6 +125,7 @@ export function addRule(rule: Omit<AlertRule, "id">): AlertRule {
     id: `rule-${Date.now()}`,
   };
   store.rules.push(newRule);
+  void upsertAlertRule(newRule);
   return newRule;
 }
 
@@ -85,6 +137,7 @@ export function updateRule(
   const index = store.rules.findIndex((r) => r.id === id);
   if (index === -1) return null;
   store.rules[index] = { ...store.rules[index], ...updates };
+  void upsertAlertRule(store.rules[index]);
   return store.rules[index];
 }
 
@@ -93,6 +146,7 @@ export function acknowledgeAlert(id: string): boolean {
   const alert = store.alerts.find((a) => a.id === id);
   if (!alert) return false;
   alert.acknowledged = true;
+  void acknowledgeAlertRemote(id);
   return true;
 }
 
@@ -135,6 +189,7 @@ function pushAlert(alert: Alert) {
   if (store.alerts.length > 100) {
     store.alerts = store.alerts.slice(0, 100);
   }
+  void insertAlert(alert);
   notifySubscribers(getLiveGames(), alert, store.betbraStatus);
 }
 
@@ -188,7 +243,9 @@ export function startBetBraPoller() {
   if (store.pollerRunning) return;
   store.pollerRunning = true;
 
-  runPoll();
+  void ensureSupabaseHydrated().finally(() => {
+    runPoll();
+  });
 
   setInterval(() => {
     runPoll();

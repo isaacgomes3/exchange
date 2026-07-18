@@ -1,15 +1,21 @@
 import { NextResponse } from "next/server";
-import { acknowledgeAlert, getAlerts } from "@/lib/exchange/store";
+import {
+  acknowledgeAlert,
+  ensureSupabaseHydrated,
+  getAlerts,
+} from "@/lib/exchange/store";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  await ensureSupabaseHydrated();
   const alerts = getAlerts();
   const unacknowledged = alerts.filter((a) => !a.acknowledged).length;
   return NextResponse.json({ alerts, unacknowledged });
 }
 
 export async function PATCH(request: Request) {
+  await ensureSupabaseHydrated();
   const body = await request.json();
   const { id, action } = body as { id: string; action: string };
 
