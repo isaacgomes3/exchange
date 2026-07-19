@@ -46,3 +46,4 @@ next-env.d.ts
 /supabase-export
 /deploy/vps-supabase/.env
 /.vps-supabase-credentials.local
+/.cloud-database-url.local

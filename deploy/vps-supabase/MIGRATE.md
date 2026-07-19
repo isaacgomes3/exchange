@@ -117,12 +117,24 @@ docker compose up -d --force-recreate realtime
 
 ## 4. Exportar o Cloud (no seu PC ou neste ambiente)
 
-No [Dashboard](https://supabase.com/dashboard/project/wknyfxikmmvjzpbevlid/settings/database) copie a **URI** do banco.
+No [Dashboard → Database](https://supabase.com/dashboard/project/wknyfxikmmvjzpbevlid/settings/database) copie a **senha do banco** (Database password) ou a URI.
+
+Região deste projeto: **`aws-1-us-east-2`**.
 
 ```bash
-export DATABASE_URL='postgresql://postgres.wknyfxikmmvjzpbevlid:SENHA@aws-0-....pooler.supabase.com:6543/postgres'
+# Opção A — só a senha
+export DB_PASSWORD='sua-senha-do-dashboard'
 export SUPABASE_URL='https://wknyfxikmmvjzpbevlid.supabase.co'
 export SUPABASE_SERVICE_ROLE_KEY='sb_secret_...'   # ou service_role JWT
+
+./scripts/supabase-export-cloud.sh
+```
+
+```bash
+# Opção B — URI completa
+export DATABASE_URL='postgresql://postgres.wknyfxikmmvjzpbevlid:SENHA@aws-1-us-east-2.pooler.supabase.com:6543/postgres?sslmode=require'
+export SUPABASE_URL='https://wknyfxikmmvjzpbevlid.supabase.co'
+export SUPABASE_SERVICE_ROLE_KEY='sb_secret_...'
 
 ./scripts/supabase-export-cloud.sh
 ```

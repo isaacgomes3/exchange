@@ -29,7 +29,7 @@ async function api(path, init = {}) {
     headers: { ...headers, ...(init.headers || {}) },
   });
   if (!res.ok) {
-    throw new Error(`${path} → ${res.status} ${await res.text()}`);
+    throw new Error(`${path} -> ${res.status} ${await res.text()}`);
   }
   return res;
 }
