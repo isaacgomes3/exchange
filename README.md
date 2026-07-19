@@ -41,6 +41,14 @@ Detalhes em [`supabase/README.md`](supabase/README.md). Sem as keys, o painel co
 2. **IP brasileiro** — fora do BR a API retorna HTML/Cloudflare (403)
 3. **Proxy BR** — configure se o servidor não estiver no Brasil
 
+## Migrar Supabase → VPS
+
+Pacote self-hosted + scripts:
+
+- Guia: [`deploy/vps-supabase/MIGRATE.md`](deploy/vps-supabase/MIGRATE.md)
+- Export Cloud: `npm run supabase:export` (precisa de `DATABASE_URL`)
+- Import VPS: `npm run supabase:import-vps`
+
 ## ArbiShield (acesso local ao app de produção)
 
 O app público [https://arbishield.app](https://arbishield.app) usa a Supabase `wknyfxikmmvjzpbevlid`.

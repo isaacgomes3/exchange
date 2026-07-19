@@ -43,3 +43,5 @@ next-env.d.ts
 
 .arbishield-access.local
 /arbishield-local
+/supabase-export
+/deploy/vps-supabase/.env

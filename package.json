@@ -10,6 +10,8 @@
     "proxy:local": "node scripts/betbra-local-proxy.mjs",
     "arbishield:mirror": "node scripts/mirror-arbishield-app.mjs",
     "arbishield:local": "node scripts/start-arbishield-local.mjs",
+    "supabase:export": "bash scripts/supabase-export-cloud.sh",
+    "supabase:import-vps": "bash scripts/supabase-import-vps.sh",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
