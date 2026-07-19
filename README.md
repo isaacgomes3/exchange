@@ -46,12 +46,19 @@ A BetBra bloqueia IPs fora do Brasil. Rode **na sua máquina**:
 
 ```bash
 npm install
-npm run dev:local
+npm run start:local
 ```
 
-Isso inicia automaticamente:
-1. **Proxy local** (porta 8787) — faz requests à BetBra usando **seu IP**
-2. **Painel** (porta 3000) — http://localhost:3000
+Isso:
+1. Garante `.env.local` (Supabase + BetBra) sem apagar keys existentes
+2. Sobe o **proxy local** (porta 8787) — requests à BetBra com **seu IP**
+3. Sobe o **painel** (porta 3000) — http://localhost:3000
+
+Só preparar o `.env.local`:
+
+```bash
+npm run env:local
+```
 
 ### Só o proxy (terminal separado)
 
