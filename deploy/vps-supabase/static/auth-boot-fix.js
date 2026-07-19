@@ -1,39 +1,67 @@
 /**
- * Corrige travamento do /auth na VPS após cutover Lovable:
- * - limpa sessão JWT inválida (segredo antigo / outro projeto)
- * - reduz animações pesadas (blur infinito) que congelam o browser
+ * Mantém o layout SPA de /auth estável na VPS:
+ * - limpa JWT inválido (segredo antigo / cutover)
+ * - desliga blur/animações pesadas que congelam o input
+ * - remove service workers/caches zumbis
  */
 (function () {
   const path = location.pathname.replace(/\/$/, "") || "/";
   const onAuth = path === "/auth" || path.endsWith("/auth");
 
-  // CSS: corta blur/animacoes caras
+  // CSS: corta efeitos caros (permanece em /auth)
   try {
     const style = document.createElement("style");
     style.setAttribute("data-arbishield", "auth-boot-fix");
     style.textContent = `
-      @media (prefers-reduced-motion: no-preference) {
-        body .blur-\\[40px\\],
-        body [style*="blur(40px)"] {
-          filter: none !important;
-          animation: none !important;
-          transform: none !important;
-        }
-      }
-      html.arbishield-reduce-motion *,
-      html.arbishield-reduce-motion *::before,
-      html.arbishield-reduce-motion *::after {
+      html.arbishield-auth-stable *,
+      html.arbishield-auth-stable *::before,
+      html.arbishield-auth-stable *::after {
         animation: none !important;
         transition: none !important;
+        scroll-behavior: auto !important;
+      }
+      html.arbishield-auth-stable .blur-\\[40px\\],
+      html.arbishield-auth-stable .blur-\\[60px\\],
+      html.arbishield-auth-stable .blur-\\[80px\\],
+      html.arbishield-auth-stable .blur-3xl,
+      html.arbishield-auth-stable .blur-2xl,
+      html.arbishield-auth-stable .blur-xl,
+      html.arbishield-auth-stable [class*="blur-["],
+      html.arbishield-auth-stable [style*="blur("] {
+        filter: none !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        transform: none !important;
+        will-change: auto !important;
       }
     `;
-    document.documentElement.classList.add("arbishield-reduce-motion");
+    if (onAuth) {
+      document.documentElement.classList.add("arbishield-auth-stable");
+    }
     (document.head || document.documentElement).appendChild(style);
-    // reativa motion leve depois do primeiro paint (se página ok)
-    setTimeout(() => {
-      document.documentElement.classList.remove("arbishield-reduce-motion");
-    }, 2500);
   } catch {}
+
+  async function nukeServiceWorkers() {
+    try {
+      if (!("serviceWorker" in navigator)) return;
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    } catch {}
+    try {
+      if (!window.caches) return;
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    } catch {}
+  }
+
+  // Limpeza leve em qualquer rota; agressiva no /auth
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(() => {
+      nukeServiceWorkers();
+    }, { timeout: 1500 });
+  } else {
+    setTimeout(nukeServiceWorkers, 300);
+  }
 
   if (!onAuth) return;
 
@@ -71,7 +99,6 @@
         sessionStorage.removeItem(key);
       } catch {}
     }
-    // limpa variantes sb-*-auth-token
     try {
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const k = localStorage.key(i);
@@ -89,14 +116,14 @@
     try {
       const res = await fetch("/auth/v1/user", {
         headers: {
-          apikey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzg0NDc5OTk4LCJleHAiOjE5NDIxNTk5OTh9.mxLqs20sCUNn58jWlsD0sznclCOr8rbksjTEAuQee3s",
+          apikey:
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzg0NDc5OTk4LCJleHAiOjE5NDIxNTk5OTh9.mxLqs20sCUNn58jWlsD0sznclCOr8rbksjTEAuQee3s",
           Authorization: `Bearer ${stored.token}`,
         },
         cache: "no-store",
       });
       if (res.status === 401 || res.status === 403) {
         clearAuthStorage();
-        // evita loop de soft-redirect com sessão zumbi
         if (!new URLSearchParams(location.search).has("cleared")) {
           const u = new URL(location.href);
           u.searchParams.set("cleared", "1");
@@ -108,5 +135,8 @@
     }
   }
 
-  validateOrClear();
+  // não bloqueia digitação
+  setTimeout(() => {
+    validateOrClear();
+  }, 0);
 })();
