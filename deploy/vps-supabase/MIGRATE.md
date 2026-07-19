@@ -131,15 +131,24 @@ export SUPABASE_SERVICE_ROLE_KEY='sb_secret_...'   # ou service_role JWT
 ```
 
 ```bash
-# Opção B — URI completa
-export DATABASE_URL='postgresql://postgres.wknyfxikmmvjzpbevlid:SENHA@aws-1-us-east-2.pooler.supabase.com:6543/postgres?sslmode=require'
+# Opção B — URI completa (session mode :5432 para pg_dump)
+export DATABASE_URL='postgresql://postgres.wknyfxikmmvjzpbevlid:SENHA@aws-1-us-east-2.pooler.supabase.com:5432/postgres?sslmode=require'
 export SUPABASE_URL='https://wknyfxikmmvjzpbevlid.supabase.co'
 export SUPABASE_SERVICE_ROLE_KEY='sb_secret_...'
 
 ./scripts/supabase-export-cloud.sh
 ```
 
+> **Nota:** o Cloud está em Postgres 17. Se o `pg_dump` local for 16, rode o dump na VPS (container `db` já tem 17.6).
+
 Gera `supabase-export/db.dump` (+ storage se a key estiver ok).
+
+### Status da migração (VPS `195.200.6.206`)
+
+Já feito: dump Cloud → restore na VPS, storage objects, Auth login OK (`isaacgomes3@gmail.com`), REST com dados (profiles/matches/protections).
+
+API self-hosted: `http://195.200.6.206:8000`  
+Keys: as do `.env` da VPS (`ANON_KEY` / `SERVICE_ROLE_KEY`) — **não** use as keys `sb_*` do Cloud no app apontando para a VPS.
 
 Envie para a VPS:
 

@@ -39,7 +39,8 @@ fi
 
 if [[ -z "${DATABASE_URL:-}" && -n "${DB_PASSWORD:-}" ]]; then
   ENC_PW="$(DB_PASSWORD="$DB_PASSWORD" python3 -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["DB_PASSWORD"], safe=""))')"
-  DATABASE_URL="postgresql://postgres.${PROJECT_REF}:${ENC_PW}@${POOLER_HOST}:6543/postgres?sslmode=require"
+  # Session mode (:5432) is required for pg_dump; transaction pooler (:6543) can auth but is flaky for dumps.
+  DATABASE_URL="postgresql://postgres.${PROJECT_REF}:${ENC_PW}@${POOLER_HOST}:5432/postgres?sslmode=require"
   export DATABASE_URL
 fi
 
@@ -62,7 +63,22 @@ EOF
 fi
 
 if ! command -v pg_dump >/dev/null 2>&1; then
-  echo "pg_dump não encontrado. Instale postgresql-client."
+  echo "pg_dump não encontrado. Instale postgresql-client (versão >= servidor Cloud, hoje 17.x)."
+  exit 1
+fi
+
+PG_DUMP_VER="$(pg_dump --version | grep -oE '[0-9]+' | head -1)"
+if [[ "${PG_DUMP_VER:-0}" -lt 17 ]]; then
+  cat <<EOF
+pg_dump local é ${PG_DUMP_VER}.x, mas o Cloud está em Postgres 17.
+Rode o dump na VPS (tem pg_dump 17 no container db):
+
+  # na VPS, com DB_PASSWORD definido:
+  cd /opt/arbishield/deploy/vps-supabase
+  docker compose exec -T -e PGPASSWORD="\$DB_PASSWORD" db pg_dump \\
+    -h ${POOLER_HOST} -p 5432 -U postgres.${PROJECT_REF} -d postgres \\
+    --no-owner --no-acl -Fc -f /tmp/db.dump
+EOF
   exit 1
 fi
 
