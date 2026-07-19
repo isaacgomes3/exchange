@@ -378,7 +378,9 @@
           location.replace(redirectTo);
         } catch (err) {
           var msg = String(err.message || err);
-          show(errEl, /invalid/i.test(msg) ? "E-mail ou senha inválidos." : msg);
+          if (/banned/i.test(msg)) msg = "Esta conta está bloqueada. Contate o suporte.";
+          else if (/invalid/i.test(msg)) msg = "E-mail ou senha inválidos.";
+          show(errEl, msg);
           btn.disabled = false;
           btn.textContent = "Entrar →";
         }

@@ -165,7 +165,8 @@
         }
         location.replace(redirectTo);
       } catch (err) {
-        showError(err?.message || String(err));
+        const msg = err?.message || String(err);
+        showError(/banned/i.test(msg) ? "Esta conta está bloqueada. Contate o suporte." : msg);
         btn.disabled = false;
         btn.textContent = "Entrar";
       }
