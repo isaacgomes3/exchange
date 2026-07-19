@@ -72,23 +72,26 @@ Redirect URLs: http://localhost:5173/**
 
 Login admin: `isaacgomes3@gmail.com` (senha em `.arbishield-access.local`).
 
-> Nota: isto espelha o **build publicado** (sem código-fonte). Para editar o projeto, exporte o repo do Lovable/GitHub.
+> O app de produção self-hosted fica na VPS: http://195.200.6.206/ (domínio via DNS Hostinger — ver `deploy/vps-supabase/MIGRATE.md`).
 
-## ArbiShield (painel operacional)
+## ArbiShield (produção na VPS)
 
-O domínio [arbishield.com](https://arbishield.com) está bloqueado (takedown Lovable). Enquanto isso, use o painel temporário neste app:
+Sem Lovable. Stack na Hostinger (`195.200.6.206`):
+
+- App: http://195.200.6.206/
+- Domínio: apontar `arbishield.app` (A → VPS) e rodar `bash /opt/arbishield/scripts/arbishield-enable-domain.sh`
+
+Espelho local do build (dev):
+
+```bash
+npm run arbishield:mirror
+npm run arbishield:local   # http://localhost:5173
+```
+
+Painel temporário neste repo (Next), se precisar:
 
 - Login: http://localhost:3000/arbishield
 - Admin: http://localhost:3000/arbishield/admin
-
-No Supabase → **Authentication → URL Configuration**, adicione:
-
-```
-Site URL: http://localhost:3000/arbishield
-Redirect URLs: http://localhost:3000/**
-```
-
-Conta admin criada: `isaacgomes3@gmail.com` (senha no arquivo local `.arbishield-access.local`).
 
 ## Ambiente local (usa seu IP brasileiro)
 

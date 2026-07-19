@@ -145,14 +145,10 @@ Gera `supabase-export/db.dump` (+ storage se a key estiver ok).
 
 ### Status da migração (VPS `195.200.6.206`)
 
-Já feito: dump Cloud → restore na VPS, storage objects, Auth login OK (`isaacgomes3@gmail.com`), REST com dados (profiles/matches/protections).
+Já feito: dump Cloud → restore na VPS, storage, Auth/REST OK, frontend self-hosted na VPS (sem Lovable).
 
-**Cutover HTTP na VPS (nginx):**
-- App: http://195.200.6.206/
-- API mesma origem (proxy nginx → Kong `:8000`)
-- Frontend patchado com `ANON_KEY` da VPS (não usa mais `*.supabase.co`)
-
-> `https://arbishield.app` (Cloudflare) ainda aponta ao Cloud até você mudar o DNS ou redeployar o Lovable.
+- App HTTP: http://195.200.6.206/
+- Para `https://arbishield.app`: mude o DNS na Hostinger e rode `arbishield-enable-domain.sh`
 
 Envie para a VPS:
 
@@ -175,44 +171,33 @@ docker compose cp ../../supabase-export/storage/objects/. storage:/var/lib/stora
 docker compose restart storage
 ```
 
-## 6. Cutover do app
+## 6. Cutover — só VPS (sem Lovable)
 
-### Opção A — App na própria VPS (já aplicado)
+Frontend + API na Hostinger VPS. Lovable não entra no fluxo.
 
-Frontend espelhado + patch das keys, nginx na porta 80:
+### Agora (IP)
 
 - App: http://195.200.6.206/
-- API (mesma origem): `/auth`, `/rest`, `/storage`, `/realtime` → Kong
+- Login admin: `isaacgomes3@gmail.com`
+
+### Domínio `https://arbishield.app`
+
+1. **Hostinger hPanel** → Domínios → `arbishield.app` → DNS:
+
+| Tipo | Nome | Valor | TTL |
+|------|------|-------|-----|
+| A | `@` | `195.200.6.206` | 300 |
+| A | `www` | `195.200.6.206` | 300 |
+
+Apague A/CNAME antigos para `185.158.133.1` (CDN/Lovable).
+
+2. Na VPS:
 
 ```bash
-# regenerar frontend cutover (neste repo)
-export VPS_ANON_KEY='...'          # ANON_KEY do .env da VPS
-export API_PUBLIC_URL='http://195.200.6.206'
-./scripts/arbishield-cutover-frontend.sh
-# depois copie /var/www/arbishield (ou o DEST) para a VPS
+bash /opt/arbishield/scripts/arbishield-enable-domain.sh
 ```
 
-Auth self-hosted na VPS:
-
-- `API_EXTERNAL_URL=http://195.200.6.206`
-- `SUPABASE_PUBLIC_URL=http://195.200.6.206`
-- `SITE_URL=http://195.200.6.206`
-
-### Opção B — Manter https://arbishield.app (Cloudflare/Lovable)
-
-1. Crie DNS **A** `api.arbishield.app` → `195.200.6.206` e emita TLS (`certbot`)
-2. No frontend / secrets de produção:
-
-```env
-VITE_SUPABASE_URL=https://api.arbishield.app
-VITE_SUPABASE_ANON_KEY=<ANON_KEY do .env da VPS>
-```
-
-3. Redeploy do [arbishield.app](https://arbishield.app) (Lovable/host) com as novas keys.
-
-### Opção C — Apontar o domínio raiz para a VPS
-
-DNS **A** `arbishield.app` → `195.200.6.206`, depois TLS no nginx e atualize `API_PUBLIC_URL`/`SITE_URL` para `https://arbishield.app`.
+Emite Let's Encrypt, atualiza Auth e re-patcha o frontend para `https://arbishield.app`.
 
 ## 7. Checklist pós-migração
 
