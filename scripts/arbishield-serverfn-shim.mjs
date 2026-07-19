@@ -9,6 +9,15 @@ import { createServer } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+let toJSON;
+try {
+  ({ toJSON } = require("seroval"));
+} catch {
+  toJSON = null;
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
@@ -65,6 +74,64 @@ function cors(res) {
 function sendJson(res, status, body) {
   cors(res);
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(body));
+}
+
+/** Codifica valores no formato Seroval/TSR que o client TanStack Start espera. */
+function encVal(value, ids) {
+  if (value === null || value === undefined) return { t: 2, s: 1 };
+  if (typeof value === "string") return { t: 1, s: value };
+  if (typeof value === "boolean") return { t: 3, s: value ? 1 : 0 };
+  if (typeof value === "number") return { t: 0, s: value };
+  if (Array.isArray(value)) {
+    const i = ids.n++;
+    return {
+      t: 9,
+      i,
+      a: value.map((x) => encVal(x, ids)),
+      o: 0,
+    };
+  }
+  if (typeof value === "object") {
+    const i = ids.n++;
+    const k = Object.keys(value);
+    return {
+      t: 10,
+      i,
+      p: { k, v: k.map((key) => encVal(value[key], ids)) },
+      o: 0,
+    };
+  }
+  return { t: 1, s: String(value) };
+}
+
+/** Resposta de sucesso no protocolo TSR (sem isso o SPA trata data como undefined). */
+function sendTsrOk(res, data) {
+  cors(res);
+  const payload = { result: data, error: null, context: {} };
+  let body;
+  if (typeof toJSON === "function") {
+    // Client fromJSON espera o nó; toJSON envolve em { t, f, m }.
+    const encoded = toJSON(payload);
+    body = encoded && encoded.t ? encoded.t : encoded;
+  } else {
+    const ids = { n: 1 };
+    const resultNode = encVal(data, ids);
+    const contextNode = { t: 10, i: ids.n++, p: { k: [], v: [] }, o: 0 };
+    body = {
+      t: 10,
+      i: 0,
+      p: {
+        k: ["result", "error", "context"],
+        v: [resultNode, { t: 2, s: 1 }, contextNode],
+      },
+      o: 0,
+    };
+  }
+  res.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "x-tss-serialized": "true",
+  });
   res.end(JSON.stringify(body));
 }
 
@@ -564,7 +631,7 @@ async function handleServerFn(req, res, id, rawBody = "") {
     console.log("[serverfn-shim] LIST_DESAFIOS");
     try {
       const data = await listDesafios(token);
-      return sendJson(res, 200, data);
+      return sendTsrOk(res, data);
     } catch (err) {
       return sendTsrError(
         res,
@@ -578,7 +645,7 @@ async function handleServerFn(req, res, id, rawBody = "") {
     try {
       // agregações com service role (RLS bloqueia anon)
       const data = await getDashboardStats();
-      return sendJson(res, 200, data);
+      return sendTsrOk(res, data);
     } catch (err) {
       console.error("[serverfn-shim] DASHBOARD_STATS error", err);
       return sendTsrError(
@@ -593,7 +660,7 @@ async function handleServerFn(req, res, id, rawBody = "") {
     try {
       const params = extractServerFnData(rawBody);
       const data = await getAdminTxFeed(params);
-      return sendJson(res, 200, data);
+      return sendTsrOk(res, data);
     } catch (err) {
       console.error("[serverfn-shim] ADMIN_TX_FEED error", err);
       return sendTsrError(
@@ -607,9 +674,9 @@ async function handleServerFn(req, res, id, rawBody = "") {
   // ainda não portadas — retornam sucesso vazio.
   console.log("[serverfn-shim]", req.method, id.slice(0, 12));
   if (req.method === "GET") {
-    return sendJson(res, 200, []);
+    return sendTsrOk(res, []);
   }
-  return sendJson(res, 200, null);
+  return sendTsrOk(res, null);
 }
 
 function parseBody(req) {
