@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gestão de Desafios — ArbiShield</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #050505;
+      --panel: #0a0a0a;
+      --border: #1f1f1f;
+      --text: #f5f5f7;
+      --muted: #8a8a8f;
+      --lime: #c9f223;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      background: radial-gradient(900px 500px at 0% 0%, rgba(201,242,35,0.07), transparent 50%), var(--bg);
+      color: var(--text);
+    }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 24px 18px 64px; }
+    header {
+      display: flex; flex-wrap: wrap; gap: 14px;
+      align-items: flex-start; justify-content: space-between;
+      margin-bottom: 22px;
+    }
+    h1 {
+      margin: 0; font-size: clamp(1.5rem, 3vw, 2.1rem);
+      font-weight: 800; letter-spacing: -0.04em; text-transform: uppercase;
+    }
+    h1 span { color: var(--lime); }
+    .sub {
+      margin: 6px 0 0; color: var(--muted); font-size: 0.72rem;
+      letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;
+    }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn {
+      border: 0; border-radius: 12px; padding: 12px 16px;
+      font-weight: 800; font-size: 10px; letter-spacing: 0.12em;
+      text-transform: uppercase; cursor: pointer; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn-primary { background: var(--lime); color: #000; }
+    .btn-ghost {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-lime-outline {
+      background: transparent; color: var(--lime);
+      border: 1px solid rgba(201,242,35,0.4);
+    }
+    .stats {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+      gap: 10px; margin-bottom: 20px;
+    }
+    .stat {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; padding: 12px 14px;
+    }
+    .stat .l {
+      font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted); font-weight: 700;
+    }
+    .stat .v { font-size: 1.5rem; font-weight: 800; margin-top: 4px; }
+    .stat .v.lime { color: var(--lime); }
+    .stat .v.amber { color: #f59e0b; }
+    .stat .v.red { color: #ef4444; }
+    .meta { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+    .list { display: flex; flex-direction: column; gap: 12px; }
+    .card {
+      border: 1px solid var(--border); border-radius: 16px;
+      background: var(--panel); padding: 16px;
+    }
+    .card-top {
+      display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .title { font-weight: 800; }
+    .badge {
+      font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
+      text-transform: uppercase; padding: 4px 8px; border-radius: 999px;
+      border: 1px solid var(--border); color: var(--muted);
+    }
+    .badge.on { color: var(--lime); border-color: rgba(201,242,35,0.35); }
+    .steps { color: var(--muted); font-size: 13px; line-height: 1.45; }
+    .empty, .error, .loading {
+      border: 1px dashed var(--border); border-radius: 16px;
+      padding: 28px; text-align: center; color: var(--muted);
+    }
+    .error { border-color: rgba(239,68,68,0.4); color: #fca5a5; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Gestão de <span>Desafios</span></h1>
+        <p class="sub">Cockpit de Desafios ArbiShield · VPS</p>
+      </div>
+      <div class="actions">
+        <a class="btn btn-ghost" href="/admin">← Admin</a>
+        <a class="btn btn-lime-outline" href="/desafio-sugestoes.html">Sugestão de Desafio</a>
+        <button class="btn btn-primary" id="btnRefresh" type="button">Atualizar</button>
+      </div>
+    </header>
+
+    <div class="stats" id="stats"></div>
+    <div class="meta" id="meta">Carregando…</div>
+    <div class="list" id="list"></div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const money = (c) =>
+      c == null ? "—" : (Number(c) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+    function stepState(step) {
+      if (!step?.starts_at) return "upcoming";
+      if (step.status === "done" || step.status === "current") return step.status === "done" ? "done" : "live";
+      const u = new Date(step.starts_at).getTime();
+      const end = u + 9000 * 1000;
+      const now = Date.now();
+      if (now >= end) return "pending";
+      if (now >= u) return "live";
+      return "upcoming";
+    }
+
+    function totals(rows) {
+      const alive = rows.filter((x) => !x.deleted_at);
+      const steps = alive.flatMap((x) => x.desafio_steps || []);
+      const closed = (x) => {
+        const s = x.desafio_steps || [];
+        return s.length > 0 && s.every((e) => e.status === "done");
+      };
+      return {
+        total: alive.length,
+        active: alive.filter((x) => x.is_active).length,
+        drafts: alive.filter((x) => !x.is_active && !closed(x)).length,
+        upcoming: steps.filter((x) => stepState(x) === "upcoming").length,
+        live: steps.filter((x) => stepState(x) === "live").length,
+        pending: steps.filter((x) => stepState(x) === "pending").length,
+        closed: alive.filter(closed).length,
+        deleted: rows.filter((x) => x.deleted_at).length,
+      };
+    }
+
+    function renderStats(t) {
+      const items = [
+        ["Total", t.total, ""],
+        ["Ativos", t.active, "lime"],
+        ["Rascunhos", t.drafts, ""],
+        ["Agendadas", t.upcoming, ""],
+        ["Ao Vivo", t.live, "red"],
+        ["Pendente", t.pending, "amber"],
+        ["Encerrados", t.closed, "lime"],
+        ["Excluídos", t.deleted, "red"],
+      ];
+      $("stats").innerHTML = items
+        .map(
+          ([l, v, c]) =>
+            `<div class="stat"><div class="l">${l}</div><div class="v ${c}">${v}</div></div>`
+        )
+        .join("");
+    }
+
+    function render(rows) {
+      const t = totals(rows);
+      renderStats(t);
+      $("meta").textContent = `${rows.length} registro(s) · ${t.total} visíveis`;
+      const visible = rows
+        .filter((x) => !x.deleted_at)
+        .sort((a, b) => {
+          const ta = new Date(a.updated_at || a.created_at || 0).getTime();
+          const tb = new Date(b.updated_at || b.created_at || 0).getTime();
+          return tb - ta;
+        });
+      if (!visible.length) {
+        $("list").innerHTML = `<div class="empty">Nenhum desafio encontrado.</div>`;
+        return;
+      }
+      $("list").innerHTML = visible
+        .map((d) => {
+          const steps = (d.desafio_steps || [])
+            .slice()
+            .sort((a, b) => a.step_index - b.step_index);
+          const lines = steps
+            .map(
+              (s) =>
+                `#${s.step_index} ${s.match_label || s.home_team + " x " + s.away_team || "—"} · ` +
+                `${s.market_name_casa || s.market_name || "?"} @ ${s.casa_odd ?? "—"} / ` +
+                `Arbi ${s.market_name_arbishield || "?"} @ ${s.arbi_odd ?? "—"}`
+            )
+            .join("<br/>");
+          return `<article class="card">
+            <div class="card-top">
+              <div class="title">${d.title || "Desafio"} <span style="color:var(--muted);font-weight:600">#${d.number ?? "—"}</span></div>
+              <span class="badge ${d.is_active ? "on" : ""}">${d.is_active ? "Ativo" : "Rascunho"}</span>
+            </div>
+            <div class="steps">${lines || "Sem etapas"}</div>
+            <div class="steps" style="margin-top:8px">Saldo inicial ${money(d.initial_balance_cents)} · Lucro alvo ${d.target_profit_pct ?? "—"}%</div>
+          </article>`;
+        })
+        .join("");
+    }
+
+    async function load() {
+      $("list").innerHTML = `<div class="loading">Carregando desafios…</div>`;
+      $("meta").textContent = "Buscando…";
+      try {
+        const res = await fetch("/api/arbishield/desafios", {
+          cache: "no-store",
+          headers: { accept: "application/json" },
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        if (!Array.isArray(data)) throw new Error("Resposta inválida da API");
+        render(data);
+      } catch (err) {
+        $("stats").innerHTML = "";
+        $("meta").textContent = "";
+        $("list").innerHTML = `<div class="error">${String(err.message || err)}</div>`;
+      }
+    }
+
+    $("btnRefresh").addEventListener("click", load);
+    load();
+  </script>
+</body>
+</html>
