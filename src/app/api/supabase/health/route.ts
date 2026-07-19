@@ -36,11 +36,13 @@ export async function GET() {
 
   const { error: rulesError } = await supabase
     .from("alert_rules")
-    .select("id", { count: "exact", head: true });
+    .select("id")
+    .limit(1);
 
   const { error: alertsError } = await supabase
     .from("alerts")
-    .select("id", { count: "exact", head: true });
+    .select("id")
+    .limit(1);
 
   const tableError = rulesError || alertsError;
 
