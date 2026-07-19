@@ -12,6 +12,7 @@
     "arbishield:local": "node scripts/start-arbishield-local.mjs",
     "arbishield:cutover": "bash scripts/arbishield-cutover-frontend.sh",
     "arbishield:enable-domain": "bash scripts/arbishield-enable-domain.sh",
+    "arbishield:sync-odds": "node scripts/arbishield-sync-odds.mjs",
     "supabase:export": "bash scripts/supabase-export-cloud.sh",
     "supabase:import-vps": "bash scripts/supabase-import-vps.sh",
     "build": "next build",

@@ -80,6 +80,13 @@ Sem Lovable. Stack na Hostinger (`195.200.6.206`):
 
 - App: http://195.200.6.206/
 - Domínio: apontar `arbishield.app` (A → VPS) e rodar `bash /opt/arbishield/scripts/arbishield-enable-domain.sh`
+- Cotações: sync BetBra → matches abertos (timer na VPS a cada 1 min)
+
+```bash
+# sync manual (VPS ou local com IP BR)
+npm run arbishield:sync-odds
+# API no Next: GET/POST /api/arbishield/odds-sync
+```
 
 Espelho local do build (dev):
 

@@ -14,6 +14,10 @@ export interface BetBraRunner {
   prices?: BetBraPrice[];
   volume?: number;
   status?: string;
+  "last-matched-odds"?: number;
+  "last-price-update-time"?: string;
+  "event-id"?: string;
+  "market-id"?: string;
 }
 
 export interface BetBraMarket {
