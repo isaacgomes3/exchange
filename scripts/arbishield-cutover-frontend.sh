@@ -66,4 +66,7 @@ else
   mkdir -p "$DEST"
   cp -a "$STAGE"/. "$DEST"/
 fi
+echo "==> Boot CSR (evita tela preta em /app por hydration SSR da home)"
+python3 "$ROOT/scripts/arbishield-fix-csr-boot.py" "$DEST"
+
 echo "OK: frontend cutover em $DEST (API=$API_URL)"
