@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Entrar — ArbiShield</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <style>
+    :root {
+      --bg: #010b08;
+      --panel: rgba(3, 30, 24, 0.94);
+      --border: rgba(245, 245, 247, 0.1);
+      --text: #f5f5f7;
+      --muted: #8a8a8f;
+      --lime: #c9f223;
+      --danger: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(800px 480px at 12% 8%, rgba(201,242,35,0.14), transparent 55%),
+        radial-gradient(700px 420px at 88% 85%, rgba(16,185,129,0.1), transparent 50%),
+        var(--bg);
+      display: grid; place-items: center; padding: 24px;
+    }
+    .card {
+      width: min(440px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 30px 26px;
+    }
+    .brand {
+      font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+      font-size: 12px; color: var(--lime); margin-bottom: 10px;
+    }
+    h1 {
+      margin: 0 0 6px; font-size: clamp(1.6rem, 4vw, 2rem);
+      letter-spacing: -0.03em; text-transform: uppercase;
+    }
+    .sub { color: var(--muted); font-size: 13px; margin: 0 0 22px; line-height: 1.45; }
+    label {
+      display: block; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted); margin: 0 0 6px;
+    }
+    input {
+      width: 100%; border-radius: 12px; border: 1px solid var(--border);
+      background: rgba(0,0,0,0.35); color: var(--text);
+      padding: 13px 14px; margin-bottom: 14px; font: inherit;
+    }
+    input:focus { outline: 2px solid rgba(201,242,35,0.35); border-color: transparent; }
+    .btn {
+      width: 100%; border: 0; border-radius: 12px; padding: 14px 16px;
+      font-weight: 800; font-size: 12px; letter-spacing: 0.12em;
+      text-transform: uppercase; cursor: pointer;
+      background: var(--lime); color: #04140f;
+    }
+    .btn:disabled { opacity: 0.65; cursor: wait; }
+    .err, .ok {
+      display: none; margin-bottom: 12px; padding: 10px 12px;
+      border-radius: 10px; font-size: 13px;
+    }
+    .err {
+      border: 1px solid rgba(248,113,113,0.4);
+      background: rgba(248,113,113,0.08); color: var(--danger);
+    }
+    .ok {
+      border: 1px solid rgba(201,242,35,0.35);
+      background: rgba(201,242,35,0.08); color: var(--lime);
+    }
+    .err.show, .ok.show { display: block; }
+    .row {
+      display: flex; justify-content: space-between; gap: 10px;
+      align-items: center; margin: -4px 0 16px; font-size: 12px; color: var(--muted);
+    }
+    .row a { color: var(--muted); text-decoration: none; }
+    .row a:hover { color: var(--lime); }
+    .links {
+      margin-top: 16px; display: flex; justify-content: space-between; gap: 10px;
+      font-size: 12px;
+    }
+    .links a { color: var(--muted); text-decoration: none; }
+    .links a:hover { color: var(--lime); }
+    .note {
+      margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border);
+      color: var(--muted); font-size: 11px; line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">ArbiShield</div>
+    <h1>Entrar</h1>
+    <p class="sub">Acesse sua conta para continuar.</p>
+    <div class="err" id="err"></div>
+    <div class="ok" id="ok"></div>
+    <form id="form">
+      <label for="email">E-mail</label>
+      <input id="email" name="email" type="email" autocomplete="username" required placeholder="seu@email.com" />
+      <label for="password">Senha</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="••••••••" />
+      <div class="row">
+        <label style="display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-weight:500;margin:0;color:var(--muted)">
+          <input id="remember" type="checkbox" style="width:auto;margin:0" checked />
+          Lembrar acesso
+        </label>
+        <a href="/auth?mode=forgot" id="forgotLink">Esqueci minha senha</a>
+      </div>
+      <button class="btn" id="btn" type="submit">Entrar →</button>
+    </form>
+    <div class="links">
+      <a href="/">← Voltar</a>
+      <a href="/auth?mode=register" id="registerLink">Criar conta</a>
+    </div>
+    <p class="note">Se a tela antiga travar no seu navegador, use esta página. Em caso de loop, limpe os dados do site e tente novamente.</p>
+  </div>
+  <script>
+    // Limpa sessão zumbi do Lovable imediatamente
+    (function clearStale() {
+      const keys = [
+        "sb-arbishield-auth-token",
+        "sb-www-auth-token",
+        "supabase.auth.token",
+        "auth_login_pending_until",
+        "admin_login_pending_until",
+        "is_admin_session",
+        "is_admin_session_uid",
+        "is_admin_session_expires_at",
+      ];
+      try {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (k && /(^sb-.*-auth-token$|supabase\.auth)/i.test(k)) keys.push(k);
+        }
+      } catch {}
+      // only clear invalid tokens later after probe; keep list for failed login path
+      window.__arbishieldAuthKeys = [...new Set(keys)];
+    })();
+
+    const SUPABASE_URL = "https://arbishield.app";
+    const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzg0NDc5OTk4LCJleHAiOjE5NDIxNTk5OTh9.mxLqs20sCUNn58jWlsD0sznclCOr8rbksjTEAuQee3s";
+    const STORAGE_KEY = "sb-arbishield-auth-token";
+
+    const params = new URLSearchParams(location.search);
+    let redirectTo = params.get("redirect") || "/app";
+    if (!redirectTo.startsWith("/") || redirectTo.startsWith("//") || redirectTo === "/auth") {
+      redirectTo = "/app";
+    }
+
+    const { createClient } = supabase;
+    const client = createClient(SUPABASE_URL, ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        storageKey: STORAGE_KEY,
+      },
+    });
+
+    const errEl = document.getElementById("err");
+    const okEl = document.getElementById("ok");
+    const btn = document.getElementById("btn");
+
+    function showError(msg) {
+      okEl.classList.remove("show");
+      errEl.textContent = msg;
+      errEl.classList.add("show");
+    }
+    function showOk(msg) {
+      errEl.classList.remove("show");
+      okEl.textContent = msg;
+      okEl.classList.add("show");
+    }
+
+    function clearAllAuth() {
+      for (const key of window.__arbishieldAuthKeys || []) {
+        try { localStorage.removeItem(key); sessionStorage.removeItem(key); } catch {}
+      }
+    }
+
+    async function validateExisting() {
+      const { data, error } = await client.auth.getSession();
+      const session = data?.session;
+      if (!session?.access_token) return;
+      const res = await fetch("/auth/v1/user", {
+        headers: {
+          apikey: ANON_KEY,
+          Authorization: "Bearer " + session.access_token,
+        },
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        clearAllAuth();
+        await client.auth.signOut({ scope: "local" }).catch(() => null);
+        return;
+      }
+      showOk("Sessão válida. Redirecionando…");
+      location.replace(redirectTo);
+    }
+
+    document.getElementById("forgotLink").addEventListener("click", async (e) => {
+      e.preventDefault();
+      const email = document.getElementById("email").value.trim();
+      if (!email) {
+        showError("Informe seu e-mail para recuperar a senha.");
+        return;
+      }
+      btn.disabled = true;
+      try {
+        const { error } = await client.auth.resetPasswordForEmail(email, {
+          redirectTo: location.origin + "/auth",
+        });
+        if (error) throw error;
+        showOk("Se o e-mail existir, enviamos o link de recuperação.");
+      } catch (err) {
+        showError(err?.message || String(err));
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById("registerLink").addEventListener("click", (e) => {
+      // cadastro completo ainda é no app; evita rota SPA quebrada
+      e.preventDefault();
+      showError("Para criar conta, use o app em /app após o login admin liberar o cadastro, ou fale com o suporte.");
+    });
+
+    document.getElementById("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errEl.classList.remove("show");
+      okEl.classList.remove("show");
+      btn.disabled = true;
+      btn.textContent = "Entrando…";
+      try {
+        const email = document.getElementById("email").value.trim();
+        const password = document.getElementById("password").value;
+        const { data, error } = await client.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        await client.auth.getSession();
+        localStorage.setItem("auth_login_pending_until", String(Date.now() + 15000));
+        showOk("Acesso autorizado. Abrindo o app…");
+        location.replace(redirectTo);
+      } catch (err) {
+        const msg = err?.message || String(err);
+        if (/invalid login credentials/i.test(msg)) {
+          showError("E-mail ou senha inválidos.");
+        } else {
+          showError(msg);
+        }
+        btn.disabled = false;
+        btn.textContent = "Entrar →";
+      }
+    });
+
+    // Se veio de loop, limpa na entrada
+    if (params.get("cleared") === "1" || params.get("forceLogout") === "true") {
+      clearAllAuth();
+    }
+
+    validateExisting().catch(() => null);
+  </script>
+</body>
+</html>
