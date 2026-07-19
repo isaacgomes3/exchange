@@ -2,12 +2,12 @@
 
 ## 1. Criar o projeto
 
-1. Acesse [https://supabase.com/dashboard](https://supabase.com/dashboard)
-2. **New project** → escolha org, nome (`exchange`), senha do DB e região
-3. Em **Project Settings → API**, copie:
-   - **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`
-   - **anon public** → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - **service_role** (opcional, só servidor) → `SUPABASE_SERVICE_ROLE_KEY`
+Projeto já vinculado: [wknyfxikmmvjzpbevlid](https://supabase.com/dashboard/project/wknyfxikmmvjzpbevlid)
+
+Em **Project Settings → API**, copie:
+- **Project URL** → `NEXT_PUBLIC_SUPABASE_URL` (= `https://wknyfxikmmvjzpbevlid.supabase.co`)
+- **anon public** → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- **service_role** (opcional, só servidor) → `SUPABASE_SERVICE_ROLE_KEY`
 
 ## 2. Rodar a migration
 
