@@ -29,15 +29,62 @@ def patch_main(main_path: Path) -> None:
     )
     if "coe.createRoot(document.body).render" in main_src:
         print("main já em createRoot")
-        return
-    if old not in main_src:
-        # tentar a partir do backup
+    elif old not in main_src:
         if main_bak.exists():
             main_src = main_bak.read_text(encoding="utf-8", errors="replace")
         if old not in main_src:
             raise SystemExit("padrão hydrateRoot não encontrado")
-    main_path.write_text(main_src.replace(old, new, 1), encoding="utf-8")
-    print("main: hydrateRoot → createRoot")
+        main_path.write_text(main_src.replace(old, new, 1), encoding="utf-8")
+        print("main: hydrateRoot → createRoot")
+    else:
+        main_path.write_text(main_src.replace(old, new, 1), encoding="utf-8")
+        print("main: hydrateRoot → createRoot")
+
+
+def patch_runtime_stability(main_path: Path, assets: Path) -> None:
+    """Evita freeze no /auth e hangs eternos no beforeLoad do /app."""
+    mt = main_path.read_text(encoding="utf-8", errors="replace")
+    replacements = [
+        (
+            'window.location.replace("/auth"),await new Promise(()=>{})',
+            'window.location.replace("/auth"),await new Promise(e=>setTimeout(e,50))',
+        ),
+        (
+            'window.location.replace("/auth?redirect=/m"),await new Promise(()=>{})',
+            'window.location.replace("/auth?redirect=/m"),await new Promise(e=>setTimeout(e,50))',
+        ),
+    ]
+    changed = 0
+    for old, new in replacements:
+        if old in mt:
+            mt = mt.replace(old, new)
+            changed += 1
+    if changed:
+        main_path.write_text(mt, encoding="utf-8")
+        print(f"main: beforeLoad hang patched x{changed}")
+
+    for auth in assets.glob("auth-*.js"):
+        if auth.name.endswith(".bak") or ".anim-bak" in auth.name:
+            continue
+        t = auth.read_text(encoding="utf-8", errors="replace")
+        orig = t
+        t = t.replace("repeat:1/0", "repeat:0")
+        t = t.replace("blur(40px)", "blur(8px)")
+        old_login = (
+            'localStorage.setItem("auth_login_pending_until",String(Date.now()+15e3)),'
+            'C.success("Acesso Autorizado",{description:"Sincronizando com a rede global Arbishield."}),'
+            "window.location.replace(Ae());return"
+        )
+        new_login = (
+            'localStorage.setItem("auth_login_pending_until",String(Date.now()+15e3)),'
+            'C.success("Acesso Autorizado",{description:"Sincronizando com a rede global Arbishield."}),'
+            "await J.auth.getSession(),window.location.replace(Ae());return"
+        )
+        if old_login in t:
+            t = t.replace(old_login, new_login, 1)
+        if t != orig:
+            auth.write_text(t, encoding="utf-8")
+            print(f"auth chunk stabilized: {auth.name}")
 
 
 def main() -> None:
@@ -48,12 +95,13 @@ def main() -> None:
         BAK.write_text(source_html, encoding="utf-8")
 
     scripts = re.findall(r"<script\b[^>]*>[\s\S]*?</script>", source_html, re.I)
-    scroll_script = next((s for s in scripts if "scrollRestoration" in s or "storageKey" in s), "")
+    scroll_script = next(
+        (s for s in scripts if "scrollRestoration" in s or "storageKey" in s), ""
+    )
     tsr_script = next((s for s in scripts if "$_TSR" in s and "$R" in s), "")
     if not tsr_script:
         raise SystemExit("script $_TSR não encontrado no backup SSR")
 
-    # Client resolve rota pela URL (sem matches SSR da home)
     tsr_script = re.sub(
         r"matches:\$R\[\d+\]=\[[\s\S]*?\],lastMatchId:\"\"",
         'matches:$R[12]=[],lastMatchId:""',
@@ -85,9 +133,13 @@ def main() -> None:
     css_tags = "\n    ".join(
         f'<link rel="stylesheet" crossorigin href="{c}" />' for c in css
     )
-    inject = ""
+
+    early = ""
+    late = ""
+    if (ASSETS / "auth-boot-fix.js").exists():
+        early = '<script src="/assets/auth-boot-fix.js"></script>'
     if (ASSETS / "desafio-sugestoes-inject.js").exists():
-        inject = '<script src="/assets/desafio-sugestoes-inject.js" defer></script>'
+        late = '<script src="/assets/desafio-sugestoes-inject.js" defer></script>'
 
     new_html = f"""<!DOCTYPE html>
 <html lang="pt-BR">
@@ -102,17 +154,20 @@ def main() -> None:
     {css_tags}
   </head>
   <body class="antialiased" style="background:#011a14;color:#f5f5f7;margin:0;min-height:100vh">
+    {early}
     {scroll_script}
     {tsr_script}
     <script type="module" async>import("{main_js}")</script>
-    {inject}
+    {late}
   </body>
 </html>
 """
     INDEX.write_text(new_html, encoding="utf-8")
     print(f"index CSR+TSR → {INDEX} ({len(new_html)} bytes)")
 
-    patch_main(WWW / main_js.lstrip("/"))
+    main_path = WWW / main_js.lstrip("/")
+    patch_main(main_path)
+    patch_runtime_stability(main_path, ASSETS)
 
     (WWW / "manifest.json").write_text(
         json.dumps(
