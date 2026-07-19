@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sugestão de Desafio — ArbiShield</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #050505;
+      --panel: #0e0e0e;
+      --border: #1f1f1f;
+      --text: #f5f5f7;
+      --muted: #8a8a8f;
+      --lime: #c9f223;
+      --amber: #f59e0b;
+      --red: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(201,242,35,0.08), transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, rgba(16,185,129,0.06), transparent 50%),
+        var(--bg);
+      color: var(--text);
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 20px 64px; }
+    header {
+      display: flex; flex-wrap: wrap; gap: 16px;
+      align-items: flex-start; justify-content: space-between;
+      margin-bottom: 28px;
+    }
+    h1 {
+      margin: 0; font-size: clamp(1.6rem, 3vw, 2.2rem);
+      font-weight: 800; letter-spacing: -0.04em; text-transform: uppercase;
+    }
+    h1 span { color: var(--lime); }
+    .sub {
+      margin: 6px 0 0; color: var(--muted); font-size: 0.75rem;
+      letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;
+    }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn {
+      border: 0; border-radius: 12px; padding: 12px 18px;
+      font-weight: 800; font-size: 11px; letter-spacing: 0.12em;
+      text-transform: uppercase; cursor: pointer; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn-primary {
+      background: var(--lime); color: #000;
+      box-shadow: 0 0 20px rgba(201,242,35,0.2);
+    }
+    .btn-ghost {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .filters {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px; margin-bottom: 20px;
+      padding: 16px; border: 1px solid var(--border); border-radius: 16px;
+      background: rgba(14,14,14,0.85);
+    }
+    label {
+      display: flex; flex-direction: column; gap: 6px;
+      font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted); font-weight: 700;
+    }
+    input {
+      background: #121212; border: 1px solid var(--border); color: var(--text);
+      border-radius: 10px; padding: 10px 12px; font: inherit; font-size: 14px;
+    }
+    .meta {
+      color: var(--muted); font-size: 13px; margin-bottom: 16px;
+    }
+    .meta strong { color: var(--lime); font-weight: 700; }
+    .list { display: flex; flex-direction: column; gap: 14px; }
+    .card {
+      border: 1px solid var(--border); border-radius: 16px;
+      background: var(--panel); padding: 18px 18px 16px;
+    }
+    .card-top {
+      display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .match { font-weight: 800; font-size: 1.05rem; letter-spacing: -0.02em; }
+    .kick {
+      color: var(--muted); font-size: 12px; font-weight: 600;
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    }
+    @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+    .leg {
+      border-radius: 12px; padding: 12px 14px; background: #121212;
+      border: 1px solid #1a1a1a;
+    }
+    .leg .tag {
+      font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--muted); font-weight: 700; margin-bottom: 4px;
+    }
+    .leg .name { font-weight: 700; margin-bottom: 6px; }
+    .leg .odd { font-size: 1.35rem; font-weight: 800; color: var(--lime); }
+    .leg.arbi .odd { color: #fff; }
+    .stats {
+      display: flex; flex-wrap: wrap; gap: 10px 18px;
+      margin-top: 12px; font-size: 13px; color: var(--muted);
+    }
+    .stats b { color: var(--text); }
+    .rationale {
+      margin-top: 12px; font-size: 13px; color: var(--muted); line-height: 1.45;
+    }
+    .card-actions { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .empty, .error {
+      border: 1px dashed var(--border); border-radius: 16px;
+      padding: 28px; text-align: center; color: var(--muted);
+    }
+    .error { border-color: rgba(239,68,68,0.4); color: #fca5a5; }
+    .loading { color: var(--muted); padding: 24px 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Sugestão de <span>Desafio</span></h1>
+        <p class="sub">Over/Under 2.5 · BetBra 1.60–1.80 · pré-live 30 min · surebet ArbiShield</p>
+      </div>
+      <div class="actions">
+        <a class="btn btn-ghost" href="/admin/desafios">← Gestão</a>
+        <button class="btn btn-primary" id="btnRefresh" type="button">Atualizar sugestões</button>
+      </div>
+    </header>
+
+    <div class="filters">
+      <label>Lucro surebet (%)
+        <input id="profitMarginPct" type="number" step="0.1" min="0" max="20" value="5" />
+      </label>
+      <label>Odd BetBra mín
+        <input id="casaOddMin" type="number" step="0.01" value="1.60" />
+      </label>
+      <label>Odd BetBra máx
+        <input id="casaOddMax" type="number" step="0.01" value="1.80" />
+      </label>
+      <label>Pré-live (min)
+        <input id="preLiveMinutes" type="number" step="1" value="30" />
+      </label>
+      <label>Liquidez (R$)
+        <input id="liquidityReais" type="number" step="1" value="2000" />
+      </label>
+    </div>
+
+    <div class="meta" id="meta">Carregando…</div>
+    <div id="list" class="list"></div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const money = (cents) =>
+      (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    const fmtKick = (iso, mins) => {
+      const d = new Date(iso);
+      return `${d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · ${mins} min`;
+    };
+
+    function paramsFromForm() {
+      return {
+        profitMarginPct: Number($("profitMarginPct").value),
+        casaOddMin: Number($("casaOddMin").value),
+        casaOddMax: Number($("casaOddMax").value),
+        preLiveMinutes: Number($("preLiveMinutes").value),
+        liquidityCents: Math.round(Number($("liquidityReais").value) * 100),
+        fallbackToday: true,
+      };
+    }
+
+    function draftPayload(s) {
+      return {
+        number: 1,
+        title: `SUGESTÃO · ${s.homeTeam} x ${s.awayTeam}`,
+        subtitle: "Sugestão automática Over/Under 2.5 (surebet BetBra ↔ ArbiShield)",
+        total_steps: 1,
+        initial_balance_cents: s.arbiStakeCents,
+        is_active: false,
+        status: "draft",
+        target_profit_pct: s.profitMarginPct,
+        auto_link_matches: true,
+        steps: [{
+          step_index: 1,
+          match_label: `${s.homeTeam} x ${s.awayTeam}`,
+          home_team: s.homeTeam,
+          away_team: s.awayTeam,
+          market_name: s.casaMarketName,
+          market_name_casa: s.casaMarketName,
+          market_name_arbishield: s.arbiMarketName,
+          casa_odd: s.casaOdd,
+          arbi_odd: s.arbiOdd,
+          casa_stake_cents: s.casaStakeCents,
+          liquidity_cents: s.liquidityCents,
+          display_liquidity_cents: s.liquidityCents,
+          external_bet_link: s.betbraLink,
+          starts_at: s.startsAt,
+          release_minutes_before: 30,
+          status: "pending",
+          casa_commission_pct: 4.5,
+          arbi_commission_pct: 0,
+        }],
+      };
+    }
+
+    function render(data) {
+      const list = $("list");
+      if (!data.ok) {
+        $("meta").textContent = "";
+        list.innerHTML = `<div class="error">${data.error || "Falha ao gerar sugestões"}</div>`;
+        return;
+      }
+      const mode =
+        data.window?.mode === "prelive_30m"
+          ? "janela pré-live"
+          : "fallback: restante do dia";
+      $("meta").innerHTML =
+        `<strong>${data.suggestions.length}</strong> sugestão(ões) · ` +
+        `${data.scannedEvents} jogos escaneados · ${mode} · ` +
+        `margem alvo ${data.params.profitMarginPct}%`;
+
+      if (!data.suggestions.length) {
+        list.innerHTML =
+          `<div class="empty">Nenhuma linha Over/Under 2.5 entre ` +
+          `${data.params.casaOddMin} e ${data.params.casaOddMax} na janela atual. ` +
+          `Ajuste o filtro de lucro ou a faixa de odds.</div>`;
+        return;
+      }
+
+      list.innerHTML = data.suggestions
+        .map((s, i) => {
+          const payload = encodeURIComponent(JSON.stringify(draftPayload(s)));
+          return `
+          <article class="card">
+            <div class="card-top">
+              <div class="match">${s.homeTeam} <span style="color:var(--muted)">x</span> ${s.awayTeam}</div>
+              <div class="kick">${fmtKick(s.startsAt, s.minutesToKickoff)}</div>
+            </div>
+            <div class="grid">
+              <div class="leg">
+                <div class="tag">Entrada BetBra</div>
+                <div class="name">${s.casaMarketName}</div>
+                <div class="odd">${s.casaOdd.toFixed(3)}</div>
+              </div>
+              <div class="leg arbi">
+                <div class="tag">Entrada ArbiShield (contrário)</div>
+                <div class="name">${s.arbiMarketName}</div>
+                <div class="odd">${s.arbiOdd.toFixed(3)}</div>
+              </div>
+            </div>
+            <div class="stats">
+              <span>Lucro surebet <b>${s.profitMarginPct}%</b></span>
+              <span>Stake BetBra <b>${money(s.casaStakeCents)}</b></span>
+              <span>Stake Arbi <b>${money(s.arbiStakeCents)}</b></span>
+              <span>Liquidez <b>${money(s.liquidityCents)}</b></span>
+            </div>
+            <p class="rationale">${s.rationale}</p>
+            <div class="card-actions">
+              <a class="btn btn-ghost" href="${s.betbraLink}" target="_blank" rel="noopener">Abrir BetBra</a>
+              <button class="btn btn-primary" type="button" data-apply="${payload}">Usar no lançamento</button>
+            </div>
+          </article>`;
+        })
+        .join("");
+
+      list.querySelectorAll("[data-apply]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const raw = decodeURIComponent(btn.getAttribute("data-apply"));
+          try {
+            localStorage.setItem("arbishield_desafio_suggestion", raw);
+            localStorage.setItem("arbishield_desafio_suggestion_at", String(Date.now()));
+            alert("Sugestão salva. Abrindo Gestão de Desafios — clique em Lançar Desafio para revisar.");
+            location.href = "/admin/desafios?sugestao=1";
+          } catch (e) {
+            alert("Não foi possível salvar a sugestão neste navegador.");
+          }
+        });
+      });
+    }
+
+    async function load() {
+      $("list").innerHTML = `<div class="loading">Consultando BetBra e calculando surebets…</div>`;
+      $("meta").textContent = "Buscando…";
+      const p = paramsFromForm();
+      const qs = new URLSearchParams({
+        profitMarginPct: String(p.profitMarginPct),
+        casaOddMin: String(p.casaOddMin),
+        casaOddMax: String(p.casaOddMax),
+        preLiveMinutes: String(p.preLiveMinutes),
+        liquidityCents: String(p.liquidityCents),
+        fallbackToday: "1",
+      });
+      try {
+        const res = await fetch(`/api/arbishield/desafio-suggestions?${qs}`, {
+          cache: "no-store",
+        });
+        const data = await res.json();
+        render(data);
+      } catch (err) {
+        render({ ok: false, error: String(err) });
+      }
+    }
+
+    $("btnRefresh").addEventListener("click", load);
+    ["profitMarginPct", "casaOddMin", "casaOddMax", "preLiveMinutes", "liquidityReais"].forEach(
+      (id) => $(id).addEventListener("change", load)
+    );
+    load();
+  </script>
+</body>
+</html>

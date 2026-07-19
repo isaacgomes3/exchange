@@ -194,11 +194,23 @@ function timeWindow(): { after: number; before: number } {
 
 export async function fetchEvents(
   sportId: number,
-  options?: { sortBy?: "volume" | "start-time"; inRunningOnly?: boolean }
+  options?: {
+    sortBy?: "volume" | "start-time";
+    sortDirection?: "asc" | "desc";
+    inRunningOnly?: boolean;
+    /** Unix seconds — overrides default rolling window */
+    after?: number;
+    /** Unix seconds — overrides default rolling window */
+    before?: number;
+  }
 ): Promise<BetBraEventsResponse> {
   const config = getBetBraConfig();
-  const { after, before } = timeWindow();
+  const window = timeWindow();
+  const after = options?.after ?? window.after;
+  const before = options?.before ?? window.before;
   const sortBy = options?.sortBy ?? "volume";
+  const sortDirection =
+    options?.sortDirection ?? (sortBy === "start-time" ? "asc" : "desc");
 
   const params = new URLSearchParams({
     offset: "0",
@@ -208,7 +220,7 @@ export async function fetchEvents(
     ids: "",
     "sport-ids": String(sportId),
     "sort-by": sortBy,
-    "sort-direction": "desc",
+    "sort-direction": sortDirection,
     "en-market-names": "Moneyline,Match Odds,Winner",
   });
 
