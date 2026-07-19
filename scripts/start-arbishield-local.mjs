@@ -9,10 +9,7 @@ import { spawn } from "node:child_process";
 import {
   createReadStream,
   existsSync,
-  mkdirSync,
-  readFileSync,
   statSync,
-  writeFileSync,
 } from "node:fs";
 import { dirname, extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";

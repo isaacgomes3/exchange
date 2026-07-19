@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -30,6 +30,11 @@ type DashboardData = {
   errors?: Record<string, string | undefined>;
 };
 
+type LoadState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; data: DashboardData };
+
 function money(cents: number | null | undefined) {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -37,47 +42,48 @@ function money(cents: number | null | undefined) {
   }).format((cents ?? 0) / 100);
 }
 
+async function fetchDashboard(
+  router: ReturnType<typeof useRouter>
+): Promise<LoadState> {
+  const supabase = createClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  const res = await fetch("/api/arbishield/dashboard", {
+    cache: "no-store",
+    headers: session?.access_token
+      ? { Authorization: `Bearer ${session.access_token}` }
+      : undefined,
+  });
+  const json = await res.json();
+
+  if (res.status === 401 || res.status === 403) {
+    router.replace("/arbishield");
+    return { status: "error", message: "Sem permissão admin" };
+  }
+  if (!res.ok) {
+    return { status: "error", message: json.error ?? "Erro ao carregar dashboard" };
+  }
+  return { status: "ready", data: json as DashboardData };
+}
+
 export function ArbiShieldAdminDashboard() {
   const router = useRouter();
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const supabase = createClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      const res = await fetch("/api/arbishield/dashboard", {
-        cache: "no-store",
-        headers: session?.access_token
-          ? { Authorization: `Bearer ${session.access_token}` }
-          : undefined,
-      });
-      const json = await res.json();
-      if (res.status === 401 || res.status === 403) {
-        router.replace("/arbishield");
-        return;
-      }
-      if (!res.ok) {
-        setError(json.error ?? "Erro ao carregar dashboard");
-        return;
-      }
-      setData(json as DashboardData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro de rede");
-    } finally {
-      setLoading(false);
-    }
-  }, [router]);
+  const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+
+    fetchDashboard(router).then((next) => {
+      if (!cancelled) setState(next);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router, reloadKey]);
 
   async function logout() {
     const supabase = createClient();
@@ -86,22 +92,29 @@ export function ArbiShieldAdminDashboard() {
     router.refresh();
   }
 
-  if (loading) {
+  if (state.status === "loading") {
     return <p className="as-muted">Carregando painel…</p>;
   }
 
-  if (error) {
+  if (state.status === "error") {
     return (
       <div className="as-panel">
-        <p className="as-error">{error}</p>
-        <button className="as-btn" type="button" onClick={() => void load()}>
+        <p className="as-error">{state.message}</p>
+        <button
+          className="as-btn"
+          type="button"
+          onClick={() => {
+            setState({ status: "loading" });
+            setReloadKey((k) => k + 1);
+          }}
+        >
           Tentar de novo
         </button>
       </div>
     );
   }
 
-  if (!data) return null;
+  const data = state.data;
 
   const stats = [
     { label: "Usuários", value: data.stats.profiles },
@@ -123,7 +136,14 @@ export function ArbiShieldAdminDashboard() {
           </p>
         </div>
         <div className="as-actions">
-          <button className="as-btn as-btn-ghost" type="button" onClick={() => void load()}>
+          <button
+            className="as-btn as-btn-ghost"
+            type="button"
+            onClick={() => {
+              setState({ status: "loading" });
+              setReloadKey((k) => k + 1);
+            }}
+          >
             Atualizar
           </button>
           <button className="as-btn as-btn-ghost" type="button" onClick={() => void logout()}>
