@@ -45,3 +45,4 @@ next-env.d.ts
 /arbishield-local
 /supabase-export
 /deploy/vps-supabase/.env
+/.vps-supabase-credentials.local

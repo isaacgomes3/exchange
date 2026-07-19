@@ -10,9 +10,16 @@
 
 name: supabase
 
+# Hostinger (and similar) VPS often set `search localhost ...` in resolv.conf.
+# That makes short Docker DNS names like `db` resolve to `db.localhost` → ::1,
+# breaking Realtime (and potentially other Erlang clients). Override per service.
+x-dns-search: &dns-search
+  dns_search: ["."]
+
 services:
 
   studio:
+    <<: *dns-search
     container_name: supabase-studio
     image: supabase/studio:2026.07.07-sha-a6a04f2
     restart: unless-stopped
@@ -66,6 +73,7 @@ services:
       - ./volumes/functions:/app/edge-functions:ro,z
 
   kong:
+    <<: *dns-search
     container_name: supabase-kong
     image: kong/kong:3.9.1
     restart: unless-stopped
@@ -113,6 +121,7 @@ services:
     entrypoint: ["/bin/sh", "/home/kong/kong-entrypoint.sh"]
 
   auth:
+    <<: *dns-search
     container_name: supabase-auth
     image: supabase/gotrue:v2.189.0
     restart: unless-stopped
@@ -253,6 +262,7 @@ services:
       # GOTRUE_HOOK_SEND_EMAIL_SECRETS: "v1,whsec_VGhpcyBpcyBhbiBleGFtcGxlIG9mIGEgc2hvcnRlciBCYXNlNjQgc3RyaW5n"
 
   rest:
+    <<: *dns-search
     container_name: supabase-rest
     image: postgrest/postgrest:v14.12
     restart: unless-stopped
@@ -289,6 +299,7 @@ services:
       ]
 
   realtime:
+    <<: *dns-search
     # This container name looks inconsistent but is correct because realtime constructs tenant id by parsing the subdomain
     container_name: realtime-dev.supabase-realtime
     image: supabase/realtime:v2.102.3
@@ -336,6 +347,7 @@ services:
 
   # To use S3 backed storage: docker compose -f docker-compose.yml -f docker-compose.s3.yml up
   storage:
+    <<: *dns-search
     container_name: supabase-storage
     image: supabase/storage-api:v1.60.4
     restart: unless-stopped
@@ -422,6 +434,7 @@ services:
       IMGPROXY_MAX_SRC_RESOLUTION: 16.8
 
   meta:
+    <<: *dns-search
     container_name: supabase-meta
     image: supabase/postgres-meta:v0.96.6
     restart: unless-stopped
@@ -439,6 +452,7 @@ services:
       CRYPTO_KEY: ${PG_META_CRYPTO_KEY}
 
   functions:
+    <<: *dns-search
     container_name: supabase-edge-functions
     image: supabase/edge-runtime:v1.74.0
     restart: unless-stopped
@@ -480,6 +494,7 @@ services:
 
   # Comment out everything below this point if you are using an external Postgres database
   db:
+    <<: *dns-search
     container_name: supabase-db
     # To upgrade an existing Postgres 15 database in place, see utils/upgrade-pg17.sh.
     image: supabase/postgres:17.6.1.136
@@ -536,6 +551,7 @@ services:
 
   # Update the DATABASE_URL if you are using an external Postgres database
   supavisor:
+    <<: *dns-search
     container_name: supabase-pooler
     image: supabase/supavisor:2.9.5
     restart: unless-stopped

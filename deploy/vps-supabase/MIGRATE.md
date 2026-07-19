@@ -100,6 +100,21 @@ server {
 sudo certbot --nginx -d api.arbishield.app
 ```
 
+### Troubleshooting Hostinger: Realtime `connection refused` em `db:5432`
+
+Na Hostinger o `/etc/resolv.conf` costuma ter `search localhost hstgr.cloud`. Isso faz o hostname curto `db` virar `db.localhost` → `::1`, e o Realtime (Erlang) falha ao ligar ao Postgres.
+
+O `docker-compose.yml` deste pacote já define `dns_search: ["."]` nos serviços. Se ainda falhar:
+
+```bash
+# Confirme a resolução dentro do container
+docker compose exec realtime getent hosts db
+# Deve mostrar 172.x.x.x — NÃO ::1
+
+# Recrie o Realtime após puxar o compose atualizado
+docker compose up -d --force-recreate realtime
+```
+
 ## 4. Exportar o Cloud (no seu PC ou neste ambiente)
 
 No [Dashboard](https://supabase.com/dashboard/project/wknyfxikmmvjzpbevlid/settings/database) copie a **URI** do banco.
