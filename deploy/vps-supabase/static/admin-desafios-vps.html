@@ -93,6 +93,35 @@
       padding: 28px; text-align: center; color: var(--muted);
     }
     .error { border-color: rgba(239,68,68,0.4); color: #fca5a5; }
+    .suggest {
+      display: none;
+      margin-bottom: 18px;
+      border: 1px solid rgba(201,242,35,0.35);
+      border-radius: 16px;
+      background: rgba(201,242,35,0.06);
+      padding: 16px;
+    }
+    .suggest.show { display: block; }
+    .suggest h2 {
+      margin: 0 0 8px;
+      font-size: 0.85rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--lime);
+    }
+    .suggest .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .suggest .k {
+      font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted); font-weight: 700;
+    }
+    .suggest .v { font-weight: 700; margin-top: 2px; word-break: break-word; }
+    .suggest .hint { color: var(--muted); font-size: 13px; margin: 0 0 4px; }
+    .suggest .actions { margin-top: 14px; }
   </style>
 </head>
 <body>
@@ -108,6 +137,17 @@
         <button class="btn btn-primary" id="btnRefresh" type="button">Atualizar</button>
       </div>
     </header>
+
+    <section class="suggest" id="suggestPanel" aria-live="polite">
+      <h2>Sugestão pronta para lançamento</h2>
+      <p class="hint">Dados vindos de “Usar no lançamento”. Revise e use no formulário de criação quando disponível.</p>
+      <div class="grid" id="suggestGrid"></div>
+      <div class="actions">
+        <a class="btn btn-lime-outline" id="suggestBetbra" href="#" target="_blank" rel="noopener">Abrir BetBra</a>
+        <button class="btn btn-ghost" id="suggestClear" type="button">Descartar sugestão</button>
+        <button class="btn btn-primary" id="suggestCopy" type="button">Copiar resumo</button>
+      </div>
+    </section>
 
     <div class="stats" id="stats"></div>
     <div class="meta" id="meta">Carregando…</div>
@@ -227,7 +267,105 @@
       }
     }
 
+    function readSuggestion() {
+      const want =
+        new URLSearchParams(location.search).get("sugestao") === "1" ||
+        Boolean(localStorage.getItem("arbishield_desafio_suggestion"));
+      if (!want) return null;
+      const raw = localStorage.getItem("arbishield_desafio_suggestion");
+      if (!raw) return null;
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    }
+
+    function clearSuggestionQuery() {
+      try {
+        const u = new URL(location.href);
+        if (u.searchParams.has("sugestao")) {
+          u.searchParams.delete("sugestao");
+          history.replaceState({}, "", u.pathname + u.search);
+        }
+      } catch {}
+    }
+
+    function renderSuggestion() {
+      const data = readSuggestion();
+      const panel = $("suggestPanel");
+      if (!data) {
+        panel.classList.remove("show");
+        return;
+      }
+      const step = (data.steps && data.steps[0]) || data.step || {};
+      const rows = [
+        ["Título", data.title],
+        ["Subtítulo", data.subtitle],
+        ["Partida", step.match_label || [step.home_team, step.away_team].filter(Boolean).join(" x ")],
+        ["Mercado casa", step.market_name_casa || step.market_name],
+        ["Odd casa", step.casa_odd],
+        ["Mercado Arbi", step.market_name_arbishield],
+        ["Odd Arbi", step.arbi_odd],
+        ["Stake casa", money(step.casa_stake_cents)],
+        ["Stake Arbi", money(data.initial_balance_cents ?? step.arbi_stake_cents)],
+        ["Liquidez", money(step.liquidity_cents)],
+        ["Início", step.starts_at],
+        [
+          "Lucro surebet",
+          data.target_profit_pct != null
+            ? `${data.target_profit_pct}%`
+            : data.profitMarginPct != null
+              ? `${data.profitMarginPct}%`
+              : null,
+        ],
+      ];
+      $("suggestGrid").innerHTML = rows
+        .filter(([, v]) => v != null && v !== "")
+        .map(([k, v]) => `<div><div class="k">${k}</div><div class="v">${v}</div></div>`)
+        .join("");
+      const link = step.external_bet_link || data.betbraLink || "#";
+      const a = $("suggestBetbra");
+      a.href = link;
+      a.style.display = link && link !== "#" ? "inline-flex" : "none";
+      panel.classList.add("show");
+      clearSuggestionQuery();
+    }
+
+    $("suggestClear").addEventListener("click", () => {
+      localStorage.removeItem("arbishield_desafio_suggestion");
+      localStorage.removeItem("arbishield_desafio_suggestion_at");
+      renderSuggestion();
+    });
+
+    $("suggestCopy").addEventListener("click", async () => {
+      const data = readSuggestion();
+      if (!data) return;
+      const step = (data.steps && data.steps[0]) || {};
+      const text = [
+        data.title,
+        data.subtitle,
+        step.match_label || `${step.home_team || ""} x ${step.away_team || ""}`,
+        `Casa: ${step.market_name_casa || "?"} @ ${step.casa_odd ?? "—"}`,
+        `Arbi: ${step.market_name_arbishield || "?"} @ ${step.arbi_odd ?? "—"}`,
+        `Stake casa ${money(step.casa_stake_cents)} · Arbi ${money(data.initial_balance_cents ?? step.arbi_stake_cents)}`,
+        step.external_bet_link || "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+      try {
+        await navigator.clipboard.writeText(text);
+        $("suggestCopy").textContent = "Copiado";
+        setTimeout(() => {
+          $("suggestCopy").textContent = "Copiar resumo";
+        }, 1500);
+      } catch {
+        alert(text);
+      }
+    });
+
     $("btnRefresh").addEventListener("click", load);
+    renderSuggestion();
     load();
   </script>
 </body>

@@ -280,7 +280,7 @@
           try {
             localStorage.setItem("arbishield_desafio_suggestion", raw);
             localStorage.setItem("arbishield_desafio_suggestion_at", String(Date.now()));
-            alert("Sugestão salva. Abrindo Gestão de Desafios — clique em Lançar Desafio para revisar.");
+            alert("Sugestão salva. Abrindo Gestão de Desafios com o resumo do lançamento.");
             location.href = "/admin/desafios?sugestao=1";
           } catch (e) {
             alert("Não foi possível salvar a sugestão neste navegador.");
