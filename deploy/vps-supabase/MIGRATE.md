@@ -147,8 +147,12 @@ Gera `supabase-export/db.dump` (+ storage se a key estiver ok).
 
 Já feito: dump Cloud → restore na VPS, storage objects, Auth login OK (`isaacgomes3@gmail.com`), REST com dados (profiles/matches/protections).
 
-API self-hosted: `http://195.200.6.206:8000`  
-Keys: as do `.env` da VPS (`ANON_KEY` / `SERVICE_ROLE_KEY`) — **não** use as keys `sb_*` do Cloud no app apontando para a VPS.
+**Cutover HTTP na VPS (nginx):**
+- App: http://195.200.6.206/
+- API mesma origem (proxy nginx → Kong `:8000`)
+- Frontend patchado com `ANON_KEY` da VPS (não usa mais `*.supabase.co`)
+
+> `https://arbishield.app` (Cloudflare) ainda aponta ao Cloud até você mudar o DNS ou redeployar o Lovable.
 
 Envie para a VPS:
 
@@ -173,20 +177,42 @@ docker compose restart storage
 
 ## 6. Cutover do app
 
-No frontend / secrets de produção, troque:
+### Opção A — App na própria VPS (já aplicado)
 
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://api.arbishield.app
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<ANON_KEY do .env da VPS>
-SUPABASE_SERVICE_ROLE_KEY=<SERVICE_ROLE_KEY do .env da VPS>
+Frontend espelhado + patch das keys, nginx na porta 80:
+
+- App: http://195.200.6.206/
+- API (mesma origem): `/auth`, `/rest`, `/storage`, `/realtime` → Kong
+
+```bash
+# regenerar frontend cutover (neste repo)
+export VPS_ANON_KEY='...'          # ANON_KEY do .env da VPS
+export API_PUBLIC_URL='http://195.200.6.206'
+./scripts/arbishield-cutover-frontend.sh
+# depois copie /var/www/arbishield (ou o DEST) para a VPS
 ```
 
-No Auth self-hosted (já no `.env`):
+Auth self-hosted na VPS:
 
-- `SITE_URL=https://arbishield.app`
-- Redirects com `localhost` se ainda desenvolver local
+- `API_EXTERNAL_URL=http://195.200.6.206`
+- `SUPABASE_PUBLIC_URL=http://195.200.6.206`
+- `SITE_URL=http://195.200.6.206`
 
-Redeploy do [arbishield.app](https://arbishield.app) (Lovable/host) com as novas keys.
+### Opção B — Manter https://arbishield.app (Cloudflare/Lovable)
+
+1. Crie DNS **A** `api.arbishield.app` → `195.200.6.206` e emita TLS (`certbot`)
+2. No frontend / secrets de produção:
+
+```env
+VITE_SUPABASE_URL=https://api.arbishield.app
+VITE_SUPABASE_ANON_KEY=<ANON_KEY do .env da VPS>
+```
+
+3. Redeploy do [arbishield.app](https://arbishield.app) (Lovable/host) com as novas keys.
+
+### Opção C — Apontar o domínio raiz para a VPS
+
+DNS **A** `arbishield.app` → `195.200.6.206`, depois TLS no nginx e atualize `API_PUBLIC_URL`/`SITE_URL` para `https://arbishield.app`.
 
 ## 7. Checklist pós-migração
 
