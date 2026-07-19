@@ -71,9 +71,14 @@ echo "==> Páginas/estáticos VPS (não apagar no próximo --delete)"
 STATIC_DIR="$ROOT/deploy/vps-supabase/static"
 if [[ -d "$STATIC_DIR" ]]; then
   cp -f "$STATIC_DIR/admin-desafios-vps.html" "$DEST/admin-desafios-vps.html"
+  cp -f "$STATIC_DIR/admin-login-vps.html" "$DEST/admin-login-vps.html"
   cp -f "$STATIC_DIR/desafio-sugestoes.html" "$DEST/desafio-sugestoes.html"
   mkdir -p "$DEST/assets"
   cp -f "$STATIC_DIR/desafio-sugestoes-inject.js" "$DEST/assets/desafio-sugestoes-inject.js"
+  # stub do chunk ausente (navegação client-side)
+  if [[ -f "$STATIC_DIR/admin.login-BhVYt131.js" ]]; then
+    cp -f "$STATIC_DIR/admin.login-BhVYt131.js" "$DEST/assets/admin.login-BhVYt131.js"
+  fi
 fi
 
 echo "==> Boot CSR (evita tela preta em /app por hydration SSR da home)"
