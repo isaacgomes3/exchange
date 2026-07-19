@@ -41,6 +41,31 @@ Detalhes em [`supabase/README.md`](supabase/README.md). Sem as keys, o painel co
 2. **IP brasileiro** — fora do BR a API retorna HTML/Cloudflare (403)
 3. **Proxy BR** — configure se o servidor não estiver no Brasil
 
+## ArbiShield (acesso local ao app de produção)
+
+O app público [https://arbishield.app](https://arbishield.app) usa a Supabase `wknyfxikmmvjzpbevlid`.
+
+Para abrir **localmente** (espelho do build + mesma API):
+
+```bash
+npm run arbishield:local
+```
+
+- App: http://localhost:5173  
+- Terminal: http://localhost:5173/app  
+- Atualizar espelho: `npm run arbishield:mirror` ou `npm run arbishield:local -- --refresh`
+
+No Supabase → **Authentication → URL Configuration**:
+
+```
+Site URL: http://localhost:5173
+Redirect URLs: http://localhost:5173/**
+```
+
+Login admin: `isaacgomes3@gmail.com` (senha em `.arbishield-access.local`).
+
+> Nota: isto espelha o **build publicado** (sem código-fonte). Para editar o projeto, exporte o repo do Lovable/GitHub.
+
 ## ArbiShield (painel operacional)
 
 O domínio [arbishield.com](https://arbishield.com) está bloqueado (takedown Lovable). Enquanto isso, use o painel temporário neste app:
