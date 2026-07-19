@@ -42,6 +42,9 @@ create index if not exists alert_rules_enabled_idx
 alter table public.alert_rules enable row level security;
 alter table public.alerts enable row level security;
 
+grant select, insert, update, delete on public.alert_rules to anon, authenticated;
+grant select, insert, update, delete on public.alerts to anon, authenticated;
+
 drop policy if exists "anon_all_alert_rules" on public.alert_rules;
 create policy "anon_all_alert_rules"
   on public.alert_rules
