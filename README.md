@@ -1,6 +1,6 @@
 # Exchange Live — BetBra
 
-Painel de alertas para jogos ao vivo da exchange **BetBra** (mexchange), seguindo o mesmo padrão de integração do Arbitrex.
+Painel de alertas para jogos ao vivo da exchange **BetBra** (mexchange).
 
 ## Funcionalidades
 
@@ -13,32 +13,49 @@ Painel de alertas para jogos ao vivo da exchange **BetBra** (mexchange), seguind
 
 ## Conectar Supabase
 
-Projeto: [wknyfxikmmvjzpbevlid](https://supabase.com/dashboard/project/wknyfxikmmvjzpbevlid)
+Use um **projeto Supabase dedicado ao Exchange**. Não reutilize o banco do Arbishield.
 
-1. Em **Project Settings → API**, copie a **anon public** key
-2. Configure o `.env.local`:
+1. Crie o projeto em [supabase.com/dashboard](https://supabase.com/dashboard)
+2. Em **Project Settings → API**, copie URL e publishable/anon key
+3. Configure o `.env.local`:
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://wknyfxikmmvjzpbevlid.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_...
 # opcional (servidor):
-# SUPABASE_SERVICE_ROLE_KEY=eyJ...
+# SUPABASE_SERVICE_ROLE_KEY=sb_secret_...
 ```
 
-3. Rode a migration SQL em `supabase/migrations/20260718210000_exchange_alerts.sql` (SQL Editor do dashboard)
-4. Teste:
+4. Rode a migration SQL em `supabase/migrations/20260718210000_exchange_alerts.sql` (SQL Editor do dashboard)
+5. Teste:
 
 ```bash
 curl http://localhost:3000/api/supabase/health | jq
 ```
 
-Detalhes em [`supabase/README.md`](supabase/README.md). Sem a anon key, o painel continua em memória.
+Detalhes em [`supabase/README.md`](supabase/README.md). Sem as keys, o painel continua em memória.
 
 ## Requisitos BetBra
 
 1. **User-Agent aprovado** no formato `BOT/SOFTWARE;NomeApp;Versao`
 2. **IP brasileiro** — fora do BR a API retorna HTML/Cloudflare (403)
 3. **Proxy BR** — configure se o servidor não estiver no Brasil
+
+## ArbiShield (painel operacional)
+
+O domínio [arbishield.com](https://arbishield.com) está bloqueado (takedown Lovable). Enquanto isso, use o painel temporário neste app:
+
+- Login: http://localhost:3000/arbishield
+- Admin: http://localhost:3000/arbishield/admin
+
+No Supabase → **Authentication → URL Configuration**, adicione:
+
+```
+Site URL: http://localhost:3000/arbishield
+Redirect URLs: http://localhost:3000/**
+```
+
+Conta admin criada: `isaacgomes3@gmail.com` (senha no arquivo local `.arbishield-access.local`).
 
 ## Ambiente local (usa seu IP brasileiro)
 

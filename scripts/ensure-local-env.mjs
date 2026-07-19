@@ -54,15 +54,38 @@ if (!existsSync(envPath)) {
 
 const example = parseEnv(readFileSync(examplePath, "utf8"));
 const current = parseEnv(readFileSync(envPath, "utf8"));
-const merged = { ...example, ...current, ...LOCAL_PROXY_DEFAULTS };
 
-// Não sobrescrever secrets já presentes
+/** Prefer non-empty values; never clobber a filled secret with blank. */
+function pick(...values) {
+  for (const value of values) {
+    if (value !== undefined && String(value).trim() !== "") return value;
+  }
+  return "";
+}
+
+/** @type {Record<string, string>} */
+const merged = {};
+const keys = new Set([
+  ...Object.keys(example),
+  ...Object.keys(current),
+  ...Object.keys(LOCAL_PROXY_DEFAULTS),
+]);
+
+for (const key of keys) {
+  if (key in LOCAL_PROXY_DEFAULTS) {
+    merged[key] = pick(current[key], LOCAL_PROXY_DEFAULTS[key], example[key]);
+  } else {
+    merged[key] = pick(current[key], example[key]);
+  }
+}
+
+// Preserve known secrets explicitly
 for (const key of [
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
 ]) {
-  if (current[key]) merged[key] = current[key];
+  merged[key] = pick(current[key], merged[key], example[key]);
 }
 
 const header = [

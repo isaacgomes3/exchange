@@ -34,7 +34,7 @@ export function getBetBraConfig(): BetBraConfig {
       process.env.MEXCHANGE_REFERER ?? "https://mexchange.betbra.bet.br/",
     userAgent:
       process.env.MEXCHANGE_BOT_USER_AGENT ??
-      "BOT/SOFTWARE;Arbitrex;1.0",
+      "BOT/SOFTWARE;ExchangeLive;1.0",
     biabLanguage: process.env.MEXCHANGE_BIAB_LANGUAGE ?? "PT_BR",
     inplayFeedUrl:
       process.env.MEXCHANGE_INPLAY_FEED_URL ??
