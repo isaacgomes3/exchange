@@ -146,6 +146,7 @@ async function handleServerFn(req, res, id) {
   const token = bearerFromReq(req);
 
   if (id === FN.LIST_DESAFIOS) {
+    console.log("[serverfn-shim] LIST_DESAFIOS");
     try {
       // Prefer user JWT; fallback service role (admin panel na VPS)
       const data = await listDesafios(token);
@@ -158,14 +159,14 @@ async function handleServerFn(req, res, id) {
     }
   }
 
-  // Stubs: mutações ainda não espelhadas — evita HTML/405 infinito
+  // Stubs: não lançar erro (travava o admin). Geo/session e mutações
+  // ainda não portadas — retornam sucesso vazio.
+  console.log("[serverfn-shim]", req.method, id.slice(0, 12));
   if (req.method === "GET") {
     return sendJson(res, 200, []);
   }
-  return sendTsrError(
-    res,
-    "Ação ainda não disponível neste servidor VPS (serverFn stub)."
-  );
+  // POST sucesso vazio (ex.: geo_logged_session)
+  return sendJson(res, 200, null);
 }
 
 function parseBody(req) {
@@ -187,6 +188,16 @@ const server = createServer(async (req, res) => {
   }
 
   const url = new URL(req.url || "/", "http://127.0.0.1");
+  if (url.pathname === "/api/arbishield/desafios") {
+    try {
+      const token = bearerFromReq(req);
+      const data = await listDesafios(token);
+      return sendJson(res, 200, data);
+    } catch (err) {
+      return sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
   if (url.pathname === "/health") {
     return sendJson(res, 200, { ok: true, service: "serverfn-shim" });
   }
