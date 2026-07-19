@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Admin — ArbiShield</title>
+  <style>
+    :root {
+      --bg: #010b08;
+      --panel: #031e18;
+      --border: rgba(245, 245, 247, 0.12);
+      --text: #f5f5f7;
+      --muted: #8a8a8f;
+      --lime: #c9f223;
+      --danger: #f87171;
+      --amber: #f59e0b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(800px 420px at 10% 0%, rgba(201,242,35,0.1), transparent 55%),
+        var(--bg);
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 18px 64px; }
+    header {
+      display: flex; flex-wrap: wrap; gap: 14px;
+      align-items: flex-start; justify-content: space-between;
+      margin-bottom: 22px;
+    }
+    .brand {
+      font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+      font-size: 11px; color: var(--lime); margin-bottom: 6px;
+    }
+    h1 {
+      margin: 0; font-size: clamp(1.5rem, 3vw, 2rem);
+      font-weight: 800; letter-spacing: -0.03em; text-transform: uppercase;
+    }
+    .sub { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn {
+      border: 0; border-radius: 12px; padding: 12px 16px;
+      font-weight: 800; font-size: 10px; letter-spacing: 0.12em;
+      text-transform: uppercase; cursor: pointer; text-decoration: none;
+      display: inline-flex; align-items: center;
+    }
+    .btn-primary { background: var(--lime); color: #04140f; }
+    .btn-ghost {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .stats {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px; margin-bottom: 22px;
+    }
+    .stat {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; padding: 14px;
+    }
+    .stat .l {
+      font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted); font-weight: 700;
+    }
+    .stat .v { font-size: 1.35rem; font-weight: 800; margin-top: 6px; }
+    .stat .v.lime { color: var(--lime); }
+    .stat .v.amber { color: var(--amber); }
+    .section-title {
+      font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--muted); font-weight: 800; margin: 0 0 12px;
+    }
+    .panel {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 16px; padding: 16px; margin-bottom: 18px;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td {
+      text-align: left; padding: 10px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted);
+    }
+    .msg {
+      border: 1px dashed var(--border); border-radius: 14px;
+      padding: 24px; text-align: center; color: var(--muted);
+    }
+    .msg.err { border-color: rgba(248,113,113,0.4); color: var(--danger); }
+    .gate {
+      min-height: 60vh; display: grid; place-items: center;
+      color: var(--muted); font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="gate" id="gate">Verificando acesso…</div>
+  <div class="wrap" id="app" hidden>
+    <header>
+      <div>
+        <div class="brand">ArbiShield</div>
+        <h1>Painel Admin</h1>
+        <p class="sub" id="who">—</p>
+      </div>
+      <div class="actions">
+        <a class="btn btn-ghost" href="/admin/desafios">Desafios</a>
+        <a class="btn btn-ghost" href="/desafio-sugestoes.html">Sugestões</a>
+        <button class="btn btn-ghost" id="btnRefresh" type="button">Atualizar</button>
+        <button class="btn btn-primary" id="btnLogout" type="button">Sair</button>
+      </div>
+    </header>
+
+    <div class="stats" id="stats"></div>
+
+    <h2 class="section-title">Movimentações recentes</h2>
+    <div class="panel" id="txPanel">
+      <div class="msg" id="txMsg">Carregando…</div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzg0NDc5OTk4LCJleHAiOjE5NDIxNTk5OTh9.mxLqs20sCUNn58jWlsD0sznclCOr8rbksjTEAuQee3s";
+      var STORAGE_KEY = "sb-arbishield-auth-token";
+      var STATS_FN = "/_serverFn/8867aca1da470aaa83906b6b13bb7e7018c9dea355ae3cff430f0f97ddbb4a62";
+      var TX_FN = "/_serverFn/b8e5956ab4d19dcac2cf2318fe933b86f3eba19702cdd8ffb947c5b0bb1a3c68";
+
+      var gate = document.getElementById("gate");
+      var app = document.getElementById("app");
+
+      function money(cents) {
+        if (cents == null || Number.isNaN(Number(cents))) return "—";
+        return (Number(cents) / 100).toLocaleString("pt-BR", {
+          style: "currency",
+          currency: "BRL",
+        });
+      }
+
+      function readSession() {
+        try {
+          var raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return null;
+          var parsed = JSON.parse(raw);
+          var session = parsed.currentSession || parsed.session || parsed;
+          var token = session.access_token || parsed.access_token;
+          var user = session.user || parsed.user;
+          if (!token) return null;
+          return { access_token: token, user: user || null };
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function clearSession() {
+        try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+        ["is_admin_session", "is_admin_session_uid", "is_admin_session_expires_at", "admin_login_pending_until"].forEach(function (k) {
+          try { localStorage.removeItem(k); } catch (e) {}
+        });
+      }
+
+      function goLogin() {
+        location.replace("/admin/login?redirect=" + encodeURIComponent("/admin"));
+      }
+
+      async function rest(path, token) {
+        var res = await fetch("/rest/v1/" + path, {
+          headers: {
+            apikey: ANON,
+            Authorization: "Bearer " + token,
+            Accept: "application/json",
+          },
+          cache: "no-store",
+        });
+        if (!res.ok) throw new Error("REST " + res.status);
+        return res.json();
+      }
+
+      async function isAdmin(token, userId) {
+        var profile = await rest("profiles?select=is_super_admin&id=eq." + encodeURIComponent(userId), token);
+        if (profile && profile[0] && profile[0].is_super_admin) return true;
+        var roles = await rest("user_roles?select=role&user_id=eq." + encodeURIComponent(userId), token);
+        return (roles || []).some(function (r) {
+          return r.role === "admin" || r.role === "master_admin";
+        });
+      }
+
+      async function ensureAdmin() {
+        var session = readSession();
+        if (!session) {
+          goLogin();
+          return null;
+        }
+        var userRes = await fetch("/auth/v1/user", {
+          headers: { apikey: ANON, Authorization: "Bearer " + session.access_token },
+          cache: "no-store",
+        });
+        if (!userRes.ok) {
+          clearSession();
+          goLogin();
+          return null;
+        }
+        var user = await userRes.json();
+        var ok = await isAdmin(session.access_token, user.id);
+        if (!ok) {
+          clearSession();
+          goLogin();
+          return null;
+        }
+        return { token: session.access_token, user: user };
+      }
+
+      function renderStats(s) {
+        var items = [
+          { l: "Usuários", v: String(s.totalUsers ?? 0) },
+          { l: "Saldo usuários", v: money(s.totalUserBalance), c: "lime" },
+          { l: "Caixa", v: money(s.cashBalance), c: "lime" },
+          { l: "Bloqueado", v: money(s.totalBlocked), c: "amber" },
+          { l: "Lucro líquido", v: money(s.realNetProfit), c: "lime" },
+          { l: "Margem", v: (s.profitMargin ?? 0) + "%" },
+          { l: "Reembolsos pend.", v: String(s.pendingRefunds ?? 0), c: "amber" },
+          { l: "Receita hoje", v: money(s.todayEarnings), c: "lime" },
+          { l: "Lucro hoje", v: money(s.todayRealProfit), c: "lime" },
+          { l: "Investidores", v: money(s.totalInvestorBalance) },
+        ];
+        document.getElementById("stats").innerHTML = items.map(function (it) {
+          return (
+            '<div class="stat"><div class="l">' + it.l + '</div>' +
+            '<div class="v' + (it.c ? " " + it.c : "") + '">' + it.v + "</div></div>"
+          );
+        }).join("");
+      }
+
+      async function loadStats() {
+        var res = await fetch(STATS_FN, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: "{}",
+          cache: "no-store",
+        });
+        if (!res.ok) throw new Error("Falha ao carregar KPIs (" + res.status + ")");
+        return res.json();
+      }
+
+      async function loadTx() {
+        var res = await fetch(TX_FN, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ data: { page: 1, pageSize: 12 } }),
+          cache: "no-store",
+        });
+        if (!res.ok) throw new Error("Falha ao carregar movimentações");
+        return res.json();
+      }
+
+      function renderTx(data) {
+        var panel = document.getElementById("txPanel");
+        var items = (data && data.items) || [];
+        if (!items.length) {
+          panel.innerHTML = '<div class="msg">Nenhuma movimentação recente.</div>';
+          return;
+        }
+        var rows = items.map(function (it) {
+          var when = it.created_at
+            ? new Date(it.created_at).toLocaleString("pt-BR")
+            : "—";
+          var name = it.user_name || it.user_id || "—";
+          var desc = it.description || it.type || it.category || "—";
+          return (
+            "<tr>" +
+            "<td>" + when + "</td>" +
+            "<td>" + (it.category || "—") + "</td>" +
+            "<td>" + name + "</td>" +
+            "<td>" + desc + "</td>" +
+            "<td>" + money(it.amount_cents) + "</td>" +
+            "<td>" + (it.status || "—") + "</td>" +
+            "</tr>"
+          );
+        }).join("");
+        panel.innerHTML =
+          "<table><thead><tr>" +
+          "<th>Quando</th><th>Categoria</th><th>Usuário</th><th>Descrição</th><th>Valor</th><th>Status</th>" +
+          "</tr></thead><tbody>" + rows + "</tbody></table>";
+      }
+
+      async function refresh() {
+        try {
+          var stats = await loadStats();
+          renderStats(stats || {});
+        } catch (e) {
+          document.getElementById("stats").innerHTML =
+            '<div class="msg err">' + (e.message || e) + "</div>";
+        }
+        try {
+          var tx = await loadTx();
+          renderTx(tx || {});
+        } catch (e) {
+          document.getElementById("txPanel").innerHTML =
+            '<div class="msg err">' + (e.message || e) + "</div>";
+        }
+      }
+
+      document.getElementById("btnRefresh").addEventListener("click", refresh);
+      document.getElementById("btnLogout").addEventListener("click", function () {
+        clearSession();
+        goLogin();
+      });
+
+      ensureAdmin().then(function (ctx) {
+        if (!ctx) return;
+        gate.hidden = true;
+        app.hidden = false;
+        document.getElementById("who").textContent =
+          (ctx.user && (ctx.user.email || ctx.user.id)) || "Admin autenticado";
+        refresh();
+      }).catch(function () {
+        goLogin();
+      });
+    })();
+  </script>
+</body>
+</html>
