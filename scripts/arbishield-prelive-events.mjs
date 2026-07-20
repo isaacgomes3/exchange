@@ -263,6 +263,69 @@ async function createMatchFromMarket(body, token) {
     ? `${body.marketName} · ${body.runnerName}`
     : body.marketName;
   const marketUuid = randomUUID();
+  const authToken = token || SERVICE_KEY;
+  const eventExternalId = String(body.eventId);
+  const betbraMarketId = String(body.marketId);
+
+  const newMarket = {
+    id: marketUuid,
+    name: marketLabel,
+    odd,
+    liquidity: liquidityCents,
+    display_liquidity: null,
+    used_liquidity: 0,
+    market_type: "LAY",
+    external_id: betbraMarketId,
+  };
+
+  const existingRows = await sb(
+    `/rest/v1/matches?external_id=eq.${encodeURIComponent(eventExternalId)}&deleted_at=is.null&select=id,home_team,away_team,markets,max_protection_cents,used_protection_cents,is_published&limit=1`,
+    { token: authToken }
+  );
+  const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+
+  if (existing?.id) {
+    const markets = Array.isArray(existing.markets) ? existing.markets : [];
+    const dup = markets.find(
+      (m) =>
+        String(m.external_id || "") === betbraMarketId ||
+        String(m.name || "").toLowerCase() === marketLabel.toLowerCase()
+    );
+    if (dup) {
+      const err = new Error(
+        `Este mercado já está cadastrado em ${existing.home_team} vs ${existing.away_team}.`
+      );
+      err.status = 409;
+      err.code = "MARKET_EXISTS";
+      throw err;
+    }
+
+    const nextMarkets = [...markets, newMarket];
+    const nextMax = nextMarkets.reduce(
+      (sum, m) => sum + Number(m.liquidity || 0),
+      0
+    );
+
+    const updated = await sb(`/rest/v1/matches?id=eq.${existing.id}`, {
+      method: "PATCH",
+      token: authToken,
+      body: {
+        markets: nextMarkets,
+        max_protection_cents: nextMax,
+        metadata: {
+          external_bet_link: body.betbraLink,
+          external_bet_name: "BetBra",
+          external_bet_logo: "https://betbra.bet.br/favicon.ico",
+          market_id: body.marketId,
+          runner_id: body.runnerId || null,
+          source: "betbra_prelive_catalog",
+        },
+        updated_at: new Date().toISOString(),
+      },
+    });
+    const match = Array.isArray(updated) ? updated[0] : updated;
+    return { action: "market_added", match: match || { ...existing, markets: nextMarkets } };
+  }
 
   const row = {
     home_team: body.homeTeam,
@@ -276,7 +339,7 @@ async function createMatchFromMarket(body, token) {
     max_protection_cents: liquidityCents,
     used_protection_cents: 0,
     protection_odds: { home: odd, away: odd },
-    external_id: String(body.eventId),
+    external_id: eventExternalId,
     score_sync_enabled: false,
     has_live_stream: false,
     metadata: {
@@ -287,26 +350,27 @@ async function createMatchFromMarket(body, token) {
       runner_id: body.runnerId || null,
       source: "betbra_prelive_catalog",
     },
-    markets: [
-      {
-        id: marketUuid,
-        name: marketLabel,
-        odd,
-        liquidity: liquidityCents,
-        display_liquidity: null,
-        used_liquidity: 0,
-        market_type: "LAY",
-        external_id: String(body.marketId),
-      },
-    ],
+    markets: [newMarket],
   };
 
-  const created = await sb("/rest/v1/matches", {
-    method: "POST",
-    token: token || SERVICE_KEY,
-    body: row,
-  });
-  return Array.isArray(created) ? created[0] : created;
+  try {
+    const created = await sb("/rest/v1/matches", {
+      method: "POST",
+      token: authToken,
+      body: row,
+    });
+    const match = Array.isArray(created) ? created[0] : created;
+    return { action: "created", match };
+  } catch (err) {
+    if (
+      !body.__retried &&
+      (String(err.message || "").includes("matches_external_id_key") ||
+        String(err.message || "").toLowerCase().includes("duplicate key"))
+    ) {
+      return createMatchFromMarket({ ...body, __retried: true }, token);
+    }
+    throw err;
+  }
 }
 
 function parseBody(req) {
@@ -374,8 +438,8 @@ async function handleApi(req, res) {
     try {
       const body = await parseBody(req);
       const token = bearerFromReq(req);
-      const match = await createMatchFromMarket(body, token);
-      return sendJson(res, 200, { ok: true, match });
+      const result = await createMatchFromMarket(body, token);
+      return sendJson(res, 200, { ok: true, ...result });
     } catch (err) {
       const status = err.status === 409 ? 409 : err.status || 500;
       return sendJson(res, status, {

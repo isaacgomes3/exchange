@@ -588,7 +588,7 @@
         $("btnConfirmCreate").disabled = true;
         $("btnConfirmCreate").textContent = "Criando…";
         try {
-          await apiPost("/api/arbishield/matches", {
+          var result = await apiPost("/api/arbishield/matches", {
             eventId: ev.eventId,
             sportId: ev.sportId,
             homeTeam: ev.homeTeam,
@@ -604,7 +604,15 @@
             isPublished: false,
           });
           $("createModal").classList.remove("show");
-          alert("Evento criado como rascunho! Veja em Eventos ArbiShield.");
+          var msg =
+            result.action === "market_added"
+              ? "Mercado incluído no evento existente (" +
+                (result.match && result.match.home_team) +
+                " vs " +
+                (result.match && result.match.away_team) +
+                ")."
+              : "Evento criado como rascunho! Veja em Eventos ArbiShield.";
+          alert(msg);
           platformLoaded = false;
           await loadPlatformMatches({ force: true });
           setView("platform");
