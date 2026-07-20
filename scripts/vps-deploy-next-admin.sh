@@ -1,17 +1,12 @@
 #!/usr/bin/env bash
-# Fase 1 — sobe o Next.js (admin ArbiShield) na VPS, sem Lovable.
-# Corrige o erro comum: /opt/arbishield/exchange ainda não existe.
-#
-# Uso na VPS (como root):
-#   bash <(curl -fsSL https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/admin-jogos-prelive-723d/scripts/vps-deploy-next-admin.sh)
-#
-# Variáveis opcionais:
-#   ARBISHIELD_REPO / ARBISHIELD_BRANCH / APP_DIR / PORT
+# Sobe Next.js (APIs admin ArbiShield) na VPS — arbishield.app
+# Uso na VPS:
+#   bash <(curl -fsSL https://raw.githubusercontent.com/isaacgomes3/exchange/main/scripts/vps-deploy-next-admin.sh)
 set -euo pipefail
 
 REPO="${ARBISHIELD_REPO:-https://github.com/isaacgomes3/exchange.git}"
-BRANCH="${ARBISHIELD_BRANCH:-cursor/admin-jogos-prelive-723d}"
-APP_DIR="${APP_DIR:-/opt/arbishield/exchange}"
+BRANCH="${ARBISHIELD_BRANCH:-main}"
+APP_DIR="${APP_DIR:-/opt/arbishield/app}"
 ROOT="${ARBISHIELD_ROOT:-/opt/arbishield}"
 WEB="${ARBISHIELD_WEB:-/var/www/arbishield}"
 NGINX_CONF="${NGINX_CONF:-/etc/nginx/conf.d/arbishield-cutover.conf}"
@@ -152,7 +147,7 @@ npm run build
 echo "==> systemd: arbishield-next ($PORT)"
 cat > /etc/systemd/system/arbishield-next.service <<EOF
 [Unit]
-Description=ArbiShield Next.js admin (sem Lovable)
+Description=ArbiShield Next.js (arbishield.app)
 After=network.target
 
 [Service]

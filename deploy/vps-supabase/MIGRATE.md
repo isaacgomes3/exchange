@@ -145,7 +145,7 @@ Gera `supabase-export/db.dump` (+ storage se a key estiver ok).
 
 ### Status da migração (VPS `195.200.6.206`)
 
-Já feito: dump Cloud → restore na VPS, storage, Auth/REST OK, frontend self-hosted na VPS (sem Lovable).
+Já feito: dump Cloud → restore na VPS, storage, Auth/REST OK, admin em arbishield.app.
 
 - App HTTP: http://195.200.6.206/
 - Para `https://arbishield.app`: mude o DNS na Hostinger e rode `arbishield-enable-domain.sh`
@@ -171,33 +171,27 @@ docker compose cp ../../supabase-export/storage/objects/. storage:/var/lib/stora
 docker compose restart storage
 ```
 
-## 6. Cutover — só VPS (sem Lovable)
+## 6. Domínio arbishield.app
 
-Frontend + API na Hostinger VPS. Lovable não entra no fluxo.
+| Tipo | Nome | Valor |
+|------|------|-------|
+| A | `@` | IP da VPS |
+| A | `www` | IP da VPS |
 
-### Agora (IP)
-
-- App: http://195.200.6.206/
-- Login admin: `isaacgomes3@gmail.com`
-
-### Domínio `https://arbishield.app`
-
-1. **Hostinger hPanel** → Domínios → `arbishield.app` → DNS:
-
-| Tipo | Nome | Valor | TTL |
-|------|------|-------|-----|
-| A | `@` | `195.200.6.206` | 300 |
-| A | `www` | `195.200.6.206` | 300 |
-
-Apague A/CNAME antigos para `185.158.133.1` (CDN/Lovable).
-
-2. Na VPS:
+Na VPS:
 
 ```bash
-bash /opt/arbishield/scripts/arbishield-enable-domain.sh
+bash /opt/arbishield/app/scripts/arbishield-enable-domain.sh
 ```
 
-Emite Let's Encrypt, atualiza Auth e re-patcha o frontend para `https://arbishield.app`.
+Deploy admin:
+
+```bash
+bash /opt/arbishield/app/scripts/vps-deploy-jogos-prelive.sh
+bash /opt/arbishield/app/scripts/vps-deploy-next-admin.sh
+```
+
+Rotas principais: `/admin/matches`, `/admin/desafios`, `/auth`.
 
 ## 7. Checklist pós-migração
 

@@ -1,23 +1,15 @@
 {
-  "name": "exchange",
+  "name": "arbishield",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "dev:local": "bash scripts/start-local.sh",
-    "start:local": "node scripts/start-local.mjs",
-    "env:local": "node scripts/ensure-local-env.mjs",
-    "proxy:local": "node scripts/betbra-local-proxy.mjs",
-    "arbishield:mirror": "node scripts/mirror-arbishield-app.mjs",
-    "arbishield:local": "node scripts/start-arbishield-local.mjs",
-    "arbishield:cutover": "bash scripts/arbishield-cutover-frontend.sh",
-    "arbishield:enable-domain": "bash scripts/arbishield-enable-domain.sh",
-    "arbishield:sync-odds": "node scripts/arbishield-sync-odds.mjs",
-    "supabase:export": "bash scripts/supabase-export-cloud.sh",
-    "supabase:import-vps": "bash scripts/supabase-import-vps.sh",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "arbishield:sync-odds": "node scripts/arbishield-sync-odds.mjs",
+    "supabase:export": "bash scripts/supabase-export-cloud.sh",
+    "supabase:import-vps": "bash scripts/supabase-import-vps.sh"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

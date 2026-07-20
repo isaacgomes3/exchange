@@ -1,80 +1,50 @@
 #!/usr/bin/env bash
-# Deploy Gestão de Jogos (catálogo pré-live BetBra) na VPS ArbiShield.
-# Uso na VPS:
-#   bash <(curl -fsSL https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/admin-jogos-prelive-723d/scripts/vps-deploy-jogos-prelive.sh)
 set -euo pipefail
-
 REPO="${ARBISHIELD_REPO:-https://github.com/isaacgomes3/exchange.git}"
-BRANCH="${ARBISHIELD_BRANCH:-cursor/admin-jogos-prelive-723d}"
-ROOT="${ARBISHIELD_ROOT:-/opt/arbishield}"
+BRANCH="${ARBISHIELD_BRANCH:-main}"
+APP_DIR="${APP_DIR:-/opt/arbishield/app}"
+SCRIPTS_DIR="${SCRIPTS_DIR:-/opt/arbishield/scripts}"
 WEB="${ARBISHIELD_WEB:-/var/www/arbishield}"
 NGINX_CONF="${NGINX_CONF:-/etc/nginx/conf.d/arbishield-cutover.conf}"
-
-SRC="$ROOT"
-TMP=""
-cleanup() {
-  [[ -n "$TMP" && -d "$TMP" ]] && rm -rf "$TMP"
-}
-trap cleanup EXIT
-
-echo "==> Obtendo código ($BRANCH)"
-if [[ -d "$ROOT/.git" ]]; then
-  git -C "$ROOT" fetch origin "$BRANCH"
-  git -C "$ROOT" checkout "$BRANCH" 2>/dev/null || git -C "$ROOT" checkout -B "$BRANCH" "origin/$BRANCH"
-  git -C "$ROOT" pull --ff-only origin "$BRANCH" || git -C "$ROOT" reset --hard "origin/$BRANCH"
-elif [[ -d "$ROOT" ]]; then
-  echo "    $ROOT já existe (sem git) — usando clone temporário"
-  TMP="$(mktemp -d)"
-  git clone --branch "$BRANCH" --depth 1 "$REPO" "$TMP"
-  SRC="$TMP"
+echo "==> clone $BRANCH -> $APP_DIR"
+mkdir -p "$(dirname "$APP_DIR")"
+if [[ -d "$APP_DIR/.git" ]]; then
+  git -C "$APP_DIR" fetch origin "$BRANCH"
+  git -C "$APP_DIR" checkout "$BRANCH" 2>/dev/null || git -C "$APP_DIR" checkout -B "$BRANCH" "origin/$BRANCH"
+  git -C "$APP_DIR" pull --ff-only origin "$BRANCH" || git -C "$APP_DIR" reset --hard "origin/$BRANCH"
 else
-  mkdir -p "$(dirname "$ROOT")"
-  git clone --branch "$BRANCH" --depth 1 "$REPO" "$ROOT"
+  rm -rf "$APP_DIR"
+  git clone --branch "$BRANCH" --depth 1 "$REPO" "$APP_DIR"
 fi
-
-mkdir -p "$ROOT/scripts" "$WEB"
-
-echo "==> Copiando assets"
-install -m 0644 "$SRC/deploy/vps-supabase/static/admin-jogos-vps.html" "$WEB/admin-jogos-vps.html"
-install -m 0755 "$SRC/scripts/arbishield-prelive-events.mjs" "$ROOT/scripts/arbishield-prelive-events.mjs"
-install -m 0644 "$SRC/deploy/vps-supabase/static/app-stability.js" "$WEB/app-stability.js"
-
-if [[ -f "$SRC/deploy/vps-supabase/nginx-arbishield.app.conf" ]]; then
+mkdir -p "$SCRIPTS_DIR" "$WEB"
+install -m 0644 "$APP_DIR/deploy/vps-supabase/static/admin-jogos-vps.html" "$WEB/admin-jogos-vps.html"
+install -m 0644 "$APP_DIR/deploy/vps-supabase/static/admin-desafios-vps.html" "$WEB/admin-desafios-vps.html"
+install -m 0644 "$APP_DIR/deploy/vps-supabase/static/admin-login-vps.html" "$WEB/admin-login-vps.html"
+install -m 0644 "$APP_DIR/deploy/vps-supabase/static/auth-vps.html" "$WEB/auth-vps.html"
+install -m 0755 "$APP_DIR/scripts/arbishield-prelive-events.mjs" "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
+if [[ -f "$APP_DIR/deploy/vps-supabase/nginx-arbishield.app.conf ]]; then
   if [[ -f /etc/letsencrypt/live/arbishield.app/fullchain.pem ]]; then
-    install -m 0644 "$SRC/deploy/vps-supabase/nginx-arbishield.app.conf" "$NGINX_CONF"
+    install -m 0644 "$APP_DIR/deploy/vps-supabase/nginx-arbishield.app.conf" "$NGINX_CONF"
   else
-    install -m 0644 "$SRC/deploy/vps-supabase/nginx-cutover.conf" "$NGINX_CONF"
+    install -m 0644 "$APP_DIR/deploy/vps-supabase/nginx-cutover.conf" "$NGINX_CONF"
   fi
 fi
-
-echo "==> systemd: prelive-events (3098)"
 cat > /etc/systemd/system/arbishield-prelive-events.service <<EOF
 [Unit]
-Description=ArbiShield prelive BetBra catalog
+Description=ArbiShield prelive BetBra
 After=network.target
-
 [Service]
 Type=simple
-WorkingDirectory=$ROOT
+WorkingDirectory=$APP_DIR
 EnvironmentFile=-/opt/arbishield/deploy/vps-supabase/.env
-EnvironmentFile=-/opt/arbishield/.arbishield-odds-sync.env
-ExecStart=/usr/bin/node $ROOT/scripts/arbishield-prelive-events.mjs --serve
+ExecStart=/usr/bin/node $SCRIPTS_DIR/arbishield-prelive-events.mjs --serve
 Restart=always
 RestartSec=3
-
 [Install]
 WantedBy=multi-user.target
 EOF
-
 systemctl daemon-reload
 systemctl enable arbishield-prelive-events.service
 systemctl restart arbishield-prelive-events.service
-
-echo "==> Testando nginx"
-nginx -t
-systemctl reload nginx
-
-echo "==> Health"
-curl -fsS "http://127.0.0.1:3098/health" || true
-echo
-echo "OK — /admin/matches · /api/arbishield/prelive-events"
+nginx -t && systemctl reload nginx
+echo OK https://arbishield.app/admin/matches

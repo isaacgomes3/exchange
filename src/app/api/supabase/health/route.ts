@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   getSupabaseUrl,
   isSupabaseConfigured,
   isSupabasePersistenceEnabled,
 } from "@/lib/supabase/config";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,7 @@ export async function GET() {
         ok: false,
         configured: false,
         message:
-          "Defina NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no .env.local",
+          "Defina NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY",
       },
       { status: 503 }
     );
@@ -34,17 +34,17 @@ export async function GET() {
     );
   }
 
-  const { error: rulesError } = await supabase
-    .from("alert_rules")
+  const { error: profilesError } = await supabase
+    .from("profiles")
     .select("id")
     .limit(1);
 
-  const { error: alertsError } = await supabase
-    .from("alerts")
+  const { error: matchesError } = await supabase
+    .from("matches")
     .select("id")
     .limit(1);
 
-  const tableError = rulesError || alertsError;
+  const tableError = profilesError || matchesError;
 
   if (tableError) {
     return NextResponse.json(
@@ -53,8 +53,7 @@ export async function GET() {
         configured: true,
         persistence: isSupabasePersistenceEnabled(),
         url: getSupabaseUrl(),
-        message:
-          "Conectou, mas as tabelas ainda não existem. Rode a migration em supabase/migrations/.",
+        message: "Conectou, mas tabelas ArbiShield ainda não existem na VPS.",
         error: tableError.message,
       },
       { status: 503 }
@@ -66,6 +65,6 @@ export async function GET() {
     configured: true,
     persistence: isSupabasePersistenceEnabled(),
     url: getSupabaseUrl(),
-    message: "Supabase conectado e tabelas acessíveis",
+    message: "Supabase ArbiShield conectado",
   });
 }
