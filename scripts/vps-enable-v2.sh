@@ -82,8 +82,19 @@ for f in \
   v2-pages.js \
   v2-shell.js \
   v2.css \
-  v2.js
+  v2.js \
+  brand/logo.png \
+  brand/logo@2x.png \
+  brand/icon.png \
+  brand/icon-64.png \
+  brand/icon-128.png \
+  brand/favicon-192.png \
+  brand/favicon-512.png \
+  brand/stadium-hero.jpg \
+  brand/stadium-hero-sm.jpg \
+  brand/dashboard-preview.jpg
 do
+  mkdir -p "$WEB/v2/$(dirname "$f")"
   curl -fsSL "$RAW/deploy/vps-supabase/static/v2/$f" -o "$WEB/v2/$f"
   chmod 0644 "$WEB/v2/$f"
   echo "  ok $f"

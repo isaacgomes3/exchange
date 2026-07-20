@@ -223,7 +223,7 @@
       '<a class="v2-sidebar-brand" href="' +
       brandHref +
       '">' +
-      '<span class="mark">AS</span>' +
+      '<img class="mark-img" src="/brand/icon-64.png" width="36" height="36" alt="" decoding="async" />' +
       "<div><strong>ArbiShield</strong><small>" +
       esc(brandSub) +
       "</small></div></a>" +
@@ -236,6 +236,15 @@
         ? '<a class="v2-nav-link" href="/app.html">App membro</a><a class="v2-nav-link" href="https://legado.arbishield.app/" target="_blank" rel="noopener">SPA legado</a>'
         : '<a class="v2-nav-link" href="#" id="v2LogoutLink">Sair</a><a class="v2-nav-link" href="https://legado.arbishield.app/" target="_blank" rel="noopener">SPA legado</a>') +
       "</div>";
+
+    if (!document.querySelector('link[data-v2-favicon]')) {
+      var fav = document.createElement("link");
+      fav.rel = "icon";
+      fav.type = "image/png";
+      fav.href = "/brand/favicon-192.png";
+      fav.setAttribute("data-v2-favicon", "1");
+      document.head.appendChild(fav);
+    }
 
     var backdrop = document.querySelector(".v2-sidebar-backdrop");
     if (!backdrop) {

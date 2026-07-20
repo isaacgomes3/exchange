@@ -4,7 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <title>ArbiShield v2</title>
+  <title>ArbiShield</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
+  <link rel="apple-touch-icon" href="/brand/favicon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -12,24 +14,40 @@
 </head>
 <body>
   <header class="mkt-header">
-    <a class="brand" href="/">Arbi<span>Shield</span></a>
+    <a class="brand" href="/" aria-label="ArbiShield">
+      <img class="brand-logo" src="/brand/logo.png" srcset="/brand/logo.png 1x, /brand/logo@2x.png 2x" width="160" height="37" alt="ArbiShield" decoding="async" />
+    </a>
     <nav class="mkt-nav">
       <a href="/auth.html">Entrar</a>
       <a class="cta" href="/app.html">App</a>
       <a href="/admin.html">Admin</a>
     </nav>
   </header>
-  <section class="hero">
-    <p class="meta">Sistema novo · isolado do SPA antigo</p>
-    <h1>Arbi<em>Shield</em></h1>
-    <p>
-      Proteção inteligente para operações esportivas. Visual alinhado ao produto —
-      código limpo, sem ligação ao SPA que congelava.
-    </p>
-    <div class="actions">
-      <a class="btn btn-primary" href="/auth.html">Entrar</a>
-      <a class="btn btn-ghost" href="/app.html">Área do membro</a>
-      <a class="btn btn-ghost" href="/admin.html">Admin</a>
+
+  <section class="hero-bleed" aria-label="ArbiShield">
+    <picture class="hero-media">
+      <source media="(max-width: 720px)" srcset="/brand/stadium-hero-sm.jpg" width="900" height="506" />
+      <img
+        src="/brand/stadium-hero.jpg"
+        width="1600"
+        height="900"
+        alt=""
+        decoding="async"
+        fetchpriority="high"
+      />
+    </picture>
+    <div class="hero-inner">
+      <p class="hero-brand">
+        <img src="/brand/logo.png" srcset="/brand/logo.png 1x, /brand/logo@2x.png 2x" width="220" height="51" alt="ArbiShield" decoding="async" />
+      </p>
+      <h1>Proteção inteligente para operações esportivas</h1>
+      <p class="lead">
+        Mesmo banco e mesma marca — sistema novo, estável, sem o SPA que congelava.
+      </p>
+      <div class="actions">
+        <a class="btn btn-primary" href="/auth.html">Entrar</a>
+        <a class="btn btn-ghost" href="/app.html">Área do membro</a>
+      </div>
     </div>
   </section>
 </body>

@@ -43,8 +43,12 @@ FILES=(
   app-desafio.html app-partners.html app-perfil.html app-protecoes.html
   app-proteger.html app-suporte.html
   v2.css v2.js v2-shell.js v2-pages.js
+  brand/logo.png brand/logo@2x.png brand/icon.png brand/icon-64.png brand/icon-128.png
+  brand/favicon-192.png brand/favicon-512.png
+  brand/stadium-hero.jpg brand/stadium-hero-sm.jpg brand/dashboard-preview.jpg
 )
 for f in "${FILES[@]}"; do
+  mkdir -p "$WEB/v2/$(dirname "$f")"
   curl -fsSL "$RAW/deploy/vps-supabase/static/v2/$f" -o "$WEB/v2/$f"
   chmod 0644 "$WEB/v2/$f"
 done
@@ -52,6 +56,8 @@ echo "  ${#FILES[@]} ficheiros ok"
 test -f "$WEB/v2/index.html" || die "index.html v2 em falta"
 test -f "$WEB/v2/admin.html" || die "admin.html em falta"
 test -f "$WEB/v2/v2-shell.js" || die "v2-shell.js em falta"
+test -f "$WEB/v2/brand/logo.png" || die "brand/logo.png em falta"
+test -f "$WEB/v2/brand/stadium-hero-sm.jpg" || die "brand/stadium-hero-sm.jpg em falta"
 
 find_main_nginx() {
   local c
