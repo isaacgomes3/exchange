@@ -10,23 +10,81 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
   <script src="/v2-shell.js" defer></script>
+  <style>
+    .wallet-buckets {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 10px;
+      margin: 14px 0 18px;
+    }
+    .wallet-buckets .box {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 12px 14px;
+    }
+    .wallet-buckets .box .l {
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #8a8a8f;
+      font-weight: 700;
+    }
+    .wallet-buckets .box .v {
+      margin-top: 6px;
+      font-size: 1.15rem;
+      font-weight: 800;
+    }
+    .wallet-buckets .box .h {
+      margin-top: 4px;
+      font-size: 11px;
+      color: #6b7280;
+      line-height: 1.35;
+    }
+    .wallet-note {
+      font-size: 12px;
+      color: #8a8a8f;
+      line-height: 1.45;
+      margin: 0 0 16px;
+    }
+  </style>
 </head>
 <body data-shell="app" data-active="carteira">
   <div class="page-head">
     <div>
       <h1>Finan<span>ceiro</span></h1>
-      <p class="sub">Carteira · saldo · extrato · template legado</p>
+      <p class="sub">Carteira · saldo real · extrato</p>
     </div>
   </div>
   <div id="err" class="err"></div>
 
   <section class="app-wallet-hero">
-    <div class="l">Saldo disponível</div>
+    <div class="l">Saldo disponível (operações)</div>
     <div class="v" id="bal">—</div>
     <div class="app-wallet-split">
       <div class="box"><div class="l">Disponível</div><div class="v" id="balFree">—</div></div>
       <div class="box"><div class="l">Bloqueado</div><div class="v" id="balLock">—</div></div>
     </div>
+    <div class="wallet-buckets">
+      <div class="box">
+        <div class="l">Saldo real</div>
+        <div class="v" id="balReal">—</div>
+        <div class="h">Banca para proteger apostas</div>
+      </div>
+      <div class="box">
+        <div class="l">Provedor</div>
+        <div class="v" id="balInvestor">—</div>
+        <div class="h">Capital de provedor (sacável)</div>
+      </div>
+      <div class="box">
+        <div class="l">Desafio</div>
+        <div class="v" id="balDesafio">—</div>
+        <div class="h">Só para Desafio ArbiShield</div>
+      </div>
+    </div>
+    <p class="wallet-note" id="walletHint">
+      Depósitos creditam o <strong>saldo real</strong>. O saldo de desafio é separado e não soma neste total disponível.
+    </p>
     <a class="btn btn-primary btn-block" href="/app-proteger.html">Proteger aposta</a>
   </section>
 
@@ -49,17 +107,37 @@
       try {
         var pr = await supa
           .from("profiles")
-          .select("balance_cents,locked_balance_cents,reusable_balance_cents")
+          .select(
+            "balance_cents,locked_balance_cents,reusable_balance_cents,investor_balance_cents,desafio_balance_cents"
+          )
           .eq("id", user.id)
           .maybeSingle();
         if (pr.error) throw pr.error;
-        var free = Number((pr.data && pr.data.balance_cents) || 0) + Number((pr.data && pr.data.reusable_balance_cents) || 0);
-        var locked = Number((pr.data && pr.data.locked_balance_cents) || 0);
-        document.getElementById("bal").textContent = money(free);
-        document.getElementById("balFree").textContent = money(free);
+        var p = pr.data || {};
+        var real = Number(p.balance_cents || 0) + Number(p.reusable_balance_cents || 0);
+        var locked = Number(p.locked_balance_cents || 0);
+        var investor = Number(p.investor_balance_cents || 0);
+        var desafio = Number(p.desafio_balance_cents || 0);
+
+        document.getElementById("bal").textContent = money(real);
+        document.getElementById("balFree").textContent = money(real);
         document.getElementById("balLock").textContent = money(locked);
+        document.getElementById("balReal").textContent = money(real);
+        document.getElementById("balInvestor").textContent = money(investor);
+        document.getElementById("balDesafio").textContent = money(desafio);
+
         var balHeader = document.getElementById("v2AppBalance");
-        if (balHeader) balHeader.textContent = money(free);
+        if (balHeader) balHeader.textContent = money(real);
+
+        var hint = document.getElementById("walletHint");
+        if (real === 0 && (investor > 0 || desafio > 0)) {
+          hint.innerHTML =
+            "Há saldo em <strong>provedor</strong> e/ou <strong>desafio</strong>, mas o saldo real (operações) está zerado. " +
+            "Depósitos aprovados devem creditar o saldo real — confira no admin se o crédito foi marcado sem alterar saldo.";
+        } else if (real === 0 && desafio === 0 && investor === 0) {
+          hint.innerHTML =
+            "Carteira zerada. Se houver depósito no extrato sem saldo aqui, o crédito não atualizou <code>balance_cents</code> (saldo real).";
+        }
 
         var tx = await supa
           .from("wallet_transactions")
@@ -67,6 +145,15 @@
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
           .limit(40);
+        if (tx.error) {
+          // fallback view usada no SPA
+          tx = await supa
+            .from("unified_wallet_transactions")
+            .select("id,type,amount_cents,created_at,balance_after_cents")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+            .limit(40);
+        }
         if (tx.error) throw tx.error;
         var rows = tx.data || [];
         var host = document.getElementById("list");
@@ -76,7 +163,7 @@
         }
         host.innerHTML =
           '<div class="ops-table-wrap"><table class="ops-table"><thead><tr>' +
-          "<th>Quando</th><th>Tipo</th><th>Valor</th><th>Saldo</th></tr></thead><tbody>" +
+          "<th>Quando</th><th>Tipo</th><th>Valor</th><th>Saldo após</th></tr></thead><tbody>" +
           rows
             .map(function (r) {
               return (

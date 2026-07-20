@@ -2,7 +2,7 @@
 # Deploy: odds pré-live + fila de jogos (worker :3098 + admin-jogos v2/VPS)
 #
 # Uso (root na VPS):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-deploy-prelive-odds.sh?v=6")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-deploy-prelive-odds.sh?v=7")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/arbishield-v2-backup-723d}"
@@ -18,7 +18,7 @@ need curl
 need systemctl
 mkdir -p "$WEB_ROOT" "$WEB_V2" "$SCRIPTS_DIR"
 
-log "1/3 — UI admin-jogos (v2 + raiz + VPS)"
+log "1/3 — UI admin-jogos + financeiro (v2 + raiz + VPS)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-jogos.html" -o "$WEB_V2/admin-jogos.html"
 chmod 0644 "$WEB_V2/admin-jogos.html"
 echo "  ok $WEB_V2/admin-jogos.html"
@@ -34,6 +34,13 @@ echo "  ok $WEB_ROOT/admin-jogos-vps.html"
 if [[ -d "$WEB_ROOT/assets" ]]; then
   cp -f "$WEB_ROOT/admin-jogos-vps.html" "$WEB_ROOT/assets/admin-jogos-vps.html" 2>/dev/null || true
 fi
+
+curl -fsSL "$RAW/deploy/vps-supabase/static/v2/app-carteira.html" -o "$WEB_V2/app-carteira.html"
+chmod 0644 "$WEB_V2/app-carteira.html"
+# Espelho na raiz se o shell v2 servir /app-carteira.html fora de /v2/
+curl -fsSL "$RAW/deploy/vps-supabase/static/v2/app-carteira.html" -o "$WEB_ROOT/app-carteira.html"
+chmod 0644 "$WEB_ROOT/app-carteira.html"
+echo "  ok app-carteira.html"
 
 log "2/3 — worker :3098 (várias entradas + odds BetBra)"
 curl -fsSL "$RAW/scripts/arbishield-prelive-events.mjs" -o "$SCRIPTS_DIR/arbishield-prelive-events.mjs"

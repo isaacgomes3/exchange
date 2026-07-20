@@ -294,8 +294,12 @@
   <div class="modal-backdrop" id="createModal">
     <div class="modal">
       <h3>Lançar evento na plataforma</h3>
-      <p>O jogo será criado como rascunho na ArbiShield com o mercado selecionado da BetBra.</p>
+      <p>O mercado selecionado da BetBra será incluído na ArbiShield. Marque publicar para o cliente ver em Proteger Aposta.</p>
       <div class="grid" id="createSummary"></div>
+      <label class="publish-opt" style="display:flex;gap:10px;align-items:flex-start;margin:0 0 16px;font-size:12px;line-height:1.4;cursor:pointer">
+        <input type="checkbox" id="publishNow" checked style="margin-top:2px;accent-color:var(--lime)" />
+        <span><strong>Publicar agora</strong> — aparece na conta do cliente (Proteger Aposta). Desmarque só se quiser deixar em rascunho.</span>
+      </label>
       <div class="modal-actions">
         <button class="btn btn-ghost btn-sm" id="btnCancelCreate" type="button">Cancelar</button>
         <button class="btn btn-primary btn-sm" id="btnConfirmCreate" type="button">Confirmar lançamento</button>
@@ -369,16 +373,28 @@
         $("authBanner").classList.toggle("show", !!show);
       }
 
-      async function rest(path, token) {
+      async function rest(path, token, options) {
+        options = options || {};
+        var headers = {
+          apikey: ANON,
+          Authorization: "Bearer " + token,
+          Accept: "application/json",
+        };
+        if (options.body) {
+          headers["Content-Type"] = "application/json";
+          headers.Prefer = "return=representation";
+        }
         var res = await fetch("/rest/v1/" + path, {
-          headers: {
-            apikey: ANON,
-            Authorization: "Bearer " + token,
-            Accept: "application/json",
-          },
+          method: options.method || "GET",
+          headers: headers,
+          body: options.body ? JSON.stringify(options.body) : undefined,
           cache: "no-store",
         });
-        if (!res.ok) throw new Error("REST " + res.status);
+        if (!res.ok) {
+          var errText = await res.text().catch(function () { return ""; });
+          throw new Error("REST " + res.status + (errText ? ": " + errText.slice(0, 120) : ""));
+        }
+        if (res.status === 204) return null;
         return res.json();
       }
 
@@ -621,6 +637,7 @@
         var runner = selectedRunner;
         $("btnConfirmCreate").disabled = true;
         $("btnConfirmCreate").textContent = "Criando…";
+        var publishNow = !($("publishNow") && !$("publishNow").checked);
         try {
           var result = await apiPost("/api/arbishield/matches", {
             eventId: ev.eventId,
@@ -635,7 +652,7 @@
             runnerName: runner.name,
             odd: runner.odd,
             betbraLink: betbraLink,
-            isPublished: false,
+            isPublished: publishNow,
           });
           $("createModal").classList.remove("show");
           var msg =
@@ -648,11 +665,20 @@
                 (result.marketsCount
                   ? " · " + result.marketsCount + " entrada(s) no total."
                   : ".")
-              : "Evento criado como rascunho! Veja em Eventos ArbiShield.";
+              : publishNow
+                ? "Evento publicado! Já aparece em Proteger Aposta para o cliente."
+                : "Evento criado como rascunho. Publique na aba Rascunhos para o cliente ver.";
           alert(msg);
           platformLoaded = false;
           await loadPlatformMatches({ force: true });
           setView("platform");
+          if (!publishNow) {
+            platformFilter = "draft";
+            document.querySelectorAll("#platformFilters .chip").forEach(function (c) {
+              c.classList.toggle("is-on", c.getAttribute("data-pf") === "draft");
+            });
+            renderPlatformList();
+          }
         } catch (err) {
           alert(err.message || "Erro ao criar evento");
         } finally {
@@ -749,6 +775,12 @@
                 .join(" · ");
               var extra =
                 markets.length > 3 ? " + " + (markets.length - 3) + " mais" : "";
+              var publishBtn =
+                bucket === "draft"
+                  ? '<button class="btn btn-primary btn-sm" type="button" data-publish="' +
+                    m.id +
+                    '" style="margin-top:8px">Publicar</button>'
+                  : "";
               return (
                 '<div class="row" style="cursor:default">' +
                 "<div><div class=\"teams\">" +
@@ -764,7 +796,9 @@
                 markets.length +
                 " entrada(s) · liquidez " +
                 money(m.max_protection_cents) +
-                "</div></div>" +
+                "</div>" +
+                publishBtn +
+                "</div>" +
                 '<div class="time">' +
                 badge +
                 '<div class="when">' +
@@ -774,6 +808,43 @@
             })
             .join("") +
           "</div>";
+
+        $("platformContent").querySelectorAll("button[data-publish]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            publishMatch(btn.getAttribute("data-publish"), btn);
+          });
+        });
+      }
+
+      async function publishMatch(matchId, btn) {
+        if (!auth) {
+          alert("Faça login admin para publicar.");
+          return;
+        }
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "Publicando…";
+        }
+        try {
+          await rest("matches?id=eq." + encodeURIComponent(matchId), auth.token, {
+            method: "PATCH",
+            body: {
+              is_published: true,
+              updated_at: new Date().toISOString(),
+            },
+          });
+          var row = platformMatches.find(function (m) { return m.id === matchId; });
+          if (row) row.is_published = true;
+          alert("Publicado! O jogo já aparece em Proteger Aposta para o cliente.");
+          renderPlatformList();
+          renderStats();
+        } catch (err) {
+          alert(err.message || "Falha ao publicar");
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Publicar";
+          }
+        }
       }
 
       async function loadPrelive() {

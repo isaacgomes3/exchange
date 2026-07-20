@@ -395,23 +395,27 @@ async function createMatchFromMarket(body, token) {
       0
     );
 
+    const patchBody = {
+      markets: nextMarkets,
+      max_protection_cents: nextMax,
+      updated_by: adminId,
+      metadata: {
+        external_bet_link: body.betbraLink,
+        external_bet_name: "BetBra",
+        external_bet_logo: "https://betbra.bet.br/favicon.ico",
+        market_id: body.marketId,
+        runner_id: body.runnerId || null,
+        source: "betbra_prelive_catalog",
+      },
+      updated_at: new Date().toISOString(),
+    };
+    // Lançar com "publicar" promove rascunho existente para a fila do cliente
+    if (body.isPublished) patchBody.is_published = true;
+
     const updated = await sb(`/rest/v1/matches?id=eq.${existing.id}`, {
       method: "PATCH",
       token: dbToken,
-      body: {
-        markets: nextMarkets,
-        max_protection_cents: nextMax,
-        updated_by: adminId,
-        metadata: {
-          external_bet_link: body.betbraLink,
-          external_bet_name: "BetBra",
-          external_bet_logo: "https://betbra.bet.br/favicon.ico",
-          market_id: body.marketId,
-          runner_id: body.runnerId || null,
-          source: "betbra_prelive_catalog",
-        },
-        updated_at: new Date().toISOString(),
-      },
+      body: patchBody,
     });
     const match = Array.isArray(updated) ? updated[0] : updated;
     return {

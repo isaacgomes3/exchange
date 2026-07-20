@@ -124,22 +124,25 @@ async function createMatchFromMarket(body: CreateMatchBody) {
       0
     );
 
+    const updatePayload: Record<string, unknown> = {
+      markets: nextMarkets,
+      max_protection_cents: nextMax,
+      updated_by: body.adminId || null,
+      metadata: {
+        external_bet_link: body.betbraLink,
+        external_bet_name: "BetBra",
+        external_bet_logo: "https://betbra.bet.br/favicon.ico",
+        market_id: body.marketId,
+        runner_id: body.runnerId || null,
+        source: "betbra_prelive_catalog",
+      },
+      updated_at: new Date().toISOString(),
+    };
+    if (body.isPublished) updatePayload.is_published = true;
+
     const { data: updated, error } = await admin
       .from("matches")
-      .update({
-        markets: nextMarkets,
-        max_protection_cents: nextMax,
-        updated_by: body.adminId || null,
-        metadata: {
-          external_bet_link: body.betbraLink,
-          external_bet_name: "BetBra",
-          external_bet_logo: "https://betbra.bet.br/favicon.ico",
-          market_id: body.marketId,
-          runner_id: body.runnerId || null,
-          source: "betbra_prelive_catalog",
-        },
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq("id", existing.id)
       .select("id,home_team,away_team,league,starts_at,is_published,markets")
       .single();
