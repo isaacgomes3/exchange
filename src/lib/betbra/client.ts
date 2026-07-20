@@ -246,7 +246,7 @@ export async function fetchEventDetail(
   const config = getBetBraConfig();
   const url = config.useLocalProxy
     ? `${config.localProxyUrl}/mexchange/events/${eventId}?sport-id=${sportId}`
-    : `${config.apiBaseUrl}/events/${eventId}`;
+    : `${config.apiBaseUrl}/events/${eventId}?sport-id=${sportId}`;
   return betbraFetch<BetBraEvent>(
     url,
     buildEventDetailHeaders(sportId, eventId)

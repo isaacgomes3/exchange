@@ -116,17 +116,40 @@ function extractLeague(event) {
   return "Exchange BetBra";
 }
 
-function runnerBackOdd(runner) {
-  const backs = (runner.prices || []).filter((p) => p.side === "back");
+function priceDecimal(p) {
+  if (!p || typeof p !== "object") return null;
+  const n = Number(p["decimal-odds"] ?? p.odds ?? p.decimalOdds);
+  return Number.isFinite(n) && n > 1 ? n : null;
+}
+
+function priceSide(p) {
+  return String(p?.side || p?.Side || "")
+    .trim()
+    .toLowerCase();
+}
+
+/** Melhor odd disponível: back → lay → last-matched (exchange pode só ter um lado). */
+function runnerBestOdd(runner) {
+  const prices = Array.isArray(runner?.prices)
+    ? runner.prices
+    : Array.isArray(runner?.Prices)
+      ? runner.Prices
+      : [];
+  const backs = prices
+    .filter((p) => priceSide(p) === "back")
+    .map(priceDecimal)
+    .filter((n) => n != null);
   if (backs.length) {
-    return Number(
-      backs
-        .reduce((a, b) =>
-          a["decimal-odds"] > b["decimal-odds"] ? a : b
-        )["decimal-odds"].toFixed(3)
-    );
+    return Number(Math.max(...backs).toFixed(3));
   }
-  const last = runner["last-matched-odds"];
+  const lays = prices
+    .filter((p) => priceSide(p) === "lay")
+    .map(priceDecimal)
+    .filter((n) => n != null);
+  if (lays.length) {
+    return Number(Math.min(...lays).toFixed(3));
+  }
+  const last = runner?.["last-matched-odds"] ?? runner?.lastMatchedOdds;
   return typeof last === "number" && last > 1 ? Number(last.toFixed(3)) : null;
 }
 
@@ -194,22 +217,35 @@ async function listPreliveEventsForDay() {
 }
 
 async function getPreliveEventMarkets(eventId, sportId = SOCCER_ID) {
+  // sport-id + referer mexchange: mesmo padrão do sync-odds (mais estável p/ prices)
   const detail = await spaced(() =>
-    betbra(`${API_BASE}/events/${eventId}`, {
-      Referer: eventLink(sportId, eventId),
+    betbra(`${API_BASE}/events/${eventId}?sport-id=${sportId}`, {
+      Referer: `${REFERER.replace(/\/$/, "")}/exchange/sport/soccer/event/${eventId}`,
+      "Accept-Encoding": "identity",
     })
   );
   const event = toSummary(detail);
   if (!event) throw new Error("Evento indisponível ou já iniciado");
 
+  let runnersTotal = 0;
+  let withPrices = 0;
+  let withOdd = 0;
+
   const markets = (detail.markets || [])
     .map((market) => {
       const runners = (market.runners || [])
-        .map((runner) => ({
-          runnerId: String(runner.id),
-          name: runner.name || "—",
-          odd: runnerBackOdd(runner),
-        }))
+        .map((runner) => {
+          runnersTotal += 1;
+          const prices = runner.prices || runner.Prices || [];
+          if (Array.isArray(prices) && prices.length) withPrices += 1;
+          const odd = runnerBestOdd(runner);
+          if (odd != null) withOdd += 1;
+          return {
+            runnerId: String(runner.id),
+            name: runner.name || "—",
+            odd,
+          };
+        })
         .filter((r) => r.name !== "—");
       if (!runners.length) return null;
       return {
@@ -218,12 +254,28 @@ async function getPreliveEventMarkets(eventId, sportId = SOCCER_ID) {
         marketType: market["market-type"] || market.type,
         status: market.status,
         runners,
+        hasOdds: runners.some((r) => r.odd != null),
       };
     })
     .filter(Boolean)
-    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+    .sort((a, b) => {
+      // mercados com odd primeiro; depois nome
+      if (a.hasOdds !== b.hasOdds) return a.hasOdds ? -1 : 1;
+      return a.name.localeCompare(b.name, "pt-BR");
+    });
 
-  return { event, markets };
+  return {
+    event,
+    markets,
+    oddsMeta: {
+      runnersTotal,
+      withPrices,
+      withOdd,
+      coveragePct: runnersTotal
+        ? Math.round((withOdd / runnersTotal) * 100)
+        : 0,
+    },
+  };
 }
 
 async function sb(path, { token, method = "GET", body } = {}) {

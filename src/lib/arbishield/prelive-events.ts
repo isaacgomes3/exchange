@@ -81,14 +81,19 @@ function extractLeague(event: BetBraEvent): string {
 
 function runnerBackOdd(runner: BetBraRunner): number | null {
   const prices = runner.prices ?? [];
-  const backs = prices.filter((p) => p.side === "back");
+  const backs = prices
+    .filter((p) => String(p.side || "").toLowerCase() === "back")
+    .map((p) => Number(p["decimal-odds"] ?? p.odds))
+    .filter((n) => Number.isFinite(n) && n > 1);
   if (backs.length) {
-    return Number(
-      backs
-        .reduce((a, b) =>
-          a["decimal-odds"] > b["decimal-odds"] ? a : b
-        )["decimal-odds"].toFixed(3)
-    );
+    return Number(Math.max(...backs).toFixed(3));
+  }
+  const lays = prices
+    .filter((p) => String(p.side || "").toLowerCase() === "lay")
+    .map((p) => Number(p["decimal-odds"] ?? p.odds))
+    .filter((n) => Number.isFinite(n) && n > 1);
+  if (lays.length) {
+    return Number(Math.min(...lays).toFixed(3));
   }
   const last = runner["last-matched-odds"];
   return typeof last === "number" && last > 1 ? Number(last.toFixed(3)) : null;

@@ -188,6 +188,18 @@
     }
     .runner .name { font-size: 11px; font-weight: 700; flex: 1; min-width: 0; }
     .runner .odd { color: var(--lime); font-weight: 800; font-size: 14px; flex-shrink: 0; }
+    .runner .odd.muted { color: var(--muted); font-weight: 700; font-size: 12px; }
+    .runner.is-dry { opacity: 0.55; }
+    .odds-toolbar {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+      padding: 0 16px 12px; color: var(--muted); font-size: 12px;
+    }
+    .odds-toolbar label {
+      display: inline-flex; align-items: center; gap: 8px;
+      cursor: pointer; font-weight: 700; letter-spacing: 0.04em;
+      text-transform: uppercase; font-size: 10px;
+    }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
     @media (max-width: 720px) {
       .stats { grid-template-columns: 1fr; }
     }
@@ -300,6 +312,13 @@
           </div>
         </div>
         <span class="hint" id="preliveMeta">—</span>
+      </div>
+      <div class="odds-toolbar" id="oddsToolbar" hidden>
+        <label>
+          <input type="checkbox" id="onlyWithOdds" checked />
+          Só seleções com odd
+        </label>
+        <span id="oddsCoverage">—</span>
       </div>
       <div id="preliveContent">
         <div class="loading">Carregando jogos da API BetBra…</div>
@@ -513,13 +532,16 @@
               renderPreliveList();
             } else if (step === "event") {
               selectedMarket = null;
-              renderMarkets(selectedEvent);
+              if (selectedEvent) loadMarkets(selectedEvent);
             }
           });
         });
       }
 
       function renderPreliveList() {
+        selectedEvent = null;
+        selectedMarket = null;
+        if ($("oddsToolbar")) $("oddsToolbar").hidden = true;
         setBreadcrumb([{ label: "Lista do dia", step: "list" }]);
         var filtered = preliveEvents.filter(filterText);
         $("preliveMeta").textContent = filtered.length + " jogos · BetBra";
@@ -569,7 +591,16 @@
 
       function renderMarkets(data) {
         selectedEvent = data.event;
+        window.__preliveMarketsData = data;
         var markets = data.markets || [];
+        var meta = data.oddsMeta || {};
+        var onlyOdds = $("onlyWithOdds") && $("onlyWithOdds").checked;
+        $("oddsToolbar").hidden = false;
+        $("oddsCoverage").textContent =
+          (meta.withOdd != null
+            ? meta.withOdd + "/" + meta.runnersTotal + " com odd (" + (meta.coveragePct || 0) + "%)"
+            : "") +
+          (meta.withPrices != null ? " · BetBra prices em " + meta.withPrices : "");
         $("preliveMeta").textContent = markets.length + " mercados";
 
         if (!markets.length) {
@@ -577,25 +608,42 @@
           return;
         }
 
-        $("preliveContent").innerHTML = markets.map(function (market) {
-          var runners = (market.runners || []).map(function (runner) {
-            var odd = runner.odd != null ? runner.odd.toFixed(2) : "—";
+        var html = markets.map(function (market) {
+          var runners = (market.runners || []).filter(function (runner) {
+            return !onlyOdds || runner.odd != null;
+          });
+          if (!runners.length) return "";
+          var runnersHtml = runners.map(function (runner) {
+            var hasOdd = runner.odd != null;
+            var odd = hasOdd ? Number(runner.odd).toFixed(2) : "sem liquidez";
             return (
-              '<div class="runner">' +
+              '<div class="runner' + (hasOdd ? "" : " is-dry") + '">' +
                 '<span class="name">' + runner.name + '</span>' +
-                '<span class="odd">@ ' + odd + '</span>' +
-                '<button class="btn btn-primary btn-sm" type="button" data-market="' + market.marketId + '" data-runner="' + runner.runnerId + '">Lançar evento</button>' +
+                '<span class="odd' + (hasOdd ? "" : " muted") + '">@ ' + odd + '</span>' +
+                '<button class="btn btn-primary btn-sm" type="button" data-market="' + market.marketId + '" data-runner="' + runner.runnerId + '"' +
+                  (hasOdd ? "" : " disabled title=\"Sem odd na BetBra — não é possível lançar\"") +
+                '>Lançar evento</button>' +
               "</div>"
             );
           }).join("");
           return (
             '<div class="row market-row">' +
               '<div class="market-title">' + market.name + '</div>' +
-              '<div class="runners">' + runners + "</div></div>"
+              '<div class="runners">' + runnersHtml + "</div></div>"
           );
-        }).join("");
+        }).filter(Boolean).join("");
 
-        $("preliveContent").querySelectorAll("button[data-market]").forEach(function (btn) {
+        if (!html) {
+          $("preliveContent").innerHTML =
+            '<div class="empty">Nenhuma seleção com odd neste momento. ' +
+            'Desmarque “Só seleções com odd” para ver mercados sem liquidez, ' +
+            'ou escolha outro jogo (ex.: Resultado / Mais-Menos 2.5).</div>';
+          return;
+        }
+
+        $("preliveContent").innerHTML = html;
+
+        $("preliveContent").querySelectorAll("button[data-market]:not([disabled])").forEach(function (btn) {
           btn.addEventListener("click", function (e) {
             e.stopPropagation();
             var marketId = btn.getAttribute("data-market");
@@ -603,6 +651,10 @@
             var market = markets.find(function (m) { return m.marketId === marketId; });
             var runner = market && (market.runners || []).find(function (r) { return r.runnerId === runnerId; });
             if (market && runner) {
+              if (runner.odd == null) {
+                alert("Esta seleção está sem odd/liquidez na BetBra.");
+                return;
+              }
               if (!auth) {
                 showAuthBanner(true);
                 alert("Faça login admin para incluir eventos.");
@@ -802,6 +854,11 @@
         $("createModal").addEventListener("click", function (e) {
           if (e.target === $("createModal")) $("createModal").classList.remove("show");
         });
+        if ($("onlyWithOdds")) {
+          $("onlyWithOdds").addEventListener("change", function () {
+            if (window.__preliveMarketsData) renderMarkets(window.__preliveMarketsData);
+          });
+        }
 
         await loadPrelive();
         auth = await resolveAuth();
