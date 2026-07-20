@@ -9,38 +9,29 @@
   <link rel="stylesheet" href="/v2/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2/v2.js"></script>
+  <script src="/v2/v2-shell.js" defer></script>
 </head>
-<body>
-  <header>
-    <a class="brand" href="/v2/">Arbi<span>Shield</span></a>
-    <nav>
-      <a href="/v2/admin.html">Hub</a>
-      <a class="cta" href="/v2/app.html">App</a>
-    </nav>
-  </header>
-  <div class="shell">
-    <nav class="admin-nav">
-      <a href="/v2/admin.html">Hub</a>
-      <a class="active" href="/v2/admin-users.html">Usuários</a>
-      <a href="/v2/admin-jogos.html">Jogos BetBra</a>
-    </nav>
-    <h1>Gestão de <span>usuários</span></h1>
-    <p class="meta">Lista leve · busca com debounce · sem Realtime · máx. 500</p>
-    <div id="err" class="err"></div>
-    <div class="search">
-      <input id="q" type="search" placeholder="Pesquisar por nome ou ID…" autocomplete="off" />
-      <span id="count">—</span>
+<body data-shell="admin" data-active="users">
+  <div class="page-head">
+    <div>
+      <h1>Gestão de <span>usuários</span></h1>
+      <p class="sub">Lista leve · busca com debounce · sem Realtime · máx. 500</p>
     </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Perfil</th><th>Status</th><th>Saldo</th><th>Criado</th></tr>
-        </thead>
-        <tbody id="tbody">
-          <tr><td colspan="4">Carregando…</td></tr>
-        </tbody>
-      </table>
-    </div>
+  </div>
+  <div id="err" class="err"></div>
+  <div class="search">
+    <input id="q" type="search" placeholder="Pesquisar por nome ou ID…" autocomplete="off" />
+    <span id="count">—</span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Perfil</th><th>Status</th><th>Saldo</th><th>Criado</th></tr>
+      </thead>
+      <tbody id="tbody">
+        <tr><td colspan="4">Carregando…</td></tr>
+      </tbody>
+    </table>
   </div>
   <script>
     (async function () {

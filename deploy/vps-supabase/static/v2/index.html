@@ -8,81 +8,23 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <style>
-    :root {
-      --bg: #050505;
-      --text: #f5f5f7;
-      --muted: #8a8a8f;
-      --lime: #c6ff00;
-      --border: rgba(255,255,255,0.1);
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; min-height: 100vh;
-      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
-      color: var(--text);
-      background:
-        radial-gradient(900px 500px at 0% 0%, rgba(198,255,0,0.08), transparent 55%),
-        radial-gradient(700px 400px at 100% 80%, rgba(0,255,0,0.05), transparent 50%),
-        var(--bg);
-    }
-    header {
-      display: flex; align-items: center; justify-content: space-between;
-      gap: 16px; padding: 18px clamp(16px, 4vw, 40px);
-      border-bottom: 1px solid var(--border);
-    }
-    .brand {
-      font-size: clamp(1.4rem, 3vw, 1.85rem); font-weight: 800;
-      letter-spacing: -0.04em; text-transform: uppercase; text-decoration: none; color: var(--text);
-    }
-    .brand span { color: var(--lime); }
-    nav { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
-    nav a {
-      color: var(--muted); text-decoration: none; font-size: 11px; font-weight: 800;
-      letter-spacing: 0.14em; text-transform: uppercase;
-    }
-    nav a.cta {
-      padding: 10px 14px; border-radius: 12px; background: var(--lime); color: #04140f;
-    }
-    .hero {
-      min-height: calc(100vh - 72px); display: grid; align-content: center; gap: 18px;
-      padding: 48px clamp(16px, 5vw, 64px) 80px; max-width: 920px;
-    }
-    .meta {
-      color: var(--muted); font-size: 12px; letter-spacing: 0.12em;
-      text-transform: uppercase; font-weight: 600; margin: 0;
-    }
-    h1 {
-      margin: 0; font-size: clamp(2.4rem, 7vw, 4.2rem); font-weight: 800;
-      letter-spacing: -0.05em; text-transform: uppercase; line-height: 0.95;
-    }
-    h1 em { font-style: normal; color: var(--lime); }
-    .hero p { margin: 0; max-width: 36rem; color: var(--muted); font-size: 1.05rem; line-height: 1.5; }
-    .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
-    .btn {
-      display: inline-flex; align-items: center; justify-content: center;
-      border-radius: 12px; padding: 14px 18px; font-weight: 800; font-size: 11px;
-      letter-spacing: 0.12em; text-transform: uppercase; text-decoration: none;
-    }
-    .btn-primary { background: var(--lime); color: #04140f; }
-    .btn-ghost { border: 1px solid var(--border); color: var(--text); }
-  </style>
+  <link rel="stylesheet" href="/v2/v2.css" />
 </head>
 <body>
-  <header>
+  <header class="mkt-header">
     <a class="brand" href="/v2/">Arbi<span>Shield</span></a>
-    <nav>
+    <nav class="mkt-nav">
       <a href="/v2/auth.html">Entrar</a>
       <a class="cta" href="/v2/app.html">App</a>
       <a href="/v2/admin.html">Admin</a>
     </nav>
   </header>
   <section class="hero">
-    <p class="meta">Sistema novo · mesmo banco Supabase</p>
+    <p class="meta">Sistema novo · layout do arbishield.app</p>
     <h1>Arbi<em>Shield</em></h1>
     <p>
-      Proteção inteligente para operações esportivas. Visual e dados do arbishield.app —
-      código limpo, sem o SPA legado.
+      Proteção inteligente para operações esportivas. Mesmo visual e navegação do site atual —
+      com shell limpo, sidebar completa e banco Supabase vivo.
     </p>
     <div class="actions">
       <a class="btn btn-primary" href="/v2/auth.html">Entrar</a>

@@ -3,7 +3,7 @@
 # Corrige tela preta: /v2 deixava de cair no SPA index.html.
 #
 # Uso na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-enable-v2.sh?v=3")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-enable-v2.sh?v=4")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/arbishield-v2-backup-723d}"
@@ -20,8 +20,12 @@ command -v python3 >/dev/null || die "python3 não encontrado"
 
 mkdir -p "$WEB/v2"
 
-log "1/3 — baixar páginas v2 estáticas"
-for f in index.html auth.html app.html admin.html admin-users.html admin-jogos.html v2.css v2.js; do
+log "1/3 — baixar páginas v2 estáticas (layout completo)"
+for f in \
+  index.html auth.html app.html app-modulo.html \
+  admin.html admin-users.html admin-jogos.html admin-desafios.html admin-modulo.html \
+  v2.css v2.js v2-shell.js
+do
   curl -fsSL "$RAW/deploy/vps-supabase/static/v2/$f" -o "$WEB/v2/$f"
   chmod 0644 "$WEB/v2/$f"
   echo "  ok $f"
@@ -82,34 +86,31 @@ elif "location /{" in text:
 else:
     text = text.rstrip() + "\n" + block + "\n"
 
-# /admin/matches → v2 (não devolve HTML antigo nem SPA)
-matches_block = """
-    # Gestão de jogos no v2 (não volta ao admin SPA)
-    location = /admin/matches {
-        return 302 /v2/admin-jogos.html;
-    }
+# /admin/matches e /admin/desafios → v2
+for path, dest in (
+    ("/admin/matches", "/v2/admin-jogos.html"),
+    ("/admin/desafios", "/v2/admin-desafios.html"),
+):
+    block = f"""
+    location = {path} {{
+        return 302 {dest};
+    }}
 """
-text = re.sub(
-    r"\n[ \t]*#[^\n]*[Jj]ogos[^\n]*\n[ \t]*location = /admin/matches \{[\s\S]*?\n[ \t]*\}\n",
-    "\n",
-    text,
-)
-text = re.sub(
-    r"\n[ \t]*location = /admin/matches \{[\s\S]*?\n[ \t]*\}\n",
-    "\n",
-    text,
-)
-# Inserir antes do bloco /v2 ou antes de location /
-if "location = /v2" in text:
-    text = text.replace(
-        "    # ArbiShield v2 estático",
-        matches_block.strip() + "\n\n    # ArbiShield v2 estático",
-        1,
+    text = re.sub(
+        rf"\n[ \t]*location = {re.escape(path)} \{{[\s\S]*?\n[ \t]*\}}\n",
+        "\n",
+        text,
     )
-elif "location / {" in text:
-    text = text.replace("location / {", matches_block + "\n    location / {", 1)
-else:
-    text = text.rstrip() + "\n" + matches_block + "\n"
+    if "location = /v2" in text:
+        text = text.replace(
+            "    # ArbiShield v2 estático",
+            block.strip() + "\n\n    # ArbiShield v2 estático",
+            1,
+        )
+    elif "location / {" in text:
+        text = text.replace("location / {", block + "\n    location / {", 1)
+    else:
+        text = text.rstrip() + "\n" + block + "\n"
 
 p.write_text(text, encoding="utf-8")
 print(f"nginx atualizado: {p}")
@@ -136,3 +137,5 @@ echo "  https://arbishield.app/v2/"
 echo "  https://arbishield.app/v2/auth.html"
 echo "  https://arbishield.app/v2/admin.html"
 echo "  https://arbishield.app/v2/admin-jogos.html"
+echo "  https://arbishield.app/v2/admin-desafios.html"
+echo "  https://arbishield.app/v2/app.html"

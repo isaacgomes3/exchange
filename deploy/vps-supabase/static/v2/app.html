@@ -9,21 +9,25 @@
   <link rel="stylesheet" href="/v2/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2/v2.js"></script>
+  <script src="/v2/v2-shell.js" defer></script>
 </head>
-<body>
-  <header>
-    <a class="brand" href="/v2/">Arbi<span>Shield</span></a>
-    <nav>
-      <a href="/v2/admin.html">Admin</a>
-      <a class="cta" href="#" id="logout">Sair</a>
-    </nav>
-  </header>
-  <div class="shell">
-    <h1>Área do <span>membro</span></h1>
-    <p class="meta" id="meta">Carregando…</p>
-    <div id="err" class="err"></div>
-    <div class="grid" id="cards"></div>
+<body data-shell="app" data-active="home">
+  <div class="page-head">
+    <div>
+      <h1>Área do <span>membro</span></h1>
+      <p class="sub" id="meta">Carregando…</p>
+    </div>
   </div>
+  <div id="err" class="err"></div>
+  <div class="grid" id="cards"></div>
+
+  <div class="section-label"><span class="dot" style="background:#c9f223"></span>Atalhos</div>
+  <div class="grid">
+    <a class="card primary" href="/v2/app-modulo.html?to=/app/proteger&t=Proteger%20Aposta"><div class="tag">Operações</div><h2>Proteger aposta</h2><p>Abrir proteção no fluxo do app.</p></a>
+    <a class="card" href="/v2/app-modulo.html?to=/app/protecoes&t=Minhas%20Prote%C3%A7%C3%B5es"><div class="tag">Operações</div><h2>Minhas proteções</h2><p>Histórico e status.</p></a>
+    <a class="card" href="/v2/app-modulo.html?to=/app/carteira&t=Financeiro"><div class="tag">Operações</div><h2>Financeiro</h2><p>Saldo, depósitos e saques.</p></a>
+  </div>
+
   <script>
     (async function () {
       var supa = ArbiV2.client();
@@ -31,9 +35,11 @@
       if (!user) return;
 
       document.getElementById("meta").textContent =
-        (user.email || "—") + " · banco vivo arbishield.app";
+        (user.email || "—") + " · layout do site legado · banco vivo";
 
-      document.getElementById("logout").addEventListener("click", async function (e) {
+      document.addEventListener("click", async function (e) {
+        var t = e.target.closest("#v2LogoutLink");
+        if (!t) return;
         e.preventDefault();
         await supa.auth.signOut();
         location.replace("/v2/auth.html");
@@ -46,7 +52,7 @@
           .eq("id", user.id)
           .maybeSingle();
         if (error) throw error;
-        var html =
+        document.getElementById("cards").innerHTML =
           '<div class="card"><strong>Nome</strong><b>' +
           (data && data.full_name ? data.full_name : "—") +
           "</b></div>" +
@@ -56,7 +62,6 @@
           '<div class="card"><strong>Status</strong><b style="font-size:1.1rem">' +
           (data && data.account_status ? data.account_status : "—") +
           "</b></div>";
-        document.getElementById("cards").innerHTML = html;
       } catch (ex) {
         var err = document.getElementById("err");
         err.textContent = ex.message || "Erro";

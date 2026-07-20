@@ -6,6 +6,8 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta name="arbishield-vps-page" content="jogos" />
   <title>Gestão de Jogos — ArbiShield v2</title>
+  <link rel="stylesheet" href="/v2/v2.css" />
+  <script src="/v2/v2-shell.js" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -24,10 +26,10 @@
     body {
       margin: 0; min-height: 100vh;
       font-family: "Plus Jakarta Sans", system-ui, sans-serif;
-      background: radial-gradient(900px 500px at 0% 0%, rgba(201,242,35,0.07), transparent 50%), var(--bg);
       color: var(--text);
     }
-    .wrap { max-width: 1280px; margin: 0 auto; padding: 24px 18px 64px; }
+    .v2-main .wrap { width: 100%; }
+    .wrap { max-width: 1280px; margin: 0; padding: 0 0 40px; }
     header {
       display: flex; flex-wrap: wrap; gap: 14px;
       align-items: flex-start; justify-content: space-between;
@@ -223,7 +225,7 @@
     }
   </style>
 </head>
-<body data-vps-page="jogos" data-arbishield-v2="1">
+<body data-shell="admin" data-active="jogos" data-vps-page="jogos" data-arbishield-v2="1">
   <div class="gate" id="gate">Carregando…</div>
 
   <div class="wrap" id="app" hidden>
@@ -232,13 +234,7 @@
       <a id="loginLink" href="/v2/auth.html">Fazer login</a>
       para criar eventos e ver a lista da plataforma.
     </div>
-    <nav class="v2-nav" aria-label="Admin v2">
-      <a href="/v2/admin.html">Hub</a>
-      <a href="/v2/admin-users.html">Usuários</a>
-      <a class="active" href="/v2/admin-jogos.html">Jogos</a>
-      <a href="/v2/app.html">App</a>
-    </nav>
-    <header>
+<header>
       <div>
         <h1>Gestão de <span>Jogos</span></h1>
         <p class="sub">Cockpit de Eventos e Risco · Catálogo Pré-Live BetBra · v2</p>

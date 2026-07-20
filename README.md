@@ -12,20 +12,23 @@ bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor
 
 Schema + espelho visual → GitHub. Dados → só `/opt/arbishield/backups`.
 
-### 2) Ativar `/v2` (Next :3000)
+### 2) Ativar `/v2` (HTML estático + layout do site legado)
 
 ```bash
-bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-enable-v2.sh?v=1")
+bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-enable-v2.sh?v=4")
 ```
 
 | Rota | Função |
 |------|--------|
-| `/v2` | Landing |
-| `/v2/auth` | Login |
-| `/v2/app` | Membro |
-| `/v2/admin.html` | Hub admin |
-| `/v2/admin-users.html` | Usuários (leve) |
-| `/v2/admin-jogos.html` | Pré-live BetBra (fica no v2) |
+| `/v2/` | Landing |
+| `/v2/auth.html` | Login (layout split do site) |
+| `/v2/app.html` | Membro + sidebar completa |
+| `/v2/admin.html` | Dashboard admin + sidebar SPA |
+| `/v2/admin-users.html` | Usuários (nativo) |
+| `/v2/admin-jogos.html` | Jogos BetBra (nativo) |
+| `/v2/admin-desafios.html` | Desafios (nativo) |
+| `/v2/admin-modulo.html` | Ponte para demais módulos admin |
+| `/v2/app-modulo.html` | Ponte para demais telas do app |
 
 Docs: [`docs/BACKUP-E-V2.md`](docs/BACKUP-E-V2.md) · [`backup/README.md`](backup/README.md)
 
@@ -41,7 +44,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/
 |-----|--------|
 | `/app` | App usuario (SPA) |
 | `/admin` | Hub admin SPA |
-| `/admin/matches` | Jogos VPS |
+| `/admin/matches` | Redireciona → `/v2/admin-jogos.html` |
 | `/auth` | Login VPS |
 
 ## Desenvolvimento local
