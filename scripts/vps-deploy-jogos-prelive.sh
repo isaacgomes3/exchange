@@ -37,6 +37,7 @@ mkdir -p "$ROOT/scripts" "$WEB"
 echo "==> Copiando assets"
 install -m 0644 "$SRC/deploy/vps-supabase/static/admin-jogos-vps.html" "$WEB/admin-jogos-vps.html"
 install -m 0755 "$SRC/scripts/arbishield-prelive-events.mjs" "$ROOT/scripts/arbishield-prelive-events.mjs"
+install -m 0644 "$SRC/deploy/vps-supabase/static/app-stability.js" "$WEB/app-stability.js"
 
 if [[ -f "$SRC/deploy/vps-supabase/nginx-arbishield.app.conf" ]]; then
   if [[ -f /etc/letsencrypt/live/arbishield.app/fullchain.pem ]]; then

@@ -161,6 +161,20 @@
       min-height: 60vh; display: grid; place-items: center;
       color: var(--muted);
     }
+    .gate.gone { display: none !important; }
+    .auth-banner {
+      display: none;
+      margin-bottom: 16px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(245,158,11,0.35);
+      background: rgba(245,158,11,0.08);
+      color: #fcd34d;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .auth-banner.show { display: block; }
+    .auth-banner a { color: var(--lime); font-weight: 800; }
     .modal-backdrop {
       position: fixed; inset: 0; background: rgba(0,0,0,0.75);
       display: none; align-items: center; justify-content: center;
@@ -198,9 +212,14 @@
   </style>
 </head>
 <body>
-  <div class="gate" id="gate">Verificando acesso…</div>
+  <div class="gate" id="gate">Carregando…</div>
 
   <div class="wrap" id="app" hidden>
+    <div class="auth-banner" id="authBanner">
+      Sessão admin não detectada.
+      <a id="loginLink" href="/admin/login?redirect=%2Fadmin%2Fmatches">Fazer login</a>
+      para criar eventos e ver a lista da plataforma.
+    </div>
     <header>
       <div>
         <h1>Gestão de <span>Jogos</span></h1>
@@ -260,10 +279,19 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script>
     (function () {
       var ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzg0NDc5OTk4LCJleHAiOjE5NDIxNTk5OTh9.mxLqs20sCUNn58jWlsD0sznclCOr8rbksjTEAuQee3s";
       var STORAGE_KEY = "sb-arbishield-auth-token";
+      var supa = window.supabase.createClient(location.origin, ANON, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: false,
+          storageKey: STORAGE_KEY,
+        },
+      });
 
       var auth = null;
       var view = "prelive";
@@ -292,20 +320,26 @@
         } catch (e) { return iso; }
       }
 
-      function readSession() {
-        try {
-          var raw = localStorage.getItem(STORAGE_KEY);
-          if (!raw) return null;
-          var parsed = JSON.parse(raw);
-          var session = parsed.currentSession || parsed.session || parsed;
-          var token = session.access_token || parsed.access_token;
-          if (!token) return null;
-          return { access_token: token };
-        } catch (e) { return null; }
+      function withTimeout(promise, ms, label) {
+        return Promise.race([
+          promise,
+          new Promise(function (_, reject) {
+            setTimeout(function () {
+              reject(new Error((label || "Operação") + " demorou demais"));
+            }, ms);
+          }),
+        ]);
       }
 
-      function goLogin() {
-        location.replace("/admin/login?redirect=" + encodeURIComponent("/admin/matches"));
+      function showAppShell() {
+        document.body.dataset.vpsPage = "jogos";
+        gate.classList.add("gone");
+        gate.hidden = true;
+        app.hidden = false;
+      }
+
+      function showAuthBanner(show) {
+        $("authBanner").classList.toggle("show", !!show);
       }
 
       async function rest(path, token) {
@@ -330,18 +364,22 @@
         });
       }
 
-      async function ensureAdmin() {
-        var session = readSession();
-        if (!session) { goLogin(); return null; }
-        var userRes = await fetch("/auth/v1/user", {
-          headers: { apikey: ANON, Authorization: "Bearer " + session.access_token },
-          cache: "no-store",
-        });
-        if (!userRes.ok) { goLogin(); return null; }
-        var user = await userRes.json();
-        var ok = await isAdmin(session.access_token, user.id);
-        if (!ok) { goLogin(); return null; }
-        return { token: session.access_token, user: user };
+      async function resolveAuth() {
+        try {
+          var refreshed = await withTimeout(supa.auth.refreshSession(), 8000, "Sessão");
+          var session = refreshed.data && refreshed.data.session;
+          if (!session) {
+            var current = await withTimeout(supa.auth.getSession(), 5000, "Sessão");
+            session = current.data && current.data.session;
+          }
+          if (!session || !session.user) return null;
+          var ok = await withTimeout(isAdmin(session.access_token, session.user.id), 8000, "Permissões");
+          if (!ok) return null;
+          return { token: session.access_token, user: session.user };
+        } catch (err) {
+          console.warn("[jogos-vps] auth", err);
+          return null;
+        }
       }
 
       async function apiGet(path) {
@@ -527,6 +565,11 @@
       }
 
       async function confirmCreate(betbraLink) {
+        if (!auth) {
+          alert("Faça login admin para incluir eventos.");
+          showAuthBanner(true);
+          return;
+        }
         var ev = selectedEvent;
         var market = selectedMarket;
         var runner = selectedRunner;
@@ -601,6 +644,13 @@
       }
 
       async function loadPlatformMatches() {
+        if (!auth) {
+          platformMatches = [];
+          $("platformContent").innerHTML =
+            '<div class="empty">Login admin necessário para listar eventos da plataforma.</div>';
+          renderStats();
+          return;
+        }
         $("platformContent").innerHTML = '<div class="loading">Carregando…</div>';
         try {
           platformMatches = await rest(
@@ -626,14 +676,16 @@
       }
 
       async function boot() {
-        auth = await ensureAdmin();
-        if (!auth) return;
-        gate.hidden = true;
-        app.hidden = false;
+        showAppShell();
 
         $("btnRefresh").addEventListener("click", function () {
           loadPrelive();
           loadPlatformMatches();
+          resolveAuth().then(function (next) {
+            auth = next;
+            showAuthBanner(!auth);
+            if (auth) loadPlatformMatches();
+          });
         });
         $("search").addEventListener("input", function (e) {
           searchTerm = e.target.value.trim();
@@ -652,11 +704,32 @@
           if (e.target === $("createModal")) $("createModal").classList.remove("show");
         });
 
-        await Promise.all([loadPrelive(), loadPlatformMatches()]);
+        await loadPrelive();
+        auth = await resolveAuth();
+        showAuthBanner(!auth);
+        await loadPlatformMatches();
       }
 
       boot().catch(function (err) {
-        gate.textContent = err.message || "Erro ao iniciar";
+        showAppShell();
+        $("preliveContent").innerHTML = '<div class="error">' + (err.message || "Erro ao iniciar") + "</div>";
+      });
+
+      window.addEventListener("pageshow", function (ev) {
+        if (!ev.persisted) return;
+        resolveAuth().then(function (next) {
+          auth = next;
+          showAuthBanner(!auth);
+          loadPlatformMatches();
+        });
+      });
+
+      supa.auth.onAuthStateChange(function () {
+        resolveAuth().then(function (next) {
+          auth = next;
+          showAuthBanner(!auth);
+          if (auth) loadPlatformMatches();
+        });
       });
     })();
   </script>
