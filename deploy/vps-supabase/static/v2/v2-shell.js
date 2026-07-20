@@ -289,7 +289,7 @@
           '<a class="v2-bal-chip v2-bal-provedor" href="/app-partners.html"><span class="l">Provedor</span><span class="v" id="v2BalProvedor">—</span></a>' +
           "</div>" +
           '<div class="v2-app-header-actions">' +
-          '<a class="v2-deposit-btn" href="/app-carteira.html"><span aria-hidden="true">+</span> Depósito</a>' +
+          '<a class="v2-deposit-btn" href="#deposito" data-open-deposit="1"><span aria-hidden="true">+</span> Depósito</a>' +
           '<a class="v2-icon-btn" href="/app-suporte.html" aria-label="Notificações" title="Notificações">' +
           '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9a6 6 0 1 1 12 0c0 3.5 1.5 5 2 6H4c.5-1 2-2.5 2-6zM10 19a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
           "</a>" +
@@ -398,6 +398,14 @@
       fav.href = "/brand/favicon-192.png";
       fav.setAttribute("data-v2-favicon", "1");
       document.head.appendChild(fav);
+    }
+
+    if (shell === "app" && !document.querySelector("script[data-v2-deposit]")) {
+      var dep = document.createElement("script");
+      dep.src = "/v2-deposit.js";
+      dep.defer = true;
+      dep.setAttribute("data-v2-deposit", "1");
+      document.head.appendChild(dep);
     }
 
     var backdrop = document.querySelector(".v2-sidebar-backdrop");
