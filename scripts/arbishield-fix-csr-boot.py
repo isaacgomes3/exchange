@@ -138,6 +138,8 @@ def main() -> None:
     late = ""
     if (ASSETS / "app-stability.js").exists():
         early = '<script src="/assets/app-stability.js"></script>'
+    if (ASSETS / "admin-modal-fix.js").exists():
+        early += '<script src="/assets/admin-modal-fix.js"></script>'
     if (ASSETS / "auth-boot-fix.js").exists():
         early += '<script src="/assets/auth-boot-fix.js"></script>'
     if (ASSETS / "desafio-sugestoes-inject.js").exists():

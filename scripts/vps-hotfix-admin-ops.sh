@@ -22,9 +22,32 @@ mkdir -p "$SCRIPTS_DIR" "$WEB/assets"
 
 download() { curl -fsSL "$RAW/$1" -o "$2"; }
 
-log "1/4 — inject desafios (para de travar Lançar Desafio)"
+log "1/4 — anti-freeze modais + inject passivo"
+download "deploy/vps-supabase/static/app-stability.js" "$WEB/assets/app-stability.js"
+download "deploy/vps-supabase/static/admin-modal-fix.js" "$WEB/assets/admin-modal-fix.js"
 download "deploy/vps-supabase/static/desafio-sugestoes-inject.js" "$WEB/assets/desafio-sugestoes-inject.js"
-chmod 0644 "$WEB/assets/desafio-sugestoes-inject.js"
+chmod 0644 "$WEB/assets/app-stability.js" "$WEB/assets/admin-modal-fix.js" "$WEB/assets/desafio-sugestoes-inject.js"
+
+# Garante admin-modal-fix no index.html sem rodar CSR boot completo
+INDEX="$WEB/index.html"
+if [[ -f "$INDEX" ]] && ! grep -q 'admin-modal-fix.js' "$INDEX"; then
+  python3 <<PY
+from pathlib import Path
+p = Path("$INDEX")
+html = p.read_text(encoding="utf-8", errors="replace")
+tag = '<script src="/assets/admin-modal-fix.js"></script>'
+if "app-stability.js" in html:
+    html = html.replace(
+        '<script src="/assets/app-stability.js"></script>',
+        '<script src="/assets/app-stability.js"></script>\\n    ' + tag,
+        1,
+    )
+else:
+    html = html.replace("<body", tag + "\\n  <body", 1)
+p.write_text(html, encoding="utf-8")
+print("index.html: admin-modal-fix.js injetado")
+PY
+fi
 
 log "2/4 — página Gestão de Jogos (BetBra → mercados → lançar)"
 download "deploy/vps-supabase/static/admin-jogos-vps.html" "$WEB/admin-jogos-vps.html"

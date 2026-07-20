@@ -35,11 +35,23 @@
     if (document.querySelector('style[data-arbishield="stability"]')) return;
     var style = document.createElement("style");
     style.setAttribute("data-arbishield", "stability");
+    var adminModal =
+      "html." + MARK + " [data-radix-dialog-overlay]," +
+      "html." + MARK + " [data-radix-sheet-overlay]," +
+      "html." + MARK + " [data-vaul-drawer-wrapper]," +
+      "html." + MARK + " [role=\"dialog\"],";
     style.textContent =
       "html." + MARK + " [class*=\"blur-\"]," +
-      "html." + MARK + " [style*=\"blur(\"]{" +
+      "html." + MARK + " [style*=\"blur(\"]," +
+      adminModal +
+      "html." + MARK + " [data-state=\"open\"][class*=\"overlay\"]{" +
       "filter:none!important;backdrop-filter:none!important;" +
-      "-webkit-backdrop-filter:none!important;will-change:auto!important;}";
+      "-webkit-backdrop-filter:none!important;will-change:auto!important;}" +
+      "html." + MARK + " [data-radix-dialog-overlay]," +
+      "html." + MARK + " [data-radix-sheet-overlay]," +
+      "html." + MARK + " [data-vaul-drawer-wrapper]," +
+      "html." + MARK + " [role=\"dialog\"] *{" +
+      "animation:none!important;transition:none!important;}";
     (document.head || document.documentElement).appendChild(style);
   }
 
