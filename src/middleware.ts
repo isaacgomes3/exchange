@@ -27,8 +27,11 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  // Refresh session for ArbiShield routes
-  if (request.nextUrl.pathname.startsWith("/arbishield")) {
+  // Refresh session for ArbiShield + v2 routes
+  if (
+    request.nextUrl.pathname.startsWith("/arbishield") ||
+    request.nextUrl.pathname.startsWith("/v2")
+  ) {
     await supabase.auth.getUser();
   }
 
@@ -36,5 +39,10 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/arbishield/:path*", "/api/arbishield/:path*"],
+  matcher: [
+    "/arbishield/:path*",
+    "/api/arbishield/:path*",
+    "/v2",
+    "/v2/:path*",
+  ],
 };

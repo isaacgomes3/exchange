@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { V2AdminNav } from "@/components/v2/V2AdminNav";
 
 type Stats = {
   profiles: number | null;
@@ -91,6 +92,7 @@ export default function V2AdminPage() {
   if (loading) {
     return (
       <div className="v2-shell">
+        <V2AdminNav />
         <p className="v2-meta">Validando permissão…</p>
       </div>
     );
@@ -112,11 +114,12 @@ export default function V2AdminPage() {
 
   return (
     <div className="v2-shell">
+      <V2AdminNav />
       <h1>
         Admin <span>v2</span>
       </h1>
       <p className="v2-meta">
-        Hub limpo · sem Realtime flood · mesmo Postgres
+        Hub limpo · mesmo Postgres · sem Realtime flood do SPA
       </p>
       {error ? (
         <div className="v2-err show" style={{ display: "block" }}>
@@ -138,10 +141,10 @@ export default function V2AdminPage() {
         </div>
       </div>
       <div className="v2-actions" style={{ marginTop: 28 }}>
-        <Link href="/admin/users" className="v2-btn v2-btn-ghost">
-          Usuários (SPA legado)
+        <Link href="/v2/admin/users" className="v2-btn v2-btn-primary">
+          Usuários
         </Link>
-        <Link href="/admin/matches" className="v2-btn v2-btn-primary">
+        <Link href="/v2/admin/jogos" className="v2-btn v2-btn-ghost">
           Jogos BetBra
         </Link>
       </div>

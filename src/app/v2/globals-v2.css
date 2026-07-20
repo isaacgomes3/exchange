@@ -253,3 +253,101 @@
   font-weight: 800;
   letter-spacing: -0.03em;
 }
+
+.v2-admin-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 22px;
+}
+
+.v2-admin-nav a {
+  text-decoration: none;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--v2-muted);
+  border: 1px solid var(--v2-border);
+  border-radius: 999px;
+  padding: 8px 12px;
+}
+
+.v2-admin-nav a.is-active,
+.v2-admin-nav a:hover {
+  color: #04140f;
+  background: var(--v2-lime);
+  border-color: transparent;
+}
+
+.v2-search {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.v2-search input {
+  flex: 1;
+  border-radius: 14px;
+  border: 1px solid var(--v2-border);
+  background: #0a0a0a;
+  color: var(--v2-text);
+  padding: 14px 16px;
+  font: inherit;
+}
+
+.v2-search input:focus {
+  outline: 2px solid rgba(198, 255, 0, 0.4);
+  border-color: transparent;
+}
+
+.v2-search span {
+  color: var(--v2-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.v2-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--v2-border);
+  border-radius: 16px;
+}
+
+.v2-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.v2-table th,
+.v2-table td {
+  text-align: left;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--v2-border);
+  vertical-align: top;
+}
+
+.v2-table th {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--v2-muted);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.v2-table strong {
+  display: block;
+}
+
+.v2-table small {
+  color: var(--v2-muted);
+  font-size: 11px;
+}
+
+.v2-list {
+  display: grid;
+  gap: 12px;
+}

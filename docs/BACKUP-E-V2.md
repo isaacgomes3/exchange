@@ -20,16 +20,21 @@ Detalhes: [`backup/README.md`](../backup/README.md)
 | `/v2` | Landing |
 | `/v2/auth` | Login (Auth do mesmo Supabase) |
 | `/v2/app` | Área do membro (lê `profiles`) |
-| `/v2/admin` | Hub admin leve (contagens) |
-
-Configure `.env.local` com as mesmas chaves de `.env.example` apontando para `https://arbishield.app`.
+| `/v2/admin` | Hub admin leve |
+| `/v2/admin/users` | Lista/busca usuários (debounce, sem Realtime) |
+| `/v2/admin/jogos` | Pré-live BetBra |
 
 ```bash
 npm install
+cp .env.example .env.local
 npm run dev
-# abra http://localhost:3000/v2
+# http://localhost:3000/v2
 ```
 
-## Cutover (depois)
+## Cutover parcial na VPS
 
-Quando o v2 cobrir as funções críticas, o nginx passa a priorizar Next em `/` e `/app`, mantendo o SPA só como fallback.
+```bash
+bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-enable-v2.sh?v=1")
+```
+
+O SPA legado continua em `/app` e `/admin` até a migração completa.

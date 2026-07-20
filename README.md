@@ -1,49 +1,54 @@
 # ArbiShield — arbishield.app
 
-Admin estável: **mesmo visual (HTML) + mesmo banco (Supabase)**. Rotas nginx e workers consolidados.
+## Sistema novo (v2) + backup
 
-## Estabilizar a VPS (um comando)
+Branch: `cursor/arbishield-v2-backup-723d`
 
-Na VPS como **root**:
+### 1) Backup na VPS
+
+```bash
+bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-backup-full.sh?v=1")
+```
+
+Schema + espelho visual → GitHub. Dados → só `/opt/arbishield/backups`.
+
+### 2) Ativar `/v2` (Next :3000)
+
+```bash
+bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-enable-v2.sh?v=1")
+```
+
+| Rota | Função |
+|------|--------|
+| `/v2` | Landing |
+| `/v2/auth` | Login |
+| `/v2/app` | Membro |
+| `/v2/admin` | Hub admin |
+| `/v2/admin/users` | Usuários (leve) |
+| `/v2/admin/jogos` | Pré-live BetBra |
+
+Docs: [`docs/BACKUP-E-V2.md`](docs/BACKUP-E-V2.md) · [`backup/README.md`](backup/README.md)
+
+---
+
+## Estabilizar legado (SPA)
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/consolidate-arbishield-app-723d/scripts/vps-stabilize-arbishield.sh)
 ```
 
-O script:
-- atualiza admin HTML e workers (`:3098`, `:3099`)
-- **restaura `/app`** (SPA `index.html` + assets)
-- reativa `/_serverFn` (:3101) se o shim existir na VPS
-- sobe Next para painel geral (use `SKIP_NEXT=1` para pular)
-- verifica Supabase e roda health checks
-
-## Rotas
-
 | URL | Função |
 |-----|--------|
-| **`/app`** | App usuario (SPA) |
-| **`/admin`** | Hub admin |
-| **`/arbishield/admin`** | Painel geral |
-| `/admin/matches` | Gestão de Jogos |
-| `/admin/desafios` | Gestão de Desafios |
-| `/auth` | Login |
-
-Doc: [`deploy/vps-supabase/ADMIN-STABLE.md`](deploy/vps-supabase/ADMIN-STABLE.md)
-
-## Restaurar versão inicial (SPA /app)
-
-Se páginas sumiram após estabilização:
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/consolidate-arbishield-app-723d/scripts/vps-restore-initial-frontend.sh)
-```
-
-Detalhes: [`deploy/vps-supabase/RESTORE-VPS.md`](deploy/vps-supabase/RESTORE-VPS.md)
+| `/app` | App usuario (SPA) |
+| `/admin` | Hub admin SPA |
+| `/admin/matches` | Jogos VPS |
+| `/auth` | Login VPS |
 
 ## Desenvolvimento local
 
 ```bash
 npm install && cp .env.example .env.local && npm run dev
+# http://localhost:3000/v2
 ```
 
 ## Supabase VPS
