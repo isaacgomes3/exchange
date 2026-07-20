@@ -25,10 +25,11 @@ function base(overrides: Partial<JogoDesafio> = {}): JogoDesafio {
 }
 
 describe("analisarHeuristica", () => {
-  it("aprova jogo dentro dos critérios do Desafio", () => {
+  it("aprova jogo dentro da janela de lançamento (≤30 min)", () => {
     const a = analisarHeuristica(base());
     assert.equal(a.encaixaCriterios.faixaOdd, true);
-    assert.equal(a.encaixaCriterios.janelaPreLive, true);
+    assert.equal(a.podeLancar, true);
+    assert.equal(a.minutosParaLiberar, 0);
     assert.ok(a.confianca >= 70);
     assert.equal(a.veredito, "entrar");
   });
@@ -37,5 +38,14 @@ describe("analisarHeuristica", () => {
     const a = analisarHeuristica(base({ odd: 2.1 }));
     assert.equal(a.encaixaCriterios.faixaOdd, false);
     assert.notEqual(a.veredito, "entrar");
+  });
+
+  it("mantém na lista 24h mas sem lançar se >30 min", () => {
+    const a = analisarHeuristica(
+      base({ inicioEm: new Date(Date.now() + 3 * 60 * 60_000).toISOString() })
+    );
+    assert.equal(a.podeLancar, false);
+    assert.ok(a.minutosParaLiberar > 0);
+    assert.equal(a.veredito, "observar");
   });
 });

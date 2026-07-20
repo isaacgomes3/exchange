@@ -101,6 +101,27 @@
   animation: rise 420ms ease both;
 }
 
+.ready {
+  border-bottom-color: rgba(184, 255, 0, 0.35);
+}
+
+.launchReady,
+.launchWait {
+  margin: 0.4rem 0 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.launchReady {
+  color: var(--accent);
+}
+
+.launchWait {
+  color: var(--observar);
+}
+
 @keyframes rise {
   from {
     opacity: 0;

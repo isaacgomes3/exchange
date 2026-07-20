@@ -16,17 +16,21 @@ function mediaEsperadaGols(jogo: JogoDesafio): number {
 
 /**
  * Analisador local — usado sem API key e como fallback.
- * Avalia encaixe nos critérios do Desafio + perfil de gols.
+ * Lista: próximas 24h. Lançamento: só nos últimos 30 min.
  */
 export function analisarHeuristica(jogo: JogoDesafio): AnaliseDesafio {
   const minutos = minutosAteKickoff(jogo.inicioEm);
+  const maxLancamento = DESAFIO_CRITERIOS.janelaLancamentoMin;
   const faixaOdd =
     jogo.odd >= DESAFIO_CRITERIOS.oddMin && jogo.odd <= DESAFIO_CRITERIOS.oddMax;
-  const janelaPreLive = minutos > 0 && minutos <= 30;
+  const podeLancar = minutos > 0 && minutos <= maxLancamento;
+  const minutosParaLiberar = podeLancar
+    ? 0
+    : Math.max(0, Math.round(minutos - maxLancamento));
   const mercadoOk = jogo.mercado === DESAFIO_CRITERIOS.mercado;
   const esperados = mediaEsperadaGols(jogo);
 
-  let score = 40;
+  let score = 45;
   const riscos: string[] = [];
 
   if (mercadoOk) score += 10;
@@ -36,14 +40,16 @@ export function analisarHeuristica(jogo: JogoDesafio): AnaliseDesafio {
     riscos.push(`Odd ${jogo.odd.toFixed(2)} fora da faixa 1.60–1.80`);
   }
 
-  if (janelaPreLive) score += 15;
-  else {
-    score -= 10;
+  if (podeLancar) score += 15;
+  else if (minutos > 0) {
+    // Ainda na lista 24h — não descartar; só ainda não libera lançamento
+    score += 4;
     riscos.push(
-      minutos <= 0
-        ? "Jogo já iniciado ou kickoff inválido"
-        : `Fora da janela pré-live 30 min (~${Math.round(minutos)} min)`
+      `Na lista 24h; lançamento libera em ~${minutosParaLiberar} min (janela ≤${maxLancamento} min)`
     );
+  } else {
+    score -= 20;
+    riscos.push("Jogo já iniciado ou kickoff inválido");
   }
 
   if (jogo.selecao === "Over 2.5") {
@@ -69,15 +75,17 @@ export function analisarHeuristica(jogo: JogoDesafio): AnaliseDesafio {
 
   const confianca = Math.max(0, Math.min(100, Math.round(score)));
   let veredito: AnaliseDesafio["veredito"] = "observar";
-  if (confianca >= 70 && faixaOdd && janelaPreLive) veredito = "entrar";
-  else if (confianca < 50) veredito = "descartar";
+  if (confianca >= 70 && faixaOdd && podeLancar) veredito = "entrar";
+  else if (confianca < 45 || minutos <= 0) veredito = "descartar";
 
   const tese =
     veredito === "entrar"
-      ? `${jogo.casa} x ${jogo.fora}: ${jogo.selecao} encaixa no Desafio (odd ${jogo.odd.toFixed(2)}, ~${Math.round(minutos)} min). Expectativa ~${esperados.toFixed(1)} gols.`
+      ? `${jogo.casa} x ${jogo.fora}: liberado para lançar (${jogo.selecao} @ ${jogo.odd.toFixed(2)}, ~${Math.round(minutos)} min).`
       : veredito === "descartar"
-        ? `${jogo.casa} x ${jogo.fora}: fora do perfil do Desafio — ${riscos[0] ?? "critérios fracos"}.`
-        : `${jogo.casa} x ${jogo.fora}: perfil misto para ${jogo.selecao}; monitorar movimento de odd na janela pré-live.`;
+        ? `${jogo.casa} x ${jogo.fora}: fora do perfil — ${riscos[0] ?? "critérios fracos"}.`
+        : podeLancar
+          ? `${jogo.casa} x ${jogo.fora}: na janela de lançamento; perfil misto para ${jogo.selecao}.`
+          : `${jogo.casa} x ${jogo.fora}: na lista 24h; só libera lançamento nos últimos ${maxLancamento} min.`;
 
   if (riscos.length === 0) riscos.push("Movimento de linha nos últimos minutos");
 
@@ -91,8 +99,10 @@ export function analisarHeuristica(jogo: JogoDesafio): AnaliseDesafio {
     encaixaCriterios: {
       mercado: mercadoOk,
       faixaOdd,
-      janelaPreLive,
+      janelaPreLive: podeLancar,
     },
+    podeLancar,
+    minutosParaLiberar,
     fonte: "heuristica",
   };
 }

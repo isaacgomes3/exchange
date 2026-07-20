@@ -11,7 +11,7 @@ Critérios fixos do Desafio:
 - Janela de entrada: ${DESAFIO_CRITERIOS.janela}
 - Origem: ${DESAFIO_CRITERIOS.origem}
 
-Contexto: a lista cobre jogos das próximas 24h. Só marque "entrar" se também estiver na janela pré-live de 30 min e na faixa de odd. Jogos mais distantes devem ser "observar" (promissores) ou "descartar".
+Contexto: a lista cobre jogos das próximas 24h. Só marque "entrar" se estiver nos últimos 30 min antes do kickoff (pode lançar) e na faixa de odd. Jogos mais distantes na lista 24h devem ser "observar" (ainda não liberados para lançar).
 
 Analise cada jogo e devolva APENAS um JSON array (sem markdown) com objetos neste formato:
 {
@@ -22,6 +22,8 @@ Analise cada jogo e devolva APENAS um JSON array (sem markdown) com objetos nest
   "tese": string curta em português,
   "riscos": string[],
   "encaixaCriterios": { "mercado": boolean, "faixaOdd": boolean, "janelaPreLive": boolean },
+  "podeLancar": boolean,
+  "minutosParaLiberar": number,
   "fonte": "openai"
 }
 
@@ -75,7 +77,20 @@ export async function analisarComOpenAI(
   const out: AnaliseDesafio[] = [];
 
   for (const item of list) {
-    const withFonte = { ...(item as object), fonte: "openai" };
+    const withFonte = { ...(item as object), fonte: "openai" } as Record<string, unknown>;
+    const jogoId = String(withFonte.jogoId ?? "");
+    const jogo = byId.get(jogoId);
+    if (jogo) {
+      const mins = (new Date(jogo.inicioEm).getTime() - Date.now()) / 60_000;
+      const maxL = DESAFIO_CRITERIOS.janelaLancamentoMin;
+      const podeLancar = mins > 0 && mins <= maxL;
+      withFonte.podeLancar = podeLancar;
+      withFonte.minutosParaLiberar = podeLancar ? 0 : Math.max(0, Math.round(mins - maxL));
+      withFonte.encaixaCriterios = {
+        ...((withFonte.encaixaCriterios as object) || {}),
+        janelaPreLive: podeLancar,
+      };
+    }
     const result = analiseSchema.safeParse(withFonte);
     if (result.success && byId.has(result.data.jogoId)) {
       out.push(result.data);

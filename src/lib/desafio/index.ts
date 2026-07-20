@@ -29,6 +29,6 @@ export async function puxarEAnalisarDesafio(): Promise<DesafioPullResult> {
     jogos,
     analises,
     analisadoEm: new Date().toISOString(),
-    janelaBuscaHoras: 24,
+    janelaBuscaHoras: DESAFIO_CRITERIOS.janelaListaHoras,
   };
 }

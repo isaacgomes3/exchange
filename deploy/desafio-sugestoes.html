@@ -55,6 +55,9 @@
       background: var(--lime); color: #000;
       box-shadow: 0 0 20px rgba(201,242,35,0.2);
     }
+    .btn-primary:disabled {
+      opacity: 0.35; cursor: not-allowed; box-shadow: none;
+    }
     .btn-ghost {
       background: transparent; color: var(--text);
       border: 1px solid var(--border);
@@ -84,6 +87,7 @@
       border: 1px solid var(--border); border-radius: 16px;
       background: var(--panel); padding: 18px 18px 16px;
     }
+    .card.ready { border-color: rgba(201,242,35,0.45); }
     .card-top {
       display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
       margin-bottom: 12px;
@@ -93,6 +97,13 @@
       color: var(--muted); font-size: 12px; font-weight: 600;
       letter-spacing: 0.06em; text-transform: uppercase;
     }
+    .badge {
+      display: inline-block; margin-top: 6px; padding: 3px 8px;
+      border-radius: 6px; font-size: 10px; font-weight: 800;
+      letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .badge-ready { background: rgba(201,242,35,0.15); color: var(--lime); }
+    .badge-wait { background: rgba(245,158,11,0.12); color: var(--amber); }
     .grid {
       display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
     }
@@ -116,7 +127,8 @@
     .rationale {
       margin-top: 12px; font-size: 13px; color: var(--muted); line-height: 1.45;
     }
-    .card-actions { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .card-actions { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .hint { font-size: 12px; color: var(--amber); }
     .empty, .error {
       border: 1px dashed var(--border); border-radius: 16px;
       padding: 28px; text-align: center; color: var(--muted);
@@ -130,7 +142,7 @@
     <header>
       <div>
         <h1>Sugestão de <span>Desafio</span></h1>
-        <p class="sub">Over/Under 2.5 · BetBra 1.60–1.80 · pré-live 30 min · surebet ArbiShield</p>
+        <p class="sub">Lista 24h · lançamento só nos últimos 30 min · Over/Under 2.5 · BetBra 1.60–1.80</p>
       </div>
       <div class="actions">
         <a class="btn btn-ghost" href="/admin/desafios">← Gestão</a>
@@ -148,8 +160,11 @@
       <label>Odd BetBra máx
         <input id="casaOddMax" type="number" step="0.01" value="1.80" />
       </label>
-      <label>Janela (min) · 1440 = 24h
-        <input id="preLiveMinutes" type="number" step="1" min="1" max="1440" value="1440" />
+      <label>Lista (min) · 1440 = 24h
+        <input id="listaMinutes" type="number" step="1" min="30" max="1440" value="1440" />
+      </label>
+      <label>Lançamento máx (min antes)
+        <input id="lancamentoMinutes" type="number" step="1" min="1" max="120" value="30" />
       </label>
       <label>Liquidez (R$)
         <input id="liquidityReais" type="number" step="1" value="2000" />
@@ -166,7 +181,7 @@
       (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
     const fmtKick = (iso, mins) => {
       const d = new Date(iso);
-      return `${d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · ${mins} min`;
+      return `${d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · em ${mins} min`;
     };
 
     function paramsFromForm() {
@@ -174,13 +189,13 @@
         profitMarginPct: Number($("profitMarginPct").value),
         casaOddMin: Number($("casaOddMin").value),
         casaOddMax: Number($("casaOddMax").value),
-        preLiveMinutes: Number($("preLiveMinutes").value),
+        listaMinutes: Number($("listaMinutes").value) || 1440,
+        lancamentoMinutes: Number($("lancamentoMinutes").value) || 30,
         liquidityCents: Math.round(Number($("liquidityReais").value) * 100),
-        fallbackToday: true,
       };
     }
 
-    function draftPayload(s) {
+    function draftPayload(s, releaseMinutes) {
       return {
         number: 1,
         title: `SUGESTÃO · ${s.homeTeam} x ${s.awayTeam}`,
@@ -206,7 +221,7 @@
           display_liquidity_cents: s.liquidityCents,
           external_bet_link: s.betbraLink,
           starts_at: s.startsAt,
-          release_minutes_before: 30,
+          release_minutes_before: releaseMinutes,
           status: "pending",
           casa_commission_pct: 4.5,
           arbi_commission_pct: 0,
@@ -214,40 +229,56 @@
       };
     }
 
-    function render(data) {
+    function render(data, lancamentoMinutes) {
       const list = $("list");
       if (!data.ok) {
         $("meta").textContent = "";
         list.innerHTML = `<div class="error">${data.error || "Falha ao gerar sugestões"}</div>`;
         return;
       }
-      const mins = Number(data.params?.preLiveMinutes || 0);
-      const mode =
-        mins >= 1440
-          ? "janela: próximas 24h"
-          : data.window?.mode === "prelive_30m"
-            ? `janela pré-live ${mins} min`
-            : "fallback: restante do dia (UTC)";
-      $("meta").innerHTML =
-        `<strong>${data.suggestions.length}</strong> sugestão(ões) · ` +
-        `${data.scannedEvents} jogos escaneados · ${mode} · ` +
-        `margem alvo ${data.params.profitMarginPct}%`;
 
-      if (!data.suggestions.length) {
+      const sorted = [...(data.suggestions || [])].sort((a, b) => {
+        const aReady = a.minutesToKickoff <= lancamentoMinutes ? 0 : 1;
+        const bReady = b.minutesToKickoff <= lancamentoMinutes ? 0 : 1;
+        if (aReady !== bReady) return aReady - bReady;
+        return a.minutesToKickoff - b.minutesToKickoff;
+      });
+
+      const readyCount = sorted.filter((s) => s.minutesToKickoff <= lancamentoMinutes).length;
+
+      $("meta").innerHTML =
+        `<strong>${sorted.length}</strong> na lista (próximas 24h) · ` +
+        `<strong>${readyCount}</strong> liberado(s) para lançar (≤${lancamentoMinutes} min) · ` +
+        `${data.scannedEvents} jogos escaneados · margem ${data.params.profitMarginPct}%`;
+
+      if (!sorted.length) {
         list.innerHTML =
           `<div class="empty">Nenhuma linha Over/Under 2.5 entre ` +
-          `${data.params.casaOddMin} e ${data.params.casaOddMax} na janela atual. ` +
-          `Ajuste lucro, odds ou a janela (use 1440 para 24h).</div>`;
+          `${data.params.casaOddMin} e ${data.params.casaOddMax} nas próximas 24h. ` +
+          `Ajuste lucro ou faixa de odds.</div>`;
         return;
       }
 
-      list.innerHTML = data.suggestions
-        .map((s, i) => {
-          const payload = encodeURIComponent(JSON.stringify(draftPayload(s)));
+      list.innerHTML = sorted
+        .map((s) => {
+          const podeLancar = s.minutesToKickoff > 0 && s.minutesToKickoff <= lancamentoMinutes;
+          const liberaEm = Math.max(0, s.minutesToKickoff - lancamentoMinutes);
+          const payload = encodeURIComponent(JSON.stringify(draftPayload(s, lancamentoMinutes)));
+          const badge = podeLancar
+            ? `<span class="badge badge-ready">Pronto para lançar</span>`
+            : `<span class="badge badge-wait">Lista 24h · libera em ${liberaEm} min</span>`;
+          const action = podeLancar
+            ? `<button class="btn btn-primary" type="button" data-apply="${payload}">Usar no lançamento</button>`
+            : `<button class="btn btn-primary" type="button" disabled>Lançamento só nos últimos ${lancamentoMinutes} min</button>
+               <span class="hint">Aparece para lançar quando faltar ≤${lancamentoMinutes} min</span>`;
+
           return `
-          <article class="card">
+          <article class="card ${podeLancar ? "ready" : ""}">
             <div class="card-top">
-              <div class="match">${s.homeTeam} <span style="color:var(--muted)">x</span> ${s.awayTeam}</div>
+              <div>
+                <div class="match">${s.homeTeam} <span style="color:var(--muted)">x</span> ${s.awayTeam}</div>
+                ${badge}
+              </div>
               <div class="kick">${fmtKick(s.startsAt, s.minutesToKickoff)}</div>
             </div>
             <div class="grid">
@@ -271,7 +302,7 @@
             <p class="rationale">${s.rationale}</p>
             <div class="card-actions">
               <a class="btn btn-ghost" href="${s.betbraLink}" target="_blank" rel="noopener">Abrir BetBra</a>
-              <button class="btn btn-primary" type="button" data-apply="${payload}">Usar no lançamento</button>
+              ${action}
             </div>
           </article>`;
         })
@@ -293,14 +324,15 @@
     }
 
     async function load() {
-      $("list").innerHTML = `<div class="loading">Consultando BetBra e calculando surebets…</div>`;
+      $("list").innerHTML = `<div class="loading">Consultando próximas 24h e calculando surebets…</div>`;
       $("meta").textContent = "Buscando…";
       const p = paramsFromForm();
+      // API: preLiveMinutes = janela de LISTA (24h). Lançamento é regra só no front.
       const qs = new URLSearchParams({
         profitMarginPct: String(p.profitMarginPct),
         casaOddMin: String(p.casaOddMin),
         casaOddMax: String(p.casaOddMax),
-        preLiveMinutes: String(p.preLiveMinutes),
+        preLiveMinutes: String(p.listaMinutes),
         liquidityCents: String(p.liquidityCents),
         fallbackToday: "1",
       });
@@ -309,14 +341,14 @@
           cache: "no-store",
         });
         const data = await res.json();
-        render(data);
+        render(data, p.lancamentoMinutes);
       } catch (err) {
-        render({ ok: false, error: String(err) });
+        render({ ok: false, error: String(err) }, p.lancamentoMinutes);
       }
     }
 
     $("btnRefresh").addEventListener("click", load);
-    ["profitMarginPct", "casaOddMin", "casaOddMax", "preLiveMinutes", "liquidityReais"].forEach(
+    ["profitMarginPct", "casaOddMin", "casaOddMax", "listaMinutes", "lancamentoMinutes", "liquidityReais"].forEach(
       (id) => $(id).addEventListener("change", load)
     );
     load();

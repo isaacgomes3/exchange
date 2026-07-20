@@ -6,7 +6,11 @@ export const DESAFIO_CRITERIOS = {
   casa: "BetBra",
   oddMin: 1.6,
   oddMax: 1.8,
-  janela: "Pré-live 30 min",
+  /** Lista cobre as próximas N horas */
+  janelaListaHoras: 24,
+  /** Só pode lançar nos últimos N minutos antes do kickoff */
+  janelaLancamentoMin: 30,
+  janela: "Lista 24h · lançamento ≤30 min",
   origem: "Surebet Arbishield",
 } as const;
 
@@ -42,6 +46,9 @@ export const analiseSchema = z.object({
     faixaOdd: z.boolean(),
     janelaPreLive: z.boolean(),
   }),
+  /** true só nos últimos 30 min antes do jogo */
+  podeLancar: z.boolean(),
+  minutosParaLiberar: z.number().nonnegative(),
   fonte: z.enum(["openai", "heuristica"]),
 });
 
