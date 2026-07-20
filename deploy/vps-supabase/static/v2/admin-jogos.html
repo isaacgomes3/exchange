@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta name="arbishield-vps-page" content="jogos" />
-  <title>Gestão de Jogos — ArbiShield</title>
+  <title>Gestão de Jogos — ArbiShield v2</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -210,9 +210,20 @@
     }
     .badge.pub { color: var(--lime); border-color: rgba(201,242,35,0.35); }
     .badge.draft { color: var(--amber); border-color: rgba(245,158,11,0.35); }
+    .v2-nav {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px;
+    }
+    .v2-nav a {
+      text-decoration: none; font-size: 10px; font-weight: 800; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--muted); border: 1px solid var(--border);
+      border-radius: 999px; padding: 8px 12px;
+    }
+    .v2-nav a.active, .v2-nav a:hover {
+      color: #000; background: var(--lime); border-color: transparent;
+    }
   </style>
 </head>
-<body data-vps-page="jogos">
+<body data-vps-page="jogos" data-arbishield-v2="1">
   <div class="gate" id="gate">Carregando…</div>
 
   <div class="wrap" id="app" hidden>
@@ -221,10 +232,16 @@
       <a id="loginLink" href="/v2/auth.html">Fazer login</a>
       para criar eventos e ver a lista da plataforma.
     </div>
+    <nav class="v2-nav" aria-label="Admin v2">
+      <a href="/v2/admin.html">Hub</a>
+      <a href="/v2/admin-users.html">Usuários</a>
+      <a class="active" href="/v2/admin-jogos.html">Jogos</a>
+      <a href="/v2/app.html">App</a>
+    </nav>
     <header>
       <div>
         <h1>Gestão de <span>Jogos</span></h1>
-        <p class="sub">Cockpit de Eventos e Risco · Catálogo Pré-Live BetBra</p>
+        <p class="sub">Cockpit de Eventos e Risco · Catálogo Pré-Live BetBra · v2</p>
       </div>
       <div class="actions">
         <a class="btn btn-ghost" href="/v2/admin.html">← Hub v2</a>

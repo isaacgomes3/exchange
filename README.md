@@ -23,9 +23,9 @@ bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor
 | `/v2` | Landing |
 | `/v2/auth` | Login |
 | `/v2/app` | Membro |
-| `/v2/admin` | Hub admin |
-| `/v2/admin/users` | Usuários (leve) |
-| `/v2/admin/jogos` | Pré-live BetBra |
+| `/v2/admin.html` | Hub admin |
+| `/v2/admin-users.html` | Usuários (leve) |
+| `/v2/admin-jogos.html` | Pré-live BetBra (fica no v2) |
 
 Docs: [`docs/BACKUP-E-V2.md`](docs/BACKUP-E-V2.md) · [`backup/README.md`](backup/README.md)
 
