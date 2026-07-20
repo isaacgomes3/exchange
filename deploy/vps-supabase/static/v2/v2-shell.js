@@ -223,6 +223,16 @@
           "</div>";
         main.appendChild(adminHeader);
       }
+      if (shell === "app") {
+        var appHeader = document.createElement("header");
+        appHeader.className = "v2-app-header";
+        appHeader.id = "v2AppHeader";
+        appHeader.innerHTML =
+          '<button type="button" class="v2-menu-btn" id="v2MenuBtnHeader">Menu</button>' +
+          '<a class="brand" href="/app.html">Arbi<span>Shield</span></a>' +
+          '<div class="v2-app-balance"><small>Saldo</small><strong id="v2AppBalance">—</strong></div>';
+        main.appendChild(appHeader);
+      }
       var page = document.createElement("div");
       page.className = "v2-page";
       children.forEach(function (n) {
@@ -233,6 +243,19 @@
       layout.appendChild(aside);
       layout.appendChild(main);
       body.appendChild(layout);
+      if (shell === "app") {
+        var bottom = document.createElement("nav");
+        bottom.className = "v2-bottom-nav";
+        bottom.id = "v2BottomNav";
+        bottom.setAttribute("aria-label", "Navegação principal");
+        bottom.innerHTML =
+          '<a href="/app.html" data-nav="home"><span class="ico">⌂</span>Início</a>' +
+          '<a href="/app-protecoes.html" data-nav="protecoes"><span class="ico">◉</span>Proteções</a>' +
+          '<a class="is-primary" href="/app-proteger.html" data-nav="proteger"><span class="ico">⚡</span>Proteger</a>' +
+          '<a href="/app-desafio.html" data-nav="desafio"><span class="ico">★</span>Desafio</a>' +
+          '<a href="/app-perfil.html" data-nav="perfil"><span class="ico">◎</span>Perfil</a>';
+        body.appendChild(bottom);
+      }
       body.classList.add("v2-layout-ready");
     }
 
@@ -251,9 +274,7 @@
       renderSections(sections, active) +
       "</div>" +
       '<div class="v2-sidebar-foot">' +
-      (shell === "admin"
-        ? '<a class="v2-nav-link" href="#" id="v2LogoutLink">Sair</a>'
-        : '<a class="v2-nav-link" href="/" >Home</a><a class="v2-nav-link" href="#" id="v2LogoutLink">Sair</a>') +
+      '<a class="v2-nav-link" href="#" id="v2LogoutLink">Sair</a>' +
       "</div>";
 
     if (!document.querySelector('link[data-v2-favicon]')) {
@@ -275,11 +296,22 @@
       body.classList.remove("v2-nav-open");
     }
     backdrop.addEventListener("click", closeNav);
-    var btn = document.getElementById("v2MenuBtn");
-    if (btn) {
-      btn.addEventListener("click", function () {
+    function bindMenu(el) {
+      if (!el) return;
+      el.addEventListener("click", function () {
         body.classList.toggle("v2-nav-open");
       });
+    }
+    bindMenu(document.getElementById("v2MenuBtn"));
+    bindMenu(document.getElementById("v2MenuBtnHeader"));
+
+    if (shell === "app") {
+      var bottomNav = document.getElementById("v2BottomNav");
+      if (bottomNav) {
+        bottomNav.querySelectorAll("a[data-nav]").forEach(function (a) {
+          if (a.getAttribute("data-nav") === active) a.classList.add("is-active");
+        });
+      }
     }
 
     async function doLogout(e) {
@@ -295,6 +327,29 @@
     logoutLinks.forEach(function (el) {
       el.addEventListener("click", doLogout);
     });
+
+    if (shell === "app") {
+      try {
+        if (global.ArbiV2 && global.ArbiV2.client) {
+          var appSupa = global.ArbiV2.client();
+          var appUserRes = await appSupa.auth.getUser();
+          var appUser = appUserRes.data && appUserRes.data.user;
+          if (appUser) {
+            var balRes = await appSupa
+              .from("profiles")
+              .select("balance_cents,full_name")
+              .eq("id", appUser.id)
+              .maybeSingle();
+            var balEl = document.getElementById("v2AppBalance");
+            if (balEl) {
+              balEl.textContent = global.ArbiV2.money(
+                balRes.data && balRes.data.balance_cents
+              );
+            }
+          }
+        }
+      } catch (err) {}
+    }
 
     if (shell === "admin") {
       try {

@@ -4,25 +4,125 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <title>Desafio — ArbiShield v2</title>
+  <title>Desafio ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
-  <script src="/v2-pages.js"></script>
   <script src="/v2-shell.js" defer></script>
 </head>
 <body data-shell="app" data-active="desafio">
   <div class="page-head">
     <div>
-      <h1>Gestão de <span>Desafio</span></h1>
-      <p class="sub">Desafios ArbiShield · layout Jogos · nativo v2 · sem SPA</p>
+      <h1>Desafio <span>ArbiShield</span></h1>
+      <p class="sub">Desafios disponíveis · template legado</p>
     </div>
   </div>
   <div id="err" class="err"></div>
-  <div id="pageBody"><div class="meta">Carregando…</div></div>
+  <div class="app-kpi-row">
+    <div class="app-kpi"><div class="l">Disponíveis</div><div class="v lime" id="kAvail">—</div></div>
+    <div class="app-kpi"><div class="l">Ativos</div><div class="v" id="kActive">—</div></div>
+    <div class="app-kpi"><div class="l">Total</div><div class="v" id="kTotal">—</div></div>
+  </div>
+  <div class="section-label"><span class="dot" style="background:#c6ff00"></span>Desafios disponíveis</div>
+  <div id="list" class="app-desafio-list"><div class="ops-empty">Carregando…</div></div>
+
   <script>
-    ArbiV2Page.mountApp({"id": "desafio", "scopeUser": false, "render": "table", "sources": [{"table": "desafios", "limit": 100, "eq": {}}], "cols": ["id", "title", "status", "created_at"]});
+    (async function () {
+      var money = ArbiV2.money;
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+
+      function showErr(msg) {
+        var el = document.getElementById("err");
+        el.textContent = msg || "";
+        el.classList.toggle("show", !!msg);
+      }
+
+      try {
+        var res = await fetch("/api/arbishield/desafios", {
+          cache: "no-store",
+          headers: { accept: "application/json" },
+        });
+        var data = await res.json().catch(function () { return []; });
+        if (!res.ok) throw new Error((data && data.error) || "Falha ao carregar desafios");
+        var rows = Array.isArray(data) ? data : [];
+        var alive = rows.filter(function (d) { return !d.deleted_at; });
+        var active = alive.filter(function (d) { return d.is_active; });
+        document.getElementById("kAvail").textContent = String(active.length);
+        document.getElementById("kActive").textContent = String(active.length);
+        document.getElementById("kTotal").textContent = String(alive.length);
+
+        var host = document.getElementById("list");
+        if (!alive.length) {
+          host.innerHTML = '<div class="ops-empty">Nenhum desafio disponível no momento</div>';
+          return;
+        }
+        host.innerHTML = alive
+          .slice()
+          .sort(function (a, b) {
+            return Number(!!b.is_active) - Number(!!a.is_active);
+          })
+          .map(function (d) {
+            var steps = (d.desafio_steps || []).length;
+            return (
+              '<article class="app-desafio-card">' +
+              (d.is_active ? '<span class="badge">Ativo</span>' : '<span class="badge" style="color:var(--muted);border-color:var(--border)">Rascunho</span>') +
+              "<h3>" +
+              (d.title || "Desafio") +
+              " #" +
+              (d.number != null ? String(d.number).padStart(3, "0") : "—") +
+              "</h3>" +
+              "<p>" +
+              (d.description || "Complete as etapas e fature o saldo final com lucro.") +
+              "</p>" +
+              '<p style="margin-top:10px">' +
+              steps +
+              " etapa(s) · saldo inicial " +
+              money(d.initial_balance_cents) +
+              "</p>" +
+              "</article>"
+            );
+          })
+          .join("");
+      } catch (ex) {
+        // fallback REST
+        try {
+          var q = await supa
+            .from("desafios")
+            .select("id,title,number,description,is_active,initial_balance_cents,deleted_at")
+            .is("deleted_at", null)
+            .order("updated_at", { ascending: false })
+            .limit(50);
+          if (q.error) throw q.error;
+          var alive = q.data || [];
+          document.getElementById("kAvail").textContent = String(alive.filter(function (d) { return d.is_active; }).length);
+          document.getElementById("kActive").textContent = document.getElementById("kAvail").textContent;
+          document.getElementById("kTotal").textContent = String(alive.length);
+          document.getElementById("list").innerHTML = alive
+            .map(function (d) {
+              return (
+                '<article class="app-desafio-card">' +
+                (d.is_active ? '<span class="badge">Ativo</span>' : "") +
+                "<h3>" +
+                (d.title || "Desafio") +
+                "</h3>" +
+                "<p>" +
+                (d.description || "—") +
+                "</p>" +
+                '<p style="margin-top:10px">Saldo inicial ' +
+                money(d.initial_balance_cents) +
+                "</p></article>"
+              );
+            })
+            .join("") || '<div class="ops-empty">Nenhum desafio</div>';
+        } catch (e2) {
+          showErr(ex.message || e2.message || "Erro");
+          document.getElementById("list").innerHTML = "";
+        }
+      }
+    })();
   </script>
 </body>
 </html>

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <title>Atendimento — ArbiShield v2</title>
+  <title>Atendimento — ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
@@ -15,14 +15,14 @@
 <body data-shell="app" data-active="suporte">
   <div class="page-head">
     <div>
-      <h1>Gestão de <span>Atendimento</span></h1>
-      <p class="sub">Notificações e suporte · layout Jogos · nativo v2 · sem SPA</p>
+      <h1>Atendi<span>mento</span></h1>
+      <p class="sub">Notificações e suporte · template legado</p>
     </div>
   </div>
   <div id="err" class="err"></div>
   <div id="pageBody"><div class="meta">Carregando…</div></div>
   <script>
-    ArbiV2Page.mountApp({"id": "suporte", "scopeUser": true, "render": "table", "sources": [{"table": "notifications", "limit": 200}], "cols": ["id", "title", "created_at"]});
+    ArbiV2Page.mountApp({"id": "suporte", "scopeUser": true, "render": "table", "sources": [{"table": "notifications", "limit": 100}], "cols": ["id", "title", "status", "created_at"]});
   </script>
 </body>
 </html>

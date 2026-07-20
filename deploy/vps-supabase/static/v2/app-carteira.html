@@ -4,25 +4,99 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <title>Carteira — ArbiShield v2</title>
+  <title>Financeiro — ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
-  <script src="/v2-pages.js"></script>
   <script src="/v2-shell.js" defer></script>
 </head>
 <body data-shell="app" data-active="carteira">
   <div class="page-head">
     <div>
-      <h1>Gestão de <span>Carteira</span></h1>
-      <p class="sub">Extrato e saldo · layout Jogos · nativo v2 · sem SPA</p>
+      <h1>Finan<span>ceiro</span></h1>
+      <p class="sub">Carteira · saldo · extrato · template legado</p>
     </div>
   </div>
   <div id="err" class="err"></div>
-  <div id="pageBody"><div class="meta">Carregando…</div></div>
+
+  <section class="app-wallet-hero">
+    <div class="l">Saldo disponível</div>
+    <div class="v" id="bal">—</div>
+    <div class="app-wallet-split">
+      <div class="box"><div class="l">Disponível</div><div class="v" id="balFree">—</div></div>
+      <div class="box"><div class="l">Bloqueado</div><div class="v" id="balLock">—</div></div>
+    </div>
+    <a class="btn btn-primary btn-block" href="/app-proteger.html">Proteger aposta</a>
+  </section>
+
+  <div class="section-label"><span class="dot" style="background:#c6ff00"></span>Extrato recente</div>
+  <div id="list" class="ops-panel"><div class="ops-empty">Carregando…</div></div>
+
   <script>
-    ArbiV2Page.mountApp({"id": "carteira", "scopeUser": true, "render": "table", "sources": [{"table": "wallet_transactions", "limit": 200}], "cols": ["id", "type", "amount_cents", "status", "created_at"]});
+    (async function () {
+      var money = ArbiV2.money;
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+
+      function showErr(msg) {
+        var el = document.getElementById("err");
+        el.textContent = msg || "";
+        el.classList.toggle("show", !!msg);
+      }
+
+      try {
+        var pr = await supa
+          .from("profiles")
+          .select("balance_cents,locked_balance_cents,reusable_balance_cents")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (pr.error) throw pr.error;
+        var free = Number((pr.data && pr.data.balance_cents) || 0) + Number((pr.data && pr.data.reusable_balance_cents) || 0);
+        var locked = Number((pr.data && pr.data.locked_balance_cents) || 0);
+        document.getElementById("bal").textContent = money(free);
+        document.getElementById("balFree").textContent = money(free);
+        document.getElementById("balLock").textContent = money(locked);
+        var balHeader = document.getElementById("v2AppBalance");
+        if (balHeader) balHeader.textContent = money(free);
+
+        var tx = await supa
+          .from("wallet_transactions")
+          .select("id,type,amount_cents,created_at,balance_after_cents")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(40);
+        if (tx.error) throw tx.error;
+        var rows = tx.data || [];
+        var host = document.getElementById("list");
+        if (!rows.length) {
+          host.innerHTML = '<div class="ops-empty">Nenhuma movimentação ainda</div>';
+          return;
+        }
+        host.innerHTML =
+          '<div class="ops-table-wrap"><table class="ops-table"><thead><tr>' +
+          "<th>Quando</th><th>Tipo</th><th>Valor</th><th>Saldo</th></tr></thead><tbody>" +
+          rows
+            .map(function (r) {
+              return (
+                "<tr><td>" +
+                new Date(r.created_at).toLocaleString("pt-BR") +
+                "</td><td>" +
+                (r.type || "—") +
+                "</td><td>" +
+                money(r.amount_cents) +
+                "</td><td>" +
+                money(r.balance_after_cents) +
+                "</td></tr>"
+              );
+            })
+            .join("") +
+          "</tbody></table></div>";
+      } catch (ex) {
+        showErr(ex.message || "Erro");
+      }
+    })();
   </script>
 </body>
 </html>

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <title>Partners — ArbiShield v2</title>
+  <title>Provedor — ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
@@ -15,14 +15,14 @@
 <body data-shell="app" data-active="partners">
   <div class="page-head">
     <div>
-      <h1>Gestão de <span>Partners</span></h1>
-      <p class="sub">Parceiros · layout Jogos · nativo v2 · sem SPA</p>
+      <h1>Prove<span>dor</span></h1>
+      <p class="sub">Área de partners · template legado</p>
     </div>
   </div>
   <div id="err" class="err"></div>
   <div id="pageBody"><div class="meta">Carregando…</div></div>
   <script>
-    ArbiV2Page.mountApp({"id": "partners", "scopeUser": true, "render": "table", "sources": [{"table": "partner_rounds", "limit": 100}], "cols": ["id", "status", "created_at"]});
+    ArbiV2Page.mountApp({"id": "partners", "scopeUser": true, "render": "table", "sources": [{"table": "partner_withdraw_requests", "limit": 100}], "cols": ["id", "amount_cents", "status", "created_at"]});
   </script>
 </body>
 </html>

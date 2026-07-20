@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <title>App — ArbiShield v2</title>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <title>Visão Geral — ArbiShield</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
@@ -14,62 +14,63 @@
 <body data-shell="app" data-active="home">
   <div class="page-head">
     <div>
-      <h1>Área do <span>membro</span></h1>
-      <p class="sub" id="meta">Carregando…</p>
+      <h1>Visão <span>Geral</span></h1>
+      <p class="sub" id="meta">Área do membro · template legado</p>
     </div>
   </div>
   <div id="err" class="err"></div>
-  <div class="grid" id="cards"></div>
 
-  <div class="section-label"><span class="dot" style="background:#c9f223"></span>Operações</div>
-  <div class="grid">
-    <a class="card primary" href="/app-proteger.html"><div class="tag">Operações</div><h2>Proteger aposta</h2><p>Jogos abertos para proteção.</p></a>
-    <a class="card" href="/app-protecoes.html"><div class="tag">Operações</div><h2>Minhas proteções</h2><p>Histórico da conta.</p></a>
-    <a class="card" href="/app-carteira.html"><div class="tag">Operações</div><h2>Financeiro</h2><p>Extrato da carteira.</p></a>
-    <a class="card" href="/app-desafio.html"><div class="tag">Operações</div><h2>Desafio</h2><p>Desafios ArbiShield.</p></a>
+  <div class="app-kpi-row" id="kpis">
+    <div class="app-kpi"><div class="l">Saldo disponível</div><div class="v lime" id="kBal">—</div></div>
+    <div class="app-kpi"><div class="l">Proteções ativas</div><div class="v" id="kProt">—</div></div>
+    <div class="app-kpi"><div class="l">Status da conta</div><div class="v" id="kStatus" style="font-size:1.1rem">—</div></div>
   </div>
 
-  <div class="section-label"><span class="dot" style="background:#94a3b8"></span>Conta</div>
+  <div class="section-label"><span class="dot" style="background:#c6ff00"></span>Operações</div>
   <div class="grid">
+    <a class="card primary" href="/app-proteger.html"><div class="tag">Operações</div><h2>Proteger Aposta</h2><p>Terminal de liquidez · mercados ao vivo.</p></a>
+    <a class="card" href="/app-protecoes.html"><div class="tag">Operações</div><h2>Minhas Proteções</h2><p>Histórico e status das ancoragens.</p></a>
+    <a class="card" href="/app-carteira.html"><div class="tag">Operações</div><h2>Financeiro</h2><p>Saldo, depósitos e extrato.</p></a>
+    <a class="card" href="/app-desafio.html"><div class="tag">Operações</div><h2>Desafio ArbiShield</h2><p>Desafios disponíveis e meu progresso.</p></a>
+  </div>
+
+  <div class="section-label"><span class="dot" style="background:#34d399"></span>Comunidade</div>
+  <div class="grid">
+    <a class="card" href="/app-afiliados.html"><div class="tag">Comunidade</div><h2>Afiliados</h2><p>Rede e comissões.</p></a>
+    <a class="card" href="/app-partners.html"><div class="tag">Comunidade</div><h2>Provedor</h2><p>Área de partners.</p></a>
     <a class="card" href="/app-perfil.html"><div class="tag">Conta</div><h2>Perfil</h2><p>Dados pessoais.</p></a>
-    <a class="card" href="/app-config.html"><div class="tag">Conta</div><h2>Configurações</h2><p>Preferências.</p></a>
-    <a class="card" href="/app-suporte.html"><div class="tag">Conta</div><h2>Atendimento</h2><p>Notificações.</p></a>
   </div>
 
   <script>
     (async function () {
+      var money = ArbiV2.money;
       var supa = ArbiV2.client();
       var user = await ArbiV2.requireUser(supa);
       if (!user) return;
 
       document.getElementById("meta").textContent =
-        (user.email || "—") + " · sistema novo · SPA bloqueado";
-
-      document.addEventListener("click", async function (e) {
-        var t = e.target.closest("#v2LogoutLink");
-        if (!t) return;
-        e.preventDefault();
-        await supa.auth.signOut();
-        location.replace("/auth.html");
-      });
+        (user.email || "membro") + " · visual legado · sem SPA";
 
       try {
-        var { data, error } = await supa
+        var profile = await supa
           .from("profiles")
           .select("full_name,balance_cents,account_status")
           .eq("id", user.id)
           .maybeSingle();
-        if (error) throw error;
-        document.getElementById("cards").innerHTML =
-          '<div class="card"><strong>Nome</strong><b>' +
-          (data && data.full_name ? data.full_name : "—") +
-          "</b></div>" +
-          '<div class="card"><strong>Saldo</strong><b>' +
-          ArbiV2.money(data && data.balance_cents) +
-          "</b></div>" +
-          '<div class="card"><strong>Status</strong><b style="font-size:1.1rem">' +
-          (data && data.account_status ? data.account_status : "—") +
-          "</b></div>";
+        if (profile.error) throw profile.error;
+        var act = await supa
+          .from("protections")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .eq("status", "active");
+        document.getElementById("kBal").textContent = money(profile.data && profile.data.balance_cents);
+        document.getElementById("kProt").textContent = String(act.count || 0);
+        document.getElementById("kStatus").textContent =
+          (profile.data && profile.data.account_status) || "—";
+        if (profile.data && profile.data.full_name) {
+          document.querySelector(".page-head h1").innerHTML =
+            "Olá, <span>" + String(profile.data.full_name).split(" ")[0] + "</span>";
+        }
       } catch (ex) {
         var err = document.getElementById("err");
         err.textContent = ex.message || "Erro";

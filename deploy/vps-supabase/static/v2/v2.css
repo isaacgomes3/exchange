@@ -1080,3 +1080,274 @@ td small { color: var(--muted); font-size: 11px; }
 @media (max-width: 720px) {
   .ops-stats { grid-template-columns: 1fr; }
 }
+
+/* ——— Área do membro = template SPA legado (/app + /m) ——— */
+body[data-shell="app"] {
+  --bg: #020d09;
+  --bg-deep: #010b09;
+  --sidebar: #021511;
+  --panel: #0b231e;
+  --panel-2: #071a16;
+  --border: rgba(255, 255, 255, 0.05);
+  --border-soft: rgba(201, 242, 35, 0.12);
+  --muted: #8b949e;
+  --muted-2: #94a3b8;
+  --lime: #c9f223;
+  --lime-hot: #c6ff00;
+  --lime-fg: #022c22;
+  background:
+    radial-gradient(800px 420px at 10% -10%, rgba(198, 255, 0, 0.08), transparent 55%),
+    var(--bg);
+}
+body[data-shell="app"] .v2-sidebar {
+  background: rgba(2, 21, 17, 0.96);
+  border-right-color: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(16px);
+}
+body[data-shell="app"] .v2-nav-link.is-active {
+  background: var(--lime-hot);
+  color: #04140f;
+  box-shadow: 0 0 22px rgba(198, 255, 0, 0.28);
+}
+body[data-shell="app"] .v2-page {
+  padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+}
+body[data-shell="app"] .page-head h1 span { color: var(--lime-hot); }
+body[data-shell="app"] .card,
+body[data-shell="app"] .ops-panel,
+body[data-shell="app"] .ops-stat,
+body[data-shell="app"] .ops-tabs,
+body[data-shell="app"] .ops-search {
+  background: linear-gradient(180deg, #0b231e 0%, #071a16 100%);
+  border-color: rgba(255, 255, 255, 0.05);
+}
+body[data-shell="app"] .card.primary {
+  border-color: rgba(198, 255, 0, 0.35);
+  box-shadow: 0 0 24px rgba(198, 255, 0, 0.08);
+}
+body[data-shell="app"] .btn-primary {
+  background: var(--lime-hot);
+  color: #04140f;
+  box-shadow: 0 0 20px rgba(198, 255, 0, 0.25);
+}
+
+/* Header membro (mobile + desktop sticky) */
+.v2-app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 70px;
+  padding: 12px clamp(14px, 2vw, 28px);
+  padding-top: calc(12px + env(safe-area-inset-top, 0px));
+  background: rgba(4, 17, 13, 0.88);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+.v2-app-header .brand {
+  font-size: 1.05rem;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.v2-app-header .brand span { color: var(--lime-hot); }
+.v2-app-balance {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.v2-app-balance small {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.v2-app-balance strong {
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--lime-hot);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Bottom nav mobile (legado /m) */
+.v2-bottom-nav {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: rgba(2, 13, 9, 0.92);
+  backdrop-filter: blur(18px);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  grid-template-columns: repeat(5, 1fr);
+  align-items: flex-end;
+  gap: 4px;
+}
+.v2-bottom-nav a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-decoration: none;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 8px 4px;
+  border-radius: 12px;
+  min-height: 52px;
+}
+.v2-bottom-nav a .ico {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  opacity: 0.85;
+}
+.v2-bottom-nav a.is-active { color: var(--lime-hot); }
+.v2-bottom-nav a.is-primary {
+  transform: translateY(-12px);
+  background: var(--lime-hot);
+  color: #04140f;
+  box-shadow: 0 8px 24px rgba(198, 255, 0, 0.35);
+  border-radius: 18px;
+  min-height: 58px;
+  padding-top: 10px;
+}
+.v2-bottom-nav a.is-primary .ico {
+  width: 28px;
+  height: 28px;
+  font-size: 16px;
+  opacity: 1;
+}
+@media (max-width: 960px) {
+  body[data-shell="app"] .v2-bottom-nav { display: grid; }
+  body[data-shell="app"] .v2-topbar { display: none !important; }
+  body[data-shell="app"] .v2-app-header .v2-menu-btn { display: inline-flex; }
+}
+@media (min-width: 961px) {
+  body[data-shell="app"] .v2-bottom-nav { display: none !important; }
+  body[data-shell="app"] .v2-topbar { display: none !important; }
+  body[data-shell="app"] .v2-app-header .v2-menu-btn { display: none; }
+}
+
+/* Home / carteira / desafio — componentes membro */
+.app-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.app-kpi {
+  background: linear-gradient(160deg, #0b231e, #071a16);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 18px;
+  padding: 16px;
+}
+.app-kpi .l {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.app-kpi .v {
+  margin-top: 10px;
+  font-size: clamp(1.1rem, 3vw, 1.5rem);
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+.app-kpi .v.lime { color: var(--lime-hot); }
+.app-wallet-hero {
+  background:
+    radial-gradient(500px 200px at 80% 0%, rgba(198, 255, 0, 0.18), transparent 60%),
+    linear-gradient(160deg, #0b231e, #050505);
+  border: 1px solid rgba(198, 255, 0, 0.22);
+  border-radius: 24px;
+  padding: 22px 20px;
+  margin-bottom: 18px;
+  box-shadow: 0 0 40px rgba(198, 255, 0, 0.08);
+}
+.app-wallet-hero .l {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.app-wallet-hero .v {
+  margin: 10px 0 6px;
+  font-size: clamp(1.8rem, 6vw, 2.6rem);
+  font-weight: 900;
+  color: var(--lime-hot);
+  letter-spacing: -0.04em;
+}
+.app-wallet-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 16px 0 18px;
+}
+.app-wallet-split .box {
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+  padding: 12px;
+}
+.app-wallet-split .box .l {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.app-wallet-split .box .v {
+  margin-top: 6px;
+  font-weight: 800;
+  font-size: 1.05rem;
+}
+.app-desafio-list { display: grid; gap: 12px; }
+.app-desafio-card {
+  background: linear-gradient(160deg, #0b231e, #071a16);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 18px;
+  padding: 16px;
+}
+.app-desafio-card h3 {
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+.app-desafio-card .badge {
+  display: inline-flex;
+  margin-bottom: 10px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(198, 255, 0, 0.35);
+  color: var(--lime-hot);
+  background: rgba(198, 255, 0, 0.08);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.app-desafio-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+@media (max-width: 720px) {
+  .app-kpi-row { grid-template-columns: 1fr; }
+}

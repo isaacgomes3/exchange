@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <title>Perfil — ArbiShield v2</title>
+  <title>MeuPerfil — ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
@@ -15,14 +15,14 @@
 <body data-shell="app" data-active="perfil">
   <div class="page-head">
     <div>
-      <h1>Gestão de <span>Perfil</span></h1>
-      <p class="sub">Dados pessoais · layout Jogos · nativo v2 · sem SPA</p>
+      <h1>Meu<span>Perfil</span></h1>
+      <p class="sub">Dados pessoais · template legado</p>
     </div>
   </div>
   <div id="err" class="err"></div>
   <div id="pageBody"><div class="meta">Carregando…</div></div>
   <script>
-    ArbiV2Page.mountApp({"id": "perfil", "scopeUser": false, "render": "cards", "sources": [{"table": "profiles", "limit": 1, "eq": {}}], "cols": ["full_name", "email", "phone", "cpf", "account_status", "balance_cents", "created_at", "last_sign_in_at"]});
+    ArbiV2Page.mountApp({"id": "perfil", "scopeUser": true, "render": "cards", "sources": [{"table": "profiles", "limit": 1}], "cols": ["full_name", "balance_cents", "account_status", "created_at"]});
   </script>
 </body>
 </html>
