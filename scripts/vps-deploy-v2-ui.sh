@@ -2,7 +2,7 @@
 # Atualiza UI v2 (layout Jogos em todas as abas) sem cutover completo.
 #
 # Uso (root na VPS):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-deploy-v2-ui.sh?v=10")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-deploy-v2-ui.sh?v=11")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/arbishield-v2-backup-723d}"

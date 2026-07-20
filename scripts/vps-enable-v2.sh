@@ -66,6 +66,8 @@ for f in \
   admin-whatsapp.html \
   admin.html \
   app-afiliados.html \
+  app-academia.html \
+  app-academia-video.html \
   app-baixar-app.html \
   app-carteira.html \
   app-config.html \
@@ -81,6 +83,9 @@ for f in \
   index.html \
   v2-pages.js \
   v2-shell.js \
+  v2-deposit.js \
+  v2-financeiro.js \
+  v2-provedor.js \
   v2.css \
   v2.js \
   brand/logo.png \
