@@ -5,7 +5,7 @@
 #   A  legado  →  mesmo IP de arbishield.app
 #
 # Uso (root na VPS):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-cutover-main-v2.sh?v=2")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-cutover-main-v2.sh?v=3")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/arbishield-v2-backup-723d}"
@@ -180,8 +180,17 @@ echo "OK — cutover aplicado"
 echo "  Novo (principal): https://arbishield.app/"
 echo "  Antigo (SPA):     https://$LEGADO_HOST/"
 echo
-echo "DNS necessário:"
-echo "  A  legado  →  $(curl -fsS ifconfig.me 2>/dev/null || curl -fsS icanhazip.com 2>/dev/null || echo 'IP_DA_VPS')"
+echo "DNS necessário (mesmo IP da VPS que arbishield.app):"
+IPV4="$(curl -4 -fsS ifconfig.me 2>/dev/null || curl -4 -fsS icanhazip.com 2>/dev/null || true)"
+IPV6="$(curl -6 -fsS ifconfig.me 2>/dev/null || true)"
+if [[ -n "${IPV4:-}" ]]; then
+  echo "  A     legado  →  $IPV4"
+else
+  echo "  A     legado  →  <IPv4 da VPS — copie o A de arbishield.app>"
+fi
+if [[ -n "${IPV6:-}" ]]; then
+  echo "  AAAA  legado  →  $IPV6   (opcional)"
+fi
 echo
-echo "Se o cert do legado falhou:"
+echo "Se o cert do legado falhou (depois do DNS propagar):"
 echo "  certbot --nginx -d $LEGADO_HOST"

@@ -10,7 +10,7 @@ Branch: `cursor/arbishield-v2-backup-723d`
 2. Na VPS (root):
 
 ```bash
-bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-cutover-main-v2.sh?v=2")
+bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-cutover-main-v2.sh?v=3")
 ```
 
 | Host | Site |
