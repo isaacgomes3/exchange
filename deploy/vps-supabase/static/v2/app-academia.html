@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Academia — ArbiShield</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js"></script>
+  <script src="/v2-shell.js" defer></script>
+</head>
+<body data-shell="app" data-active="academia">
+  <div class="page-head">
+    <div>
+      <h1>Acade<span>mia</span></h1>
+      <p class="sub">Aprenda a operar com proteção e disciplina</p>
+    </div>
+  </div>
+  <div class="dash-panel" style="max-width:720px">
+    <h3 style="margin:0 0 8px">Conteúdo em preparação</h3>
+    <p style="margin:0;color:var(--muted);line-height:1.5">
+      A Academia ArbiShield reúne trilhas e materiais para proteger operações com segurança.
+      Enquanto isso, use o Terminal de Liquidez e acompanhe suas proteções.
+    </p>
+    <div class="actions" style="margin-top:18px">
+      <a class="btn btn-primary" href="/app-proteger.html">Proteger aposta</a>
+      <a class="btn btn-ghost" href="/app.html">Voltar à visão geral</a>
+    </div>
+  </div>
+  <script>
+    (async function () {
+      var supa = ArbiV2.client();
+      await ArbiV2.requireUser(supa);
+    })();
+  </script>
+</body>
+</html>

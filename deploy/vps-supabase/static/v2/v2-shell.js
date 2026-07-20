@@ -2,8 +2,14 @@
  * Shell ArbiShield v2 — 100% nativo (sem links para /app ou /admin SPA).
  */
 (function (global) {
-  function p(id, label, href) {
-    return { id: id, label: label, href: href };
+  function p(id, label, href, opts) {
+    opts = opts || {};
+    return {
+      id: id,
+      label: label,
+      href: href,
+      badge: opts.badge || "",
+    };
   }
 
   var ADMIN_SECTIONS = [
@@ -99,13 +105,18 @@
 
   var APP_SECTIONS = [
     {
+      title: "Aprenda",
+      color: "#c6ff00",
+      items: [p("academia", "Academia", "/app-academia.html", { badge: "Novo" })],
+    },
+    {
       title: "Operações",
       color: "#c9f223",
       items: [
         p("home", "Visão Geral", "/app.html"),
         p("proteger", "Proteger Aposta", "/app-proteger.html"),
         p("protecoes", "Minhas Proteções", "/app-protecoes.html"),
-        p("desafio", "Desafio ArbiShield", "/app-desafio.html"),
+        p("desafio", "Desafio", "/app-desafio.html", { badge: "Novo" }),
         p("carteira", "Financeiro", "/app-carteira.html"),
         p("suporte", "Atendimento", "/app-suporte.html"),
       ],
@@ -113,20 +124,7 @@
     {
       title: "Comunidade",
       color: "#34d399",
-      items: [
-        p("afiliados", "Afiliados", "/app-afiliados.html"),
-        p("partners", "Provedor", "/app-partners.html"),
-        p("baixar-app", "Baixar App", "/app-baixar-app.html"),
-      ],
-    },
-    {
-      title: "Conta",
-      color: "#94a3b8",
-      items: [
-        p("perfil", "Perfil", "/app-perfil.html"),
-        p("config", "Configurações", "/app-config.html"),
-        p("admin", "Admin", "/admin.html"),
-      ],
+      items: [p("afiliados", "Afiliados", "/app-afiliados.html", { badge: "Novo" })],
     },
   ];
 
@@ -143,13 +141,18 @@
         var links = sec.items
           .map(function (item) {
             var cls = "v2-nav-link" + (item.id === active ? " is-active" : "");
+            var badge = item.badge
+              ? '<span class="badge">' + esc(item.badge) + "</span>"
+              : "";
             return (
               '<a class="' +
               cls +
               '" href="' +
               esc(item.href) +
-              '">' +
+              '"><span class="lbl">' +
               esc(item.label) +
+              "</span>" +
+              badge +
               "</a>"
             );
           })
@@ -228,9 +231,20 @@
         appHeader.className = "v2-app-header";
         appHeader.id = "v2AppHeader";
         appHeader.innerHTML =
-          '<button type="button" class="v2-menu-btn" id="v2MenuBtnHeader">Menu</button>' +
-          '<a class="brand" href="/app.html">Arbi<span>Shield</span></a>' +
-          '<div class="v2-app-balance"><small>Saldo</small><strong id="v2AppBalance">—</strong></div>';
+          '<button type="button" class="v2-menu-btn" id="v2MenuBtnHeader" aria-label="Menu">Menu</button>' +
+          '<div class="v2-app-balances" aria-label="Saldos">' +
+          '<a class="v2-bal-chip v2-bal-apostador" href="/app-carteira.html"><span class="l">Apostador</span><span class="v" id="v2BalApostador">—</span></a>' +
+          '<a class="v2-bal-chip v2-bal-desafio" href="/app-desafio.html"><span class="l">Desafio</span><span class="v" id="v2BalDesafio">—</span></a>' +
+          '<a class="v2-bal-chip v2-bal-afiliado" href="/app-afiliados.html"><span class="l">Afiliado</span><span class="v" id="v2BalAfiliado">—</span></a>' +
+          '<a class="v2-bal-chip v2-bal-provedor" href="/app-partners.html"><span class="l">Provedor</span><span class="v" id="v2BalProvedor">—</span></a>' +
+          "</div>" +
+          '<div class="v2-app-header-actions">' +
+          '<a class="v2-deposit-btn" href="/app-carteira.html"><span aria-hidden="true">+</span> Depósito</a>' +
+          '<a class="v2-icon-btn" href="/app-suporte.html" aria-label="Notificações" title="Notificações">' +
+          '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9a6 6 0 1 1 12 0c0 3.5 1.5 5 2 6H4c.5-1 2-2.5 2-6zM10 19a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+          "</a>" +
+          '<a class="v2-avatar-btn" href="/app-perfil.html" id="v2AppAvatar" aria-label="Perfil">U</a>' +
+          "</div>";
         main.appendChild(appHeader);
       }
       var page = document.createElement("div");
@@ -273,9 +287,17 @@
       '<div class="v2-sidebar-scroll">' +
       renderSections(sections, active) +
       "</div>" +
-      '<div class="v2-sidebar-foot">' +
-      '<a class="v2-nav-link" href="#" id="v2LogoutLink">Sair</a>' +
-      "</div>";
+      (shell === "app"
+        ? '<div class="v2-sidebar-foot v2-app-foot">' +
+          '<a class="v2-app-user" href="/app-perfil.html">' +
+          '<div class="v2-avatar-btn sm" id="v2SideAvatar">U</div>' +
+          "<div><strong id=\"v2SideName\">Membro</strong>" +
+          '<small id="v2SideMeta">Área do membro</small></div></a>' +
+          '<a class="v2-nav-link v2-logout" href="#" id="v2LogoutLink">Sair</a>' +
+          "</div>"
+        : '<div class="v2-sidebar-foot">' +
+          '<a class="v2-nav-link" href="#" id="v2LogoutLink">Sair</a>' +
+          "</div>");
 
     if (!document.querySelector('link[data-v2-favicon]')) {
       var fav = document.createElement("link");
@@ -337,14 +359,62 @@
           if (appUser) {
             var balRes = await appSupa
               .from("profiles")
-              .select("balance_cents,full_name")
+              .select(
+                "balance_cents,reusable_balance_cents,demo_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,full_name,avatar_url"
+              )
               .eq("id", appUser.id)
               .maybeSingle();
-            var balEl = document.getElementById("v2AppBalance");
-            if (balEl) {
-              balEl.textContent = global.ArbiV2.money(
-                balRes.data && balRes.data.balance_cents
+            var p = balRes.data || {};
+            var money = global.ArbiV2.money;
+            var apostador =
+              Number(p.balance_cents || 0) +
+              Number(p.reusable_balance_cents || 0) +
+              Number(p.demo_balance_cents || 0);
+            var provedor =
+              Number(p.investor_balance_cents || 0) +
+              Number(p.demo_balance_provider_cents || 0);
+            var desafio = Number(p.desafio_balance_cents || 0);
+            var afiliado = 0;
+            try {
+              var aff = await appSupa
+                .from("affiliate_stats")
+                .select("pending_cents,pendingCents,available_cents,balance_cents")
+                .eq("profile_id", appUser.id)
+                .maybeSingle();
+              var a = (aff && aff.data) || {};
+              afiliado = Number(
+                a.pending_cents || a.pendingCents || a.available_cents || a.balance_cents || 0
               );
+            } catch (affErr) {}
+            function setTxt(id, val) {
+              var el = document.getElementById(id);
+              if (el) el.textContent = money(val);
+            }
+            setTxt("v2BalApostador", apostador);
+            setTxt("v2BalDesafio", desafio);
+            setTxt("v2BalAfiliado", afiliado);
+            setTxt("v2BalProvedor", provedor);
+            var displayName =
+              p.full_name ||
+              (appUser.email ? appUser.email.split("@")[0] : "Membro");
+            var initials = String(displayName)
+              .split(/\s+/)
+              .slice(0, 2)
+              .map(function (w) {
+                return w[0] || "";
+              })
+              .join("")
+              .toUpperCase() || "U";
+            var av = document.getElementById("v2AppAvatar");
+            if (av) av.textContent = initials;
+            var sideAv = document.getElementById("v2SideAvatar");
+            if (sideAv) sideAv.textContent = initials;
+            var sideName = document.getElementById("v2SideName");
+            if (sideName) sideName.textContent = displayName;
+            var sideMeta = document.getElementById("v2SideMeta");
+            if (sideMeta) {
+              sideMeta.textContent =
+                money(apostador) + " · apostador";
             }
           }
         }
