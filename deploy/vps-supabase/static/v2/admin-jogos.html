@@ -982,6 +982,16 @@
             if (window.__preliveMarketsData) renderMarkets(window.__preliveMarketsData);
           });
         }
+        document.querySelectorAll("#platformFilters .chip").forEach(function (chip) {
+          chip.addEventListener("click", function () {
+            document.querySelectorAll("#platformFilters .chip").forEach(function (c) {
+              c.classList.remove("is-on");
+            });
+            chip.classList.add("is-on");
+            platformFilter = chip.getAttribute("data-pf") || "fila";
+            renderPlatformList();
+          });
+        });
 
         await loadPrelive();
         auth = await resolveAuth();
