@@ -405,41 +405,74 @@
         });
       });
 
+      function paintDesafioBanner(imageUrl, title, ctaUrl, useBrandWebp) {
+        var host = document.getElementById("desafioBanner");
+        if (!host || !imageUrl) return false;
+        var href = ctaUrl || "#";
+        var external = /^https?:\/\//i.test(href);
+        var media = useBrandWebp
+          ? '<picture><source type="image/webp" srcset="/brand/desafio-banner.webp" />' +
+            '<img src="' +
+            esc(imageUrl) +
+            '" alt="' +
+            esc(title || "Desafio ArbiShield") +
+            '" width="1600" height="680" loading="eager" decoding="async" fetchpriority="high" /></picture>'
+          : '<img src="' +
+            esc(imageUrl) +
+            '" alt="' +
+            esc(title || "Desafio ArbiShield") +
+            '" loading="eager" decoding="async" fetchpriority="high" />';
+        host.innerHTML =
+          '<a class="dz-banner-link" href="' +
+          esc(href) +
+          '"' +
+          (external ? ' target="_blank" rel="noreferrer"' : "") +
+          ">" +
+          media +
+          "</a>";
+        return true;
+      }
+
       async function loadDesafioBanner() {
         var host = document.getElementById("desafioBanner");
         if (!host) return;
+        var FALLBACK = "/brand/desafio-banner.jpg";
+
+        // 1) Banner cadastrado no admin (variant=desafio)
         try {
           var ban = await supa
             .from("banners")
-            .select("id,title,image_url,cta_url,variant,active")
-            .eq("variant", "desafio")
+            .select("id,title,image_url,cta_url,variant,active,sort_order,created_at")
             .eq("active", true)
             .order("sort_order", { ascending: true })
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          if (ban.error) throw ban.error;
-          var row = ban.data;
-          if (row && row.image_url) {
-            var href = row.cta_url || "#";
-            var external = /^https?:\/\//i.test(href);
-            host.innerHTML =
-              '<a class="dz-banner-link" href="' +
-              esc(href) +
-              '"' +
-              (external ? ' target="_blank" rel="noreferrer"' : "") +
-              ">" +
-              '<img src="' +
-              esc(row.image_url) +
-              '" alt="' +
-              esc(row.title || "Desafio ArbiShield") +
-              '" loading="lazy" decoding="async" />' +
-              "</a>";
-            return;
+            .limit(20);
+          if (!ban.error && Array.isArray(ban.data)) {
+            var row =
+              ban.data.find(function (b) {
+                return String(b.variant || "").toLowerCase() === "desafio" && b.image_url;
+              }) || null;
+            if (row && paintDesafioBanner(row.image_url, row.title, row.cta_url, false)) {
+              return;
+            }
+          } else if (ban.error) {
+            console.warn("[desafio] banners REST", ban.error.message || ban.error);
           }
         } catch (ex) {
           console.warn("[desafio] banner", ex);
         }
+
+        // 2) Arte padrão do SPA (deploy em /brand/desafio-banner.*)
+        if (paintDesafioBanner(FALLBACK, "Desafio ArbiShield", "#", true)) {
+          var img = host.querySelector("img");
+          if (img) {
+            img.onerror = function () {
+              host.innerHTML =
+                '<div class="dz-banner-placeholder">Banner do Desafio · aguardando publicação</div>';
+            };
+          }
+          return;
+        }
+
         host.innerHTML =
           '<div class="dz-banner-placeholder">Banner do Desafio · aguardando publicação</div>';
       }

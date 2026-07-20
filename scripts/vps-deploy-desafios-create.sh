@@ -2,7 +2,7 @@
 # Deploy: criar desafios no v2 (UI sugestões + POST /api/arbishield/desafios no :3098)
 #
 # Uso (root na VPS):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-deploy-desafios-create.sh?v=5")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-deploy-desafios-create.sh?v=6")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/arbishield-v2-backup-723d}"
@@ -16,7 +16,7 @@ die() { echo "ERRO: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null || die "$1 não encontrado"; }
 need curl
 need systemctl
-mkdir -p "$WEB" "$WEB_ROOT" "$SCRIPTS_DIR"
+mkdir -p "$WEB" "$WEB/brand" "$WEB_ROOT" "$WEB_ROOT/brand" "$SCRIPTS_DIR"
 
 log "1/3 — UI desafios (admin + membro) + CSS + banner"
 for f in admin-desafio-sugestoes.html admin-desafios.html app-desafio.html v2.css; do
@@ -26,6 +26,14 @@ for f in admin-desafio-sugestoes.html admin-desafios.html app-desafio.html v2.cs
   curl -fsSL "$RAW/deploy/vps-supabase/static/v2/$f" -o "$WEB_ROOT/$f"
   chmod 0644 "$WEB_ROOT/$f"
   echo "  ok $f"
+done
+
+for asset in brand/desafio-banner.jpg brand/desafio-banner.webp; do
+  curl -fsSL "$RAW/deploy/vps-supabase/static/v2/$asset" -o "$WEB/$asset"
+  chmod 0644 "$WEB/$asset"
+  curl -fsSL "$RAW/deploy/vps-supabase/static/v2/$asset" -o "$WEB_ROOT/$asset"
+  chmod 0644 "$WEB_ROOT/$asset"
+  echo "  ok $asset"
 done
 
 log "2/3 — worker :3098 (POST /api/arbishield/desafios)"
@@ -57,5 +65,6 @@ else
 fi
 
 echo
-echo "Abra https://arbishield.app/admin-desafio-sugestoes.html (hard refresh)"
-echo "  → Gerar sugestões → Criar desafio agora"
+echo "Abra https://arbishield.app/app-desafio.html (hard refresh)"
+echo "  Banner padrão: /brand/desafio-banner.jpg (ou cadastrado em /admin-banners.html)"
+echo "Admin: https://arbishield.app/admin-desafio-sugestoes.html"
