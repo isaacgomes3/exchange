@@ -201,7 +201,8 @@
           display_liquidity_cents: s.liquidityCents,
           external_bet_link: s.betbraLink,
           starts_at: s.startsAt,
-          release_minutes_before: s.minutesToKickoff,
+          // Libera o desafio imediatamente (sem esperar os últimos 30 min)
+          release_minutes_before: Math.max(1, Number(s.minutesToKickoff) || 1440),
           status: "pending",
           casa_commission_pct: 4.5,
           arbi_commission_pct: 0,
