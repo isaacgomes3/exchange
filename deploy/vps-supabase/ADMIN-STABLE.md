@@ -18,7 +18,15 @@
 #
 # **Não depende** de Next (:3000) nem shim (:3101) para o admin operacional.
 #
-# ## Deploy único (VPS, root)
+# ## Deploy (VPS, root)
+#
+# Emergência 502:
+#
+# ```bash
+# bash <(curl -fsSL https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/consolidate-arbishield-app-723d/scripts/vps-emergency-fix-502.sh)
+# ```
+#
+# Deploy completo:
 #
 # ```bash
 # bash <(curl -fsSL https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/consolidate-arbishield-app-723d/scripts/vps-deploy-arbishield-admin.sh)

@@ -263,7 +263,7 @@
         } catch {
           throw new Error(
             res.status === 502
-              ? "API de desafios offline (502). Rode o deploy de desafios na VPS."
+              ? "502 — API offline. Na VPS (root): bash <(curl -fsSL https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/consolidate-arbishield-app-723d/scripts/vps-emergency-fix-502.sh)"
               : "Resposta inválida (" + res.status + ")"
           );
         }
