@@ -14,7 +14,10 @@ WEB="${ARBISHIELD_WEB:-/var/www/arbishield}"
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
 
-need curl systemctl
+for cmd in curl systemctl; do
+  command -v "$cmd" >/dev/null 2>&1 || die "comando '$cmd' não encontrado"
+done
+
 mkdir -p "$SCRIPTS_DIR" "$WEB/assets"
 
 download() { curl -fsSL "$RAW/$1" -o "$2"; }
