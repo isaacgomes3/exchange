@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Deploy: odds pré-live (worker :3098 + admin-jogos)
+# Deploy: odds pré-live + fila de jogos (worker :3098 + admin-jogos v2/VPS)
 #
 # Uso (root na VPS):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-deploy-prelive-odds.sh?v=3")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-deploy-prelive-odds.sh?v=6")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/arbishield-v2-backup-723d}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${BRANCH}"
-WEB="${ARBISHIELD_WEB:-/var/www/arbishield}/v2"
+WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
+WEB_V2="${WEB_ROOT}/v2"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
 
 log() { echo "==> $*"; }
@@ -15,14 +16,26 @@ die() { echo "ERRO: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null || die "$1 não encontrado"; }
 need curl
 need systemctl
-mkdir -p "$WEB" "$SCRIPTS_DIR"
+mkdir -p "$WEB_ROOT" "$WEB_V2" "$SCRIPTS_DIR"
 
-log "1/2 — UI admin-jogos"
-curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-jogos.html" -o "$WEB/admin-jogos.html"
-chmod 0644 "$WEB/admin-jogos.html"
-echo "  ok admin-jogos.html"
+log "1/3 — UI admin-jogos (v2 + raiz + VPS)"
+curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-jogos.html" -o "$WEB_V2/admin-jogos.html"
+chmod 0644 "$WEB_V2/admin-jogos.html"
+echo "  ok $WEB_V2/admin-jogos.html"
 
-log "2/2 — worker :3098 (extração de odds BetBra)"
+# nginx-arbishield.app.conf: /admin/matches → /admin-jogos.html (raiz do site)
+curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-jogos.html" -o "$WEB_ROOT/admin-jogos.html"
+chmod 0644 "$WEB_ROOT/admin-jogos.html"
+echo "  ok $WEB_ROOT/admin-jogos.html"
+
+curl -fsSL "$RAW/deploy/vps-supabase/static/admin-jogos-vps.html" -o "$WEB_ROOT/admin-jogos-vps.html"
+chmod 0644 "$WEB_ROOT/admin-jogos-vps.html"
+echo "  ok $WEB_ROOT/admin-jogos-vps.html"
+if [[ -d "$WEB_ROOT/assets" ]]; then
+  cp -f "$WEB_ROOT/admin-jogos-vps.html" "$WEB_ROOT/assets/admin-jogos-vps.html" 2>/dev/null || true
+fi
+
+log "2/3 — worker :3098 (várias entradas + odds BetBra)"
 curl -fsSL "$RAW/scripts/arbishield-prelive-events.mjs" -o "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
 chmod 755 "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
 if systemctl is-active --quiet arbishield-prelive-events.service 2>/dev/null; then
@@ -40,7 +53,7 @@ for i in 1 2 3 4 5 6; do
   sleep 1
 done
 
-log "Smoke test"
+log "3/3 — Smoke test"
 tmp_list="$(mktemp)"
 tmp_detail="$(mktemp)"
 cleanup() { rm -f "$tmp_list" "$tmp_detail"; }
@@ -71,5 +84,8 @@ fi
 
 echo
 echo "OK — deploy concluído"
-echo "  Abra https://arbishield.app/admin-jogos.html (hard refresh)"
-echo "  Mercados sem liquidez BetBra aparecem como “sem liquidez”."
+echo "  https://arbishield.app/admin-jogos.html (hard refresh / Ctrl+Shift+R)"
+echo "  https://arbishield.app/admin/matches → redireciona para a mesma UI"
+echo "  https://arbishield.app/v2/admin-jogos.html"
+echo "  Agora dá para lançar várias entradas (ex. placares) no mesmo jogo."
+echo "  Fila = atuais/ao vivo; rascunhos e finalizados ficam nas outras abas."
