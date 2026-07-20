@@ -2,7 +2,7 @@
 # Atualiza UI v2 (layout Jogos em todas as abas) sem cutover completo.
 #
 # Uso (root na VPS):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-deploy-v2-ui.sh?v=6")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-deploy-v2-ui.sh?v=7")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/arbishield-v2-backup-723d}"
@@ -44,6 +44,7 @@ auth.html
 admin.html
 app.html
 app-academia.html
+app-academia-video.html
 admin-jogos.html
 admin-desafios.html
 admin-desafio-sugestoes.html
@@ -96,6 +97,6 @@ app-suporte.html
 EOF
 
 echo
-echo "OK — UI v2 atualizada (menu lateral SPA + landing + dashboard + terminal)"
-echo "  Abra https://arbishield.app/app.html e faça hard refresh (Ctrl+Shift+R)"
+echo "OK — UI v2 atualizada (Academia + menu + dashboard + terminal + landing)"
+echo "  Abra https://arbishield.app/app-academia.html e faça hard refresh (Ctrl+Shift+R)"
 echo "  Admin: https://arbishield.app/admin.html"
