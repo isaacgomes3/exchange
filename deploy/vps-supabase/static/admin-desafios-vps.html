@@ -256,8 +256,20 @@
           cache: "no-store",
           headers: { accept: "application/json" },
         });
-        if (!res.ok) throw new Error(await res.text());
-        const data = await res.json();
+        const text = await res.text();
+        let data;
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch {
+          throw new Error(
+            res.status === 502
+              ? "API de desafios offline (502). Rode o deploy de desafios na VPS."
+              : "Resposta inválida (" + res.status + ")"
+          );
+        }
+        if (!res.ok) {
+          throw new Error((data && data.error) || "HTTP " + res.status);
+        }
         if (!Array.isArray(data)) throw new Error("Resposta inválida da API");
         render(data);
       } catch (err) {

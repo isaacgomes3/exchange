@@ -345,20 +345,75 @@ function sendJson(res, status, payload) {
   res.end(body);
 }
 
+const SUPABASE_URL = (
+  process.env.ARBISHIELD_SUPABASE_URL ||
+  process.env.API_EXTERNAL_URL ||
+  process.env.SUPABASE_URL ||
+  "http://127.0.0.1:8000"
+).replace(/\/$/, "").replace(/\/auth\/v1$/i, "");
+
+const SERVICE_KEY =
+  process.env.ARBISHIELD_SERVICE_ROLE_KEY ||
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.SERVICE_ROLE_KEY ||
+  "";
+
+async function listDesafios() {
+  if (!SERVICE_KEY) {
+    throw new Error("SERVICE_ROLE_KEY ausente no ambiente da VPS");
+  }
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/desafios?select=*,desafio_steps(*)&order=updated_at.desc`,
+    {
+      headers: {
+        apikey: SERVICE_KEY,
+        Authorization: `Bearer ${SERVICE_KEY}`,
+        Accept: "application/json",
+      },
+    }
+  );
+  const text = await res.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : [];
+  } catch {
+    throw new Error(`Supabase REST: ${text.slice(0, 160)}`);
+  }
+  if (!res.ok) {
+    throw new Error(
+      (data && (data.message || data.error)) || `HTTP ${res.status}`
+    );
+  }
+  return Array.isArray(data) ? data : [];
+}
+
 async function handleApi(req, res) {
   if (req.method === "OPTIONS") {
     return sendJson(res, 204, {});
   }
   const url = new URL(req.url, "http://127.0.0.1");
-  if (
-    url.pathname !== "/api/arbishield/desafio-suggestions" &&
-    url.pathname !== "/" &&
-    url.pathname !== "/health"
-  ) {
+  const allowed = new Set([
+    "/api/arbishield/desafio-suggestions",
+    "/api/arbishield/desafios",
+    "/",
+    "/health",
+  ]);
+  if (!allowed.has(url.pathname)) {
     return sendJson(res, 404, { ok: false, error: "not_found" });
   }
   if (url.pathname === "/health") {
-    return sendJson(res, 200, { ok: true });
+    return sendJson(res, 200, { ok: true, service: "desafio-suggestions" });
+  }
+
+  if (url.pathname === "/api/arbishield/desafios") {
+    try {
+      const data = await listDesafios();
+      return sendJson(res, 200, data);
+    } catch (err) {
+      return sendJson(res, 500, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   const body = req.method === "POST" ? await parseBody(req) : {};
