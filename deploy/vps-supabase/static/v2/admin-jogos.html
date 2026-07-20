@@ -289,6 +289,72 @@
     .v2-nav a.active, .v2-nav a:hover {
       color: #000; background: var(--lime); border-color: transparent;
     }
+    .drawer-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.72);
+      display: none; z-index: 60; justify-content: flex-end;
+    }
+    .drawer-backdrop.show { display: flex; }
+    .drawer {
+      width: min(640px, 100%); height: 100%; background: #0a0a0a;
+      border-left: 1px solid var(--border); padding: 22px 20px 40px;
+      overflow-y: auto;
+    }
+    .drawer h3 {
+      margin: 0; font-size: 1.35rem; font-weight: 900; font-style: italic;
+      text-transform: uppercase; letter-spacing: -0.03em;
+    }
+    .drawer h3 span { color: var(--lime); }
+    .drawer .hint {
+      margin: 6px 0 18px; color: var(--muted); font-size: 10px;
+      font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+    }
+    .field { display: grid; gap: 6px; margin-bottom: 12px; }
+    .field label {
+      font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .field input, .field select, .field textarea {
+      width: 100%; border-radius: 12px; border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04); color: var(--text);
+      padding: 11px 12px; font: inherit;
+    }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } }
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 12px 14px; border-radius: 14px; margin-bottom: 10px;
+      background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+    }
+    .toggle-row .t { font-size: 12px; font-weight: 800; text-transform: uppercase; }
+    .toggle-row .s { font-size: 10px; color: var(--muted); margin-top: 3px; font-weight: 600; }
+    .switch {
+      width: 44px; height: 26px; border-radius: 999px; border: 0; cursor: pointer;
+      background: #3f3f46; position: relative; flex-shrink: 0;
+    }
+    .switch.on { background: var(--lime); }
+    .switch::after {
+      content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px;
+      border-radius: 50%; background: #fff; transition: transform .15s ease;
+    }
+    .switch.on::after { transform: translateX(18px); background: #000; }
+    .market-card {
+      border: 1px solid var(--border); border-radius: 14px; padding: 12px;
+      background: rgba(255,255,255,0.03); margin-bottom: 10px;
+    }
+    .market-card .mh {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+    }
+    .market-card .mh strong {
+      font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    }
+    .drawer-actions {
+      display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;
+      position: sticky; bottom: 0; padding-top: 12px; background: linear-gradient(transparent, #0a0a0a 30%);
+    }
+    .sec-label {
+      margin: 18px 0 10px; font-size: 11px; font-weight: 900; font-style: italic;
+      letter-spacing: 0.08em; text-transform: uppercase; color: var(--lime);
+    }
   </style>
 </head>
 <body data-shell="admin" data-active="jogos" data-vps-page="jogos" data-arbishield-v2="1">
@@ -306,6 +372,7 @@
         <p class="sub">Cockpit de Eventos e Risco · Catálogo Pré-Live BetBra</p>
       </div>
       <div class="actions">
+        <button class="btn btn-primary" id="btnAddMatch" type="button">+ Adicionar jogo</button>
         <button class="btn btn-ghost" id="btnRefresh" type="button">Atualizar</button>
       </div>
     </header>
@@ -371,6 +438,108 @@
       <div class="modal-actions">
         <button class="btn btn-ghost btn-sm" id="btnCancelCreate" type="button">Cancelar</button>
         <button class="btn btn-primary btn-sm" id="btnConfirmCreate" type="button">Confirmar lançamento</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="drawer-backdrop" id="manualDrawer">
+    <div class="drawer">
+      <h3>Lançar novo <span>evento</span></h3>
+      <p class="hint">Mesmos campos do SPA · inserção manual no cockpit</p>
+
+      <div class="toggle-row">
+        <div>
+          <div class="t">Status de publicação</div>
+          <div class="s">Deixe pronto e publique quando desejar</div>
+        </div>
+        <button type="button" class="switch" id="manPublish" aria-pressed="false"></button>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div class="t">Sincronismo API</div>
+          <div class="s">Habilitar atualização automática de placar e logos</div>
+        </div>
+        <button type="button" class="switch" id="manScoreSync" aria-pressed="false"></button>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div class="t">Transmissão ao vivo?</div>
+          <div class="s">Exibe o selo AO VIVO com ícone de play no card do jogo</div>
+        </div>
+        <button type="button" class="switch" id="manLive" aria-pressed="false"></button>
+      </div>
+
+      <div class="sec-label">Partida</div>
+      <div class="field">
+        <label for="manExternalId">ID da partida (API-Football)</label>
+        <input id="manExternalId" placeholder="Ex: 868688" />
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label for="manHome">Time da casa</label>
+          <input id="manHome" required placeholder="Ex: Flamengo" />
+        </div>
+        <div class="field">
+          <label for="manHomeLogo">URL logo casa</label>
+          <input id="manHomeLogo" placeholder="URL Logo" />
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label for="manAway">Time de fora</label>
+          <input id="manAway" required placeholder="Ex: Palmeiras" />
+        </div>
+        <div class="field">
+          <label for="manAwayLogo">URL logo fora</label>
+          <input id="manAwayLogo" placeholder="URL Logo" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="manLeague">Liga / campeonato</label>
+        <input id="manLeague" placeholder="Ex: Brasileirão Série A" />
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label for="manSport">Esporte</label>
+          <select id="manSport">
+            <option value="futebol">Futebol</option>
+            <option value="basquete">Basquete</option>
+            <option value="volei">Vôlei</option>
+            <option value="tenis">Tênis</option>
+            <option value="mma">MMA</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="manStatus">Status do jogo</label>
+          <select id="manStatus">
+            <option value="open">Aberto</option>
+            <option value="live">Ao vivo</option>
+            <option value="suspended">Suspenso</option>
+            <option value="postponed">Adiado</option>
+            <option value="cancelled">Cancelado</option>
+            <option value="review">Em revisão</option>
+            <option value="settled">Encerrado</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="manStarts">Data e horário</label>
+        <input id="manStarts" type="datetime-local" required />
+      </div>
+      <div class="field">
+        <label for="manBetLink">Link da casa de aposta</label>
+        <input id="manBetLink" placeholder="https://www.bet365.com/..." />
+      </div>
+
+      <div class="sec-label" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <span>Mercados de proteção</span>
+        <button type="button" class="btn btn-primary btn-sm" id="btnAddMarket">+ Adicionar mercado</button>
+      </div>
+      <div id="manMarkets"></div>
+
+      <div class="drawer-actions">
+        <button type="button" class="btn btn-ghost" id="btnCancelManual">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btnSaveManual">Lançar evento</button>
       </div>
     </div>
   </div>
@@ -1017,6 +1186,221 @@
         else if (!selectedEvent) renderPreliveList();
       }
 
+      var manualMarkets = [];
+
+      function bindSwitch(id, onChange) {
+        var el = $(id);
+        if (!el) return;
+        el.addEventListener("click", function () {
+          var on = !el.classList.contains("on");
+          el.classList.toggle("on", on);
+          el.setAttribute("aria-pressed", on ? "true" : "false");
+          if (onChange) onChange(on);
+        });
+      }
+
+      function parseMoneyToNumber(raw) {
+        if (raw == null || raw === "") return null;
+        var s = String(raw).trim();
+        if (!s) return null;
+        // 25.000,00 → 25000.00 · 25000 → 25000
+        if (s.indexOf(",") >= 0) {
+          s = s.replace(/\./g, "").replace(",", ".");
+        } else {
+          s = s.replace(/[^\d.]/g, "");
+        }
+        var n = Number(s);
+        return Number.isFinite(n) ? n : null;
+      }
+
+      function renderManualMarkets() {
+        var host = $("manMarkets");
+        if (!host) return;
+        if (!manualMarkets.length) {
+          host.innerHTML = '<div class="empty" style="margin:0">Nenhum mercado. Clique em Adicionar mercado.</div>';
+          return;
+        }
+        host.innerHTML = manualMarkets
+          .map(function (m, idx) {
+            return (
+              '<div class="market-card" data-idx="' + idx + '">' +
+              '<div class="mh"><strong>Mercado ' + (idx + 1) + "</strong>" +
+              '<button type="button" class="btn btn-ghost btn-sm" data-rm="' + idx + '">Remover</button></div>' +
+              '<div class="grid2">' +
+              '<div class="field"><label>Tipo</label><select data-f="market_type">' +
+              '<option value="LAY"' + (m.market_type === "LAY" ? " selected" : "") + ">LAY</option>" +
+              '<option value="BACK"' + (m.market_type === "BACK" ? " selected" : "") + ">BACK</option>" +
+              "</select></div>" +
+              '<div class="field"><label>Nome do mercado</label>' +
+              '<input data-f="name" value="' + String(m.name || "").replace(/"/g, "&quot;") + '" placeholder="Digite o mercado (ex.: LAY HOME)" /></div>' +
+              '</div><div class="grid2">' +
+              '<div class="field"><label>ID externo</label>' +
+              '<input data-f="external_id" value="' + String(m.external_id || "").replace(/"/g, "&quot;") + '" placeholder="Ex: 1.22456" /></div>' +
+              '<div class="field"><label>Odd</label>' +
+              '<input data-f="odd" value="' + (m.odd != null ? m.odd : "") + '" placeholder="Ex: 2.00" /></div>' +
+              '</div><div class="grid2">' +
+              '<div class="field"><label>Liquidez real (R$)</label>' +
+              '<input data-f="liquidity_brl" value="' + (m.liquidity_brl != null ? m.liquidity_brl : "2000") + '" placeholder="Controla a entrada" /></div>' +
+              '<div class="field"><label>Liquidez exibida (R$) — opcional</label>' +
+              '<input data-f="display_brl" value="' + (m.display_brl != null ? m.display_brl : "") + '" placeholder="O que o usuário vê" /></div>' +
+              "</div></div>"
+            );
+          })
+          .join("");
+
+        host.querySelectorAll("[data-rm]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            syncManualMarketsFromDom();
+            manualMarkets.splice(Number(btn.getAttribute("data-rm")), 1);
+            renderManualMarkets();
+          });
+        });
+        host.querySelectorAll("[data-f]").forEach(function (input) {
+          input.addEventListener("change", syncManualMarketsFromDom);
+          input.addEventListener("input", syncManualMarketsFromDom);
+        });
+      }
+
+      function syncManualMarketsFromDom() {
+        var cards = $("manMarkets").querySelectorAll(".market-card");
+        manualMarkets = Array.prototype.map.call(cards, function (card) {
+          var get = function (f) {
+            var el = card.querySelector('[data-f="' + f + '"]');
+            return el ? el.value : "";
+          };
+          return {
+            market_type: get("market_type") || "LAY",
+            name: get("name"),
+            external_id: get("external_id"),
+            odd: get("odd"),
+            liquidity_brl: get("liquidity_brl"),
+            display_brl: get("display_brl"),
+          };
+        });
+      }
+
+      function openManualDrawer() {
+        if (!auth) {
+          alert("Faça login admin para adicionar jogos.");
+          showAuthBanner(true);
+          return;
+        }
+        $("manHome").value = "";
+        $("manAway").value = "";
+        $("manHomeLogo").value = "";
+        $("manAwayLogo").value = "";
+        $("manLeague").value = "";
+        $("manExternalId").value = "";
+        $("manBetLink").value = "";
+        $("manSport").value = "futebol";
+        $("manStatus").value = "open";
+        $("manStarts").value = "";
+        ["manPublish", "manScoreSync", "manLive"].forEach(function (id) {
+          var el = $(id);
+          el.classList.remove("on");
+          el.setAttribute("aria-pressed", "false");
+        });
+        // publicar ligado por padrão (cliente vê)
+        $("manPublish").classList.add("on");
+        $("manPublish").setAttribute("aria-pressed", "true");
+        manualMarkets = [
+          {
+            market_type: "LAY",
+            name: "LAY HOME",
+            external_id: "",
+            odd: "2.00",
+            liquidity_brl: "2000",
+            display_brl: "",
+          },
+        ];
+        renderManualMarkets();
+        $("manualDrawer").classList.add("show");
+      }
+
+      function closeManualDrawer() {
+        $("manualDrawer").classList.remove("show");
+      }
+
+      async function saveManualMatch() {
+        if (!auth) {
+          alert("Faça login admin para adicionar jogos.");
+          return;
+        }
+        syncManualMarketsFromDom();
+        var home = $("manHome").value.trim();
+        var away = $("manAway").value.trim();
+        var starts = $("manStarts").value;
+        if (!home || !away) {
+          alert("Informe time da casa e time de fora.");
+          return;
+        }
+        if (!starts) {
+          alert("Informe data e horário.");
+          return;
+        }
+        if (!manualMarkets.length) {
+          alert("Adicione ao menos um mercado de proteção.");
+          return;
+        }
+        var markets = manualMarkets.map(function (m) {
+          var odd = Number(String(m.odd).replace(",", "."));
+          var liqBrl = parseMoneyToNumber(m.liquidity_brl);
+          var dispBrl = parseMoneyToNumber(m.display_brl);
+          return {
+            name: m.name || "LAY HOME",
+            market_type: m.market_type || "LAY",
+            external_id: m.external_id || null,
+            odd: odd,
+            liquidity_brl: liqBrl != null ? liqBrl : 2000,
+            display_liquidity: dispBrl != null ? Math.round(dispBrl * 100) : null,
+          };
+        });
+        var btn = $("btnSaveManual");
+        btn.disabled = true;
+        btn.textContent = "Salvando…";
+        try {
+          var result = await apiPost("/api/arbishield/matches", {
+            mode: "manual",
+            home_team: home,
+            away_team: away,
+            home_logo: $("manHomeLogo").value.trim() || null,
+            away_logo: $("manAwayLogo").value.trim() || null,
+            league: $("manLeague").value.trim() || null,
+            external_id: $("manExternalId").value.trim() || null,
+            starts_at: new Date(starts).toISOString(),
+            sport_type: $("manSport").value,
+            status: $("manStatus").value,
+            is_published: $("manPublish").classList.contains("on"),
+            score_sync_enabled: $("manScoreSync").classList.contains("on"),
+            has_live_stream: $("manLive").classList.contains("on"),
+            external_bet_link: $("manBetLink").value.trim() || null,
+            markets: markets,
+          });
+          closeManualDrawer();
+          alert(
+            result.action === "created"
+              ? "Jogo criado com sucesso!" +
+                (result.match && result.match.is_published
+                  ? " Publicado na fila do cliente."
+                  : " Salvo como rascunho.")
+              : "Evento salvo."
+          );
+          platformLoaded = false;
+          await loadPlatformMatches({ force: true });
+          setView("platform");
+          platformFilter = result.match && result.match.is_published ? "fila" : "draft";
+          document.querySelectorAll("#platformFilters .chip").forEach(function (c) {
+            c.classList.toggle("is-on", c.getAttribute("data-pf") === platformFilter);
+          });
+          renderPlatformList();
+        } catch (err) {
+          alert(err.message || "Erro ao criar jogo");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Lançar evento";
+        }
+      }
+
       async function boot() {
         showAppShell();
 
@@ -1062,6 +1446,28 @@
             platformFilter = chip.getAttribute("data-pf") || "fila";
             renderPlatformList();
           });
+        });
+
+        bindSwitch("manPublish");
+        bindSwitch("manScoreSync");
+        bindSwitch("manLive");
+        $("btnAddMatch").addEventListener("click", openManualDrawer);
+        $("btnCancelManual").addEventListener("click", closeManualDrawer);
+        $("btnSaveManual").addEventListener("click", saveManualMatch);
+        $("btnAddMarket").addEventListener("click", function () {
+          syncManualMarketsFromDom();
+          manualMarkets.push({
+            market_type: "LAY",
+            name: "LAY HOME",
+            external_id: "",
+            odd: "2.00",
+            liquidity_brl: "2000",
+            display_brl: "",
+          });
+          renderManualMarkets();
+        });
+        $("manualDrawer").addEventListener("click", function (e) {
+          if (e.target === $("manualDrawer")) closeManualDrawer();
         });
 
         await loadPrelive();

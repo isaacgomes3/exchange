@@ -484,6 +484,143 @@ async function createMatchFromMarket(body, token) {
   }
 }
 
+/** Criação manual (drawer "Adicionar jogo" / SPA Lançar Novo Evento) */
+async function createManualMatch(body, token) {
+  const payload = decodeJwtPayload(token);
+  const adminId = payload?.sub ? String(payload.sub) : null;
+  if (!adminId) {
+    const err = new Error("Login admin necessário para lançar evento");
+    err.status = 401;
+    throw err;
+  }
+
+  const homeTeam = String(body.home_team || body.homeTeam || "").trim();
+  const awayTeam = String(body.away_team || body.awayTeam || "").trim();
+  if (!homeTeam || !awayTeam) {
+    const err = new Error("Informe time da casa e time de fora");
+    err.status = 400;
+    throw err;
+  }
+
+  const startsRaw = body.starts_at || body.startsAt;
+  const startsAt = startsRaw ? new Date(startsRaw) : null;
+  if (!startsAt || Number.isNaN(startsAt.getTime())) {
+    const err = new Error("Data e horário inválidos");
+    err.status = 400;
+    throw err;
+  }
+
+  const marketsIn = Array.isArray(body.markets) ? body.markets : [];
+  if (!marketsIn.length) {
+    const err = new Error("Adicione ao menos um mercado de proteção");
+    err.status = 400;
+    throw err;
+  }
+
+  const markets = marketsIn.map((m, idx) => {
+    const odd = Number(m.odd);
+    if (!Number.isFinite(odd) || odd <= 1) {
+      throw Object.assign(new Error(`Odd inválida no mercado #${idx + 1}`), {
+        status: 400,
+      });
+    }
+    let liquidity = Number(m.liquidity);
+    if (!Number.isFinite(liquidity) || liquidity <= 0) {
+      // aceita valor em reais (ex.: 25000) se liquidity_brl vier
+      const brl = Number(m.liquidity_brl ?? m.liquidityBrl);
+      liquidity = Number.isFinite(brl) && brl > 0 ? Math.round(brl * 100) : 200_000;
+    } else if (liquidity < 1000) {
+      // valor pequeno provavelmente veio em reais
+      liquidity = Math.round(liquidity * 100);
+    }
+    let display = m.display_liquidity ?? m.displayLiquidity ?? null;
+    if (display != null && display !== "") {
+      display = Number(display);
+      if (Number.isFinite(display) && display > 0 && display < 1000) {
+        display = Math.round(display * 100);
+      }
+    } else {
+      display = null;
+    }
+    const side = String(m.market_type || m.marketType || "LAY").toUpperCase();
+    return {
+      id: m.id || randomUUID(),
+      name: String(m.name || `Mercado ${idx + 1}`).trim(),
+      odd,
+      liquidity,
+      display_liquidity: display,
+      used_liquidity: Number(m.used_liquidity || 0) || 0,
+      market_type: side === "BACK" ? "BACK" : "LAY",
+      external_id: m.external_id != null ? String(m.external_id) : null,
+    };
+  });
+
+  const maxProtection = markets.reduce((sum, m) => sum + Number(m.liquidity || 0), 0);
+  const firstOdd = markets[0].odd;
+  const status = String(body.status || body.status_v2 || "open").toLowerCase();
+  const sport = String(body.sport_type || body.sportType || "futebol").toLowerCase();
+  const isPublished = Boolean(
+    body.is_published ?? body.isPublished ?? false
+  );
+  const dbToken = SERVICE_KEY || token;
+
+  const row = {
+    home_team: homeTeam,
+    away_team: awayTeam,
+    home_logo: body.home_logo || body.homeLogo || null,
+    away_logo: body.away_logo || body.awayLogo || null,
+    league: body.league || null,
+    starts_at: startsAt.toISOString(),
+    status,
+    status_v2: status,
+    is_published: isPublished,
+    sport_type: sport,
+    max_protection_cents: maxProtection,
+    used_protection_cents: 0,
+    protection_odds: { home: firstOdd, away: firstOdd },
+    external_id: body.external_id != null && body.external_id !== ""
+      ? String(body.external_id)
+      : null,
+    score_sync_enabled: Boolean(body.score_sync_enabled ?? body.scoreSyncEnabled),
+    has_live_stream: Boolean(body.has_live_stream ?? body.hasLiveStream),
+    created_by: adminId,
+    updated_by: adminId,
+    metadata: {
+      external_bet_link: body.external_bet_link || body.externalBetLink || null,
+      external_bet_name: body.external_bet_name || body.externalBetName || null,
+      external_bet_logo: body.external_bet_logo || body.externalBetLogo || null,
+      betting_house_id: body.betting_house_id || body.bettingHouseId || null,
+      source: "admin_manual",
+    },
+    markets,
+  };
+
+  // limpa external_id nulo para não colidir com unique vazio
+  if (!row.external_id) delete row.external_id;
+
+  try {
+    const created = await sb("/rest/v1/matches", {
+      method: "POST",
+      token: dbToken,
+      body: row,
+    });
+    const match = Array.isArray(created) ? created[0] : created;
+    return { action: "created", match, marketsCount: markets.length };
+  } catch (err) {
+    if (
+      String(err.message || "").includes("matches_external_id_key") ||
+      String(err.message || "").toLowerCase().includes("duplicate key")
+    ) {
+      const err2 = new Error(
+        "Já existe um jogo com este ID externo. Altere o ID da partida ou deixe em branco."
+      );
+      err2.status = 409;
+      throw err2;
+    }
+    throw err;
+  }
+}
+
 function parseBody(req) {
   return new Promise((resolvePromise) => {
     let data = "";
@@ -1042,7 +1179,13 @@ async function handleApi(req, res) {
     try {
       const body = await parseBody(req);
       const token = bearerFromReq(req);
-      const result = await createMatchFromMarket(body, token);
+      const manual =
+        body.mode === "manual" ||
+        Array.isArray(body.markets) ||
+        (!body.marketId && (body.home_team || body.homeTeam));
+      const result = manual
+        ? await createManualMatch(body, token)
+        : await createMatchFromMarket(body, token);
       return sendJson(res, 200, { ok: true, ...result });
     } catch (err) {
       const status = err.status === 409 ? 409 : err.status || 500;
