@@ -538,7 +538,14 @@
             var runnerId = btn.getAttribute("data-runner");
             var market = markets.find(function (m) { return m.marketId === marketId; });
             var runner = market && (market.runners || []).find(function (r) { return r.runnerId === runnerId; });
-            if (market && runner) openCreateModal(market, runner);
+            if (market && runner) {
+              if (!auth) {
+                showAuthBanner(true);
+                alert("Faça login admin para incluir eventos.");
+                return;
+              }
+              openCreateModal(market, runner);
+            }
           });
         });
       }
