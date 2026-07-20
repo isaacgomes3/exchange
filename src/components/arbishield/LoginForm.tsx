@@ -24,14 +24,24 @@ export function ArbiShieldLoginForm() {
       });
 
       if (signError) {
-        setError(signError.message);
+        const msg = signError.message || "Falha no login";
+        setError(
+          /failed to fetch|networkerror|fetch failed/i.test(msg)
+            ? "Não foi possível falar com o Auth (rede). Confirme que /auth/v1 responde em arbishield.app e rode de novo o deploy Next."
+            : msg
+        );
         return;
       }
 
       router.replace("/arbishield/admin");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha no login");
+      const msg = err instanceof Error ? err.message : "Falha no login";
+      setError(
+        /failed to fetch|networkerror|fetch failed/i.test(msg)
+          ? "Não foi possível falar com o Auth (rede). Confirme que /auth/v1 responde em arbishield.app e rode de novo o deploy Next."
+          : msg
+      );
     } finally {
       setLoading(false);
     }

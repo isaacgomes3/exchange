@@ -77,8 +77,23 @@ pick_env_value() {
 echo "==> Montando .env.production (lê chaves já existentes na VPS)"
 ANON_KEY="$(pick_env_value NEXT_PUBLIC_SUPABASE_ANON_KEY || pick_env_value ANON_KEY || true)"
 SERVICE_KEY="$(pick_env_value SUPABASE_SERVICE_ROLE_KEY || pick_env_value SERVICE_ROLE_KEY || pick_env_value ARBISHIELD_SERVICE_ROLE_KEY || true)"
-SUPA_URL="$(pick_env_value NEXT_PUBLIC_SUPABASE_URL || pick_env_value SUPABASE_URL || pick_env_value ARBISHIELD_SUPABASE_URL || true)"
-SUPA_URL="${SUPA_URL:-$PUBLIC_URL}"
+
+# URL pública para o BROWSER (nunca 127.0.0.1 — causa "Failed to fetch")
+PUBLIC_SUPA_URL="${NEXT_PUBLIC_SUPABASE_URL:-$PUBLIC_URL}"
+PUBLIC_SUPA_URL="${PUBLIC_SUPA_URL%/}"
+PUBLIC_SUPA_URL="${PUBLIC_SUPA_URL%/auth/v1}"
+case "$PUBLIC_SUPA_URL" in
+  *127.0.0.1*|*localhost*|*0.0.0.0*)
+    echo "    AVISO: URL pública era loopback — forçando $PUBLIC_URL"
+    PUBLIC_SUPA_URL="$PUBLIC_URL"
+    ;;
+esac
+
+# URL interna só para o processo Node na VPS (Kong)
+INTERNAL_SUPA_URL="$(pick_env_value ARBISHIELD_SUPABASE_URL || pick_env_value SUPABASE_URL || true)"
+INTERNAL_SUPA_URL="${INTERNAL_SUPA_URL:-http://127.0.0.1:8000}"
+INTERNAL_SUPA_URL="${INTERNAL_SUPA_URL%/}"
+INTERNAL_SUPA_URL="${INTERNAL_SUPA_URL%/auth/v1}"
 
 if [[ -z "${ANON_KEY:-}" || -z "${SERVICE_KEY:-}" ]]; then
   cat >&2 <<EOF
@@ -99,20 +114,31 @@ fi
 # Se o usuário exportou no shell, prevalece
 ANON_KEY="${NEXT_PUBLIC_SUPABASE_ANON_KEY:-$ANON_KEY}"
 SERVICE_KEY="${SUPABASE_SERVICE_ROLE_KEY:-$SERVICE_KEY}"
-SUPA_URL="${NEXT_PUBLIC_SUPABASE_URL:-$SUPA_URL}"
 
 umask 077
 cat > "$APP_DIR/.env.production" <<EOF
-NEXT_PUBLIC_SUPABASE_URL=$SUPA_URL
+NEXT_PUBLIC_SUPABASE_URL=$PUBLIC_SUPA_URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY
+NEXT_PUBLIC_SITE_URL=$PUBLIC_URL
 SUPABASE_SERVICE_ROLE_KEY=$SERVICE_KEY
-ARBISHIELD_SUPABASE_URL=$SUPA_URL
+ARBISHIELD_SUPABASE_URL=$INTERNAL_SUPA_URL
 ARBISHIELD_SERVICE_ROLE_KEY=$SERVICE_KEY
 PORT=$PORT
 HOSTNAME=127.0.0.1
 EOF
 chmod 600 "$APP_DIR/.env.production"
 echo "    escrito: $APP_DIR/.env.production"
+echo "    public URL: $PUBLIC_SUPA_URL"
+echo "    internal URL: $INTERNAL_SUPA_URL"
+
+echo "==> Teste Auth via nginx (mesmo path do browser)"
+if curl -fsS -o /dev/null -w "%{http_code}" "${PUBLIC_URL}/auth/v1/health" | grep -qE '200|401|404'; then
+  curl -fsS "${PUBLIC_URL}/auth/v1/health" || true
+  echo
+else
+  echo "AVISO: ${PUBLIC_URL}/auth/v1/health não respondeu — login no browser vai falhar até o Kong/nginx estar ok." >&2
+  curl -sS -D- "${PUBLIC_URL}/auth/v1/health" -o /dev/null || true
+fi
 
 echo "==> npm ci + build"
 cd "$APP_DIR"
