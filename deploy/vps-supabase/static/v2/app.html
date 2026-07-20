@@ -6,10 +6,10 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>App — ArbiShield v2</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2/v2.css" />
+  <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2/v2.js"></script>
-  <script src="/v2/v2-shell.js" defer></script>
+  <script src="/v2.js"></script>
+  <script src="/v2-shell.js" defer></script>
 </head>
 <body data-shell="app" data-active="home">
   <div class="page-head">
@@ -23,17 +23,17 @@
 
   <div class="section-label"><span class="dot" style="background:#c9f223"></span>Operações</div>
   <div class="grid">
-    <a class="card primary" href="/v2/app-proteger.html"><div class="tag">Operações</div><h2>Proteger aposta</h2><p>Jogos abertos para proteção.</p></a>
-    <a class="card" href="/v2/app-protecoes.html"><div class="tag">Operações</div><h2>Minhas proteções</h2><p>Histórico da conta.</p></a>
-    <a class="card" href="/v2/app-carteira.html"><div class="tag">Operações</div><h2>Financeiro</h2><p>Extrato da carteira.</p></a>
-    <a class="card" href="/v2/app-desafio.html"><div class="tag">Operações</div><h2>Desafio</h2><p>Desafios ArbiShield.</p></a>
+    <a class="card primary" href="/app-proteger.html"><div class="tag">Operações</div><h2>Proteger aposta</h2><p>Jogos abertos para proteção.</p></a>
+    <a class="card" href="/app-protecoes.html"><div class="tag">Operações</div><h2>Minhas proteções</h2><p>Histórico da conta.</p></a>
+    <a class="card" href="/app-carteira.html"><div class="tag">Operações</div><h2>Financeiro</h2><p>Extrato da carteira.</p></a>
+    <a class="card" href="/app-desafio.html"><div class="tag">Operações</div><h2>Desafio</h2><p>Desafios ArbiShield.</p></a>
   </div>
 
   <div class="section-label"><span class="dot" style="background:#94a3b8"></span>Conta</div>
   <div class="grid">
-    <a class="card" href="/v2/app-perfil.html"><div class="tag">Conta</div><h2>Perfil</h2><p>Dados pessoais.</p></a>
-    <a class="card" href="/v2/app-config.html"><div class="tag">Conta</div><h2>Configurações</h2><p>Preferências.</p></a>
-    <a class="card" href="/v2/app-suporte.html"><div class="tag">Conta</div><h2>Atendimento</h2><p>Notificações.</p></a>
+    <a class="card" href="/app-perfil.html"><div class="tag">Conta</div><h2>Perfil</h2><p>Dados pessoais.</p></a>
+    <a class="card" href="/app-config.html"><div class="tag">Conta</div><h2>Configurações</h2><p>Preferências.</p></a>
+    <a class="card" href="/app-suporte.html"><div class="tag">Conta</div><h2>Atendimento</h2><p>Notificações.</p></a>
   </div>
 
   <script>
@@ -50,7 +50,7 @@
         if (!t) return;
         e.preventDefault();
         await supa.auth.signOut();
-        location.replace("/v2/auth.html");
+        location.replace("/auth.html");
       });
 
       try {

@@ -27,7 +27,7 @@
   async function requireUser(supa) {
     var res = await supa.auth.getUser();
     if (res.error || !res.data.user) {
-      location.replace("/v2/auth.html");
+      location.replace("/auth.html");
       return null;
     }
     return res.data.user;

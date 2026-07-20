@@ -42,6 +42,22 @@ Docs: [`docs/BACKUP-E-V2.md`](docs/BACKUP-E-V2.md) · [`backup/README.md`](backu
 
 ---
 
+
+### 3) Cutover: v2 no domínio principal · SPA no subdomínio
+
+1. DNS: crie o registro **A** `legado` → mesmo IP da VPS.
+2. Na VPS:
+
+```bash
+bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-cutover-main-v2.sh?v=1")
+```
+
+| Host | Site |
+|------|------|
+| `https://arbishield.app` | **Sistema novo (v2)** |
+| `https://legado.arbishield.app` | SPA antigo (temporário) |
+
+
 ## Estabilizar legado (SPA)
 
 ```bash

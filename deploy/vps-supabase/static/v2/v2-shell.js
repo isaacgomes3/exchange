@@ -11,88 +11,88 @@
       title: "Operação",
       color: "#22d3ee",
       items: [
-        p("hub", "Dashboard", "/v2/admin.html"),
-        p("jogos", "Jogos", "/v2/admin-jogos.html"),
-        p("desafios", "Desafios ArbiShield", "/v2/admin-desafios.html"),
-        p("monitoring-protections", "Monitor de Proteções", "/v2/admin-monitoring-protections.html"),
+        p("hub", "Dashboard", "/admin.html"),
+        p("jogos", "Jogos", "/admin-jogos.html"),
+        p("desafios", "Desafios ArbiShield", "/admin-desafios.html"),
+        p("monitoring-protections", "Monitor de Proteções", "/admin-monitoring-protections.html"),
       ],
     },
     {
       title: "Financeiro",
       color: "#34d399",
       items: [
-        p("transactions", "Transações", "/v2/admin-transactions.html"),
-        p("saques", "Saques", "/v2/admin-saques.html"),
-        p("manual-deposits", "Depósitos USDT", "/v2/admin-manual-deposits.html"),
-        p("refunds", "Reembolsos", "/v2/admin-refunds.html"),
-        p("treasury", "Tesouraria", "/v2/admin-treasury.html"),
-        p("partners-distribution", "Distribuição", "/v2/admin-partners-distribution.html"),
-        p("expenses", "Despesas", "/v2/admin-expenses.html"),
+        p("transactions", "Transações", "/admin-transactions.html"),
+        p("saques", "Saques", "/admin-saques.html"),
+        p("manual-deposits", "Depósitos USDT", "/admin-manual-deposits.html"),
+        p("refunds", "Reembolsos", "/admin-refunds.html"),
+        p("treasury", "Tesouraria", "/admin-treasury.html"),
+        p("partners-distribution", "Distribuição", "/admin-partners-distribution.html"),
+        p("expenses", "Despesas", "/admin-expenses.html"),
       ],
     },
     {
       title: "Usuários",
       color: "#a78bfa",
       items: [
-        p("users", "Usuários", "/v2/admin-users.html"),
-        p("partners", "Partners", "/v2/admin-partners.html"),
-        p("affiliates", "Afiliados", "/v2/admin-affiliates.html"),
+        p("users", "Usuários", "/admin-users.html"),
+        p("partners", "Partners", "/admin-partners.html"),
+        p("affiliates", "Afiliados", "/admin-affiliates.html"),
       ],
     },
     {
       title: "Compliance & Risco",
       color: "#f59e0b",
       items: [
-        p("contestations", "Contestações", "/v2/admin-contestations.html"),
-        p("approvals", "Aprovações", "/v2/admin-approvals.html"),
-        p("proofs", "Comprovantes", "/v2/admin-proofs.html"),
-        p("investigation", "Investigação", "/v2/admin-investigation.html"),
-        p("risk", "Monitor de Risco", "/v2/admin-risk.html"),
-        p("blacklist", "Blacklist", "/v2/admin-blacklist.html"),
-        p("geo", "Geosegurança", "/v2/admin-geo.html"),
-        p("signup-attempts", "Tentativas de Cadastro", "/v2/admin-signup-attempts.html"),
+        p("contestations", "Contestações", "/admin-contestations.html"),
+        p("approvals", "Aprovações", "/admin-approvals.html"),
+        p("proofs", "Comprovantes", "/admin-proofs.html"),
+        p("investigation", "Investigação", "/admin-investigation.html"),
+        p("risk", "Monitor de Risco", "/admin-risk.html"),
+        p("blacklist", "Blacklist", "/admin-blacklist.html"),
+        p("geo", "Geosegurança", "/admin-geo.html"),
+        p("signup-attempts", "Tentativas de Cadastro", "/admin-signup-attempts.html"),
       ],
     },
     {
       title: "Conteúdo",
       color: "#c6ff00",
       items: [
-        p("whatsapp", "Marketing / WhatsApp", "/v2/admin-whatsapp.html"),
-        p("communication-lab", "Communication Lab", "/v2/admin-communication-lab.html"),
-        p("banners", "Banners", "/v2/admin-banners.html"),
-        p("onboarding", "Onboarding", "/v2/admin-onboarding.html"),
-        p("academia", "Academia", "/v2/admin-academia.html"),
+        p("whatsapp", "Marketing / WhatsApp", "/admin-whatsapp.html"),
+        p("communication-lab", "Communication Lab", "/admin-communication-lab.html"),
+        p("banners", "Banners", "/admin-banners.html"),
+        p("onboarding", "Onboarding", "/admin-onboarding.html"),
+        p("academia", "Academia", "/admin-academia.html"),
       ],
     },
     {
       title: "Suporte",
       color: "#f472b6",
       items: [
-        p("support", "Suporte", "/v2/admin-support.html"),
-        p("support-ai", "Suporte IA", "/v2/admin-support-ai.html"),
+        p("support", "Suporte", "/admin-support.html"),
+        p("support-ai", "Suporte IA", "/admin-support-ai.html"),
       ],
     },
     {
       title: "Sistema",
       color: "#94a3b8",
       items: [
-        p("settings", "Configurações", "/v2/admin-settings.html"),
-        p("betting-houses", "Casas de Aposta", "/v2/admin-betting-houses.html"),
-        p("permissoes", "Permissões de Admins", "/v2/admin-permissoes.html"),
-        p("marketing-team", "Time de Marketing", "/v2/admin-marketing-team.html"),
+        p("settings", "Configurações", "/admin-settings.html"),
+        p("betting-houses", "Casas de Aposta", "/admin-betting-houses.html"),
+        p("permissoes", "Permissões de Admins", "/admin-permissoes.html"),
+        p("marketing-team", "Time de Marketing", "/admin-marketing-team.html"),
       ],
     },
     {
       title: "Avançado",
       color: "#71717a",
       items: [
-        p("logs", "Logs / Auditoria", "/v2/admin-logs.html"),
-        p("settlements-audit", "Auditoria de Encerramentos", "/v2/admin-settlements-audit.html"),
-        p("technical-audit", "Monitor Técnico", "/v2/admin-technical-audit.html"),
-        p("performance", "Performance", "/v2/admin-performance.html"),
-        p("siem", "SIEM / Eventos", "/v2/admin-siem.html"),
-        p("monitoring", "Monitoria Staff", "/v2/admin-monitoring.html"),
-        p("app", "Ir para o App", "/v2/app.html"),
+        p("logs", "Logs / Auditoria", "/admin-logs.html"),
+        p("settlements-audit", "Auditoria de Encerramentos", "/admin-settlements-audit.html"),
+        p("technical-audit", "Monitor Técnico", "/admin-technical-audit.html"),
+        p("performance", "Performance", "/admin-performance.html"),
+        p("siem", "SIEM / Eventos", "/admin-siem.html"),
+        p("monitoring", "Monitoria Staff", "/admin-monitoring.html"),
+        p("app", "Ir para o App", "/app.html"),
       ],
     },
   ];
@@ -102,30 +102,30 @@
       title: "Operações",
       color: "#c9f223",
       items: [
-        p("home", "Visão Geral", "/v2/app.html"),
-        p("proteger", "Proteger Aposta", "/v2/app-proteger.html"),
-        p("protecoes", "Minhas Proteções", "/v2/app-protecoes.html"),
-        p("desafio", "Desafio ArbiShield", "/v2/app-desafio.html"),
-        p("carteira", "Financeiro", "/v2/app-carteira.html"),
-        p("suporte", "Atendimento", "/v2/app-suporte.html"),
+        p("home", "Visão Geral", "/app.html"),
+        p("proteger", "Proteger Aposta", "/app-proteger.html"),
+        p("protecoes", "Minhas Proteções", "/app-protecoes.html"),
+        p("desafio", "Desafio ArbiShield", "/app-desafio.html"),
+        p("carteira", "Financeiro", "/app-carteira.html"),
+        p("suporte", "Atendimento", "/app-suporte.html"),
       ],
     },
     {
       title: "Comunidade",
       color: "#34d399",
       items: [
-        p("afiliados", "Afiliados", "/v2/app-afiliados.html"),
-        p("partners", "Provedor", "/v2/app-partners.html"),
-        p("baixar-app", "Baixar App", "/v2/app-baixar-app.html"),
+        p("afiliados", "Afiliados", "/app-afiliados.html"),
+        p("partners", "Provedor", "/app-partners.html"),
+        p("baixar-app", "Baixar App", "/app-baixar-app.html"),
       ],
     },
     {
       title: "Conta",
       color: "#94a3b8",
       items: [
-        p("perfil", "Perfil", "/v2/app-perfil.html"),
-        p("config", "Configurações", "/v2/app-config.html"),
-        p("admin", "Admin", "/v2/admin.html"),
+        p("perfil", "Perfil", "/app-perfil.html"),
+        p("config", "Configurações", "/app-config.html"),
+        p("admin", "Admin", "/admin.html"),
       ],
     },
   ];
@@ -185,7 +185,7 @@
       } catch (e) {}
     }
 
-    var brandHref = shell === "admin" ? "/v2/admin.html" : "/v2/app.html";
+    var brandHref = shell === "admin" ? "/admin.html" : "/app.html";
     var brandSub = shell === "admin" ? "Admin · v2" : "Área do membro · v2";
     var sections = shell === "admin" ? ADMIN_SECTIONS : APP_SECTIONS;
 
@@ -231,10 +231,10 @@
       renderSections(sections, active) +
       "</div>" +
       '<div class="v2-sidebar-foot">' +
-      '<a class="v2-nav-link" href="/v2/">Home v2</a>' +
+      '<a class="v2-nav-link" href="/">Home</a>' +
       (shell === "admin"
-        ? '<a class="v2-nav-link" href="/v2/app.html">App membro</a>'
-        : '<a class="v2-nav-link" href="#" id="v2LogoutLink">Sair</a>') +
+        ? '<a class="v2-nav-link" href="/app.html">App membro</a><a class="v2-nav-link" href="https://legado.arbishield.app/" target="_blank" rel="noopener">SPA legado</a>'
+        : '<a class="v2-nav-link" href="#" id="v2LogoutLink">Sair</a><a class="v2-nav-link" href="https://legado.arbishield.app/" target="_blank" rel="noopener">SPA legado</a>') +
       "</div>";
 
     var backdrop = document.querySelector(".v2-sidebar-backdrop");
