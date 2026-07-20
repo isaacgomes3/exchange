@@ -91,6 +91,9 @@ const FN = {
     "198b78c34f17e6663dd0b2aee49a4b143a2d04f70a88a721d7a7b7992040a0f5",
   BANNERS_REORDER:
     "6bb5b94ad984dfda9b3f6d2310eceb0106f341515295fa988444b412c57367ca",
+  /** App carteira — transferência banca → desafio (máx. 50%) */
+  TRANSFER_TO_DESAFIO:
+    "f0610601d4285267b31d611e5eb632c530485702882605895d90b39b8be5922c",
 };
 
 function cors(res) {
@@ -894,6 +897,79 @@ async function getUserDashboardMetrics(userId) {
   return { todayEarningsCents, activeProtectionCents };
 }
 
+async function transferRealToDesafio(token, body) {
+  const userId = requireUserId(token);
+  const amountCents = Math.round(Number(body?.amountCents ?? body?.amount_cents ?? 0));
+  if (!Number.isFinite(amountCents) || amountCents <= 0) {
+    throw new Error("Valor inválido");
+  }
+  const rows = await sb(
+    `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,desafio_balance_cents&id=eq.${userId}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const p = Array.isArray(rows) ? rows[0] : null;
+  if (!p) throw new Error("Perfil não encontrado");
+  const balance = n(p.balance_cents);
+  const reusable = n(p.reusable_balance_cents);
+  const desafio = n(p.desafio_balance_cents);
+  const banca = balance + reusable;
+  const maxTransfer = Math.floor(banca / 2);
+  if (amountCents > maxTransfer) {
+    throw new Error(
+      `Valor acima do limite de 50% do saldo da banca (máx. ${(maxTransfer / 100).toFixed(2)})`
+    );
+  }
+  if (amountCents > banca) throw new Error("Saldo insuficiente");
+
+  let nextBalance = balance;
+  let nextReusable = reusable;
+  let left = amountCents;
+  if (nextBalance >= left) {
+    nextBalance -= left;
+    left = 0;
+  } else {
+    left -= nextBalance;
+    nextBalance = 0;
+    nextReusable = Math.max(0, nextReusable - left);
+    left = 0;
+  }
+
+  await sb(`/rest/v1/profiles?id=eq.${userId}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: {
+      balance_cents: nextBalance,
+      reusable_balance_cents: nextReusable,
+      desafio_balance_cents: desafio + amountCents,
+      updated_at: new Date().toISOString(),
+    },
+  });
+
+  try {
+    await sb("/rest/v1/wallet_transactions", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        user_id: userId,
+        type: "transfer_to_desafio",
+        amount_cents: -amountCents,
+        balance_after_cents: nextBalance + nextReusable,
+        meta: { destino: "desafio", amount_cents: amountCents },
+      },
+    });
+  } catch {
+    /* extrato opcional */
+  }
+
+  return {
+    ok: true,
+    amountCents,
+    balance_cents: nextBalance,
+    reusable_balance_cents: nextReusable,
+    desafio_balance_cents: desafio + amountCents,
+  };
+}
+
 async function getUserDashboardCritical(token) {
   const userId = requireUserId(token);
   const [profileBundle, metrics] = await Promise.all([
@@ -1286,6 +1362,19 @@ async function handleServerFn(req, res, id, rawBody = "") {
     }
   }
 
+  if (id === FN.TRANSFER_TO_DESAFIO && req.method === "POST") {
+    try {
+      const params = extractServerFnData(rawBody);
+      return sendTsrOk(res, await transferRealToDesafio(token, params));
+    } catch (err) {
+      console.error("[serverfn-shim] TRANSFER_TO_DESAFIO error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
   if (id === FN.BANNERS_REORDER && req.method === "POST") {
     try {
       const params = extractServerFnData(rawBody);
@@ -1481,6 +1570,25 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 200, data);
     } catch (err) {
       return sendJson(res, 500, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/transfer-desafio" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      const data = await transferRealToDesafio(token, body.data || body);
+      return sendJson(res, 200, data);
+    } catch (err) {
+      return sendJson(res, 400, {
         error: err instanceof Error ? err.message : String(err),
       });
     }
