@@ -2,12 +2,13 @@
 # Deploy: criar desafios no v2 (UI sugestões + POST /api/arbishield/desafios no :3098)
 #
 # Uso (root na VPS):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-deploy-desafios-create.sh?v=4")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-deploy-desafios-create.sh?v=5")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/arbishield-v2-backup-723d}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${BRANCH}"
-WEB="${ARBISHIELD_WEB:-/var/www/arbishield}/v2"
+WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
+WEB="${WEB_ROOT}/v2"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
 
 log() { echo "==> $*"; }
@@ -15,12 +16,15 @@ die() { echo "ERRO: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null || die "$1 não encontrado"; }
 need curl
 need systemctl
-mkdir -p "$WEB" "$SCRIPTS_DIR"
+mkdir -p "$WEB" "$WEB_ROOT" "$SCRIPTS_DIR"
 
-log "1/3 — UI desafios (admin + membro) + CSS"
+log "1/3 — UI desafios (admin + membro) + CSS + banner"
 for f in admin-desafio-sugestoes.html admin-desafios.html app-desafio.html v2.css; do
   curl -fsSL "$RAW/deploy/vps-supabase/static/v2/$f" -o "$WEB/$f"
   chmod 0644 "$WEB/$f"
+  # raiz (nginx cutover serve /v2 como root)
+  curl -fsSL "$RAW/deploy/vps-supabase/static/v2/$f" -o "$WEB_ROOT/$f"
+  chmod 0644 "$WEB_ROOT/$f"
   echo "  ok $f"
 done
 

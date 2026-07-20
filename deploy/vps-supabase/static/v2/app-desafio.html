@@ -19,6 +19,12 @@
     </div>
   </div>
   <div id="err" class="err"></div>
+
+  <!-- Banner do Desafio (mesmo fluxo do SPA DesafioScreen · variant=desafio) -->
+  <div id="desafioBanner" class="dz-banner" aria-live="polite">
+    <div class="dz-banner-placeholder">Banner do Desafio · aguardando publicação</div>
+  </div>
+
   <div class="app-kpi-row">
     <div class="app-kpi"><div class="l">Jogos liberados</div><div class="v lime" id="kAvail">—</div></div>
     <div class="app-kpi"><div class="l">Desafios ativos</div><div class="v" id="kActive">—</div></div>
@@ -399,7 +405,47 @@
         });
       });
 
+      async function loadDesafioBanner() {
+        var host = document.getElementById("desafioBanner");
+        if (!host) return;
+        try {
+          var ban = await supa
+            .from("banners")
+            .select("id,title,image_url,cta_url,variant,active")
+            .eq("variant", "desafio")
+            .eq("active", true)
+            .order("sort_order", { ascending: true })
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (ban.error) throw ban.error;
+          var row = ban.data;
+          if (row && row.image_url) {
+            var href = row.cta_url || "#";
+            var external = /^https?:\/\//i.test(href);
+            host.innerHTML =
+              '<a class="dz-banner-link" href="' +
+              esc(href) +
+              '"' +
+              (external ? ' target="_blank" rel="noreferrer"' : "") +
+              ">" +
+              '<img src="' +
+              esc(row.image_url) +
+              '" alt="' +
+              esc(row.title || "Desafio ArbiShield") +
+              '" loading="lazy" decoding="async" />' +
+              "</a>";
+            return;
+          }
+        } catch (ex) {
+          console.warn("[desafio] banner", ex);
+        }
+        host.innerHTML =
+          '<div class="dz-banner-placeholder">Banner do Desafio · aguardando publicação</div>';
+      }
+
       try {
+        await loadDesafioBanner();
         var res = await fetch("/api/arbishield/desafios", {
           cache: "no-store",
           headers: { accept: "application/json" },
