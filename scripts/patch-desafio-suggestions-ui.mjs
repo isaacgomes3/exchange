@@ -31,11 +31,20 @@ mkdirSync(resolve(www, "assets"), { recursive: true });
 copyFileSync(srcInject, resolve(www, "assets/desafio-sugestoes-inject.js"));
 copyFileSync(srcHtml, resolve(www, "desafio-sugestoes.html"));
 
+const version = Date.now().toString(36);
 const indexPath = resolve(www, "index.html");
 let html = readFileSync(indexPath, "utf8");
-const tag =
-  '<script src="/assets/desafio-sugestoes-inject.js" defer></script>';
-if (!html.includes("desafio-sugestoes-inject.js")) {
+const tag = `<script src="/assets/desafio-sugestoes-inject.js?v=${version}" defer></script>`;
+
+if (/desafio-sugestoes-inject\.js/.test(html)) {
+  // Atualiza query de cache-bust se o script já existir
+  html = html.replace(
+    /<script[^>]*desafio-sugestoes-inject\.js[^>]*><\/script>/,
+    tag
+  );
+  writeFileSync(indexPath, html);
+  console.log("Script atualizado (cache-bust) em", indexPath);
+} else {
   if (!html.includes("</body>")) {
     console.error("index.html sem </body>");
     process.exit(1);
@@ -43,7 +52,5 @@ if (!html.includes("desafio-sugestoes-inject.js")) {
   html = html.replace("</body>", `${tag}\n</body>`);
   writeFileSync(indexPath, html);
   console.log("Script injetado em", indexPath);
-} else {
-  console.log("Script já presente em", indexPath);
 }
-console.log("OK:", www);
+console.log("OK:", www, "v=" + version);

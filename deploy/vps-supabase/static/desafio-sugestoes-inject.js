@@ -1,11 +1,13 @@
 /**
- * Injeta o link "Sugestão de Desafio" na Gestão de Desafios SEM mover
- * o botão React "Lançar Desafio" (mover o nó quebra o handler do React).
- * Também aplica sugestão salva no localStorage ao abrir o formulário.
+ * Link "Sugestão de Desafio" + preencher formulário a partir do localStorage.
+ *
+ * IMPORTANTE: NÃO usa MutationObserver no documento inteiro — isso + React
+ * gerava loop (mutation → fill → re-render → mutation) e congelava o admin.
  */
 (function () {
   const BTN_ID = "arbishield-desafio-sugestao-btn";
   const APPLIED_FLAG = "arbishield_desafio_suggestion_applied";
+  const SEEN_SUGESTAO = "arbishield_desafio_sugestao_seen";
 
   function onDesafiosPage() {
     const p = location.pathname.replace(/\/$/, "");
@@ -13,13 +15,12 @@
   }
 
   function findLaunchButton() {
-    const buttons = Array.from(document.querySelectorAll("button"));
-    return buttons.find((b) => /lançar\s*desafio/i.test(b.textContent || ""));
+    return Array.from(document.querySelectorAll("button")).find((b) =>
+      /lançar\s*desafio/i.test(b.textContent || "")
+    );
   }
 
-  /**
-   * Insere o link ao lado do botão, sem encapsular nem mover o botão React.
-   */
+  /** Insere o link ao lado do botão, sem mover o nó React. */
   function ensureButton() {
     if (!onDesafiosPage()) return;
     if (document.getElementById(BTN_ID)) return;
@@ -51,23 +52,23 @@
     el.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
+  /** Só limpa o flag UMA vez quando a URL traz sugestao=1 (evita loop). */
+  function acceptNewSuggestionOnce() {
+    const qs = new URLSearchParams(location.search);
+    if (qs.get("sugestao") !== "1") return;
+    if (sessionStorage.getItem(SEEN_SUGESTAO) === location.href) return;
+    sessionStorage.setItem(SEEN_SUGESTAO, location.href);
+    sessionStorage.removeItem(APPLIED_FLAG);
+  }
+
   function applySuggestionToOpenForm() {
     if (!onDesafiosPage()) return;
-
-    const qs = new URLSearchParams(location.search);
-    if (qs.get("sugestao") === "1") {
-      // Nova sugestão chegou — permite reaplicar
-      sessionStorage.removeItem(APPLIED_FLAG);
-    }
+    acceptNewSuggestionOnce();
 
     if (sessionStorage.getItem(APPLIED_FLAG) === "1") return;
-    const want =
-      qs.get("sugestao") === "1" ||
-      Boolean(localStorage.getItem("arbishield_desafio_suggestion"));
-    if (!want) return;
+    if (!localStorage.getItem("arbishield_desafio_suggestion")) return;
 
     const raw = localStorage.getItem("arbishield_desafio_suggestion");
-    if (!raw) return;
     let data;
     try {
       data = JSON.parse(raw);
@@ -100,7 +101,10 @@
       document.querySelectorAll('input:not([type="hidden"]), textarea')
     ).filter((el) => el.offsetParent !== null);
 
-    if (inputs.length < 3) return; // formulário ainda não aberto
+    if (inputs.length < 3) return;
+
+    // Marca ANTES de preencher — senão o re-render do React reentra e trava
+    sessionStorage.setItem(APPLIED_FLAG, "1");
 
     let filled = 0;
     for (const input of inputs) {
@@ -126,40 +130,52 @@
       }
     }
 
-    if (filled > 0) {
-      sessionStorage.setItem(APPLIED_FLAG, "1");
-      localStorage.removeItem("arbishield_desafio_suggestion");
-      try {
-        const u = new URL(location.href);
-        if (u.searchParams.has("sugestao")) {
-          u.searchParams.delete("sugestao");
-          history.replaceState({}, "", u.pathname + u.search);
-        }
-      } catch {}
+    if (filled === 0) {
+      // Formulário ainda não é o de lançamento — tenta de novo depois
+      sessionStorage.removeItem(APPLIED_FLAG);
+      return;
+    }
+
+    localStorage.removeItem("arbishield_desafio_suggestion");
+    try {
+      const u = new URL(location.href);
+      if (u.searchParams.has("sugestao")) {
+        u.searchParams.delete("sugestao");
+        history.replaceState({}, "", u.pathname + u.search);
+      }
+    } catch {}
+  }
+
+  function tick() {
+    if (!onDesafiosPage()) return;
+    try {
+      ensureButton();
+      applySuggestionToOpenForm();
+    } catch (err) {
+      console.warn("[desafio-sugestoes-inject]", err);
     }
   }
 
-  let scheduled = false;
-  function tick() {
-    if (scheduled) return;
-    scheduled = true;
-    requestAnimationFrame(() => {
-      scheduled = false;
-      try {
-        ensureButton();
-        applySuggestionToOpenForm();
-      } catch (err) {
-        console.warn("[desafio-sugestoes-inject]", err);
-      }
-    });
-  }
-
-  const obs = new MutationObserver(() => tick());
-  obs.observe(document.documentElement, { childList: true, subtree: true });
+  // Polling leve — sem MutationObserver (causava freeze no admin)
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", tick);
   } else {
     tick();
   }
-  setInterval(tick, 1500);
+  setInterval(tick, 2000);
+
+  // Reage a navegação SPA (pushState/replaceState) sem observar o DOM
+  const _push = history.pushState;
+  const _replace = history.replaceState;
+  history.pushState = function () {
+    const r = _push.apply(this, arguments);
+    setTimeout(tick, 50);
+    return r;
+  };
+  history.replaceState = function () {
+    const r = _replace.apply(this, arguments);
+    setTimeout(tick, 50);
+    return r;
+  };
+  window.addEventListener("popstate", () => setTimeout(tick, 50));
 })();
