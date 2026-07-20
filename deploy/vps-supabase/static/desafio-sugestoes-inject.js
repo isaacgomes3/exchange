@@ -7,7 +7,7 @@
  * Solução:
  * 1) Qualquer clique em link para /admin/desafios → navegação completa
  * 2) Se a URL já for /admin/desafios dentro do shell React → reload forçado
- * 3) Zero MutationObserver, zero patch de history.pushState
+ * 3) Sem observer de DOM e sem patch de history
  */
 (function () {
   var FLAG = "arbishield_force_desafios_vps_v3";
