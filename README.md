@@ -51,6 +51,22 @@ sudo nginx -t && sudo systemctl reload nginx
 
 Depois: `https://arbishield.app/desafio-sugestoes`
 
+## Por que às vezes aparece 0 jogos?
+
+A página antiga usava **PRÉ-LIVE = 30 min** e fallback **“restante do dia” (meia-noite UTC)**.
+De madrugada (UTC) essa janela fica quase vazia → `0 jogos escaneados`.
+
+**Correção:** padrão **1440 min (24h)**. Arquivo em `deploy/desafio-sugestoes.html`.
+
+Na VPS (site antigo ainda no ar):
+
+```bash
+chmod +x deploy/patch-desafio-24h.sh
+./deploy/patch-desafio-24h.sh /caminho/do/site   # ex: /var/www/arbishield
+```
+
+Atalho imediato sem deploy: no formulário, mude **Pré-live (min)** para **1440** e clique em **Atualizar sugestões**.
+
 ## O que NÃO entra neste deploy
 
 - Supabase (auth, rest, edge functions)
