@@ -4,25 +4,293 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <title>Distribuição — ArbiShield v2</title>
+  <title>Distribuição Provedores — ArbiShield</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css" />
+  <link rel="stylesheet" href="/v2.css?v=13" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js"></script>
-  <script src="/v2-pages.js"></script>
-  <script src="/v2-shell.js" defer></script>
+  <script src="/v2.js?v=13"></script>
+  <script src="/v2-shell.js?v=13" defer></script>
+  <style>
+    .pd-wrap { display: grid; gap: 16px; padding-bottom: 40px; }
+    .pd-head h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2rem); font-weight: 900; letter-spacing: -0.03em; }
+    .pd-head h1 span { color: #c8f31d; }
+    .pd-head .sub { margin: 8px 0 0; color: #8b949e; font-size: 13px; max-width: 40rem; }
+    .pd-kpis { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+    .pd-kpi, .pd-card {
+      border-radius: 16px; border: 1px solid rgba(180,255,0,0.12);
+      background: #071413; padding: 16px;
+    }
+    .pd-kpi .l { font-size: 10px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: #8b949e; }
+    .pd-kpi strong { display: block; margin-top: 8px; font-size: 1.25rem; }
+    .pd-grid { display: grid; grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.4fr); gap: 12px; }
+    .pd-card h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; }
+    .pd-card p { margin: 0 0 14px; font-size: 12px; color: #8b949e; line-height: 1.45; }
+    .pd-label { display: block; margin: 0 0 6px; font-size: 10px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: #8b949e; }
+    .pd-input, .pd-textarea {
+      width: 100%; border-radius: 12px; border: 1px solid rgba(180,255,0,0.12);
+      background: #010b0a; color: #fff; padding: 12px 14px; font-size: 14px; margin-bottom: 12px;
+    }
+    .pd-btn {
+      border: 0; border-radius: 12px; background: #c8f31d; color: #000;
+      padding: 12px 16px; font-size: 11px; font-weight: 800; letter-spacing: 0.1em;
+      text-transform: uppercase; cursor: pointer; width: 100%;
+    }
+    .pd-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .pd-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .pd-table th, .pd-table td { text-align: left; padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .pd-table th { color: #8b949e; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; }
+    .pd-empty { color: #8b949e; text-align: center; padding: 24px; }
+    .pd-alert { border-radius: 12px; padding: 10px 12px; font-size: 12px; margin-bottom: 10px; }
+    .pd-alert.ok { background: rgba(200,243,29,0.1); border: 1px solid rgba(200,243,29,0.3); color: #c8f31d; }
+    .pd-alert.bad { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.35); color: #f87171; }
+    .pd-note {
+      border-radius: 12px; border: 1px solid rgba(41,151,255,0.2);
+      background: rgba(41,151,255,0.06); padding: 12px; font-size: 12px; color: rgba(255,255,255,0.8); line-height: 1.45;
+    }
+    @media (max-width: 900px) {
+      .pd-kpis, .pd-grid { grid-template-columns: 1fr; }
+    }
+  </style>
 </head>
 <body data-shell="admin" data-active="partners-distribution">
-  <div class="page-head">
-    <div>
-      <h1>Gestão de <span>Distribuição</span></h1>
-      <p class="sub">Financeiro · layout Jogos · nativo v2 · sem SPA</p>
-    </div>
-  </div>
   <div id="err" class="err"></div>
-  <div id="pageBody"><div class="meta">Carregando…</div></div>
+  <div id="pdRoot" class="pd-wrap">
+    <div class="pd-empty">Carregando…</div>
+  </div>
   <script>
-    ArbiV2Page.mountAdmin({"sources": [{"table": "partner_rounds", "limit": 200}, {"table": "affiliate_stats", "limit": 200}], "cols": ["id", "status", "created_at"]});
+(function () {
+  var state = {
+    rounds: [],
+    history: [],
+    stats: { monthPct: 0, totalPaid: 0, count: 0 },
+    percentage: "1.00",
+    description: "",
+    busy: false,
+    err: "",
+    ok: "",
+  };
+
+  function money(c) { return ArbiV2.money(c); }
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+  }
+  async function authToken(supa) {
+    var s = await supa.auth.getSession();
+    return s.data.session && s.data.session.access_token;
+  }
+
+  function paint() {
+    var root = document.getElementById("pdRoot");
+    if (!root) return;
+    var invested = state.rounds.reduce(function (a, r) {
+      return a + Number(r.invested_amount || 0);
+    }, 0);
+    var preview = Math.round((invested * (parseFloat(state.percentage) || 0)) / 100);
+
+    root.innerHTML =
+      '<header class="pd-head"><div><h1>Gestão de <span>Distribuição</span></h1>' +
+      '<p class="sub">Pague rentabilidade aos provedores ativos (segunda a sexta). Também recebe liquidez confiscada dos circuitos de Desafio sem vitória na casa.</p></div></header>' +
+      (state.err ? '<div class="pd-alert bad">' + esc(state.err) + "</div>" : "") +
+      (state.ok ? '<div class="pd-alert ok">' + esc(state.ok) + "</div>" : "") +
+      '<section class="pd-kpis">' +
+      '<article class="pd-kpi"><span class="l">Provedores ativos</span><strong>' +
+      state.rounds.length +
+      "</strong></article>" +
+      '<article class="pd-kpi"><span class="l">Capital alocado</span><strong>' +
+      esc(money(invested)) +
+      "</strong></article>" +
+      '<article class="pd-kpi"><span class="l">Pago no mês</span><strong class="lime">' +
+      esc(money(state.stats.totalPaid || 0)) +
+      " · " +
+      esc(String(state.stats.monthPct || 0)) +
+      "%</strong></article></section>" +
+      '<section class="pd-grid">' +
+      '<article class="pd-card"><h3>Distribuir rendimento</h3>' +
+      "<p>O valor é calculado sobre o total investido de cada provedor ativo.</p>" +
+      '<label class="pd-label">Percentual (%)</label>' +
+      '<input class="pd-input" id="pdPct" type="text" inputmode="decimal" value="' +
+      esc(state.percentage) +
+      '" />' +
+      '<label class="pd-label">Descrição (opcional)</label>' +
+      '<input class="pd-input" id="pdDesc" type="text" placeholder="Rendimento programado" value="' +
+      esc(state.description) +
+      '" />' +
+      '<p class="pd-label">Prévia total: ' +
+      esc(money(preview)) +
+      "</p>" +
+      '<button type="button" class="pd-btn" id="pdGo"' +
+      (state.busy ? " disabled" : "") +
+      ">" +
+      (state.busy ? "Distribuindo…" : "Distribuir agora") +
+      "</button>" +
+      '<div class="pd-note" style="margin-top:14px">Circuito Desafio: se o cliente completar as etapas só com vitórias ArbiShield (falha na casa), o saldo ganho é creditado automaticamente aos provedores ativos — proporcional ao aporte.</div>' +
+      "</article>" +
+      '<article class="pd-card"><h3>Provedores ativos</h3>' +
+      (state.rounds.length
+        ? '<div style="overflow:auto"><table class="pd-table"><thead><tr><th>Provedor</th><th>Investido</th><th>Acumulado</th></tr></thead><tbody>' +
+          state.rounds
+            .map(function (r) {
+              var name =
+                (r.profiles && r.profiles.full_name) ||
+                r.user_id ||
+                "—";
+              return (
+                "<tr><td>" +
+                esc(name) +
+                "</td><td>" +
+                esc(money(r.invested_amount)) +
+                "</td><td>" +
+                esc(money(r.accumulated_amount)) +
+                "</td></tr>"
+              );
+            })
+            .join("") +
+          "</tbody></table></div>"
+        : '<p class="pd-empty">Nenhum provedor ativo.</p>') +
+      "</article></section>" +
+      '<article class="pd-card"><h3>Histórico recente</h3>' +
+      (state.history.length
+        ? '<div style="overflow:auto"><table class="pd-table"><thead><tr><th>Data</th><th>Descrição</th><th>Valor</th></tr></thead><tbody>' +
+          state.history
+            .slice(0, 40)
+            .map(function (h) {
+              return (
+                "<tr><td>" +
+                esc(new Date(h.created_at).toLocaleString("pt-BR")) +
+                "</td><td>" +
+                esc(h.description || "Rendimento") +
+                "</td><td>" +
+                esc(money(h.distribution_amount)) +
+                "</td></tr>"
+              );
+            })
+            .join("") +
+          "</tbody></table></div>"
+        : '<p class="pd-empty">Nenhuma distribuição ainda.</p>') +
+      "</article>";
+
+    var pct = document.getElementById("pdPct");
+    var desc = document.getElementById("pdDesc");
+    var go = document.getElementById("pdGo");
+    if (pct) {
+      pct.addEventListener("change", function () {
+        state.percentage = pct.value;
+        paint();
+      });
+    }
+    if (desc) {
+      desc.addEventListener("change", function () {
+        state.description = desc.value;
+      });
+    }
+    if (go) go.addEventListener("click", distribute);
+  }
+
+  async function loadAll() {
+    var supa = ArbiV2.client();
+    await ArbiV2.requireUser(supa);
+    var token = await authToken(supa);
+    var headers = {
+      Authorization: "Bearer " + token,
+      "Content-Type": "application/json",
+    };
+
+    var roundsRes = await fetch("/api/arbishield/partner-rounds", { headers });
+    if (roundsRes.ok) {
+      state.rounds = await roundsRes.json();
+      if (!Array.isArray(state.rounds)) state.rounds = [];
+    } else {
+      var local = await supa
+        .from("partner_rounds")
+        .select("*")
+        .eq("status", "active")
+        .order("created_at", { ascending: false })
+        .limit(500);
+      state.rounds = local.data || [];
+    }
+
+    var hist = await supa
+      .from("partner_distributions")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    state.history = hist.data || [];
+
+    var now = new Date();
+    var from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    var month = (state.history || []).filter(function (h) {
+      return h.created_at && h.created_at >= from;
+    });
+    var totalPaid = month.reduce(function (a, h) {
+      return a + Number(h.distribution_amount || 0);
+    }, 0);
+    var base = month.reduce(function (a, h) {
+      return a + Number(h.contribution_amount || 0);
+    }, 0);
+    state.stats = {
+      totalPaid: totalPaid,
+      monthPct: base > 0 ? Number(((totalPaid / base) * 100).toFixed(2)) : 0,
+      count: month.length,
+    };
+  }
+
+  async function distribute() {
+    if (state.busy) return;
+    var pct = parseFloat(String(state.percentage).replace(",", ".")) || 0;
+    if (!(pct > 0)) {
+      state.err = "Informe um percentual válido.";
+      paint();
+      return;
+    }
+    state.busy = true;
+    state.err = "";
+    state.ok = "";
+    paint();
+    try {
+      var supa = ArbiV2.client();
+      var token = await authToken(supa);
+      var res = await fetch("/api/arbishield/partner-distribute", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + token,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          percentage: pct,
+          description: state.description || undefined,
+        }),
+      });
+      var data = await res.json().catch(function () { return {}; });
+      if (!res.ok) throw new Error(data.error || "Falha na distribuição");
+      state.ok =
+        "Distribuído para " +
+        (data.count || 0) +
+        " provedores · Total " +
+        money(data.totalDistributed || 0);
+      await loadAll();
+    } catch (ex) {
+      state.err = (ex && ex.message) || "Erro";
+    } finally {
+      state.busy = false;
+      paint();
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", async function () {
+    try {
+      await loadAll();
+      paint();
+    } catch (ex) {
+      var el = document.getElementById("err");
+      if (el) {
+        el.textContent = ex.message || "Erro";
+        el.classList.add("show");
+      }
+    }
+  });
+})();
   </script>
 </body>
 </html>

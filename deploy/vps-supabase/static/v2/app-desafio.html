@@ -15,7 +15,7 @@
   <div class="page-head">
     <div>
       <h1>Desafio <span>ArbiShield</span></h1>
-      <p class="sub">Escolha um desafio disponível · modelo legado</p>
+      <p class="sub">Circuito de até 5 etapas · objetivo: bater na casa · falha só na ArbiShield liquida para provedores</p>
     </div>
   </div>
   <div id="err" class="err"></div>
@@ -40,7 +40,7 @@
   </div>
 
   <div class="section-label"><span class="dot" style="background:#c6ff00"></span>Desafios disponíveis</div>
-  <p class="app-desafio-lead">Jogos liberados pela ArbiShield. Faça sua entrada para começar.</p>
+  <p class="app-desafio-lead">Ganhou na ArbiShield (falha na casa)? Segue no circuito (até +4 eventos) mirando a casa oposta. Sem vitória na casa ao final, o valor acumulado vai aos provedores de liquidez.</p>
   <div id="list" class="app-desafio-grid"><div class="ops-empty">Carregando…</div></div>
 
   <script>
@@ -372,10 +372,53 @@
         }
         host.innerHTML = visible.map(function (it) { return cardHtml(it, now); }).join("");
         host.querySelectorAll("[data-participate]").forEach(function (btn) {
-          btn.addEventListener("click", function () {
-            alert(
-              "Participação na etapa ainda está a ser ligada no v2. O card já segue o modelo do SPA."
-            );
+          btn.addEventListener("click", async function () {
+            var stepId = btn.getAttribute("data-participate");
+            var item = items.find(function (x) {
+              return String(x.id) === String(stepId);
+            });
+            if (!item) return;
+            if (
+              !confirm(
+                "Registrar entrada no lado ArbiShield?\n\nCircuito: se ganhar só na ArbiShield até o fim das etapas sem bater na casa, o valor acumulado vai para os provedores de liquidez."
+              )
+            ) {
+              return;
+            }
+            btn.disabled = true;
+            try {
+              var session = await ArbiV2.client().auth.getSession();
+              var token = session.data.session && session.data.session.access_token;
+              var res = await fetch("/api/arbishield/desafio-register", {
+                method: "POST",
+                headers: {
+                  Authorization: "Bearer " + token,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  stepId: stepId,
+                  side: "arbishield",
+                  amountCents: item.entradaCents,
+                }),
+              });
+              var data = await res.json().catch(function () {
+                return {};
+              });
+              if (!res.ok) {
+                var msg = data.error || "Falha ao participar";
+                if (String(msg).indexOf("already registered") >= 0) {
+                  msg = "Você já registrou entrada nesta etapa.";
+                } else if (String(msg).indexOf("insufficient") >= 0) {
+                  msg = "Saldo do Desafio insuficiente. Transfira na Carteira.";
+                }
+                throw new Error(msg);
+              }
+              alert("Entrada registrada no Desafio!");
+              location.reload();
+            } catch (ex) {
+              alert((ex && ex.message) || "Erro ao participar");
+              btn.disabled = false;
+            }
           });
         });
       }

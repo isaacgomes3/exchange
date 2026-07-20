@@ -99,6 +99,28 @@ const FN = {
     "fbc95c35a41b7d1f4cbff94481e4cc717dd5380d319f9c14ff638a68fe355a1c",
   AFFILIATE_WITHDRAW:
     "fe464d9378f5852cb8f2f20c8e6b6ee390d83b070e7008ed29ccfbf7ac320d89",
+  /** Desafio — participação / settle (SPA surebet-validation) */
+  DESAFIO_LIST_ACTIVE:
+    "3d73b89476f54f1c738f12aa01a568e18829e0f8072936120346589e89b7b310",
+  DESAFIO_BY_ID:
+    "20c2d3787c1a5c9b929ff144f57f21ab03d16c29ef5059b233b1ef95797f0295",
+  DESAFIO_REGISTER_ENTRY:
+    "3c34027d8a2eb09861f6b73d3cde7533042d7ef97309fd62a78f46357c4e51d6",
+  DESAFIO_CANCEL:
+    "0ef0734039213d3b2c32371fe86cfa0486ad08ee0f364097c303347064f174c9",
+  DESAFIO_LIST_PARTICIPATIONS:
+    "75cfd1c4229fc49205ac01e4118352ced7608cca40417a415c1dd71561117355",
+  DESAFIO_SETTLE:
+    "357c98074708d437f1c98549857e29b1a5881358a44f70db45ed256f3bfb1b12",
+  /** Provedor — distribuição admin (SPA) */
+  PARTNER_ACTIVE_ROUNDS:
+    "af661e4af08de0c265f682210b9bdb864049caf7d61b314c5b8c2ebefde48adc",
+  PARTNER_DISTRIBUTE:
+    "120795c23c4b588b868e5a2e18a3cd3839de0a1730c6c4022530fbb85c461dbc",
+  PARTNER_DIST_HISTORY:
+    "c3e505ca39c3e3d9e93ec2ee1e58a3168d6f34877d6de9caef17fd5d18dafd5d",
+  PARTNER_MONTHLY_STATS:
+    "5e62a59e14e7576ff86b0083e6e9ff57c75984e58b0904bf604e8cd041487fc8",
 };
 
 function cors(res) {
@@ -440,7 +462,12 @@ function extractServerFnData(rawBody) {
       d.from != null ||
       d.id != null ||
       d.title != null ||
-      d.steps != null
+      d.steps != null ||
+      d.stepId != null ||
+      d.winningSide != null ||
+      d.percentage != null ||
+      d.side != null ||
+      d.amountCents != null
     ) {
       return d;
     }
@@ -463,7 +490,16 @@ function extractServerFnData(rawBody) {
     "is_active",
     "steps",
     "stepId",
+    "step_id",
     "winningSide",
+    "winning_side",
+    "side",
+    "amountCents",
+    "amount_cents",
+    "percentage",
+    "description",
+    "homeScore",
+    "awayScore",
   ]) {
     if (parsed[k] !== undefined) out[k] = parsed[k];
   }
@@ -1092,6 +1128,520 @@ async function transferRealToDesafio(token, body) {
   };
 }
 
+/** Lucro surebet aproximado (lado vencedor). */
+function desafioProfitCents(amountCents, odd, commissionPct) {
+  const stake = Math.max(0, Math.round(Number(amountCents) || 0));
+  const o = Number(odd);
+  if (!(stake > 0) || !(o > 1)) return 0;
+  const fee = Math.max(0, Math.min(100, Number(commissionPct) || 0)) / 100;
+  return Math.round(stake * (o - 1) * (1 - fee));
+}
+
+async function listDesafioParticipations(token, body) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const stepId = String(body?.stepId || body?.step_id || "").trim();
+  if (!stepId) throw new Error("stepId obrigatório");
+  const rows = await sb(
+    `/rest/v1/desafio_participations?select=*,profiles(full_name,avatar_url)&step_id=eq.${encodeURIComponent(stepId)}&order=created_at.desc&limit=500`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  const list = Array.isArray(rows) ? rows : [];
+  const totals = {
+    total: list.length,
+    arbishield: 0,
+    casa: 0,
+    amount_arbishield_cents: 0,
+    amount_casa_cents: 0,
+  };
+  for (const r of list) {
+    const side = String(r.side || "").toLowerCase();
+    const amt = n(r.amount_cents);
+    if (side === "casa") {
+      totals.casa += 1;
+      totals.amount_casa_cents += amt;
+    } else {
+      totals.arbishield += 1;
+      totals.amount_arbishield_cents += amt;
+    }
+  }
+  return { rows: list, totals };
+}
+
+/**
+ * Distribui valor confiscado do circuito Desafio para provedores ativos
+ * (proporcional ao invested_amount das partner_rounds).
+ */
+async function distributeToActiveProviders(amountCents, description) {
+  const total = Math.max(0, Math.round(Number(amountCents) || 0));
+  if (!(total > 0)) return { count: 0, totalDistributed: 0 };
+  const rounds = await sb(
+    `/rest/v1/partner_rounds?select=id,user_id,invested_amount,accumulated_amount,status&status=eq.active&invested_amount=gt.0&limit=2000`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  const list = Array.isArray(rounds) ? rounds : [];
+  if (!list.length) return { count: 0, totalDistributed: 0 };
+  const pool = list.reduce((a, r) => a + n(r.invested_amount), 0);
+  if (!(pool > 0)) return { count: 0, totalDistributed: 0 };
+
+  let distributed = 0;
+  let count = 0;
+  for (const r of list) {
+    const share = Math.floor((total * n(r.invested_amount)) / pool);
+    if (share <= 0) continue;
+    await sb("/rest/v1/partner_distributions", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        round_id: r.id,
+        user_id: r.user_id,
+        partner_id: r.user_id,
+        distribution_amount: share,
+        contribution_amount: n(r.invested_amount),
+        description:
+          description || "Liquidez Desafio — circuito sem vitória na casa",
+      },
+    });
+    const nextAcc = n(r.accumulated_amount) + share;
+    await sb(`/rest/v1/partner_rounds?id=eq.${encodeURIComponent(r.id)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        accumulated_amount: nextAcc,
+        updated_at: new Date().toISOString(),
+      },
+    }).catch(() => null);
+    try {
+      const prof = await sb(
+        `/rest/v1/profiles?select=investor_balance_cents&id=eq.${encodeURIComponent(r.user_id)}&limit=1`,
+        { token: SERVICE_KEY }
+      );
+      const cur = Array.isArray(prof) ? prof[0] : null;
+      if (cur) {
+        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(r.user_id)}`, {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: {
+            investor_balance_cents: n(cur.investor_balance_cents) + share,
+            updated_at: new Date().toISOString(),
+          },
+        });
+      }
+    } catch {
+      /* saldo provedor opcional */
+    }
+    distributed += share;
+    count += 1;
+  }
+  return { count, totalDistributed: distributed };
+}
+
+async function maybeForfeitCircuitToProviders(desafioId, userId) {
+  const desafioRows = await sb(
+    `/rest/v1/desafios?select=id,total_steps,initial_balance_cents&id=eq.${encodeURIComponent(desafioId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const desafio = Array.isArray(desafioRows) ? desafioRows[0] : null;
+  if (!desafio) return null;
+
+  const steps = await sb(
+    `/rest/v1/desafio_steps?select=id,status,result,step_index&desafio_id=eq.${encodeURIComponent(desafioId)}&order=step_index.asc`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  const stepList = Array.isArray(steps) ? steps : [];
+  const totalSteps = Math.max(
+    n(desafio.total_steps) || stepList.length || 5,
+    1
+  );
+  const done = stepList.filter((s) => String(s.status) === "done");
+  if (done.length < totalSteps) return null;
+
+  const stepIds = stepList.map((s) => s.id).filter(Boolean);
+  if (!stepIds.length) return null;
+  const parts = await sb(
+    `/rest/v1/desafio_participations?select=id,user_id,step_id,side,result,amount_cents,profit_cents&user_id=eq.${encodeURIComponent(userId)}&step_id=in.(${stepIds.join(",")})`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  const userParts = Array.isArray(parts) ? parts : [];
+  if (!userParts.length) return null;
+
+  const wonCasa = userParts.some(
+    (p) =>
+      String(p.side).toLowerCase() === "casa" &&
+      String(p.result).toLowerCase() === "won"
+  );
+  if (wonCasa) return { forfeited: false, reason: "objetivo_casa_atingido" };
+
+  const arbiWins = userParts.filter(
+    (p) =>
+      String(p.side).toLowerCase() === "arbishield" &&
+      String(p.result).toLowerCase() === "won"
+  );
+  const wonAmount = arbiWins.reduce(
+    (a, p) => a + n(p.profit_cents) + n(p.amount_cents),
+    0
+  );
+  if (!(wonAmount > 0)) return { forfeited: false, reason: "sem_ganhos" };
+
+  const prof = await sb(
+    `/rest/v1/profiles?select=desafio_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const profile = Array.isArray(prof) ? prof[0] : null;
+  const bal = n(profile?.desafio_balance_cents);
+  const take = Math.min(bal, wonAmount);
+  if (take > 0) {
+    await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        desafio_balance_cents: Math.max(0, bal - take),
+        updated_at: new Date().toISOString(),
+      },
+    });
+  }
+  const dist = await distributeToActiveProviders(
+    take > 0 ? take : wonAmount,
+    `Circuito Desafio ${desafioId.slice(0, 8)} — sem vitória na casa`
+  );
+  try {
+    await sb("/rest/v1/wallet_transactions", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        user_id: userId,
+        type: "desafio_forfeit_to_provider",
+        amount_cents: -(take || wonAmount),
+        meta: {
+          desafio_id: desafioId,
+          providers: dist.count,
+          totalDistributed: dist.totalDistributed,
+        },
+      },
+    });
+  } catch {
+    /* opcional */
+  }
+  return {
+    forfeited: true,
+    amountCents: take || wonAmount,
+    providers: dist,
+  };
+}
+
+async function settleDesafioStep(token, body) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const stepId = String(body?.stepId || body?.step_id || "").trim();
+  const winningSide = String(body?.winningSide || body?.winning_side || "")
+    .toLowerCase()
+    .trim();
+  if (!stepId) throw new Error("stepId obrigatório");
+  if (winningSide !== "arbishield" && winningSide !== "casa") {
+    throw new Error("winningSide deve ser arbishield ou casa");
+  }
+
+  const stepRows = await sb(
+    `/rest/v1/desafio_steps?select=*&id=eq.${encodeURIComponent(stepId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const step = Array.isArray(stepRows) ? stepRows[0] : null;
+  if (!step) throw new Error("Etapa não encontrada");
+  if (String(step.status) === "done") {
+    throw new Error("Etapa já encerrada");
+  }
+
+  const parts = await sb(
+    `/rest/v1/desafio_participations?select=*&step_id=eq.${encodeURIComponent(stepId)}&limit=2000`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  const list = Array.isArray(parts) ? parts : [];
+  const adminId = (() => {
+    try {
+      return requireUserId(token);
+    } catch {
+      return null;
+    }
+  })();
+
+  for (const p of list) {
+    const side = String(p.side || "").toLowerCase();
+    const won = side === winningSide;
+    let profit = 0;
+    if (won) {
+      if (side === "arbishield") {
+        profit = desafioProfitCents(
+          p.amount_cents,
+          step.arbi_odd ?? step.home_odd,
+          step.arbi_commission_pct
+        );
+      } else {
+        profit = desafioProfitCents(
+          p.amount_cents,
+          step.casa_odd ?? step.away_odd,
+          step.casa_commission_pct
+        );
+      }
+    }
+    await sb(
+      `/rest/v1/desafio_participations?id=eq.${encodeURIComponent(p.id)}`,
+      {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          result: won ? "won" : "lost",
+          profit_cents: won ? profit : 0,
+          updated_at: new Date().toISOString(),
+        },
+      }
+    );
+    if (won && profit > 0 && p.user_id) {
+      try {
+        const pr = await sb(
+          `/rest/v1/profiles?select=desafio_balance_cents&id=eq.${encodeURIComponent(p.user_id)}&limit=1`,
+          { token: SERVICE_KEY }
+        );
+        const cur = Array.isArray(pr) ? pr[0] : null;
+        if (cur) {
+          await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(p.user_id)}`, {
+            method: "PATCH",
+            token: SERVICE_KEY,
+            body: {
+              desafio_balance_cents: n(cur.desafio_balance_cents) + profit,
+              updated_at: new Date().toISOString(),
+            },
+          });
+        }
+      } catch {
+        /* */
+      }
+    }
+  }
+
+  const result =
+    winningSide === "arbishield" ? "zebra_protected" : "win";
+  await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: {
+      status: "done",
+      result,
+      settled_at: new Date().toISOString(),
+      settled_by: adminId,
+      final_score_home:
+        body?.homeScore != null ? Number(body.homeScore) : step.final_score_home,
+      final_score_away:
+        body?.awayScore != null ? Number(body.awayScore) : step.final_score_away,
+      updated_at: new Date().toISOString(),
+    },
+  });
+
+  const forfeits = [];
+  if (winningSide === "arbishield" && step.desafio_id) {
+    const userIds = [...new Set(list.map((p) => p.user_id).filter(Boolean))];
+    for (const uid of userIds) {
+      const f = await maybeForfeitCircuitToProviders(step.desafio_id, uid);
+      if (f) forfeits.push({ userId: uid, ...f });
+    }
+  }
+
+  const retained = list
+    .filter((p) => String(p.side || "").toLowerCase() !== winningSide)
+    .reduce((a, p) => a + n(p.amount_cents), 0);
+
+  return {
+    ok: true,
+    stepId,
+    winningSide,
+    result,
+    participants: list.length,
+    retainedCents: retained,
+    forfeits,
+  };
+}
+
+async function registerDesafioEntry(token, body) {
+  const userId = requireUserId(token);
+  const stepId = String(body?.stepId || body?.step_id || "").trim();
+  const side = String(body?.side || "")
+    .toLowerCase()
+    .trim();
+  const amountCents = Math.round(
+    Number(body?.amountCents ?? body?.amount_cents ?? 0)
+  );
+  if (!stepId) throw new Error("stepId obrigatório");
+  if (side !== "arbishield" && side !== "casa") {
+    throw new Error("side inválido");
+  }
+  if (!(amountCents > 0)) throw new Error("Valor inválido");
+
+  const stepRows = await sb(
+    `/rest/v1/desafio_steps?select=*,desafios(id,initial_balance_cents,is_active,status)&id=eq.${encodeURIComponent(stepId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const step = Array.isArray(stepRows) ? stepRows[0] : null;
+  if (!step) throw new Error("Etapa não encontrada");
+  if (String(step.status) === "done") throw new Error("Etapa já encerrada");
+  if (String(step.status) === "live") {
+    throw new Error("Jogo ao vivo — entradas encerradas");
+  }
+
+  const existing = await sb(
+    `/rest/v1/desafio_participations?select=id&user_id=eq.${userId}&step_id=eq.${encodeURIComponent(stepId)}&side=eq.${side}&limit=1`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  if (Array.isArray(existing) && existing[0]) {
+    throw new Error("already registered");
+  }
+
+  const prof = await sb(
+    `/rest/v1/profiles?select=desafio_balance_cents&id=eq.${userId}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const profile = Array.isArray(prof) ? prof[0] : null;
+  const bal = n(profile?.desafio_balance_cents);
+  if (bal < amountCents) throw new Error("insufficient");
+
+  await sb(`/rest/v1/profiles?id=eq.${userId}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: {
+      desafio_balance_cents: bal - amountCents,
+      updated_at: new Date().toISOString(),
+    },
+  });
+
+  const created = await sb("/rest/v1/desafio_participations", {
+    method: "POST",
+    token: SERVICE_KEY,
+    body: {
+      user_id: userId,
+      step_id: stepId,
+      desafio_id: step.desafio_id || step.desafios?.id || null,
+      side,
+      amount_cents: amountCents,
+      result: "pending",
+      profit_cents: 0,
+    },
+  });
+  const row = Array.isArray(created) ? created[0] : created;
+
+  try {
+    await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        used_liquidity_cents: n(step.used_liquidity_cents) + amountCents,
+        updated_at: new Date().toISOString(),
+      },
+    });
+  } catch {
+    /* */
+  }
+
+  return { ok: true, participation: row };
+}
+
+async function listActivePartnerRounds(token) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const rounds = await sb(
+    `/rest/v1/partner_rounds?select=*,profiles(full_name,email)&status=eq.active&order=created_at.desc&limit=500`,
+    { token: SERVICE_KEY }
+  ).catch(() =>
+    sb(
+      `/rest/v1/partner_rounds?select=*&status=eq.active&order=created_at.desc&limit=500`,
+      { token: SERVICE_KEY }
+    )
+  );
+  return Array.isArray(rounds) ? rounds : [];
+}
+
+async function distributePartnerYield(token, body) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const percentage = Number(body?.percentage ?? body?.pct ?? 0);
+  if (!(percentage > 0) || percentage > 100) {
+    throw new Error("Informe um percentual válido.");
+  }
+  const description =
+    String(body?.description || "").trim() ||
+    `Rendimento ${percentage.toFixed(2)}%`;
+
+  const rounds = await listActivePartnerRounds(token);
+  let totalDistributed = 0;
+  let count = 0;
+  for (const r of rounds) {
+    const invested = n(r.invested_amount);
+    if (!(invested > 0)) continue;
+    const share = Math.round((invested * percentage) / 100);
+    if (share <= 0) continue;
+    await sb("/rest/v1/partner_distributions", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        round_id: r.id,
+        user_id: r.user_id,
+        partner_id: r.user_id,
+        distribution_amount: share,
+        contribution_amount: invested,
+        description,
+      },
+    });
+    await sb(`/rest/v1/partner_rounds?id=eq.${encodeURIComponent(r.id)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        accumulated_amount: n(r.accumulated_amount) + share,
+        updated_at: new Date().toISOString(),
+      },
+    }).catch(() => null);
+    try {
+      const prof = await sb(
+        `/rest/v1/profiles?select=investor_balance_cents&id=eq.${encodeURIComponent(r.user_id)}&limit=1`,
+        { token: SERVICE_KEY }
+      );
+      const cur = Array.isArray(prof) ? prof[0] : null;
+      if (cur) {
+        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(r.user_id)}`, {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: {
+            investor_balance_cents: n(cur.investor_balance_cents) + share,
+            updated_at: new Date().toISOString(),
+          },
+        });
+      }
+    } catch {
+      /* */
+    }
+    totalDistributed += share;
+    count += 1;
+  }
+  return { success: true, count, totalDistributed, percentage };
+}
+
+async function partnerDistributionHistory(token) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const rows = await sb(
+    `/rest/v1/partner_distributions?select=*&order=created_at.desc&limit=200`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function partnerMonthlyStats(token) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const rows = await sb(
+    `/rest/v1/partner_distributions?select=distribution_amount,contribution_amount,created_at&created_at=gte.${from}&limit=5000`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  const list = Array.isArray(rows) ? rows : [];
+  const totalPaid = list.reduce((a, r) => a + n(r.distribution_amount), 0);
+  const investedBase = list.reduce((a, r) => a + n(r.contribution_amount), 0);
+  const monthPct =
+    investedBase > 0 ? Number(((totalPaid / investedBase) * 100).toFixed(2)) : 0;
+  return { monthPct, totalPaid, count: list.length };
+}
+
 async function getUserDashboardCritical(token) {
   const userId = requireUserId(token);
   const [profileBundle, metrics] = await Promise.all([
@@ -1522,6 +2072,98 @@ async function handleServerFn(req, res, id, rawBody = "") {
     }
   }
 
+  if (id === FN.DESAFIO_REGISTER_ENTRY && req.method === "POST") {
+    try {
+      return sendTsrOk(
+        res,
+        await registerDesafioEntry(token, extractServerFnData(rawBody))
+      );
+    } catch (err) {
+      console.error("[serverfn-shim] DESAFIO_REGISTER_ENTRY error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.DESAFIO_LIST_PARTICIPATIONS && req.method === "POST") {
+    try {
+      return sendTsrOk(
+        res,
+        await listDesafioParticipations(token, extractServerFnData(rawBody))
+      );
+    } catch (err) {
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.DESAFIO_SETTLE && req.method === "POST") {
+    try {
+      return sendTsrOk(
+        res,
+        await settleDesafioStep(token, extractServerFnData(rawBody))
+      );
+    } catch (err) {
+      console.error("[serverfn-shim] DESAFIO_SETTLE error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.PARTNER_ACTIVE_ROUNDS) {
+    try {
+      return sendTsrOk(res, await listActivePartnerRounds(token));
+    } catch (err) {
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.PARTNER_DISTRIBUTE && req.method === "POST") {
+    try {
+      return sendTsrOk(
+        res,
+        await distributePartnerYield(token, extractServerFnData(rawBody))
+      );
+    } catch (err) {
+      console.error("[serverfn-shim] PARTNER_DISTRIBUTE error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.PARTNER_DIST_HISTORY) {
+    try {
+      return sendTsrOk(res, await partnerDistributionHistory(token));
+    } catch (err) {
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.PARTNER_MONTHLY_STATS) {
+    try {
+      return sendTsrOk(res, await partnerMonthlyStats(token));
+    } catch (err) {
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
   if (id === FN.BANNERS_REORDER && req.method === "POST") {
     try {
       const params = extractServerFnData(rawBody);
@@ -1765,6 +2407,97 @@ const server = createServer(async (req, res) => {
       }
       const data = await requestAffiliateWithdrawal(token, body.data || body);
       return sendJson(res, 200, data);
+    } catch (err) {
+      return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/desafio-register" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      return sendJson(res, 200, await registerDesafioEntry(token, body.data || body));
+    } catch (err) {
+      return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/desafio-settle" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      return sendJson(res, 200, await settleDesafioStep(token, body.data || body));
+    } catch (err) {
+      return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/desafio-participations" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      return sendJson(
+        res,
+        200,
+        await listDesafioParticipations(token, body.data || body)
+      );
+    } catch (err) {
+      return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/partner-rounds" && req.method === "GET") {
+    try {
+      const token = bearerFromReq(req);
+      return sendJson(res, 200, await listActivePartnerRounds(token));
+    } catch (err) {
+      return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/partner-distribute" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      return sendJson(
+        res,
+        200,
+        await distributePartnerYield(token, body.data || body)
+      );
     } catch (err) {
       return sendJson(res, 400, {
         error: err instanceof Error ? err.message : String(err),

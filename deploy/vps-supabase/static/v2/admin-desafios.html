@@ -909,12 +909,28 @@
                 s.match_label ||
                 [s.home_team, s.away_team].filter(Boolean).join(" x ") ||
                 "—";
+              const st = stepState(s);
+              const done = st === "done" || s.status === "done";
+              const settle = done
+                ? `<div class="tags"><span class="tag-arbi">Encerrada · ${
+                    s.result === "zebra_protected"
+                      ? "Bateu ArbiShield"
+                      : s.result === "win"
+                        ? "Bateu Casa"
+                        : esc(s.result || "done")
+                  }</span></div>`
+                : `<div class="card-actions" style="margin-top:8px">
+                    <button class="btn btn-primary" type="button" data-settle="${esc(s.id)}" data-side="arbishield">Bateu ArbiShield</button>
+                    <button class="btn btn-ghost" type="button" data-settle="${esc(s.id)}" data-side="casa">Bateu Casa</button>
+                  </div>
+                  <p style="margin:6px 0 0;font-size:10px;color:var(--muted)">Circuito: vitórias só na ArbiShield até o fim → ganhos vão aos provedores de liquidez.</p>`;
               return `<div class="step-box">
                 <strong>Etapa ${s.step_index}</strong> · ${label}
                 <div class="tags">
                   <span class="tag-arbi">Arbi: ${s.market_name_arbishield || s.market_name || "—"} @ ${s.arbi_odd ?? "—"}</span>
                   <span class="tag-casa">Casa: ${s.market_name_casa || "—"} @ ${s.casa_odd ?? "—"}</span>
                 </div>
+                ${settle}
               </div>`;
             })
             .join("");
@@ -941,6 +957,49 @@
           </article>`;
         })
         .join("");
+
+      $("list").querySelectorAll("[data-settle]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const stepId = btn.getAttribute("data-settle");
+          const winningSide = btn.getAttribute("data-side");
+          if (!stepId || !winningSide) return;
+          if (
+            !confirm(
+              winningSide === "arbishield"
+                ? "Encerrar etapa: Bateu ArbiShield (zebra / falha na casa)?"
+                : "Encerrar etapa: Bateu na Casa (objetivo do circuito)?"
+            )
+          ) {
+            return;
+          }
+          btn.disabled = true;
+          try {
+            const session = await ArbiV2.client().auth.getSession();
+            const token = session.data.session?.access_token;
+            const res = await fetch("/api/arbishield/desafio-settle", {
+              method: "POST",
+              headers: {
+                Authorization: "Bearer " + token,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ stepId, winningSide }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || "Falha ao encerrar");
+            const forfeits = (data.forfeits || []).filter((f) => f.forfeited);
+            alert(
+              "Etapa encerrada." +
+                (forfeits.length
+                  ? `\n${forfeits.length} circuito(s) liquidados para provedores.`
+                  : "")
+            );
+            await load();
+          } catch (err) {
+            alert(err.message || "Erro ao encerrar etapa");
+            btn.disabled = false;
+          }
+        });
+      });
 
       $("list").querySelectorAll("[data-clone]").forEach((btn) => {
         btn.addEventListener("click", () => {
