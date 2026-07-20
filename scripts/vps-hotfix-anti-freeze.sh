@@ -25,8 +25,11 @@ curl -fsSL "$SCRIPT_BASE/arbishield-serverfn-shim.mjs" -o arbishield-serverfn-sh
 grep -q 'Anti-freeze ArbiShield — v3' desafio-sugestoes-inject.js || {
   echo "ERRO: inject não é v3" >&2; exit 1
 }
-grep -q 'MutationObserver' desafio-sugestoes-inject.js && {
-  echo "ERRO: MutationObserver presente" >&2; exit 1
+grep -qE 'new MutationObserver|MutationObserver\s*\(' desafio-sugestoes-inject.js && {
+  echo "ERRO: MutationObserver ativo no inject" >&2; exit 1
+}
+grep -q 'appendChild(launch)' desafio-sugestoes-inject.js && {
+  echo "ERRO: inject move botão React" >&2; exit 1
 }
 grep -q 'btnLaunch' admin-desafios-vps.html || {
   echo "ERRO: admin sem btnLaunch" >&2; exit 1
