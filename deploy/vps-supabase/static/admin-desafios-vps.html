@@ -127,7 +127,7 @@
       background: rgba(0,0,0,0.72); align-items: center; justify-content: center;
       padding: 16px;
     }
-    .modal-bg.show { display: flex; }
+    .modal-bg.show { display: flex !important; }
     .modal {
       width: min(560px, 100%); max-height: 90vh; overflow: auto;
       background: var(--panel); border: 1px solid var(--border);
@@ -494,14 +494,33 @@
         : "Sem sugestão salva — preencha manualmente ou use Sugestão de Desafio.";
     }
 
-    function openLaunch() {
-      $("launchErr").hidden = true;
-      fillLaunchFromSuggestion();
-      $("launchModal").classList.add("show");
+    function openLaunch(ev) {
+      try {
+        if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+        var errEl = $("launchErr");
+        if (errEl) {
+          errEl.hidden = true;
+          errEl.textContent = "";
+        }
+        fillLaunchFromSuggestion();
+        var modal = $("launchModal");
+        if (!modal) {
+          alert("Modal de lançamento não encontrado. Recarregue a página (Ctrl+Shift+R).");
+          return;
+        }
+        modal.classList.add("show");
+        modal.style.display = "flex";
+      } catch (err) {
+        console.error("[lançar]", err);
+        alert("Erro ao abrir lançamento: " + (err && err.message ? err.message : err));
+      }
     }
 
     function closeLaunch() {
-      $("launchModal").classList.remove("show");
+      var modal = $("launchModal");
+      if (!modal) return;
+      modal.classList.remove("show");
+      modal.style.display = "none";
     }
 
     async function submitLaunch() {
@@ -579,6 +598,12 @@
         });
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(json.error || res.statusText || "Falha ao criar");
+        // Shim antigo devolve lista no POST — detectar e avisar
+        if (Array.isArray(json) || (json && json.ok !== true && !json.desafio && !json.id)) {
+          throw new Error(
+            "API de criação não atualizada na VPS. Rode o hotfix anti-freeze e reinicie o serverfn-shim."
+          );
+        }
         localStorage.removeItem("arbishield_desafio_suggestion");
         localStorage.removeItem("arbishield_desafio_suggestion_at");
         closeLaunch();
