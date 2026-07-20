@@ -2,7 +2,7 @@
 # Deploy: odds pré-live (worker :3098 + admin-jogos)
 #
 # Uso (root na VPS):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-deploy-prelive-odds.sh?v=1")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-deploy-prelive-odds.sh?v=2")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/arbishield-v2-backup-723d}"
@@ -32,21 +32,44 @@ else
   echo "  AVISO: serviço arbishield-prelive-events inativo"
 fi
 
-sleep 1
-# smoke: primeiro evento do catálogo
-eid="$(curl -fsS http://127.0.0.1:3098/api/arbishield/prelive-events | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("events") or [{}])[0].get("eventId",""))' || true)"
-if [[ -n "$eid" ]]; then
-  curl -fsS "http://127.0.0.1:3098/api/arbishield/prelive-events?eventId=${eid}" | python3 - <<'PY'
+# Aguardar worker subir (restart pode demorar 1–3s)
+for i in 1 2 3 4 5 6; do
+  if curl -fsS -o /dev/null http://127.0.0.1:3098/health 2>/dev/null; then
+    break
+  fi
+  sleep 1
+done
+
+log "Smoke test"
+tmp_list="$(mktemp)"
+tmp_detail="$(mktemp)"
+cleanup() { rm -f "$tmp_list" "$tmp_detail"; }
+trap cleanup EXIT
+
+if ! curl -fsS -o "$tmp_list" --max-time 45 http://127.0.0.1:3098/api/arbishield/prelive-events; then
+  echo "  AVISO: catálogo pré-live ainda não respondeu (deploy UI/worker ok)"
+else
+  eid="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print((d.get("events") or [{}])[0].get("eventId",""))' "$tmp_list" 2>/dev/null || true)"
+  echo "  catálogo ok · eventId=${eid:-—}"
+  if [[ -n "${eid}" ]]; then
+    if curl -fsS -o "$tmp_detail" --max-time 60 \
+      "http://127.0.0.1:3098/api/arbishield/prelive-events?eventId=${eid}"; then
+      python3 -c '
 import json,sys
-d=json.load(sys.stdin)
+d=json.load(open(sys.argv[1]))
 meta=d.get("oddsMeta") or {}
-print("  oddsMeta:", meta)
 markets=d.get("markets") or []
-with_o=sum(1 for m in markets for r in m.get("runners") or [] if r.get("odd") is not None)
-print(f"  markets={len(markets)} runners_with_odd={with_o}")
-PY
+with_o=sum(1 for m in markets for r in (m.get("runners") or []) if r.get("odd") is not None)
+print("  oddsMeta:", meta)
+print("  markets=%d runners_with_odd=%d" % (len(markets), with_o))
+' "$tmp_detail" || echo "  AVISO: não foi possível ler oddsMeta"
+    else
+      echo "  AVISO: detalhe do evento falhou (BetBra pode estar lento)"
+    fi
+  fi
 fi
 
 echo
-echo "OK — abra https://arbishield.app/admin-jogos.html (hard refresh)"
+echo "OK — deploy concluído"
+echo "  Abra https://arbishield.app/admin-jogos.html (hard refresh)"
 echo "  Mercados sem liquidez BetBra aparecem como “sem liquidez”."
