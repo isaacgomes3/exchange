@@ -407,6 +407,16 @@ function bearerFromReq(req) {
   return m?.[1] || null;
 }
 
+async function listDesafios() {
+  if (!SERVICE_KEY) {
+    throw new Error("SERVICE_ROLE_KEY ausente no .env da VPS");
+  }
+  const rows = await sb(
+    "/rest/v1/desafios?select=*,desafio_steps(*)&order=updated_at.desc"
+  );
+  return Array.isArray(rows) ? rows : [];
+}
+
 async function handleApi(req, res) {
   if (req.method === "OPTIONS") return sendJson(res, 204, {});
 
@@ -414,6 +424,17 @@ async function handleApi(req, res) {
 
   if (url.pathname === "/health") {
     return sendJson(res, 200, { ok: true, service: "prelive-events" });
+  }
+
+  if (url.pathname === "/api/arbishield/desafios" && req.method === "GET") {
+    try {
+      const data = await listDesafios();
+      return sendJson(res, 200, data);
+    } catch (err) {
+      return sendJson(res, 500, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   if (url.pathname === "/api/arbishield/prelive-events" && req.method === "GET") {
