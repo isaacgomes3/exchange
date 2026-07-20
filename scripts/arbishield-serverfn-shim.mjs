@@ -623,6 +623,7 @@ async function listAuthUsersAdmin() {
   const users = [];
   let page = 1;
   const perPage = 200;
+  const maxPages = Number(process.env.ADMIN_AUTH_USERS_MAX_PAGES || 5);
   for (;;) {
     const res = await fetch(
       `${SUPABASE_URL}/auth/v1/admin/users?page=${page}&per_page=${perPage}`,
@@ -653,14 +654,18 @@ async function listAuthUsersAdmin() {
     users.push(...batch);
     if (batch.length < perPage) break;
     page += 1;
-    if (page > 50) break;
+    if (page > maxPages) break;
   }
   return users;
 }
 
 async function listAdminUsers() {
+  // Limite defensivo: lista completa + auth admin paginado congelava o SPA.
+  const MAX_PROFILES = Number(process.env.ADMIN_USERS_MAX || 800);
   const [profiles, roles, authUsers] = await Promise.all([
-    sb("/rest/v1/profiles?select=*&order=created_at.desc"),
+    sb(
+      `/rest/v1/profiles?select=id,full_name,cpf,phone,pix_key,location,account_status,balance_cents,demo_balance_cents,demo_balance_provider_cents,investor_balance_cents,reusable_balance_cents,debited_balance_cents,locked_balance_cents,total_profit_cents,is_super_admin,is_affiliate,onboarding_completed,created_at,updated_at&order=created_at.desc&limit=${MAX_PROFILES}`
+    ),
     sb("/rest/v1/user_roles?select=user_id,role"),
     listAuthUsersAdmin(),
   ]);
