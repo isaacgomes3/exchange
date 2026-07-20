@@ -28,12 +28,18 @@
       font-family: "Plus Jakarta Sans", system-ui, sans-serif;
       color: var(--text);
     }
-    .v2-main .wrap { width: 100%; }
-    .wrap { max-width: 1280px; margin: 0; padding: 0 0 40px; }
+    .v2-main .wrap { width: 100%; max-width: none; }
+    .wrap {
+      width: 100%;
+      max-width: none;
+      margin: 0;
+      padding: 0 0 48px;
+    }
     header {
       display: flex; flex-wrap: wrap; gap: 14px;
       align-items: flex-start; justify-content: space-between;
       margin-bottom: 22px;
+      width: 100%;
     }
     h1 {
       margin: 0; font-size: clamp(1.5rem, 3vw, 2.1rem);
@@ -58,12 +64,16 @@
     }
     .btn-sm { padding: 8px 12px; font-size: 9px; }
     .stats {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-      gap: 10px; margin-bottom: 20px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+      width: 100%;
     }
     .stat {
       background: var(--panel); border: 1px solid var(--border);
-      border-radius: 14px; padding: 12px 14px;
+      border-radius: 14px; padding: 14px 16px;
+      min-width: 0;
     }
     .stat .l {
       font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
@@ -74,9 +84,10 @@
     .stat .v.red { color: var(--danger); }
     .stat .v.amber { color: var(--amber); }
     .tabs {
-      display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px;
+      display: flex; flex-wrap: wrap; gap: 6px; flex: 1;
       background: var(--panel); border: 1px solid var(--border);
       border-radius: 14px; padding: 6px;
+      min-width: min(100%, 280px);
     }
     .tab {
       border: 0; background: transparent; color: var(--muted);
@@ -86,7 +97,11 @@
     }
     .tab.active { background: var(--lime); color: #000; }
     .search {
-      width: 100%; max-width: 320px; margin-left: auto;
+      flex: 1 1 240px;
+      width: auto;
+      max-width: none;
+      min-width: 200px;
+      margin-left: 0;
       background: var(--panel); border: 1px solid var(--border);
       border-radius: 12px; padding: 10px 14px; color: var(--text);
       font-size: 10px; font-weight: 800; letter-spacing: 0.08em;
@@ -94,12 +109,14 @@
     }
     .toolbar {
       display: flex; flex-wrap: wrap; gap: 12px;
-      align-items: center; justify-content: space-between;
+      align-items: stretch; justify-content: space-between;
       margin-bottom: 16px;
+      width: 100%;
     }
     .panel {
       border: 1px solid var(--border); border-radius: 16px;
       background: var(--panel); overflow: hidden;
+      width: 100%;
     }
     .panel-head {
       padding: 14px 16px; border-bottom: 1px solid var(--border);

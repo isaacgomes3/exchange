@@ -3,10 +3,10 @@
 # Corrige tela preta: /v2 deixava de cair no SPA index.html.
 #
 # Uso na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-enable-v2.sh?v=6")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-enable-v2.sh?v=7")
 #
 # Se o auto-detect falhar:
-#   NGINX_SITE=/etc/nginx/conf.d/arbishield-cutover.conf bash <(curl -fsSL ".../vps-enable-v2.sh?v=6")
+#   NGINX_SITE=/etc/nginx/conf.d/arbishield-cutover.conf bash <(curl -fsSL ".../vps-enable-v2.sh?v=7")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/arbishield-v2-backup-723d}"
