@@ -2,7 +2,7 @@
 # Atualiza UI v2 (layout Jogos em todas as abas) sem cutover completo.
 #
 # Uso (root na VPS):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-deploy-v2-ui.sh?v=9")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-deploy-v2-ui.sh?v=10")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/arbishield-v2-backup-723d}"
@@ -17,7 +17,7 @@ need curl
 mkdir -p "$WEB" "$WEB/brand"
 
 log "Sincronizar CSS/JS do template"
-for f in v2.css v2.js v2-shell.js v2-pages.js v2-deposit.js v2-financeiro.js; do
+for f in v2.css v2.js v2-shell.js v2-pages.js v2-deposit.js v2-financeiro.js v2-provedor.js; do
   curl -fsSL "$RAW/deploy/vps-supabase/static/v2/$f" -o "$WEB/$f"
   chmod 0644 "$WEB/$f"
   echo "  ok $f"
@@ -99,6 +99,6 @@ app-suporte.html
 EOF
 
 echo
-echo "OK — UI v2 atualizada (centro financeiro + depósito + academia + menu)"
-echo "  Abra https://arbishield.app/app-carteira.html (Ctrl+Shift+R)"
+echo "OK — UI v2 atualizada (provedor + financeiro + depósito + academia)"
+echo "  Abra https://arbishield.app/app-partners.html (Ctrl+Shift+R)"
 echo "  Admin: https://arbishield.app/admin.html"

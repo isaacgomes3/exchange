@@ -5,24 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Provedor — ArbiShield</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
-  <script src="/v2-pages.js"></script>
   <script src="/v2-shell.js" defer></script>
+  <script src="/v2-provedor.js" defer></script>
 </head>
 <body data-shell="app" data-active="partners">
-  <div class="page-head">
-    <div>
-      <h1>Prove<span>dor</span></h1>
-      <p class="sub">Área de partners · template legado</p>
-    </div>
-  </div>
   <div id="err" class="err"></div>
-  <div id="pageBody"><div class="meta">Carregando…</div></div>
-  <script>
-    ArbiV2Page.mountApp({"id": "partners", "scopeUser": true, "render": "table", "sources": [{"table": "partner_withdraw_requests", "limit": 100}], "cols": ["id", "amount_cents", "status", "created_at"]});
-  </script>
+  <div id="provRoot" class="prov-page">
+    <div class="prov-loading">Carregando…</div>
+  </div>
 </body>
 </html>
