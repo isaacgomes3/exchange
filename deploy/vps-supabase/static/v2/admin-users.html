@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Usuários — ArbiShield v2</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2/v2.js"></script>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/v2/">Arbi<span>Shield</span></a>
+    <nav>
+      <a href="/v2/admin.html">Hub</a>
+      <a class="cta" href="/v2/app.html">App</a>
+    </nav>
+  </header>
+  <div class="shell">
+    <nav class="admin-nav">
+      <a href="/v2/admin.html">Hub</a>
+      <a class="active" href="/v2/admin-users.html">Usuários</a>
+      <a href="/admin/matches">Jogos BetBra</a>
+    </nav>
+    <h1>Gestão de <span>usuários</span></h1>
+    <p class="meta">Lista leve · busca com debounce · sem Realtime · máx. 500</p>
+    <div id="err" class="err"></div>
+    <div class="search">
+      <input id="q" type="search" placeholder="Pesquisar por nome ou ID…" autocomplete="off" />
+      <span id="count">—</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Perfil</th><th>Status</th><th>Saldo</th><th>Criado</th></tr>
+        </thead>
+        <tbody id="tbody">
+          <tr><td colspan="4">Carregando…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <script>
+    (async function () {
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+      if (!(await ArbiV2.requireAdmin(supa, user))) {
+        document.getElementById("err").textContent = "Sem permissão";
+        document.getElementById("err").classList.add("show");
+        return;
+      }
+
+      var rows = [];
+      var qDebounced = "";
+      var timer = null;
+
+      function norm(s) {
+        return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      }
+
+      function render() {
+        var parts = norm(qDebounced).split(/\s+/).filter(Boolean);
+        var filtered = !parts.length
+          ? rows
+          : rows.filter(function (r) {
+              var hay = norm([r.full_name, r.id, r.account_status].filter(Boolean).join(" "));
+              return parts.every(function (p) { return hay.indexOf(p) >= 0; });
+            });
+        document.getElementById("count").textContent = filtered.length + " / " + rows.length;
+        var html = filtered.slice(0, 100).map(function (r) {
+          return (
+            "<tr><td><strong>" + (r.full_name || "—") + "</strong><small>" +
+            String(r.id).slice(0, 8) + "…</small></td><td>" +
+            (r.account_status || "—") + "</td><td>" +
+            ArbiV2.money(r.balance_cents) + "</td><td>" +
+            (r.created_at ? new Date(r.created_at).toLocaleString("pt-BR") : "—") +
+            "</td></tr>"
+          );
+        }).join("");
+        document.getElementById("tbody").innerHTML =
+          html || '<tr><td colspan="4">Nenhum usuário</td></tr>';
+      }
+
+      document.getElementById("q").addEventListener("input", function (e) {
+        clearTimeout(timer);
+        var v = e.target.value;
+        timer = setTimeout(function () {
+          qDebounced = v;
+          render();
+        }, 350);
+      });
+
+      try {
+        var res = await supa
+          .from("profiles")
+          .select("id,full_name,account_status,balance_cents,created_at")
+          .order("created_at", { ascending: false })
+          .limit(500);
+        if (res.error) throw res.error;
+        rows = res.data || [];
+        render();
+      } catch (ex) {
+        document.getElementById("err").textContent = ex.message || "Erro";
+        document.getElementById("err").classList.add("show");
+        document.getElementById("tbody").innerHTML = "";
+      }
+    })();
+  </script>
+</body>
+</html>

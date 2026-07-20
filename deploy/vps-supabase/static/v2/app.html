@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>App — ArbiShield v2</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2/v2.js"></script>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/v2/">Arbi<span>Shield</span></a>
+    <nav>
+      <a href="/v2/admin.html">Admin</a>
+      <a class="cta" href="#" id="logout">Sair</a>
+    </nav>
+  </header>
+  <div class="shell">
+    <h1>Área do <span>membro</span></h1>
+    <p class="meta" id="meta">Carregando…</p>
+    <div id="err" class="err"></div>
+    <div class="grid" id="cards"></div>
+  </div>
+  <script>
+    (async function () {
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+
+      document.getElementById("meta").textContent =
+        (user.email || "—") + " · banco vivo arbishield.app";
+
+      document.getElementById("logout").addEventListener("click", async function (e) {
+        e.preventDefault();
+        await supa.auth.signOut();
+        location.replace("/v2/auth.html");
+      });
+
+      try {
+        var { data, error } = await supa
+          .from("profiles")
+          .select("full_name,balance_cents,account_status")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (error) throw error;
+        var html =
+          '<div class="card"><strong>Nome</strong><b>' +
+          (data && data.full_name ? data.full_name : "—") +
+          "</b></div>" +
+          '<div class="card"><strong>Saldo</strong><b>' +
+          ArbiV2.money(data && data.balance_cents) +
+          "</b></div>" +
+          '<div class="card"><strong>Status</strong><b style="font-size:1.1rem">' +
+          (data && data.account_status ? data.account_status : "—") +
+          "</b></div>";
+        document.getElementById("cards").innerHTML = html;
+      } catch (ex) {
+        var err = document.getElementById("err");
+        err.textContent = ex.message || "Erro";
+        err.classList.add("show");
+      }
+    })();
+  </script>
+</body>
+</html>

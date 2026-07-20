@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Admin — ArbiShield v2</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2/v2.js"></script>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/v2/">Arbi<span>Shield</span></a>
+    <nav>
+      <a href="/v2/app.html">App</a>
+      <a class="cta" href="/v2/admin-users.html">Usuários</a>
+    </nav>
+  </header>
+  <div class="shell">
+    <nav class="admin-nav">
+      <a class="active" href="/v2/admin.html">Hub</a>
+      <a href="/v2/admin-users.html">Usuários</a>
+      <a href="/admin/matches">Jogos BetBra</a>
+    </nav>
+    <h1>Admin <span>v2</span></h1>
+    <p class="meta">Hub limpo · mesmo Postgres · sem Realtime flood</p>
+    <div id="err" class="err"></div>
+    <div class="grid" id="cards">
+      <div class="card"><strong>Status</strong><b style="font-size:1rem">Carregando…</b></div>
+    </div>
+    <div class="actions">
+      <a class="btn btn-primary" href="/v2/admin-users.html">Usuários</a>
+      <a class="btn btn-ghost" href="/admin/matches">Jogos</a>
+    </div>
+  </div>
+  <script>
+    (async function () {
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+      var ok = await ArbiV2.requireAdmin(supa, user);
+      if (!ok) {
+        document.getElementById("err").textContent = "Sem permissão administrativa";
+        document.getElementById("err").classList.add("show");
+        document.getElementById("cards").innerHTML = "";
+        return;
+      }
+      try {
+        var p = await supa.from("profiles").select("id", { count: "exact", head: true });
+        var m = await supa.from("matches").select("id", { count: "exact", head: true }).eq("status", "open");
+        var pr = await supa.from("protections").select("id", { count: "exact", head: true }).eq("status", "active");
+        document.getElementById("cards").innerHTML =
+          '<div class="card"><strong>Perfis</strong><b>' + (p.count ?? "—") + "</b></div>" +
+          '<div class="card"><strong>Jogos abertos</strong><b>' + (m.count ?? "—") + "</b></div>" +
+          '<div class="card"><strong>Proteções ativas</strong><b>' + (pr.count ?? "—") + "</b></div>";
+      } catch (ex) {
+        document.getElementById("err").textContent = ex.message || "Erro";
+        document.getElementById("err").classList.add("show");
+      }
+    })();
+  </script>
+</body>
+</html>
