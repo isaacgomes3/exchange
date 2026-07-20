@@ -605,7 +605,8 @@
           });
           $("createModal").classList.remove("show");
           alert("Evento criado como rascunho! Veja em Eventos ArbiShield.");
-          await loadPlatformMatches();
+          platformLoaded = false;
+          await loadPlatformMatches({ force: true });
           setView("platform");
         } catch (err) {
           alert(err.message || "Erro ao criar evento");
