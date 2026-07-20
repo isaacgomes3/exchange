@@ -60,6 +60,11 @@ const FN = {
     "8867aca1da470aaa83906b6b13bb7e7018c9dea355ae3cff430f0f97ddbb4a62",
   ADMIN_TX_FEED:
     "b8e5956ab4d19dcac2cf2318fe933b86f3eba19702cdd8ffb947c5b0bb1a3c68",
+  /** admin.users: Promise.all([listUsers, isSuperAdmin]) */
+  ADMIN_LIST_USERS:
+    "fb16933f5d8f0788db13c8b74f3c53149e2989eeae483bd064ab7a9a15432c7a",
+  ADMIN_IS_SUPER:
+    "7522f63695242dffa7a9bd8ff11c911129bae721fcfbe52bc99240398508d149",
 };
 
 function cors(res) {
@@ -404,6 +409,122 @@ async function getDashboardStats() {
   };
 }
 
+function decodeJwtPayload(token) {
+  try {
+    const part = String(token || "").split(".")[1];
+    if (!part) return null;
+    const json = Buffer.from(
+      part.replace(/-/g, "+").replace(/_/g, "/"),
+      "base64"
+    ).toString("utf8");
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+async function listAuthUsersAdmin() {
+  const key = SERVICE_KEY;
+  if (!key) throw new Error("SERVICE_ROLE_KEY necessária para listar auth.users");
+  const users = [];
+  let page = 1;
+  const perPage = 200;
+  for (;;) {
+    const res = await fetch(
+      `${SUPABASE_URL}/auth/v1/admin/users?page=${page}&per_page=${perPage}`,
+      {
+        headers: {
+          apikey: key,
+          Authorization: `Bearer ${key}`,
+        },
+      }
+    );
+    const text = await res.text();
+    let data;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = null;
+    }
+    if (!res.ok) {
+      const msg =
+        (data && data.message) || text.slice(0, 200) || res.statusText;
+      throw new Error(msg);
+    }
+    const batch = Array.isArray(data?.users)
+      ? data.users
+      : Array.isArray(data)
+        ? data
+        : [];
+    users.push(...batch);
+    if (batch.length < perPage) break;
+    page += 1;
+    if (page > 50) break;
+  }
+  return users;
+}
+
+async function listAdminUsers() {
+  const [profiles, roles, authUsers] = await Promise.all([
+    sb("/rest/v1/profiles?select=*&order=created_at.desc"),
+    sb("/rest/v1/user_roles?select=user_id,role"),
+    listAuthUsersAdmin(),
+  ]);
+
+  const profileRows = Array.isArray(profiles) ? profiles : [];
+  const roleRows = Array.isArray(roles) ? roles : [];
+  const rolesByUser = new Map();
+  for (const r of roleRows) {
+    if (!r?.user_id) continue;
+    const list = rolesByUser.get(r.user_id) || [];
+    list.push(r.role);
+    rolesByUser.set(r.user_id, list);
+  }
+
+  const authById = new Map();
+  for (const u of authUsers) {
+    if (u?.id) authById.set(u.id, u);
+  }
+
+  return profileRows.map((p) => {
+    const auth = authById.get(p.id) || {};
+    const userRoles = rolesByUser.get(p.id) || [];
+    const providerCents = n(p.demo_balance_provider_cents);
+    return {
+      ...p,
+      email: auth.email || null,
+      phone: p.phone || auth.phone || null,
+      last_sign_in_at: auth.last_sign_in_at || null,
+      // auth.created_at pode diferir do profile; UI usa profile.created_at
+      roles: userRoles.length ? userRoles : ["user"],
+      is_provider: providerCents > 0,
+      balance_cents: n(p.balance_cents),
+      demo_balance_cents: n(p.demo_balance_cents),
+      demo_balance_provider_cents: providerCents,
+      investor_balance_cents: n(p.investor_balance_cents),
+      reusable_balance_cents: n(p.reusable_balance_cents),
+      debited_balance_cents: n(p.debited_balance_cents),
+      locked_balance_cents: n(p.locked_balance_cents),
+      total_profit_cents: n(p.total_profit_cents),
+      is_super_admin: !!p.is_super_admin,
+      is_affiliate: !!p.is_affiliate,
+      onboarding_completed: !!p.onboarding_completed,
+    };
+  });
+}
+
+async function currentUserIsSuperAdmin(token) {
+  const payload = decodeJwtPayload(token);
+  const uid = payload?.sub;
+  if (!uid) return false;
+  const rows = await sb(
+    `/rest/v1/profiles?select=is_super_admin&id=eq.${uid}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const row = Array.isArray(rows) ? rows[0] : null;
+  return !!row?.is_super_admin;
+}
+
 async function getProfileMap(userIds) {
   const ids = [...new Set(userIds.filter(Boolean))];
   const map = new Map();
@@ -663,6 +784,34 @@ async function handleServerFn(req, res, id, rawBody = "") {
       return sendTsrOk(res, data);
     } catch (err) {
       console.error("[serverfn-shim] ADMIN_TX_FEED error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.ADMIN_LIST_USERS) {
+    console.log("[serverfn-shim] ADMIN_LIST_USERS");
+    try {
+      const data = await listAdminUsers();
+      return sendTsrOk(res, data);
+    } catch (err) {
+      console.error("[serverfn-shim] ADMIN_LIST_USERS error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.ADMIN_IS_SUPER) {
+    console.log("[serverfn-shim] ADMIN_IS_SUPER");
+    try {
+      const data = await currentUserIsSuperAdmin(token);
+      return sendTsrOk(res, data);
+    } catch (err) {
+      console.error("[serverfn-shim] ADMIN_IS_SUPER error", err);
       return sendTsrError(
         res,
         err instanceof Error ? err.message : String(err)
