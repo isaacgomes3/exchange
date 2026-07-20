@@ -47,3 +47,13 @@ next-env.d.ts
 /deploy/vps-supabase/.env
 /.vps-supabase-credentials.local
 /.cloud-database-url.local
+
+# Backups: schema/espelho entram no git; DADOS e secrets NÃO
+/backup/data/
+/backup/private/
+/backup/**/*.dump
+/backup/**/*-data.sql
+/backup/**/.env*
+!/backup/README.md
+!/backup/schema/.gitkeep
+!/backup/frontend-mirror/.gitkeep
