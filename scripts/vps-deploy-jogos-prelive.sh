@@ -10,23 +10,39 @@ ROOT="${ARBISHIELD_ROOT:-/opt/arbishield}"
 WEB="${ARBISHIELD_WEB:-/var/www/arbishield}"
 NGINX_CONF="${NGINX_CONF:-/etc/nginx/conf.d/arbishield-cutover.conf}"
 
-echo "==> Atualizando repo em $ROOT ($BRANCH)"
+SRC="$ROOT"
+TMP=""
+cleanup() {
+  [[ -n "$TMP" && -d "$TMP" ]] && rm -rf "$TMP"
+}
+trap cleanup EXIT
+
+echo "==> Obtendo código ($BRANCH)"
 if [[ -d "$ROOT/.git" ]]; then
   git -C "$ROOT" fetch origin "$BRANCH"
-  git -C "$ROOT" checkout "$BRANCH"
+  git -C "$ROOT" checkout "$BRANCH" 2>/dev/null || git -C "$ROOT" checkout -B "$BRANCH" "origin/$BRANCH"
   git -C "$ROOT" pull --ff-only origin "$BRANCH" || git -C "$ROOT" reset --hard "origin/$BRANCH"
+elif [[ -d "$ROOT" ]]; then
+  echo "    $ROOT já existe (sem git) — usando clone temporário"
+  TMP="$(mktemp -d)"
+  git clone --branch "$BRANCH" --depth 1 "$REPO" "$TMP"
+  SRC="$TMP"
 else
+  mkdir -p "$(dirname "$ROOT")"
   git clone --branch "$BRANCH" --depth 1 "$REPO" "$ROOT"
 fi
 
-echo "==> Copiando assets estáticos"
-install -m 0644 "$ROOT/deploy/vps-supabase/static/admin-jogos-vps.html" "$WEB/admin-jogos-vps.html"
+mkdir -p "$ROOT/scripts" "$WEB"
 
-if [[ -f "$ROOT/deploy/vps-supabase/nginx-arbishield.app.conf" ]]; then
+echo "==> Copiando assets"
+install -m 0644 "$SRC/deploy/vps-supabase/static/admin-jogos-vps.html" "$WEB/admin-jogos-vps.html"
+install -m 0755 "$SRC/scripts/arbishield-prelive-events.mjs" "$ROOT/scripts/arbishield-prelive-events.mjs"
+
+if [[ -f "$SRC/deploy/vps-supabase/nginx-arbishield.app.conf" ]]; then
   if [[ -f /etc/letsencrypt/live/arbishield.app/fullchain.pem ]]; then
-    install -m 0644 "$ROOT/deploy/vps-supabase/nginx-arbishield.app.conf" "$NGINX_CONF"
+    install -m 0644 "$SRC/deploy/vps-supabase/nginx-arbishield.app.conf" "$NGINX_CONF"
   else
-    install -m 0644 "$ROOT/deploy/vps-supabase/nginx-cutover.conf" "$NGINX_CONF"
+    install -m 0644 "$SRC/deploy/vps-supabase/nginx-cutover.conf" "$NGINX_CONF"
   fi
 fi
 
