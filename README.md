@@ -34,4 +34,4 @@ Abra [http://localhost:3000](http://localhost:3000).
 
 ## Integrar dados reais
 
-Substitua `src/lib/desafio/puxar-jogos.ts` pela chamada à API Arbishield / surebets.
+`puxar-jogos.ts` já busca fixtures de futebol das **próximas 24h** via TheSportsDB e completa a grade localmente se a API vier escassa. Odds Over/Under são enriquecidas para a análise do Desafio — troque esse enriquecimento pela API Arbishield/odds quando for para produção.

@@ -52,4 +52,6 @@ export type DesafioPullResult = {
   jogos: JogoDesafio[];
   analises: AnaliseDesafio[];
   analisadoEm: string;
+  /** Janela de busca dos jogos (ex.: próximas 24h) */
+  janelaBuscaHoras: number;
 };

@@ -8,8 +8,10 @@ Critérios fixos do Desafio:
 - Mercado: ${DESAFIO_CRITERIOS.mercado}
 - Casa: ${DESAFIO_CRITERIOS.casa}
 - Faixa de odd: ${DESAFIO_CRITERIOS.oddMin}–${DESAFIO_CRITERIOS.oddMax}
-- Janela: ${DESAFIO_CRITERIOS.janela}
+- Janela de entrada: ${DESAFIO_CRITERIOS.janela}
 - Origem: ${DESAFIO_CRITERIOS.origem}
+
+Contexto: a lista cobre jogos das próximas 24h. Só marque "entrar" se também estiver na janela pré-live de 30 min e na faixa de odd. Jogos mais distantes devem ser "observar" (promissores) ou "descartar".
 
 Analise cada jogo e devolva APENAS um JSON array (sem markdown) com objetos neste formato:
 {
