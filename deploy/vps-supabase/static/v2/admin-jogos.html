@@ -136,20 +136,21 @@
       border: 0; background: none; color: var(--lime); cursor: pointer;
       font: inherit; padding: 0;
     }
-    .list { display: flex; flex-direction: column; }
+    .list { display: flex; flex-direction: column; width: 100%; }
     .row {
       display: flex; align-items: center; justify-content: space-between;
       gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border);
       cursor: pointer; transition: background 0.15s;
+      width: 100%;
     }
     .row:last-child { border-bottom: 0; }
     .row:hover { background: rgba(201,242,35,0.04); }
-    .row .teams { font-weight: 800; font-size: 14px; }
+    .row .teams { font-weight: 800; font-size: 14px; flex: 1; min-width: 0; }
     .row .meta {
       color: var(--muted); font-size: 10px; font-weight: 700;
       letter-spacing: 0.06em; text-transform: uppercase; margin-top: 4px;
     }
-    .row .time { text-align: right; white-space: nowrap; }
+    .row .time { text-align: right; white-space: nowrap; flex-shrink: 0; }
     .row .time .kick {
       font-size: 10px; color: var(--lime); font-weight: 800;
       letter-spacing: 0.08em; text-transform: uppercase;
@@ -163,14 +164,24 @@
       font-weight: 800; font-size: 12px; margin-bottom: 10px;
       letter-spacing: 0.04em;
     }
-    .runners { display: flex; flex-wrap: wrap; gap: 8px; }
-    .runner {
-      display: flex; align-items: center; gap: 10px;
-      padding: 10px 12px; border-radius: 12px;
-      border: 1px solid var(--border); background: rgba(255,255,255,0.02);
+    .runners {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 10px;
+      width: 100%;
     }
-    .runner .name { font-size: 11px; font-weight: 700; }
-    .runner .odd { color: var(--lime); font-weight: 800; font-size: 14px; }
+    .runner {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px; border-radius: 12px;
+      border: 1px solid var(--border); background: rgba(255,255,255,0.02);
+      min-width: 0;
+    }
+    .runner .name { font-size: 11px; font-weight: 700; flex: 1; min-width: 0; }
+    .runner .odd { color: var(--lime); font-weight: 800; font-size: 14px; flex-shrink: 0; }
+    @media (max-width: 720px) {
+      .stats { grid-template-columns: 1fr; }
+    }
     .empty, .loading, .error {
       border: 1px dashed var(--border); border-radius: 16px;
       padding: 36px 20px; text-align: center; color: var(--muted);

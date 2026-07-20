@@ -150,7 +150,8 @@ button, input, select { font: inherit; }
 .v2-main {
   flex: 1;
   min-width: 0;
-  padding: 22px clamp(14px, 2.5vw, 32px) 64px;
+  width: 100%;
+  padding: 22px clamp(14px, 2vw, 28px) 64px;
 }
 .v2-topbar {
   display: none;

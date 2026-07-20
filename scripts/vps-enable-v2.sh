@@ -87,7 +87,7 @@ if [[ -z "${NGINX_SITE:-}" || ! -f "$NGINX_SITE" ]]; then
   echo "Candidatos em /etc/nginx:" >&2
   ls -la /etc/nginx/conf.d/ 2>/dev/null || true
   ls -la /etc/nginx/sites-enabled/ 2>/dev/null || true
-  die "nginx site não encontrado — rode: NGINX_SITE=/caminho/do.conf bash <(curl -fsSL \"$RAW/scripts/vps-enable-v2.sh?v=6\")"
+  die "nginx site não encontrado — rode: NGINX_SITE=/caminho/do.conf bash <(curl -fsSL \"$RAW/scripts/vps-enable-v2.sh?v=7\")"
 fi
 
 log "usando nginx: $NGINX_SITE"
