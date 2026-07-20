@@ -21,17 +21,19 @@
   <div id="err" class="err"></div>
   <div class="grid" id="cards"></div>
 
-  <div class="section-label"><span class="dot" style="background:#c9f223"></span>Disponível</div>
+  <div class="section-label"><span class="dot" style="background:#c9f223"></span>Operações</div>
   <div class="grid">
-    <a class="card primary" href="/v2/app.html"><div class="tag">Conta</div><h2>Visão geral</h2><p>Saldo e status no sistema novo.</p></a>
+    <a class="card primary" href="/v2/app-proteger.html"><div class="tag">Operações</div><h2>Proteger aposta</h2><p>Jogos abertos para proteção.</p></a>
+    <a class="card" href="/v2/app-protecoes.html"><div class="tag">Operações</div><h2>Minhas proteções</h2><p>Histórico da conta.</p></a>
+    <a class="card" href="/v2/app-carteira.html"><div class="tag">Operações</div><h2>Financeiro</h2><p>Extrato da carteira.</p></a>
+    <a class="card" href="/v2/app-desafio.html"><div class="tag">Operações</div><h2>Desafio</h2><p>Desafios ArbiShield.</p></a>
   </div>
 
-  <div class="section-label"><span class="dot" style="background:#8a8a8f"></span>Em breve (só v2)</div>
+  <div class="section-label"><span class="dot" style="background:#94a3b8"></span>Conta</div>
   <div class="grid">
-    <a class="card" href="/v2/em-breve.html?id=proteger&t=Proteger%20Aposta"><div class="tag">Em breve</div><h2>Proteger aposta</h2><p>Será reescrito aqui — sem abrir /app.</p></a>
-    <a class="card" href="/v2/em-breve.html?id=protecoes&t=Minhas%20Prote%C3%A7%C3%B5es"><div class="tag">Em breve</div><h2>Minhas proteções</h2><p>Será reescrito aqui — sem abrir /app.</p></a>
-    <a class="card" href="/v2/em-breve.html?id=carteira&t=Financeiro"><div class="tag">Em breve</div><h2>Financeiro</h2><p>Será reescrito aqui — sem abrir /app.</p></a>
-    <a class="card" href="/v2/em-breve.html?id=perfil&t=Perfil"><div class="tag">Em breve</div><h2>Perfil</h2><p>Será reescrito aqui — sem abrir /app/perfil.</p></a>
+    <a class="card" href="/v2/app-perfil.html"><div class="tag">Conta</div><h2>Perfil</h2><p>Dados pessoais.</p></a>
+    <a class="card" href="/v2/app-config.html"><div class="tag">Conta</div><h2>Configurações</h2><p>Preferências.</p></a>
+    <a class="card" href="/v2/app-suporte.html"><div class="tag">Conta</div><h2>Atendimento</h2><p>Notificações.</p></a>
   </div>
 
   <script>
@@ -41,7 +43,7 @@
       if (!user) return;
 
       document.getElementById("meta").textContent =
-        (user.email || "—") + " · sistema novo isolado · banco vivo";
+        (user.email || "—") + " · sistema novo · SPA bloqueado";
 
       document.addEventListener("click", async function (e) {
         var t = e.target.closest("#v2LogoutLink");

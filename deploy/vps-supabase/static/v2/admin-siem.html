@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>SIEM / Eventos — ArbiShield v2</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2/v2.js"></script>
+  <script src="/v2/v2-pages.js"></script>
+  <script src="/v2/v2-shell.js" defer></script>
+</head>
+<body data-shell="admin" data-active="siem">
+  <div class="page-head">
+    <div>
+      <h1>SIEM <span>/ Eventos</span></h1>
+      <p class="sub">Eventos de segurança · nativo v2 · sem SPA</p>
+    </div>
+  </div>
+  <div id="err" class="err"></div>
+  <div id="pageBody"><div class="meta">Carregando…</div></div>
+  <script>
+    ArbiV2Page.mountAdmin({"sources": [{"table": "geo_security_logs", "limit": 200}, {"table": "admin_audit_logs", "limit": 200}], "cols": ["id", "user_id", "created_at"]});
+  </script>
+</body>
+</html>

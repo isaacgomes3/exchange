@@ -2,13 +2,8 @@
  * Shell ArbiShield v2 — 100% nativo (sem links para /app ou /admin SPA).
  */
 (function (global) {
-  function soon(id, label) {
-    return {
-      id: id,
-      label: label,
-      href: "/v2/em-breve.html?id=" + encodeURIComponent(id) + "&t=" + encodeURIComponent(label),
-      soon: true,
-    };
+  function p(id, label, href) {
+    return { id: id, label: label, href: href };
   }
 
   var ADMIN_SECTIONS = [
@@ -16,85 +11,88 @@
       title: "Operação",
       color: "#22d3ee",
       items: [
-        { id: "hub", label: "Dashboard", href: "/v2/admin.html" },
-        { id: "jogos", label: "Jogos", href: "/v2/admin-jogos.html" },
-        { id: "desafios", label: "Desafios ArbiShield", href: "/v2/admin-desafios.html" },
-        soon("monitoring-protections", "Monitor de Proteções"),
+        p("hub", "Dashboard", "/v2/admin.html"),
+        p("jogos", "Jogos", "/v2/admin-jogos.html"),
+        p("desafios", "Desafios ArbiShield", "/v2/admin-desafios.html"),
+        p("monitoring-protections", "Monitor de Proteções", "/v2/admin-monitoring-protections.html"),
       ],
     },
     {
       title: "Financeiro",
       color: "#34d399",
       items: [
-        soon("transactions", "Transações"),
-        soon("saques", "Saques"),
-        soon("manual-deposits", "Depósitos USDT"),
-        soon("refunds", "Reembolsos"),
-        soon("treasury", "Tesouraria"),
-        soon("partners-distribution", "Distribuição"),
-        soon("expenses", "Despesas"),
+        p("transactions", "Transações", "/v2/admin-transactions.html"),
+        p("saques", "Saques", "/v2/admin-saques.html"),
+        p("manual-deposits", "Depósitos USDT", "/v2/admin-manual-deposits.html"),
+        p("refunds", "Reembolsos", "/v2/admin-refunds.html"),
+        p("treasury", "Tesouraria", "/v2/admin-treasury.html"),
+        p("partners-distribution", "Distribuição", "/v2/admin-partners-distribution.html"),
+        p("expenses", "Despesas", "/v2/admin-expenses.html"),
       ],
     },
     {
       title: "Usuários",
       color: "#a78bfa",
       items: [
-        { id: "users", label: "Usuários", href: "/v2/admin-users.html" },
-        soon("partners", "Partners"),
-        soon("affiliates", "Afiliados"),
+        p("users", "Usuários", "/v2/admin-users.html"),
+        p("partners", "Partners", "/v2/admin-partners.html"),
+        p("affiliates", "Afiliados", "/v2/admin-affiliates.html"),
       ],
     },
     {
       title: "Compliance & Risco",
       color: "#f59e0b",
       items: [
-        soon("contestations", "Contestações"),
-        soon("approvals", "Aprovações"),
-        soon("proofs", "Comprovantes"),
-        soon("investigation", "Investigação"),
-        soon("risk", "Monitor de Risco"),
-        soon("blacklist", "Blacklist"),
-        soon("geo", "Geosegurança"),
-        soon("signup-attempts", "Tentativas de Cadastro"),
+        p("contestations", "Contestações", "/v2/admin-contestations.html"),
+        p("approvals", "Aprovações", "/v2/admin-approvals.html"),
+        p("proofs", "Comprovantes", "/v2/admin-proofs.html"),
+        p("investigation", "Investigação", "/v2/admin-investigation.html"),
+        p("risk", "Monitor de Risco", "/v2/admin-risk.html"),
+        p("blacklist", "Blacklist", "/v2/admin-blacklist.html"),
+        p("geo", "Geosegurança", "/v2/admin-geo.html"),
+        p("signup-attempts", "Tentativas de Cadastro", "/v2/admin-signup-attempts.html"),
       ],
     },
     {
       title: "Conteúdo",
       color: "#c6ff00",
       items: [
-        soon("whatsapp", "Marketing / WhatsApp"),
-        soon("communication-lab", "Communication Lab"),
-        soon("banners", "Banners"),
-        soon("onboarding", "Onboarding"),
-        soon("academia", "Academia"),
+        p("whatsapp", "Marketing / WhatsApp", "/v2/admin-whatsapp.html"),
+        p("communication-lab", "Communication Lab", "/v2/admin-communication-lab.html"),
+        p("banners", "Banners", "/v2/admin-banners.html"),
+        p("onboarding", "Onboarding", "/v2/admin-onboarding.html"),
+        p("academia", "Academia", "/v2/admin-academia.html"),
       ],
     },
     {
       title: "Suporte",
       color: "#f472b6",
-      items: [soon("support", "Suporte"), soon("support-ai", "Suporte IA")],
+      items: [
+        p("support", "Suporte", "/v2/admin-support.html"),
+        p("support-ai", "Suporte IA", "/v2/admin-support-ai.html"),
+      ],
     },
     {
       title: "Sistema",
       color: "#94a3b8",
       items: [
-        soon("settings", "Configurações"),
-        soon("betting-houses", "Casas de Aposta"),
-        soon("permissoes", "Permissões de Admins"),
-        soon("marketing-team", "Time de Marketing"),
+        p("settings", "Configurações", "/v2/admin-settings.html"),
+        p("betting-houses", "Casas de Aposta", "/v2/admin-betting-houses.html"),
+        p("permissoes", "Permissões de Admins", "/v2/admin-permissoes.html"),
+        p("marketing-team", "Time de Marketing", "/v2/admin-marketing-team.html"),
       ],
     },
     {
       title: "Avançado",
       color: "#71717a",
       items: [
-        soon("logs", "Logs / Auditoria"),
-        soon("settlements-audit", "Auditoria de Encerramentos"),
-        soon("technical-audit", "Monitor Técnico"),
-        soon("performance", "Performance"),
-        soon("siem", "SIEM / Eventos"),
-        soon("monitoring", "Monitoria Staff"),
-        { id: "app", label: "Ir para o App", href: "/v2/app.html" },
+        p("logs", "Logs / Auditoria", "/v2/admin-logs.html"),
+        p("settlements-audit", "Auditoria de Encerramentos", "/v2/admin-settlements-audit.html"),
+        p("technical-audit", "Monitor Técnico", "/v2/admin-technical-audit.html"),
+        p("performance", "Performance", "/v2/admin-performance.html"),
+        p("siem", "SIEM / Eventos", "/v2/admin-siem.html"),
+        p("monitoring", "Monitoria Staff", "/v2/admin-monitoring.html"),
+        p("app", "Ir para o App", "/v2/app.html"),
       ],
     },
   ];
@@ -104,30 +102,30 @@
       title: "Operações",
       color: "#c9f223",
       items: [
-        { id: "home", label: "Visão Geral", href: "/v2/app.html" },
-        soon("proteger", "Proteger Aposta"),
-        soon("protecoes", "Minhas Proteções"),
-        soon("desafio", "Desafio ArbiShield"),
-        soon("carteira", "Financeiro"),
-        soon("suporte", "Atendimento"),
+        p("home", "Visão Geral", "/v2/app.html"),
+        p("proteger", "Proteger Aposta", "/v2/app-proteger.html"),
+        p("protecoes", "Minhas Proteções", "/v2/app-protecoes.html"),
+        p("desafio", "Desafio ArbiShield", "/v2/app-desafio.html"),
+        p("carteira", "Financeiro", "/v2/app-carteira.html"),
+        p("suporte", "Atendimento", "/v2/app-suporte.html"),
       ],
     },
     {
       title: "Comunidade",
       color: "#34d399",
       items: [
-        soon("afiliados", "Afiliados"),
-        soon("partners", "Provedor"),
-        soon("baixar-app", "Baixar App"),
+        p("afiliados", "Afiliados", "/v2/app-afiliados.html"),
+        p("partners", "Provedor", "/v2/app-partners.html"),
+        p("baixar-app", "Baixar App", "/v2/app-baixar-app.html"),
       ],
     },
     {
       title: "Conta",
       color: "#94a3b8",
       items: [
-        soon("perfil", "Perfil"),
-        soon("config", "Configurações"),
-        { id: "admin", label: "Admin", href: "/v2/admin.html" },
+        p("perfil", "Perfil", "/v2/app-perfil.html"),
+        p("config", "Configurações", "/v2/app-config.html"),
+        p("admin", "Admin", "/v2/admin.html"),
       ],
     },
   ];
@@ -145,7 +143,6 @@
         var links = sec.items
           .map(function (item) {
             var cls = "v2-nav-link" + (item.id === active ? " is-active" : "");
-            var badge = item.soon ? '<span class="badge">em breve</span>' : "";
             return (
               '<a class="' +
               cls +
@@ -153,7 +150,6 @@
               esc(item.href) +
               '">' +
               esc(item.label) +
-              badge +
               "</a>"
             );
           })
@@ -178,14 +174,14 @@
     var active = body.getAttribute("data-active") || "";
     if (!active) {
       try {
-        var q = new URLSearchParams(location.search);
-        active = q.get("id") || "";
         var file = (location.pathname.split("/").pop() || "").replace(/\.html$/, "");
         if (file === "admin-jogos") active = "jogos";
         else if (file === "admin-desafios") active = "desafios";
         else if (file === "admin-users") active = "users";
         else if (file === "admin") active = "hub";
         else if (file === "app") active = "home";
+        else if (file.indexOf("admin-") === 0) active = file.slice(6);
+        else if (file.indexOf("app-") === 0) active = file.slice(4);
       } catch (e) {}
     }
 

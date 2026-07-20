@@ -2,54 +2,64 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <title>Em breve — ArbiShield v2</title>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2/v2.css" />
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2/v2.js"></script>
-  <script src="/v2/v2-shell.js" defer></script>
-</head>
-<body data-shell="admin" data-active="">
-  <div class="page-head">
-    <div>
-      <h1 id="title">Em <span>breve</span></h1>
-      <p class="sub">Só sistema novo · sem ligação ao SPA antigo</p>
-    </div>
-  </div>
-  <div class="bridge-box">
-    <h2 id="boxTitle">Módulo em construção</h2>
-    <p>
-      Esta função ainda não foi reescrita no v2. Não abrimos o site antigo de propósito —
-      para não reintroduzir freezes e bugs do SPA.
-    </p>
-    <div class="actions" style="margin:0">
-      <a class="btn btn-primary" id="back" href="/v2/admin.html">Voltar ao dashboard</a>
-      <a class="btn btn-ghost" href="/v2/app.html">Área do membro</a>
-    </div>
-  </div>
+  <title>Redirecionando…</title>
   <script>
     (function () {
-      var params = new URLSearchParams(location.search);
-      var id = params.get("id") || "";
-      var t = params.get("t") || "Módulo";
-      var shell = "admin";
-      var appIds = {
-        proteger: 1, protecoes: 1, desafio: 1, carteira: 1, suporte: 1,
-        afiliados: 1, partners: 1, "baixar-app": 1, perfil: 1, config: 1,
+      var id = new URLSearchParams(location.search).get("id") || "";
+      var admin = {
+        "monitoring-protections": "/v2/admin-monitoring-protections.html",
+        transactions: "/v2/admin-transactions.html",
+        saques: "/v2/admin-saques.html",
+        "manual-deposits": "/v2/admin-manual-deposits.html",
+        refunds: "/v2/admin-refunds.html",
+        treasury: "/v2/admin-treasury.html",
+        "partners-distribution": "/v2/admin-partners-distribution.html",
+        expenses: "/v2/admin-expenses.html",
+        partners: "/v2/admin-partners.html",
+        affiliates: "/v2/admin-affiliates.html",
+        contestations: "/v2/admin-contestations.html",
+        approvals: "/v2/admin-approvals.html",
+        proofs: "/v2/admin-proofs.html",
+        investigation: "/v2/admin-investigation.html",
+        risk: "/v2/admin-risk.html",
+        blacklist: "/v2/admin-blacklist.html",
+        geo: "/v2/admin-geo.html",
+        "signup-attempts": "/v2/admin-signup-attempts.html",
+        whatsapp: "/v2/admin-whatsapp.html",
+        "communication-lab": "/v2/admin-communication-lab.html",
+        banners: "/v2/admin-banners.html",
+        onboarding: "/v2/admin-onboarding.html",
+        academia: "/v2/admin-academia.html",
+        support: "/v2/admin-support.html",
+        "support-ai": "/v2/admin-support-ai.html",
+        settings: "/v2/admin-settings.html",
+        "betting-houses": "/v2/admin-betting-houses.html",
+        permissoes: "/v2/admin-permissoes.html",
+        "marketing-team": "/v2/admin-marketing-team.html",
+        logs: "/v2/admin-logs.html",
+        "settlements-audit": "/v2/admin-settlements-audit.html",
+        "technical-audit": "/v2/admin-technical-audit.html",
+        performance: "/v2/admin-performance.html",
+        siem: "/v2/admin-siem.html",
+        monitoring: "/v2/admin-monitoring.html",
+        "desafio-sugestoes": "/v2/admin-desafio-sugestoes.html",
       };
-      if (appIds[id]) shell = "app";
-      document.body.setAttribute("data-shell", shell);
-      document.body.setAttribute("data-active", id);
-      document.getElementById("title").innerHTML = t.replace(/</g, "") + ' <span>em breve</span>';
-      document.getElementById("boxTitle").textContent = t;
-      document.getElementById("back").href = shell === "app" ? "/v2/app.html" : "/v2/admin.html";
-      document.getElementById("back").textContent = shell === "app" ? "Visão geral" : "Voltar ao dashboard";
-      document.title = t + " — Em breve · ArbiShield v2";
-
-      ArbiV2.requireUser(ArbiV2.client());
+      var app = {
+        proteger: "/v2/app-proteger.html",
+        protecoes: "/v2/app-protecoes.html",
+        desafio: "/v2/app-desafio.html",
+        carteira: "/v2/app-carteira.html",
+        suporte: "/v2/app-suporte.html",
+        afiliados: "/v2/app-afiliados.html",
+        partners: "/v2/app-partners.html",
+        "baixar-app": "/v2/app-baixar-app.html",
+        perfil: "/v2/app-perfil.html",
+        config: "/v2/app-config.html",
+      };
+      location.replace(admin[id] || app[id] || "/v2/admin.html");
     })();
   </script>
-</body>
+</head>
+<body></body>
 </html>
