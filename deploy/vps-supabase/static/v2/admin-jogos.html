@@ -117,10 +117,18 @@
       border: 1px solid var(--border); border-radius: 16px;
       background: var(--panel); overflow: hidden;
       width: 100%;
+      max-width: none;
+      margin: 0;
+      padding: 0;
     }
     .panel-head {
-      padding: 14px 16px; border-bottom: 1px solid var(--border);
+      padding: 14px 18px; border-bottom: 1px solid var(--border);
       display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    #preliveContent, #platformContent {
+      width: 100%;
     }
     .panel-head h2 {
       margin: 0; font-size: 11px; letter-spacing: 0.12em;

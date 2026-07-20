@@ -541,11 +541,4 @@ td small { color: var(--muted); font-size: 11px; }
 /* legacy pill nav (compat) */
 .admin-nav { display: none; }
 .shell { max-width: none; margin: 0; padding: 0; }
-.panel {
-  max-width: 480px;
-  margin: 48px auto;
-  padding: 28px 22px;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  background: rgba(10, 10, 10, 0.92);
-}
+/* NÃO limitar .panel aqui — usado em largura total em admin-jogos/desafios */

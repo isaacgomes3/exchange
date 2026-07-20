@@ -3,10 +3,10 @@
 # Corrige tela preta: /v2 deixava de cair no SPA index.html.
 #
 # Uso na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-enable-v2.sh?v=7")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-enable-v2.sh?v=8")
 #
 # Se o auto-detect falhar:
-#   NGINX_SITE=/etc/nginx/conf.d/arbishield-cutover.conf bash <(curl -fsSL ".../vps-enable-v2.sh?v=7")
+#   NGINX_SITE=/etc/nginx/conf.d/arbishield-cutover.conf bash <(curl -fsSL ".../vps-enable-v2.sh?v=8")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/arbishield-v2-backup-723d}"
@@ -87,7 +87,7 @@ if [[ -z "${NGINX_SITE:-}" || ! -f "$NGINX_SITE" ]]; then
   echo "Candidatos em /etc/nginx:" >&2
   ls -la /etc/nginx/conf.d/ 2>/dev/null || true
   ls -la /etc/nginx/sites-enabled/ 2>/dev/null || true
-  die "nginx site não encontrado — rode: NGINX_SITE=/caminho/do.conf bash <(curl -fsSL \"$RAW/scripts/vps-enable-v2.sh?v=7\")"
+  die "nginx site não encontrado — rode: NGINX_SITE=/caminho/do.conf bash <(curl -fsSL \"$RAW/scripts/vps-enable-v2.sh?v=8\")"
 fi
 
 log "usando nginx: $NGINX_SITE"
