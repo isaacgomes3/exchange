@@ -2,7 +2,7 @@
 # Hotfix: destravar busca de clientes em /admin/users.
 #
 # Uso na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/admin-ops-fix-723d/scripts/vps-hotfix-admin-users-search.sh?v=1")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/admin-ops-fix-723d/scripts/vps-hotfix-admin-users-search.sh?v=2")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/admin-ops-fix-723d}"
@@ -19,10 +19,17 @@ done
 
 mkdir -p "$SCRIPTS_DIR" "$WEB/assets"
 
-log "1/2 — patch admin.users (busca + loop stats demo)"
+log "1/2 — patch agressivo admin.users (debounce + useMemo + sem stats demo)"
 curl -fsSL "$RAW/scripts/arbishield-patch-admin-users-freeze.py" \
   -o "$SCRIPTS_DIR/arbishield-patch-admin-users-freeze.py"
 python3 "$SCRIPTS_DIR/arbishield-patch-admin-users-freeze.py" "$WEB"
+
+# Força revalidação de cache do nginx/browser no asset patchado
+if compgen -G "$WEB/assets/admin.users-*.js" > /dev/null; then
+  touch "$WEB/assets"/admin.users-*.js
+  find "$WEB/assets" -name 'admin.users-*.js' -not -name '*.bak' -not -name '*.pre' \
+    -exec chmod 0644 {} \;
+fi
 
 log "2/2 — garantir anti-freeze de modais no admin"
 curl -fsSL "$RAW/deploy/vps-supabase/static/admin-modal-fix.js" \
