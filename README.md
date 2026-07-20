@@ -11,23 +11,34 @@ bash <(curl -fsSL https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/
 ```
 
 O script:
-- atualiza HTML admin e workers (`:3098`, `:3099`)
-- remove dependência de shim `:3101` e Next `:3000` no admin
-- arquiva `index.html` SPA antigo (evita rotas corrompidas)
-- verifica Supabase Kong `:8000`
-- roda checks HTTP e falha se algo crítico estiver offline
+- atualiza admin HTML e workers (`:3098`, `:3099`)
+- **restaura `/app`** (SPA `index.html` + assets)
+- reativa `/_serverFn` (:3101) se o shim existir na VPS
+- sobe Next para painel geral (use `SKIP_NEXT=1` para pular)
+- verifica Supabase e roda health checks
 
 ## Rotas
 
 | URL | Função |
 |-----|--------|
-| **`/admin`** | Hub — menu admin |
+| **`/app`** | App usuario (SPA) |
+| **`/admin`** | Hub admin |
 | **`/arbishield/admin`** | Painel geral |
 | `/admin/matches` | Gestão de Jogos |
 | `/admin/desafios` | Gestão de Desafios |
 | `/auth` | Login |
 
 Doc: [`deploy/vps-supabase/ADMIN-STABLE.md`](deploy/vps-supabase/ADMIN-STABLE.md)
+
+## Restaurar versão inicial (SPA /app)
+
+Se páginas sumiram após estabilização:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/consolidate-arbishield-app-723d/scripts/vps-restore-initial-frontend.sh)
+```
+
+Detalhes: [`deploy/vps-supabase/RESTORE-VPS.md`](deploy/vps-supabase/RESTORE-VPS.md)
 
 ## Desenvolvimento local
 
