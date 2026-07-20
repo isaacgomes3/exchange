@@ -130,7 +130,7 @@
     <header>
       <div>
         <h1>Sugestão de <span>Desafio</span></h1>
-        <p class="sub">Over/Under 2.5 · BetBra 1.60–1.80 · pré-live 30 min · surebet ArbiShield</p>
+        <p class="sub">Over/Under 2.5 · BetBra 1.60–1.80 · próximas 24h · surebet ArbiShield</p>
       </div>
       <div class="actions">
         <a class="btn btn-ghost" href="/admin/desafios">← Gestão</a>
@@ -147,9 +147,6 @@
       </label>
       <label>Odd BetBra máx
         <input id="casaOddMax" type="number" step="0.01" value="1.80" />
-      </label>
-      <label>Pré-live (min)
-        <input id="preLiveMinutes" type="number" step="1" value="30" />
       </label>
       <label>Liquidez (R$)
         <input id="liquidityReais" type="number" step="1" value="2000" />
@@ -174,9 +171,7 @@
         profitMarginPct: Number($("profitMarginPct").value),
         casaOddMin: Number($("casaOddMin").value),
         casaOddMax: Number($("casaOddMax").value),
-        preLiveMinutes: Number($("preLiveMinutes").value),
         liquidityCents: Math.round(Number($("liquidityReais").value) * 100),
-        fallbackToday: true,
       };
     }
 
@@ -206,7 +201,7 @@
           display_liquidity_cents: s.liquidityCents,
           external_bet_link: s.betbraLink,
           starts_at: s.startsAt,
-          release_minutes_before: 30,
+          release_minutes_before: s.minutesToKickoff,
           status: "pending",
           casa_commission_pct: 4.5,
           arbi_commission_pct: 0,
@@ -221,19 +216,15 @@
         list.innerHTML = `<div class="error">${data.error || "Falha ao gerar sugestões"}</div>`;
         return;
       }
-      const mode =
-        data.window?.mode === "prelive_30m"
-          ? "janela pré-live"
-          : "fallback: restante do dia";
       $("meta").innerHTML =
         `<strong>${data.suggestions.length}</strong> sugestão(ões) · ` +
-        `${data.scannedEvents} jogos escaneados · ${mode} · ` +
+        `${data.scannedEvents} jogos escaneados · próximas 24h · ` +
         `margem alvo ${data.params.profitMarginPct}%`;
 
       if (!data.suggestions.length) {
         list.innerHTML =
           `<div class="empty">Nenhuma linha Over/Under 2.5 entre ` +
-          `${data.params.casaOddMin} e ${data.params.casaOddMax} na janela atual. ` +
+          `${data.params.casaOddMin} e ${data.params.casaOddMax} nas próximas 24h. ` +
           `Ajuste o filtro de lucro ou a faixa de odds.</div>`;
         return;
       }
@@ -290,16 +281,15 @@
     }
 
     async function load() {
-      $("list").innerHTML = `<div class="loading">Consultando BetBra e calculando surebets…</div>`;
+      $("list").innerHTML = `<div class="loading">Consultando próximas 24h e calculando surebets…</div>`;
       $("meta").textContent = "Buscando…";
       const p = paramsFromForm();
       const qs = new URLSearchParams({
         profitMarginPct: String(p.profitMarginPct),
         casaOddMin: String(p.casaOddMin),
         casaOddMax: String(p.casaOddMax),
-        preLiveMinutes: String(p.preLiveMinutes),
+        preLiveMinutes: "1440",
         liquidityCents: String(p.liquidityCents),
-        fallbackToday: "1",
       });
       try {
         const res = await fetch(`/api/arbishield/desafio-suggestions?${qs}`, {
@@ -313,7 +303,7 @@
     }
 
     $("btnRefresh").addEventListener("click", load);
-    ["profitMarginPct", "casaOddMin", "casaOddMax", "preLiveMinutes", "liquidityReais"].forEach(
+    ["profitMarginPct", "casaOddMin", "casaOddMax", "liquidityReais"].forEach(
       (id) => $(id).addEventListener("change", load)
     );
     load();

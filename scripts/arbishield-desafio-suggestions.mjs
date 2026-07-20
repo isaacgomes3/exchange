@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Sugestões de desafio (Over/Under 2.5, odds BetBra 1.60–1.80, pré-live 30m).
+ * Sugestões de desafio (Over/Under 2.5, odds BetBra 1.60–1.80, janela 24h).
  * Standalone para VPS — também sobe HTTP em --serve.
  *
  * Uso:
@@ -242,6 +242,8 @@ function suggestionFromEvent(event, params) {
   };
 }
 
+const WINDOW_24H_MINUTES = 24 * 60;
+
 export async function generateDesafioSuggestions(input = {}) {
   const params = {
     casaOddMin: Number(input.casaOddMin ?? process.env.CASA_ODD_MIN ?? 1.6),
@@ -250,7 +252,7 @@ export async function generateDesafioSuggestions(input = {}) {
       input.profitMarginPct ?? process.env.PROFIT_MARGIN_PCT ?? 5
     ),
     preLiveMinutes: Number(
-      input.preLiveMinutes ?? process.env.PRELIVE_MINUTES ?? 30
+      input.preLiveMinutes ?? process.env.PRELIVE_MINUTES ?? WINDOW_24H_MINUTES
     ),
     liquidityCents: Number(
       input.liquidityCents ?? process.env.LIQUIDITY_CENTS ?? 200000
@@ -262,20 +264,10 @@ export async function generateDesafioSuggestions(input = {}) {
   };
 
   const now = Date.now();
-  const preliveTo = now + params.preLiveMinutes * 60_000;
-  // Fim do dia America/Sao_Paulo
-  const brDay = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(now));
-  // BR = UTC-3 → fim do dia local = dia seguinte 02:59:59 UTC
-  const endOfDay = Date.parse(`${brDay}T23:59:59.999-03:00`);
+  const windowTo = now + params.preLiveMinutes * 60_000;
 
-  let mode = "prelive_30m";
-  let details = await loadDetails(now, preliveTo);
-  let suggestions = details
+  const details = await loadDetails(now, windowTo);
+  const suggestions = details
     .map((ev) => {
       try {
         return suggestionFromEvent(ev, params);
@@ -283,23 +275,8 @@ export async function generateDesafioSuggestions(input = {}) {
         return null;
       }
     })
-    .filter(Boolean);
-
-  if (!suggestions.length && params.fallbackToday) {
-    mode = "today_fallback";
-    details = await loadDetails(now, endOfDay);
-    suggestions = details
-      .map((ev) => {
-        try {
-          return suggestionFromEvent(ev, params);
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean);
-  }
-
-  suggestions.sort((a, b) => a.minutesToKickoff - b.minutesToKickoff);
+    .filter(Boolean)
+    .sort((a, b) => a.minutesToKickoff - b.minutesToKickoff);
 
   return {
     ok: true,
@@ -307,10 +284,8 @@ export async function generateDesafioSuggestions(input = {}) {
     scannedEvents: details.length,
     window: {
       from: new Date(now).toISOString(),
-      to: new Date(
-        mode === "prelive_30m" ? preliveTo : endOfDay
-      ).toISOString(),
-      mode,
+      to: new Date(windowTo).toISOString(),
+      mode: "next_24h",
     },
     params,
   };

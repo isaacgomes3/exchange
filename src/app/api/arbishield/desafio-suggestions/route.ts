@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { generateDesafioSuggestions } from "@/lib/arbishield/desafio-suggestions";
+import {
+  DESAFIO_WINDOW_MINUTES,
+  generateDesafioSuggestions,
+} from "@/lib/arbishield/desafio-suggestions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,8 +12,8 @@ export const dynamic = "force-dynamic";
  * GET/POST /api/arbishield/desafio-suggestions
  *
  * Query/body:
- *   casaOddMin, casaOddMax, profitMarginPct, preLiveMinutes,
- *   liquidityCents, fallbackToday
+ *   casaOddMin, casaOddMax, profitMarginPct, preLiveMinutes (default 1440 = 24h),
+ *   liquidityCents
  */
 export async function GET(request: Request) {
   return run(request);
@@ -49,7 +52,7 @@ async function run(request: Request) {
       casaOddMin: num("casaOddMin", 1.6),
       casaOddMax: num("casaOddMax", 1.8),
       profitMarginPct: num("profitMarginPct", 5),
-      preLiveMinutes: num("preLiveMinutes", 30),
+      preLiveMinutes: num("preLiveMinutes", DESAFIO_WINDOW_MINUTES),
       liquidityCents: num("liquidityCents", 200_000),
       fallbackToday: bool("fallbackToday", true),
     });

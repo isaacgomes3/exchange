@@ -34,17 +34,20 @@ export type DesafioSuggestion = {
   rationale: string;
 };
 
+/** Janela padrão de busca: próximas 24 horas */
+export const DESAFIO_WINDOW_MINUTES = 24 * 60;
+
 export type SuggestionParams = {
   /** Odds BetBra aceitas para entrada */
   casaOddMin?: number;
   casaOddMax?: number;
   /** Margem surebet desejada (%) — default 5 (padrão observado nos desafios) */
   profitMarginPct?: number;
-  /** Janela pré-live em minutos */
+  /** Janela de busca em minutos (default 1440 = 24h) */
   preLiveMinutes?: number;
   /** Liquidez ArbiShield sugerida (centavos) */
   liquidityCents?: number;
-  /** Incluir restante do dia se a janela de 30 min estiver vazia */
+  /** @deprecated Mantido por compatibilidade; ignorado (sempre usa janela 24h) */
   fallbackToday?: boolean;
 };
 
@@ -134,36 +137,6 @@ function sideLabel(side: "over_2_5" | "under_2_5"): string {
   return side === "over_2_5"
     ? "Mais 2.5 gols na partida"
     : "Menos 2.5 gols na partida";
-}
-
-function endOfDayInTimeZone(nowMs: number, timeZone: string): number {
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const day = fmt.format(new Date(nowMs)); // YYYY-MM-DD no fuso
-  // 23:59:59.999 no fuso → aproximar via Date com offset BR (-03)
-  // Usamos varredura até +3h além da meia-noite local convertida.
-  const noonUtcGuess = Date.parse(`${day}T12:00:00Z`);
-  // Descobrir offset do fuso nesse dia
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    timeZoneName: "shortOffset",
-    hour: "2-digit",
-  }).formatToParts(new Date(noonUtcGuess));
-  const tzName = parts.find((p) => p.type === "timeZoneName")?.value ?? "GMT-3";
-  const m = tzName.match(/GMT([+-]\d+)(?::(\d+))?/i);
-  let offsetMin = -180;
-  if (m) {
-    const h = Number(m[1]);
-    const mins = Number(m[2] || 0);
-    offsetMin = h * 60 + Math.sign(h || 1) * mins;
-  }
-  // meia-noite local = day 00:00 local = UTC - offset
-  const startLocalUtc = Date.parse(`${day}T00:00:00Z`) - offsetMin * 60_000;
-  return startLocalUtc + 24 * 60 * 60 * 1000 - 1;
 }
 
 function opposite(
@@ -265,7 +238,7 @@ export async function generateDesafioSuggestions(
 ): Promise<{
   suggestions: DesafioSuggestion[];
   scannedEvents: number;
-  window: { from: string; to: string; mode: "prelive_30m" | "today_fallback" };
+  window: { from: string; to: string; mode: "next_24h" };
   params: Required<SuggestionParams>;
 }> {
   const config = getBetBraConfig();
@@ -273,15 +246,13 @@ export async function generateDesafioSuggestions(
     casaOddMin: params.casaOddMin ?? 1.6,
     casaOddMax: params.casaOddMax ?? 1.8,
     profitMarginPct: params.profitMarginPct ?? 5,
-    preLiveMinutes: params.preLiveMinutes ?? 30,
+    preLiveMinutes: params.preLiveMinutes ?? DESAFIO_WINDOW_MINUTES,
     liquidityCents: params.liquidityCents ?? 200_000,
     fallbackToday: params.fallbackToday ?? true,
   };
 
   const now = Date.now();
-  const preliveTo = now + resolved.preLiveMinutes * 60_000;
-  // "Hoje" em America/Sao_Paulo (fim do dia local BR)
-  const endOfDay = endOfDayInTimeZone(now, "America/Sao_Paulo");
+  const windowTo = now + resolved.preLiveMinutes * 60_000;
 
   async function loadDetails(afterMs: number, beforeMs: number) {
     const list = await scheduleRequest(
@@ -318,31 +289,19 @@ export async function generateDesafioSuggestions(
     return details;
   }
 
-  let mode: "prelive_30m" | "today_fallback" = "prelive_30m";
-  let details = await loadDetails(now, preliveTo);
-  let suggestions = details
+  const details = await loadDetails(now, windowTo);
+  const suggestions = details
     .map((ev) => extractSuggestionSafe(ev, resolved))
-    .filter((s): s is DesafioSuggestion => Boolean(s));
-
-  if (!suggestions.length && resolved.fallbackToday) {
-    mode = "today_fallback";
-    details = await loadDetails(now, endOfDay);
-    suggestions = details
-      .map((ev) => extractSuggestionSafe(ev, resolved))
-      .filter((s): s is DesafioSuggestion => Boolean(s));
-  }
-
-  suggestions.sort((a, b) => a.minutesToKickoff - b.minutesToKickoff);
+    .filter((s): s is DesafioSuggestion => Boolean(s))
+    .sort((a, b) => a.minutesToKickoff - b.minutesToKickoff);
 
   return {
     suggestions,
     scannedEvents: details.length,
     window: {
       from: new Date(now).toISOString(),
-      to: new Date(
-        mode === "prelive_30m" ? preliveTo : endOfDay
-      ).toISOString(),
-      mode,
+      to: new Date(windowTo).toISOString(),
+      mode: "next_24h",
     },
     params: resolved,
   };
