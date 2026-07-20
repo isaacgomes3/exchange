@@ -421,6 +421,113 @@ async function listDesafios() {
   return Array.isArray(rows) ? rows : [];
 }
 
+async function nextDesafioNumber() {
+  const rows = await sb(
+    "/rest/v1/desafios?select=number&order=number.desc&limit=1"
+  );
+  const cur =
+    Array.isArray(rows) && rows[0]?.number != null ? Number(rows[0].number) : 0;
+  return (Number.isFinite(cur) ? cur : 0) + 1;
+}
+
+function buildDesafioRow(body) {
+  const isActive = Boolean(body.is_active);
+  return {
+    number: body.number != null ? Number(body.number) : undefined,
+    title: body.title || "Desafio",
+    subtitle: body.subtitle ?? null,
+    total_steps: Number(body.total_steps) || (body.steps || []).length || 1,
+    initial_balance_cents: Number(body.initial_balance_cents) || 20000,
+    is_active: isActive,
+    status: body.status || (isActive ? "active" : "draft"),
+    target_profit_pct: Number(body.target_profit_pct) || 5,
+    auto_link_matches: body.auto_link_matches !== false,
+    published_at: isActive ? new Date().toISOString() : null,
+  };
+}
+
+function buildStepRow(desafioId, stepIn, isActive) {
+  return {
+    desafio_id: desafioId,
+    step_index: Number(stepIn.step_index) || 1,
+    match_label: stepIn.match_label || null,
+    league_name: stepIn.league_name ?? null,
+    home_team: stepIn.home_team || null,
+    away_team: stepIn.away_team || null,
+    market_name: stepIn.market_name || stepIn.market_name_casa || null,
+    market_name_casa: stepIn.market_name_casa || stepIn.market_name || null,
+    market_name_arbishield: stepIn.market_name_arbishield || null,
+    home_odd: stepIn.home_odd != null ? Number(stepIn.home_odd) : null,
+    away_odd: stepIn.away_odd != null ? Number(stepIn.away_odd) : null,
+    arbi_team_name: stepIn.arbi_team_name ?? null,
+    arbi_team_logo_url: stepIn.arbi_team_logo_url ?? null,
+    arbi_odd: stepIn.arbi_odd != null ? Number(stepIn.arbi_odd) : null,
+    casa_team_name: stepIn.casa_team_name ?? null,
+    casa_team_logo_url: stepIn.casa_team_logo_url ?? null,
+    casa_odd: stepIn.casa_odd != null ? Number(stepIn.casa_odd) : null,
+    casa_stake_cents:
+      stepIn.casa_stake_cents != null ? Number(stepIn.casa_stake_cents) : null,
+    arbi_commission_pct:
+      stepIn.arbi_commission_pct != null
+        ? Number(stepIn.arbi_commission_pct)
+        : null,
+    casa_commission_pct:
+      stepIn.casa_commission_pct != null
+        ? Number(stepIn.casa_commission_pct)
+        : 4.5,
+    liquidity_cents:
+      stepIn.liquidity_cents != null ? Number(stepIn.liquidity_cents) : 200000,
+    display_liquidity_cents:
+      stepIn.display_liquidity_cents != null
+        ? Number(stepIn.display_liquidity_cents)
+        : stepIn.liquidity_cents != null
+          ? Number(stepIn.liquidity_cents)
+          : 200000,
+    external_bet_link: stepIn.external_bet_link || null,
+    starts_at: stepIn.starts_at || null,
+    release_minutes_before:
+      stepIn.release_minutes_before != null
+        ? Number(stepIn.release_minutes_before)
+        : 60,
+    status: stepIn.status || "pending",
+    is_published:
+      stepIn.is_published != null ? Boolean(stepIn.is_published) : isActive,
+  };
+}
+
+async function createDesafio(body, token) {
+  if (!SERVICE_KEY) throw new Error("SERVICE_ROLE_KEY ausente no .env da VPS");
+  const auth = token || SERVICE_KEY;
+  const stepIn = body.step || (body.steps && body.steps[0]) || {};
+  const desafioRow = buildDesafioRow(body);
+  if (desafioRow.number == null) {
+    desafioRow.number = await nextDesafioNumber();
+  }
+
+  const created = await sb("/rest/v1/desafios", {
+    method: "POST",
+    token: auth,
+    body: desafioRow,
+  });
+  const desafio = Array.isArray(created) ? created[0] : created;
+  if (!desafio?.id) throw new Error("Falha ao criar desafio");
+
+  const stepsOut = [];
+  for (const step of body.steps || [stepIn]) {
+    if (!step || (!step.match_label && !step.home_team && !step.market_name_casa)) {
+      continue;
+    }
+    const stepRow = buildStepRow(desafio.id, step, desafioRow.is_active);
+    const inserted = await sb("/rest/v1/desafio_steps", {
+      method: "POST",
+      token: auth,
+      body: stepRow,
+    });
+    stepsOut.push(Array.isArray(inserted) ? inserted[0] : inserted);
+  }
+  return { ...desafio, desafio_steps: stepsOut.filter(Boolean) };
+}
+
 function decodeJwtPayload(token) {
   try {
     const parts = String(token || "").split(".");
@@ -787,6 +894,20 @@ async function handleApi(req, res) {
       return sendJson(res, 200, data);
     } catch (err) {
       return sendJson(res, 500, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/desafios" && req.method === "POST") {
+    try {
+      const body = await parseBody(req);
+      const token = bearerFromReq(req);
+      const created = await createDesafio(body, token);
+      return sendJson(res, 201, { ok: true, desafio: created });
+    } catch (err) {
+      return sendJson(res, err.status || 500, {
+        ok: false,
         error: err instanceof Error ? err.message : String(err),
       });
     }
