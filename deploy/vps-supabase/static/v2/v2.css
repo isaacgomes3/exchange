@@ -1434,19 +1434,250 @@ body[data-shell="app"] {
     radial-gradient(800px 420px at 10% -10%, rgba(198, 255, 0, 0.08), transparent 55%),
     var(--bg);
 }
-body[data-shell="app"] .v2-sidebar {
-  background: rgba(2, 21, 17, 0.96);
-  border-right-color: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(16px);
+body[data-shell="app"] {
+  --sidebar-w: 280px;
+  --novo: #f5a524;
+  --novo-glow: rgba(245, 165, 36, 0.45);
+}
+body[data-shell="app"] .v2-sidebar,
+body[data-shell="app"] .v2-sidebar-app {
+  width: var(--sidebar-w);
+  background: #070707;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  backdrop-filter: none;
+  transition: width 0.22s ease;
+}
+body[data-shell="app"] .v2-sidebar-brand-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 16px 12px 14px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+body[data-shell="app"] .v2-sidebar-brand {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  gap: 12px;
+  align-items: flex-start;
+}
+body[data-shell="app"] .v2-sidebar-brand .mark-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: #000;
+}
+body[data-shell="app"] .v2-sidebar-brand strong {
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  font-style: italic;
+  line-height: 1.1;
+}
+body[data-shell="app"] .v2-sidebar-brand strong span {
+  color: var(--lime-hot);
+}
+body[data-shell="app"] .v2-sidebar-brand small {
+  margin-top: 4px;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.45);
+  max-width: 15rem;
+}
+body[data-shell="app"] .v2-collapse-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.75);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-top: 4px;
+  transition: transform 0.2s ease, background 0.15s ease;
+}
+body[data-shell="app"] .v2-collapse-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+body[data-shell="app"].v2-sidebar-collapsed .v2-collapse-btn {
+  transform: rotate(180deg);
+}
+body[data-shell="app"] .v2-sidebar-scroll {
+  padding: 14px 12px 20px;
+}
+body[data-shell="app"] .v2-nav-section {
+  margin: 18px 0 8px;
+  padding: 0 10px;
+  color: #9ca36a;
+  letter-spacing: 0.18em;
+  font-size: 10px;
+}
+body[data-shell="app"] .v2-nav-section .dot { display: none; }
+body[data-shell="app"] .v2-nav-link {
+  gap: 12px;
+  margin: 4px 0;
+  padding: 12px 14px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  background: transparent;
+}
+body[data-shell="app"] .v2-nav-link .nav-ico {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0.9;
+}
+body[data-shell="app"] .v2-nav-link .nav-ico svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+body[data-shell="app"] .v2-nav-link .lbl {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body[data-shell="app"] .v2-nav-link:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
+}
+body[data-shell="app"] .v2-nav-link.is-novo {
+  border-color: rgba(245, 165, 36, 0.55);
+  box-shadow:
+    0 0 0 1px rgba(245, 165, 36, 0.12),
+    0 0 18px var(--novo-glow);
+  background: rgba(245, 165, 36, 0.04);
+}
+body[data-shell="app"] .v2-nav-link.is-novo .badge {
+  color: #1a0f00;
+  background: var(--novo);
+  box-shadow: 0 0 10px var(--novo-glow);
 }
 body[data-shell="app"] .v2-nav-link.is-active {
   background: var(--lime-hot);
   color: #04140f;
+  border-color: var(--lime-hot);
+  box-shadow: 0 0 22px rgba(198, 255, 0, 0.28);
+}
+body[data-shell="app"] .v2-nav-link.is-active.is-novo {
+  border-color: var(--lime-hot);
   box-shadow: 0 0 22px rgba(198, 255, 0, 0.28);
 }
 body[data-shell="app"] .v2-nav-link.is-active .badge {
   background: #04140f;
   color: var(--lime-hot);
+  box-shadow: none;
+}
+body[data-shell="app"] .v2-nav-link .badge {
+  margin-left: auto;
+  font-size: 8px;
+  padding: 3px 7px;
+}
+body[data-shell="app"] .v2-app-foot {
+  gap: 10px;
+  padding: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+body[data-shell="app"] .v2-app-user {
+  padding: 10px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+body[data-shell="app"] .v2-app-user-meta {
+  min-width: 0;
+  flex: 1;
+}
+body[data-shell="app"] .v2-app-user strong {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+body[data-shell="app"] .v2-side-bals {
+  display: grid;
+  gap: 2px;
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 700;
+}
+body[data-shell="app"] .v2-side-bals .d { color: var(--lime-hot); }
+body[data-shell="app"] .v2-side-bals .i { color: #67e8f9; }
+body[data-shell="app"] .v2-side-bals b { font-weight: 800; }
+body[data-shell="app"] .v2-app-foot .v2-logout {
+  justify-content: space-between;
+  color: rgba(255, 255, 255, 0.7);
+  border-radius: 999px;
+}
+body[data-shell="app"] .v2-app-foot .v2-logout .nav-ico.out {
+  width: 18px;
+  height: 18px;
+  opacity: 0.8;
+}
+body[data-shell="app"] .v2-app-foot .v2-logout .nav-ico.out svg {
+  width: 18px;
+  height: 18px;
+}
+body[data-shell="app"] .v2-app-foot .v2-logout:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Sidebar recolhida (desktop) */
+@media (min-width: 961px) {
+  body[data-shell="app"].v2-sidebar-collapsed {
+    --sidebar-w: 84px;
+  }
+  body[data-shell="app"].v2-sidebar-collapsed .v2-sidebar-brand > div,
+  body[data-shell="app"].v2-sidebar-collapsed .v2-nav-section,
+  body[data-shell="app"].v2-sidebar-collapsed .v2-nav-link .lbl,
+  body[data-shell="app"].v2-sidebar-collapsed .v2-nav-link .badge,
+  body[data-shell="app"].v2-sidebar-collapsed .v2-app-user-meta,
+  body[data-shell="app"].v2-sidebar-collapsed .v2-logout .lbl {
+    display: none;
+  }
+  body[data-shell="app"].v2-sidebar-collapsed .v2-sidebar-brand-row {
+    justify-content: center;
+    padding: 16px 8px;
+  }
+  body[data-shell="app"].v2-sidebar-collapsed .v2-sidebar-brand {
+    justify-content: center;
+  }
+  body[data-shell="app"].v2-sidebar-collapsed .v2-collapse-btn {
+    position: absolute;
+    top: 18px;
+    right: 8px;
+  }
+  body[data-shell="app"].v2-sidebar-collapsed .v2-sidebar-app {
+    position: sticky;
+  }
+  body[data-shell="app"].v2-sidebar-collapsed .v2-nav-link {
+    justify-content: center;
+    padding: 12px;
+  }
+  body[data-shell="app"].v2-sidebar-collapsed .v2-nav-link .nav-ico {
+    margin: 0;
+  }
+  body[data-shell="app"].v2-sidebar-collapsed .v2-app-user {
+    justify-content: center;
+    padding: 10px;
+  }
+  body[data-shell="app"].v2-sidebar-collapsed .v2-logout {
+    justify-content: center;
+  }
+  body[data-shell="app"].v2-sidebar-collapsed .v2-logout .nav-ico.out {
+    margin: 0;
+  }
 }
 body[data-shell="app"] .v2-page {
   padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));

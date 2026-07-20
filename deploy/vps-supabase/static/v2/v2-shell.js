@@ -9,8 +9,33 @@
       label: label,
       href: href,
       badge: opts.badge || "",
+      glow: !!opts.glow || !!opts.badge,
+      icon: opts.icon || id,
     };
   }
+
+  var APP_ICONS = {
+    academia:
+      '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 9.5 12 4l9 5.5L12 15 3 9.5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M7 12v4.5c0 1.2 2.2 2.5 5 2.5s5-1.3 5-2.5V12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M21 10v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    home:
+      '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/></svg>',
+    proteger:
+      '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3 5 6v5c0 4.5 2.8 7.8 7 9 4.2-1.2 7-4.5 7-9V6l-7-3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m9.2 12 1.8 1.8 3.8-3.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    protecoes:
+      '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 7h12M8 12h12M8 17h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="4.5" cy="7" r="1" fill="currentColor"/><circle cx="4.5" cy="12" r="1" fill="currentColor"/><circle cx="4.5" cy="17" r="1" fill="currentColor"/></svg>',
+    desafio:
+      '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 4h8v3a4 4 0 0 1-8 0V4z" stroke="currentColor" stroke-width="1.8"/><path d="M8 6H5.5A2.5 2.5 0 0 0 5 11c1.2 1.2 2.8 1.7 4 2M16 6h2.5A2.5 2.5 0 0 1 19 11c-1.2 1.2-2.8 1.7-4 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M10 15h4v2l-2 3-2-3v-2z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+    carteira:
+      '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 8.5h15A2.5 2.5 0 0 1 21 11v7.5A2.5 2.5 0 0 1 18.5 21h-13A2.5 2.5 0 0 1 3 18.5v-10A2 2 0 0 1 5 6.5h11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M16 14.5h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    suporte:
+      '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12a7 7 0 0 1 14 0v4.5A2.5 2.5 0 0 1 16.5 19H15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M5 13.5H4A1.5 1.5 0 0 0 2.5 15v1A1.5 1.5 0 0 0 4 17.5h1V13.5zM19 13.5h1A1.5 1.5 0 0 1 21.5 15v1A1.5 1.5 0 0 1 20 17.5h-1V13.5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+    afiliados:
+      '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="9" cy="8" r="3" stroke="currentColor" stroke-width="1.8"/><circle cx="17" cy="9" r="2.5" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 18.5c.8-2.8 2.8-4.2 5.5-4.2s4.7 1.4 5.5 4.2M14.5 18.5c.4-1.5 1.4-2.6 3-2.6 1.2 0 2.1.6 2.7 1.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    partners:
+      '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3 9.5 8.5 3.5 9l4.5 4-1.3 5.8L12 16.2l5.3 2.6-1.3-5.8 4.5-4-6-.5L12 3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+    "baixar-app":
+      '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v10m0 0 3.5-3.5M12 14l-3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 16.5V18A2 2 0 0 0 7 20h10a2 2 0 0 0 2-2v-1.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  };
 
   var ADMIN_SECTIONS = [
     {
@@ -106,25 +131,29 @@
   var APP_SECTIONS = [
     {
       title: "Aprenda",
-      color: "#c6ff00",
-      items: [p("academia", "Academia", "/app-academia.html", { badge: "Novo" })],
+      color: "#9ca36a",
+      items: [p("academia", "Academia", "/app-academia.html", { badge: "Novo", glow: true })],
     },
     {
       title: "Operações",
-      color: "#c9f223",
+      color: "#9ca36a",
       items: [
         p("home", "Visão Geral", "/app.html"),
         p("proteger", "Proteger Aposta", "/app-proteger.html"),
         p("protecoes", "Minhas Proteções", "/app-protecoes.html"),
-        p("desafio", "Desafio", "/app-desafio.html", { badge: "Novo" }),
+        p("desafio", "Desafio", "/app-desafio.html", { badge: "Novo", glow: true }),
         p("carteira", "Financeiro", "/app-carteira.html"),
         p("suporte", "Atendimento", "/app-suporte.html"),
       ],
     },
     {
       title: "Comunidade",
-      color: "#34d399",
-      items: [p("afiliados", "Afiliados", "/app-afiliados.html", { badge: "Novo" })],
+      color: "#9ca36a",
+      items: [
+        p("afiliados", "Afiliados", "/app-afiliados.html", { badge: "Novo", glow: true }),
+        p("partners", "Provedor", "/app-partners.html", { badge: "Novo", glow: true }),
+        p("baixar-app", "Baixar App", "/app-baixar-app.html"),
+      ],
     },
   ];
 
@@ -135,21 +164,37 @@
       .replace(/"/g, "&quot;");
   }
 
-  function renderSections(sections, active) {
+  function renderSections(sections, active, opts) {
+    opts = opts || {};
+    var withIcons = !!opts.withIcons;
     return sections
       .map(function (sec) {
         var links = sec.items
           .map(function (item) {
-            var cls = "v2-nav-link" + (item.id === active ? " is-active" : "");
+            var cls =
+              "v2-nav-link" +
+              (item.id === active ? " is-active" : "") +
+              (item.glow ? " is-novo" : "");
             var badge = item.badge
               ? '<span class="badge">' + esc(item.badge) + "</span>"
               : "";
+            var icon = "";
+            if (withIcons) {
+              icon =
+                '<span class="nav-ico">' +
+                (APP_ICONS[item.icon] || APP_ICONS.home) +
+                "</span>";
+            }
             return (
               '<a class="' +
               cls +
               '" href="' +
               esc(item.href) +
-              '"><span class="lbl">' +
+              '" title="' +
+              esc(item.label) +
+              '">' +
+              icon +
+              '<span class="lbl">' +
               esc(item.label) +
               "</span>" +
               badge +
@@ -158,11 +203,13 @@
           })
           .join("");
         return (
-          '<div class="v2-nav-section"><span class="dot" style="background:' +
-          esc(sec.color) +
-          '"></span>' +
+          '<div class="v2-nav-section">' +
+          (opts.hideDots
+            ? ""
+            : '<span class="dot" style="background:' + esc(sec.color) + '"></span>') +
+          '<span class="sec-lbl">' +
           esc(sec.title) +
-          "</div>" +
+          "</span></div>" +
           links
         );
       })
@@ -189,7 +236,10 @@
     }
 
     var brandHref = shell === "admin" ? "/admin.html" : "/app.html";
-    var brandSub = shell === "admin" ? "Admin · v2" : "Área do membro · v2";
+    var brandSub =
+      shell === "admin"
+        ? "Admin · v2"
+        : "Líder global em proteção de apostas";
     var sections = shell === "admin" ? ADMIN_SECTIONS : APP_SECTIONS;
 
     if (!body.classList.contains("v2-layout-ready")) {
@@ -276,28 +326,70 @@
     var sidebar = document.getElementById("v2-sidebar");
     if (!sidebar) return;
 
+    if (shell === "app") {
+      sidebar.classList.add("v2-sidebar-app");
+      try {
+        if (localStorage.getItem("arbishield.sidebarCollapsed") === "1") {
+          body.classList.add("v2-sidebar-collapsed");
+        }
+      } catch (e) {}
+    }
+
     sidebar.innerHTML =
-      '<a class="v2-sidebar-brand" href="' +
-      brandHref +
-      '">' +
-      '<img class="mark-img" src="/brand/icon-64.png" width="36" height="36" alt="" decoding="async" />' +
-      "<div><strong>ArbiShield</strong><small>" +
-      esc(brandSub) +
-      "</small></div></a>" +
+      (shell === "app"
+        ? '<div class="v2-sidebar-brand-row">' +
+          '<a class="v2-sidebar-brand" href="' +
+          brandHref +
+          '">' +
+          '<img class="mark-img" src="/brand/icon-64.png" width="40" height="40" alt="" decoding="async" />' +
+          "<div><strong>Arbi<span>Shield</span></strong><small>" +
+          esc(brandSub) +
+          "</small></div></a>" +
+          '<button type="button" class="v2-collapse-btn" id="v2CollapseBtn" aria-label="Recolher menu" title="Recolher menu">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 6 8 12l6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+          "</button></div>"
+        : '<a class="v2-sidebar-brand" href="' +
+          brandHref +
+          '">' +
+          '<img class="mark-img" src="/brand/icon-64.png" width="36" height="36" alt="" decoding="async" />' +
+          "<div><strong>ArbiShield</strong><small>" +
+          esc(brandSub) +
+          "</small></div></a>") +
       '<div class="v2-sidebar-scroll">' +
-      renderSections(sections, active) +
+      renderSections(sections, active, {
+        withIcons: shell === "app",
+        hideDots: shell === "app",
+      }) +
       "</div>" +
       (shell === "app"
         ? '<div class="v2-sidebar-foot v2-app-foot">' +
           '<a class="v2-app-user" href="/app-perfil.html">' +
           '<div class="v2-avatar-btn sm" id="v2SideAvatar">U</div>' +
-          "<div><strong id=\"v2SideName\">Membro</strong>" +
-          '<small id="v2SideMeta">Área do membro</small></div></a>' +
-          '<a class="v2-nav-link v2-logout" href="#" id="v2LogoutLink">Sair</a>' +
-          "</div>"
+          '<div class="v2-app-user-meta"><strong id="v2SideName">Membro</strong>' +
+          '<span class="v2-side-bals">' +
+          '<span class="d">D: <b id="v2SideBalD">R$ 0,00</b></span>' +
+          '<span class="i">I: <b id="v2SideBalI">R$ 0,00</b></span>' +
+          "</span></div></a>" +
+          '<a class="v2-nav-link v2-logout" href="#" id="v2LogoutLink">' +
+          '<span class="lbl">Sair</span>' +
+          '<span class="nav-ico out" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M10 7V5.5A1.5 1.5 0 0 1 11.5 4H18a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6.5A1.5 1.5 0 0 1 10 18.5V17M4 12h10m0 0-3-3m3 3-3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>' +
+          "</a></div>"
         : '<div class="v2-sidebar-foot">' +
           '<a class="v2-nav-link" href="#" id="v2LogoutLink">Sair</a>' +
           "</div>");
+
+    var collapseBtn = document.getElementById("v2CollapseBtn");
+    if (collapseBtn) {
+      collapseBtn.addEventListener("click", function () {
+        body.classList.toggle("v2-sidebar-collapsed");
+        try {
+          localStorage.setItem(
+            "arbishield.sidebarCollapsed",
+            body.classList.contains("v2-sidebar-collapsed") ? "1" : "0"
+          );
+        } catch (e2) {}
+      });
+    }
 
     if (!document.querySelector('link[data-v2-favicon]')) {
       var fav = document.createElement("link");
@@ -405,17 +497,17 @@
               })
               .join("")
               .toUpperCase() || "U";
+            var first = initials.charAt(0) || "U";
             var av = document.getElementById("v2AppAvatar");
             if (av) av.textContent = initials;
             var sideAv = document.getElementById("v2SideAvatar");
-            if (sideAv) sideAv.textContent = initials;
+            if (sideAv) sideAv.textContent = first;
             var sideName = document.getElementById("v2SideName");
             if (sideName) sideName.textContent = displayName;
-            var sideMeta = document.getElementById("v2SideMeta");
-            if (sideMeta) {
-              sideMeta.textContent =
-                money(apostador) + " · apostador";
-            }
+            var sideD = document.getElementById("v2SideBalD");
+            if (sideD) sideD.textContent = money(desafio);
+            var sideI = document.getElementById("v2SideBalI");
+            if (sideI) sideI.textContent = money(provedor);
           }
         }
       } catch (err) {}
