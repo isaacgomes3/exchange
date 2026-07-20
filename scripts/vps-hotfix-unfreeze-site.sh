@@ -3,7 +3,7 @@
 # Remove patches agressivos (history, cache wipe, guard jogos) e corrige Promise eterno no main.js.
 #
 # Uso na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/admin-ops-fix-723d/scripts/vps-hotfix-unfreeze-site.sh?v=1")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/admin-ops-fix-723d/scripts/vps-hotfix-unfreeze-site.sh?v=2")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/admin-ops-fix-723d}"
@@ -22,7 +22,7 @@ mkdir -p "$SCRIPTS_DIR" "$WEB/assets"
 
 download() { curl -fsSL "$RAW/$1" -o "$2"; }
 
-log "1/4 — scripts leves (sem mexer no router)"
+log "1/5 — scripts leves (sem mexer no router)"
 download "deploy/vps-supabase/static/app-boot-fix.js" "$WEB/assets/app-boot-fix.js"
 download "deploy/vps-supabase/static/app-stability.js" "$WEB/assets/app-stability.js"
 download "deploy/vps-supabase/static/auth-boot-fix.js" "$WEB/assets/auth-boot-fix.js"
@@ -33,7 +33,7 @@ chmod 0644 \
   "$WEB/assets/auth-boot-fix.js" \
   "$WEB/assets/admin-modal-fix.js"
 
-log "2/4 — remover guard Jogos do index.html (se existir)"
+log "2/5 — remover guard Jogos do index.html (se existir)"
 INDEX="$WEB/index.html"
 if [[ -f "$INDEX" ]]; then
   python3 <<'PY'
@@ -70,11 +70,15 @@ print("index.html: guard jogos removido, app-boot-fix garantido")
 PY
 fi
 
-log "3/4 — patch main.js (Promise eterno no serverFn / beforeLoad)"
+log "3/5 — patch main.js (Promise eterno no serverFn / beforeLoad)"
 download "scripts/arbishield-patch-main-freeze.py" "$SCRIPTS_DIR/arbishield-patch-main-freeze.py"
 python3 "$SCRIPTS_DIR/arbishield-patch-main-freeze.py" "$WEB"
 
-log "4/4 — shim serverFn (mantém dashboard membro)"
+log "4/5 — patch admin.users (busca clientes sem freeze)"
+download "scripts/arbishield-patch-admin-users-freeze.py" "$SCRIPTS_DIR/arbishield-patch-admin-users-freeze.py"
+python3 "$SCRIPTS_DIR/arbishield-patch-admin-users-freeze.py" "$WEB"
+
+log "5/5 — shim serverFn (mantém dashboard membro)"
 download "scripts/arbishield-serverfn-shim.mjs" "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs"
 chmod 755 "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs"
 if systemctl is-active --quiet arbishield-serverfn-shim.service 2>/dev/null; then
@@ -84,7 +88,8 @@ fi
 
 echo
 echo "OK — hotfix anti-travamento aplicado"
-echo "  Teste: https://arbishield.app/auth → login → https://arbishield.app/app"
+echo "  Membros: https://arbishield.app/app"
+echo "  Usuários: https://arbishield.app/admin/users  (busca sem freeze)"
 echo
 echo "Se ainda travar, rode também:"
 echo "  python3 $SCRIPTS_DIR/arbishield-fix-csr-boot.py $WEB"

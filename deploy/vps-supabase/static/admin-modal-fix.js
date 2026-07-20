@@ -8,7 +8,9 @@
     path === "/admin/matches" ||
     path.endsWith("/admin/matches") ||
     path === "/admin/desafios" ||
-    path.endsWith("/admin/desafios");
+    path.endsWith("/admin/desafios") ||
+    path === "/admin/users" ||
+    path.endsWith("/admin/users");
 
   if (!onAdmin) return;
 
