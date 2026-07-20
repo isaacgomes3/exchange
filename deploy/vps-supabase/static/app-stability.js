@@ -1,6 +1,6 @@
 /**
  * Estabilidade global ArbiShield (VPS).
- * Não altera history/router e não apaga caches no /app (evita freeze).
+ * No /admin: corta blur sem seletor universal (evita freeze em focus/click).
  */
 (function () {
   var MARK = "arbishield-stable";
@@ -28,25 +28,26 @@
   }
 
   function ensureStyle() {
-    if (document.querySelector('style[data-arbishield="stability"]')) return;
+    var existing = document.querySelector('style[data-arbishield="stability"]');
+    if (existing && existing.getAttribute("data-arbishield-safe") === "1") return;
+    if (existing) existing.remove();
+
     var style = document.createElement("style");
     style.setAttribute("data-arbishield", "stability");
-    var adminModal =
-      "html." + MARK + " [data-radix-dialog-overlay]," +
-      "html." + MARK + " [data-radix-sheet-overlay]," +
-      "html." + MARK + " [data-vaul-drawer-wrapper]," +
-      "html." + MARK + " [role=\"dialog\"],";
+    style.setAttribute("data-arbishield-safe", "1");
     style.textContent =
       "html." + MARK + " [class*=\"blur-\"]," +
       "html." + MARK + " [style*=\"blur(\"]," +
-      adminModal +
+      "html." + MARK + " [class*=\"backdrop-blur\"]," +
+      "html." + MARK + " [data-radix-dialog-overlay]," +
+      "html." + MARK + " [data-radix-sheet-overlay]," +
+      "html." + MARK + " [data-vaul-drawer-wrapper]," +
       "html." + MARK + " [data-state=\"open\"][class*=\"overlay\"]{" +
       "filter:none!important;backdrop-filter:none!important;" +
       "-webkit-backdrop-filter:none!important;will-change:auto!important;}" +
       "html." + MARK + " [data-radix-dialog-overlay]," +
       "html." + MARK + " [data-radix-sheet-overlay]," +
-      "html." + MARK + " [data-vaul-drawer-wrapper]," +
-      "html." + MARK + " [role=\"dialog\"] *{" +
+      "html." + MARK + " [data-vaul-drawer-wrapper]{" +
       "animation:none!important;transition:none!important;}";
     (document.head || document.documentElement).appendChild(style);
   }
@@ -100,34 +101,11 @@
     } catch (e) {}
   }
 
-  function cleanupAuthOnly() {
-    if (!isAuthPath()) return;
-    clearCorruptDashCache();
-    try {
-      if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function (regs) {
-          regs.forEach(function (r) {
-            r.unregister();
-          });
-        });
-      }
-    } catch (e) {}
-    try {
-      if (window.caches) {
-        caches.keys().then(function (keys) {
-          keys.forEach(function (k) {
-            caches.delete(k);
-          });
-        });
-      }
-    } catch (e) {}
-  }
-
   if (isAuthPath()) {
-    setTimeout(cleanupAuthOnly, 100);
+    setTimeout(clearCorruptDashCache, 100);
   }
 
   try {
-    window.__ARBISHIELD_STABILITY__ = true;
+    window.__ARBISHIELD_STABILITY__ = "safe-v2";
   } catch (e) {}
 })();

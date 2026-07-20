@@ -147,6 +147,14 @@ def patch_file(path: Path) -> list[str]:
     if "lDef" in text and "[lDef," not in text and "lDef=" not in text:
         notes.append("AVISO: referências a lDef sem declaração")
 
+    # 5) Desliga realtime profiles (flood de UPDATE re-renderiza a lista inteira)
+    text, ok = replace_once(
+        text,
+        'kt.useEffect(()=>{if(!e&&r){Ee();const j=Ho.channel("admin-profiles-changes").on("postgres_changes",{event:"*",schema:"public",table:"profiles"},me=>{console.log("Real-time profile change received:",me),me.eventType==="UPDATE"?a(Re=>Re.map(ke=>ke.id===me.new.id?{...ke,...me.new}:ke)):me.eventType==="INSERT"?a(Re=>[me.new,...Re]):me.eventType==="DELETE"&&a(Re=>Re.filter(ke=>ke.id!==me.old.id))}).subscribe();return()=>{Ho.removeChannel(j)}}},[e,r])',
+        'kt.useEffect(()=>{if(!e&&r){Ee()}},[e,r])',
+    )
+    notes.append(f"desliga realtime profiles: {'OK' if ok else 'n/a'}")
+
     if text != original:
         bak = path.with_suffix(path.suffix + ".users-freeze-bak")
         if not bak.exists():

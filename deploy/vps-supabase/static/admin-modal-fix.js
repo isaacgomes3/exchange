@@ -1,63 +1,57 @@
 /**
- * Evita freeze ao abrir Sheet/Dialog no admin SPA (/admin/matches, /admin/desafios).
- * Mesma estratégia do auth-boot-fix: corta blur, backdrop e animações pesadas.
+ * Anti-freeze do admin SPA — versão segura.
+ *
+ * NÃO usa seletor universal `*` (isso congelava o admin ao focar inputs:
+ * recalculo de estilo em árvore enorme a cada click/hover/focus).
+ *
+ * Só corta blur/backdrop/animações de overlay/dialog.
  */
 (function () {
-  var path = location.pathname.replace(/\/$/, "") || "/";
-  var onAdmin =
-    path === "/admin/matches" ||
-    path.endsWith("/admin/matches") ||
-    path === "/admin/desafios" ||
-    path.endsWith("/admin/desafios") ||
-    path === "/admin/users" ||
-    path.endsWith("/admin/users");
+  function onAdminPath() {
+    var path = (location.pathname || "/").replace(/\/$/, "") || "/";
+    return path === "/admin" || path.indexOf("/admin/") === 0;
+  }
 
-  if (!onAdmin) return;
+  if (!onAdminPath()) return;
 
   var MARK = "arbishield-admin-modal-stable";
 
   try {
-    if (document.documentElement.classList.contains(MARK)) return;
-    document.documentElement.classList.add(MARK);
+    // Remove CSS antigo nocivo (seletor *) se ainda estiver no DOM
+    var old = document.querySelectorAll('style[data-arbishield="admin-modal-fix"]');
+    for (var i = 0; i < old.length; i++) old[i].remove();
+    document.documentElement.classList.remove(MARK);
+  } catch (e0) {}
 
+  try {
+    document.documentElement.classList.add(MARK);
     var style = document.createElement("style");
     style.setAttribute("data-arbishield", "admin-modal-fix");
+    style.setAttribute("data-arbishield-safe", "1");
     style.textContent =
-      "html." +
-      MARK +
-      " *,html." +
-      MARK +
-      " *::before,html." +
-      MARK +
-      " *::after{" +
-      "animation:none!important;transition:none!important;scroll-behavior:auto!important;" +
+      /* só overlays / blur — nunca html.* * */ "" +
+      "html." + MARK + " [class*=\"blur-\"]," +
+      "html." + MARK + " [style*=\"blur(\"]," +
+      "html." + MARK + " [class*=\"backdrop-blur\"]," +
+      "html." + MARK + " [data-radix-dialog-overlay]," +
+      "html." + MARK + " [data-radix-sheet-overlay]," +
+      "html." + MARK + " [data-vaul-drawer-wrapper]," +
+      "html." + MARK + " [data-state=\"open\"][class*=\"overlay\"]{" +
+      "filter:none!important;" +
+      "backdrop-filter:none!important;" +
+      "-webkit-backdrop-filter:none!important;" +
+      "will-change:auto!important;" +
       "}" +
-      "html." +
-      MARK +
-      " [class*=\"blur-\"],html." +
-      MARK +
-      " [style*=\"blur(\"]," +
-      "html." +
-      MARK +
-      " [data-radix-dialog-overlay]," +
-      "html." +
-      MARK +
-      " [data-radix-sheet-overlay]," +
-      "html." +
-      MARK +
-      " [data-vaul-drawer-wrapper]," +
-      "html." +
-      MARK +
-      " [role=\"dialog\"]," +
-      "html." +
-      MARK +
-      " [data-state=\"open\"][class*=\"overlay\"]" +
-      "{filter:none!important;backdrop-filter:none!important;" +
-      "-webkit-backdrop-filter:none!important;will-change:auto!important;transform:none!important;}";
+      "html." + MARK + " [data-radix-dialog-overlay]," +
+      "html." + MARK + " [data-radix-sheet-overlay]," +
+      "html." + MARK + " [data-vaul-drawer-wrapper]{" +
+      "animation:none!important;" +
+      "transition:none!important;" +
+      "}";
     (document.head || document.documentElement).appendChild(style);
   } catch (e) {}
 
   try {
-    window.__ARBISHIELD_ADMIN_MODAL_FIX__ = true;
+    window.__ARBISHIELD_ADMIN_MODAL_FIX__ = "safe-v2";
   } catch (e2) {}
 })();
