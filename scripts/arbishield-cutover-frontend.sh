@@ -76,6 +76,7 @@ if [[ -d "$STATIC_DIR" ]]; then
   cp -f "$STATIC_DIR/desafio-sugestoes.html" "$DEST/desafio-sugestoes.html"
   mkdir -p "$DEST/assets"
   cp -f "$STATIC_DIR/desafio-sugestoes-inject.js" "$DEST/assets/desafio-sugestoes-inject.js"
+  cp -f "$STATIC_DIR/app-stability.js" "$DEST/assets/app-stability.js"
   cp -f "$STATIC_DIR/auth-boot-fix.js" "$DEST/assets/auth-boot-fix.js"
   # stub do chunk ausente (navegação client-side)
   if [[ -f "$STATIC_DIR/admin.login-BhVYt131.js" ]]; then

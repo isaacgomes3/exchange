@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Estabilização completa arbishield.app — visual + banco intactos.
-# HTML admin (:3098/:3099) + hub /admin + painel geral Next (:3000).
+# Corrige travamentos arbishield.app — layout SPA original intacto.
+# Mantém só overrides mínimos: /auth (login leve), /admin/matches, /admin/desafios (APIs).
 #
 # Uso na VPS (root):
 #   bash <(curl -fsSL https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/consolidate-arbishield-app-723d/scripts/vps-stabilize-arbishield.sh)
@@ -38,7 +38,10 @@ download() {
 log "Sincronizando código (curl, sem depender de git)"
 download "scripts/arbishield-prelive-events.mjs" "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
 download "scripts/arbishield-desafio-suggestions.mjs" "$SCRIPTS_DIR/arbishield-desafio-suggestions.mjs"
+download "scripts/arbishield-serverfn-shim.mjs" "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs"
+download "scripts/arbishield-fix-csr-boot.py" "$SCRIPTS_DIR/arbishield-fix-csr-boot.py"
 chmod 755 "$SCRIPTS_DIR/arbishield-prelive-events.mjs" "$SCRIPTS_DIR/arbishield-desafio-suggestions.mjs"
+chmod 755 "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs" "$SCRIPTS_DIR/arbishield-fix-csr-boot.py"
 
 if command -v git >/dev/null 2>&1; then
   if [[ -d "$APP_DIR/.git" ]]; then
@@ -50,9 +53,8 @@ if command -v git >/dev/null 2>&1; then
   fi
 fi
 
-log "HTML admin (visual inalterado)"
+log "Páginas VPS (só rotas que travavam no SPA estático)"
 for pair in \
-  "deploy/vps-supabase/static/admin-hub-vps.html:$WEB/admin-hub-vps.html" \
   "deploy/vps-supabase/static/admin-jogos-vps.html:$WEB/admin-jogos-vps.html" \
   "deploy/vps-supabase/static/admin-desafios-vps.html:$WEB/admin-desafios-vps.html" \
   "deploy/vps-supabase/static/admin-login-vps.html:$WEB/admin-login-vps.html" \
@@ -64,7 +66,9 @@ for pair in \
   chmod 0644 "$dst"
 done
 mkdir -p "$WEB/assets"
-download "deploy/vps-supabase/static/desafio-sugestoes-inject.js" "$WEB/assets/desafio-sugestoes-inject.js" || true
+for asset in desafio-sugestoes-inject.js app-stability.js auth-boot-fix.js; do
+  download "deploy/vps-supabase/static/$asset" "$WEB/assets/$asset" || true
+done
 
 log "SPA usuario (index.html + /app)"
 if [[ -f "$WEB/index.html.bak-stabilize" && ! -f "$WEB/index.html" ]]; then
@@ -74,30 +78,17 @@ elif [[ ! -f "$WEB/index.html" ]]; then
   warn "index.html ausente em $WEB — /app ficará 404 até restaurar o espelho SPA"
 fi
 
-log "Nginx limpo (admin → :3098/:3099/:8000)"
+if [[ -f "$WEB/index.html" && -f "$SCRIPTS_DIR/arbishield-fix-csr-boot.py" ]]; then
+  log "Patches anti-travamento no SPA (CSR boot + cache corrupto)"
+  python3 "$SCRIPTS_DIR/arbishield-fix-csr-boot.py" "$WEB" || warn "CSR boot falhou — SPA pode continuar com hydration antiga"
+fi
+
+log "Nginx (SPA /admin original + serverFn :3101)"
 if [[ -f /etc/letsencrypt/live/arbishield.app/fullchain.pem ]]; then
   download "deploy/vps-supabase/nginx-arbishield.app.conf" "$NGINX_CONF"
 else
   download "deploy/vps-supabase/nginx-cutover.conf" "$NGINX_CONF"
 fi
-
-python3 <<'PY'
-import re
-from pathlib import Path
-
-def clean(text: str) -> str:
-    text = re.sub(r"\n\s*location \^~ /_serverFn/ \{.*?\n\s*\}\n", "\n", text, flags=re.DOTALL)
-    text = re.sub(r"proxy_pass http://127\.0\.0\.1:3101;", "proxy_pass http://127.0.0.1:3098;", text)
-    return text
-
-for p in list(Path("/etc/nginx/conf.d").glob("*.conf")) + list(Path("/etc/nginx/sites-enabled").glob("*")):
-    if not p.is_file():
-        continue
-    t = p.read_text(errors="ignore")
-    if "_serverFn" in t or ":3101" in t:
-        p.write_text(clean(t))
-        print("limpo:", p)
-PY
 
 if [[ -f "$ENV_FILE" ]]; then
   if ! grep -qE '^SERVICE_ROLE_KEY=' "$ENV_FILE"; then
@@ -113,7 +104,7 @@ if [[ -d "$COMPOSE_DIR" ]]; then
   curl -fsS -o /dev/null "http://127.0.0.1:8000/auth/v1/health" || warn "Kong :8000 não responde — suba Supabase: cd $COMPOSE_DIR && docker compose up -d"
 fi
 
-log "Shim SPA (:3101) se existir na VPS"
+log "Shim SPA (:3101) — backend do TanStack serverFn"
 SHIM="$SCRIPTS_DIR/arbishield-serverfn-shim.mjs"
 if [[ -f "$SHIM" ]]; then
   if [[ ! -f /etc/systemd/system/arbishield-serverfn-shim.service ]]; then
@@ -136,13 +127,10 @@ EOF
   systemctl enable arbishield-serverfn-shim.service
   systemctl restart arbishield-serverfn-shim.service
 else
-  systemctl disable --now arbishield-serverfn-shim.service 2>/dev/null || true
-  warn "serverfn-shim ausente — app SPA pode falhar em dados dinâmicos"
+  die "serverfn-shim ausente — SPA trava sem dados dinâmicos"
 fi
 
-log "Desligando apenas rotas nginx mortas (:3101 sem processo)"
-
-log "systemd workers :3098 / :3099"
+log "Workers admin :3098 / :3099"
 cat > /etc/systemd/system/arbishield-prelive-events.service <<EOF
 [Unit]
 Description=ArbiShield admin API (jogos, desafios, prelive) :3098
@@ -187,7 +175,9 @@ systemctl restart arbishield-prelive-events.service arbishield-desafio-suggestio
 nginx -t
 systemctl reload nginx
 
-if [[ "${SKIP_NEXT:-0}" != "1" ]] && command -v npm >/dev/null 2>&1 && [[ -f "$APP_DIR/package.json" ]]; then
+if [[ "${SKIP_NEXT:-1}" == "1" ]]; then
+  warn "Next desligado (SKIP_NEXT=1) — /admin usa SPA original"
+elif command -v npm >/dev/null 2>&1 && [[ -f "$APP_DIR/package.json" ]]; then
   log "Painel geral (Next :3000)"
   if ARBISHIELD_BRANCH="$BRANCH" APP_DIR="$APP_DIR" bash "$APP_DIR/scripts/vps-deploy-next-admin.sh"; then
     log "Next OK — /arbishield/admin"
@@ -201,7 +191,7 @@ if [[ "${SKIP_NEXT:-0}" != "1" ]] && command -v npm >/dev/null 2>&1 && [[ -f "$A
   fi
   nginx -t && systemctl reload nginx
 else
-  warn "Painel geral Next não instalado (precisa git clone + npm). Hub /admin disponível."
+  warn "Next não instalado — /admin continua no SPA original"
 fi
 
 sleep 2
@@ -222,7 +212,7 @@ check "Worker :3099 health" "http://127.0.0.1:3099/health"
 check "API desafios" "http://127.0.0.1:3098/api/arbishield/desafios"
 check "API prelive" "http://127.0.0.1:3098/api/arbishield/prelive-events"
 check "HTTPS desafios" "https://arbishield.app/api/arbishield/desafios"
-check "HTTPS admin hub" "https://arbishield.app/admin"
+check "HTTPS admin SPA" "https://arbishield.app/admin"
 check "HTTPS app usuario" "https://arbishield.app/app"
 check "HTTPS admin jogos" "https://arbishield.app/admin/matches"
 check "HTTPS admin desafios" "https://arbishield.app/admin/desafios"
@@ -241,9 +231,8 @@ if [[ "$FAIL" -ne 0 ]]; then
   exit 1
 fi
 
-echo "OK — arbishield.app estabilizado"
+echo "OK — arbishield.app (anti-travamento, layout SPA original)"
 echo "  App usuario:        https://arbishield.app/app"
-echo "  Hub admin:          https://arbishield.app/admin"
-echo "  Painel geral:       https://arbishield.app/arbishield/admin"
+echo "  Admin (SPA):        https://arbishield.app/admin"
 echo "  Gestão de Jogos:    https://arbishield.app/admin/matches"
 echo "  Gestão de Desafios: https://arbishield.app/admin/desafios"
