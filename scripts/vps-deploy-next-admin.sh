@@ -198,7 +198,8 @@ curl -fsS "http://127.0.0.1:${PORT}/arbishield" -o /dev/null -w "next /arbishiel
 curl -fsS "https://arbishield.app/arbishield" -o /dev/null -w "public /arbishield → %{http_code}\n" || true
 
 echo
-echo "OK — painel Next: https://arbishield.app/arbishield"
-echo "    APIs Next:    https://arbishield.app/api/arbishield/*"
-echo "    (pré-live e matches continuam no serviço :3098)"
-echo "    logs:         journalctl -u arbishield-next -f"
+echo "OK — Gestão de Jogos (atualizada): https://arbishield.app/admin/matches"
+echo "    Pré-live API:               https://arbishield.app/api/arbishield/prelive-events"
+echo "    Next legado (dashboard):    https://arbishield.app/arbishield"
+echo "    logs Next:                  journalctl -u arbishield-next -f"
+echo "    logs pré-live:              journalctl -u arbishield-prelive-events -f"
