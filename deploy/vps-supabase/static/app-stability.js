@@ -1,40 +1,76 @@
 /**
- * Estabilidade global ArbiShield (VPS):
- * - remove service workers / caches zumbis
- * - reduz animações/blur caros no /app e /admin
- * - evita loop de analytics quebrado
+ * Estabilidade global ArbiShield (VPS).
+ * O SPA pode limpar classes do <html> — por isso reaplicamos em loop curto.
  */
 (function () {
-  var path = location.pathname.replace(/\/$/, "") || "/";
-  var heavy =
-    path === "/app" ||
-    path.indexOf("/app/") === 0 ||
-    path === "/admin" ||
-    path.indexOf("/admin/") === 0 ||
-    path === "/auth";
+  var MARK = "arbishield-stable";
+  var applied = false;
 
-  try {
+  function isHeavyPath() {
+    var path = location.pathname.replace(/\/$/, "") || "/";
+    return (
+      path === "/app" ||
+      path.indexOf("/app/") === 0 ||
+      path === "/admin" ||
+      path.indexOf("/admin/") === 0 ||
+      path === "/auth"
+    );
+  }
+
+  function ensureStyle() {
+    if (document.querySelector('style[data-arbishield="stability"]')) return;
     var style = document.createElement("style");
     style.setAttribute("data-arbishield", "stability");
     style.textContent = [
-      "html.arbishield-stable *,",
-      "html.arbishield-stable *::before,",
-      "html.arbishield-stable *::after {",
+      "html." + MARK + " *,",
+      "html." + MARK + " *::before,",
+      "html." + MARK + " *::after {",
       "  animation-duration: 0.001ms !important;",
       "  animation-iteration-count: 1 !important;",
       "  transition-duration: 0.001ms !important;",
       "  scroll-behavior: auto !important;",
       "}",
-      "html.arbishield-stable [class*=\"blur-\"],",
-      "html.arbishield-stable [style*=\"blur(\"] {",
+      "html." + MARK + " [class*=\"blur-\"],",
+      "html." + MARK + " [style*=\"blur(\"] {",
       "  filter: none !important;",
       "  backdrop-filter: none !important;",
       "  -webkit-backdrop-filter: none !important;",
       "  will-change: auto !important;",
       "}",
     ].join("\n");
-    if (heavy) document.documentElement.classList.add("arbishield-stable");
     (document.head || document.documentElement).appendChild(style);
+  }
+
+  function apply() {
+    if (!isHeavyPath()) return;
+    ensureStyle();
+    try {
+      document.documentElement.classList.add(MARK);
+      applied = true;
+    } catch (e) {}
+  }
+
+  apply();
+
+  // Reaplica se o SPA limpar o <html>
+  var n = 0;
+  var timer = setInterval(function () {
+    n += 1;
+    apply();
+    if (n >= 40) clearInterval(timer); // ~20s
+  }, 500);
+
+  // Também em navegações SPA
+  try {
+    var _push = history.pushState;
+    history.pushState = function () {
+      var r = _push.apply(this, arguments);
+      setTimeout(apply, 0);
+      return r;
+    };
+    window.addEventListener("popstate", function () {
+      setTimeout(apply, 0);
+    });
   } catch (e) {}
 
   function nukeSW() {
@@ -67,32 +103,32 @@
     }
   }
 
-  function run() {
+  function cleanup() {
     nukeSW()
       .then(nukeCaches)
       .catch(function () {});
   }
 
   if ("requestIdleCallback" in window) {
-    requestIdleCallback(run, { timeout: 1200 });
+    requestIdleCallback(cleanup, { timeout: 1200 });
   } else {
-    setTimeout(run, 200);
+    setTimeout(cleanup, 200);
   }
+  setTimeout(cleanup, 4000);
 
-  // Re-tenta uma vez (SW antigo pode reaparecer)
-  setTimeout(run, 4000);
-
-  // Silencia handler de erro ruidoso de analytics no console (não bloqueia UI)
   window.addEventListener(
     "unhandledrejection",
     function (ev) {
       try {
         var msg = String((ev && ev.reason && ev.reason.message) || ev.reason || "");
-        if (/Tracking failed|o is not a function/i.test(msg)) {
-          ev.preventDefault();
-        }
+        if (/Tracking failed|o is not a function/i.test(msg)) ev.preventDefault();
       } catch (e) {}
     },
     true
   );
+
+  // marcador de debug
+  try {
+    window.__ARBISHIELD_STABILITY__ = true;
+  } catch (e) {}
 })();
