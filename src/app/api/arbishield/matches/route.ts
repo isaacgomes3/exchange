@@ -20,6 +20,7 @@ type CreateMatchBody = {
   liquidityCents?: number;
   isPublished?: boolean;
   __retried?: boolean;
+  adminId?: string;
 };
 
 function adminClient() {
@@ -100,6 +101,7 @@ async function createMatchFromMarket(body: CreateMatchBody) {
       .update({
         markets: nextMarkets,
         max_protection_cents: nextMax,
+        updated_by: body.adminId || null,
         metadata: {
           external_bet_link: body.betbraLink,
           external_bet_name: "BetBra",
@@ -133,6 +135,8 @@ async function createMatchFromMarket(body: CreateMatchBody) {
     external_id: eventExternalId,
     score_sync_enabled: false,
     has_live_stream: false,
+    created_by: body.adminId || null,
+    updated_by: body.adminId || null,
     metadata: {
       external_bet_link: body.betbraLink,
       external_bet_name: "BetBra",
@@ -201,8 +205,33 @@ export async function POST(request: Request) {
     }
   }
 
+  const auth = request.headers.get("authorization") || "";
+  const bearer = auth.match(/^Bearer\s+(.+)$/i)?.[1];
+  let adminId: string | null = null;
+  if (bearer) {
+    try {
+      const parts = bearer.split(".");
+      if (parts.length >= 2) {
+        const json = Buffer.from(
+          parts[1].replace(/-/g, "+").replace(/_/g, "/"),
+          "base64"
+        ).toString("utf8");
+        const payload = JSON.parse(json) as { sub?: string };
+        adminId = payload.sub ? String(payload.sub) : null;
+      }
+    } catch {
+      adminId = null;
+    }
+  }
+  if (!adminId) {
+    return NextResponse.json(
+      { ok: false, error: "Login admin necessário para lançar evento" },
+      { status: 401 }
+    );
+  }
+
   try {
-    const result = await createMatchFromMarket(body);
+    const result = await createMatchFromMarket({ ...body, adminId });
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

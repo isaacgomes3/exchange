@@ -314,12 +314,21 @@ async function createMatchFromMarket(body, token) {
   const odd = Number(body.odd);
   if (!Number.isFinite(odd) || odd <= 1) throw new Error("Odd inválida");
 
+  const payload = decodeJwtPayload(token);
+  const adminId = payload?.sub ? String(payload.sub) : null;
+  if (!adminId) {
+    const err = new Error("Login admin necessário para lançar evento");
+    err.status = 401;
+    throw err;
+  }
+
   const liquidityCents = Number(body.liquidityCents ?? 200_000);
   const marketLabel = body.runnerName
     ? `${body.marketName} · ${body.runnerName}`
     : body.marketName;
   const marketUuid = randomUUID();
-  const authToken = token || SERVICE_KEY;
+  // Escrita com service role (triggers/RLS); admin_id vem do JWT em created_by/updated_by
+  const dbToken = SERVICE_KEY || token;
   const eventExternalId = String(body.eventId);
   const betbraMarketId = String(body.marketId);
 
@@ -336,7 +345,7 @@ async function createMatchFromMarket(body, token) {
 
   const existingRows = await sb(
     `/rest/v1/matches?external_id=eq.${encodeURIComponent(eventExternalId)}&deleted_at=is.null&select=id,home_team,away_team,markets,max_protection_cents,used_protection_cents,is_published&limit=1`,
-    { token: authToken }
+    { token: dbToken }
   );
   const existing = Array.isArray(existingRows) ? existingRows[0] : null;
 
@@ -364,10 +373,11 @@ async function createMatchFromMarket(body, token) {
 
     const updated = await sb(`/rest/v1/matches?id=eq.${existing.id}`, {
       method: "PATCH",
-      token: authToken,
+      token: dbToken,
       body: {
         markets: nextMarkets,
         max_protection_cents: nextMax,
+        updated_by: adminId,
         metadata: {
           external_bet_link: body.betbraLink,
           external_bet_name: "BetBra",
@@ -398,6 +408,8 @@ async function createMatchFromMarket(body, token) {
     external_id: eventExternalId,
     score_sync_enabled: false,
     has_live_stream: false,
+    created_by: adminId,
+    updated_by: adminId,
     metadata: {
       external_bet_link: body.betbraLink,
       external_bet_name: "BetBra",
@@ -412,7 +424,7 @@ async function createMatchFromMarket(body, token) {
   try {
     const created = await sb("/rest/v1/matches", {
       method: "POST",
-      token: authToken,
+      token: dbToken,
       body: row,
     });
     const match = Array.isArray(created) ? created[0] : created;
@@ -424,6 +436,17 @@ async function createMatchFromMarket(body, token) {
         String(err.message || "").toLowerCase().includes("duplicate key"))
     ) {
       return createMatchFromMarket({ ...body, __retried: true }, token);
+    }
+    // Fallback: se o trigger ainda reclamar de admin_id, tenta log explícito não bloqueia
+    if (
+      String(err.message || "").includes("match_change_logs") &&
+      String(err.message || "").includes("admin_id")
+    ) {
+      const err2 = new Error(
+        "Falha ao auditar lançamento (admin_id). Confirme o login admin e tente de novo."
+      );
+      err2.status = 500;
+      throw err2;
     }
     throw err;
   }
