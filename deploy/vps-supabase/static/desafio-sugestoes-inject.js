@@ -1,24 +1,21 @@
 /**
- * Anti-freeze ArbiShield — v3
+ * Anti-freeze ArbiShield — v4 (resolve travamento no clique)
  *
- * Problema: a SPA em /admin navega client-side para /admin/desafios e o React
- * trava ao clicar em LANÇAR DESAFIO. Nginx só serve a página VPS em reload.
- *
- * Solução:
- * 1) Qualquer clique em link para /admin/desafios → navegação completa
- * 2) Se a URL já for /admin/desafios dentro do shell React → reload forçado
- * 3) Sem observer de DOM e sem patch de history
+ * O botão LANÇAR DESAFIO da SPA React congela a página.
+ * Este script:
+ *  - intercepta esse clique e manda para /admin/desafios (página VPS estável)
+ *  - força hard-navigation em qualquer rota/link de Desafios
+ *  - NÃO usa MutationObserver e NÃO move nós React
  */
 (function () {
-  var FLAG = "arbishield_force_desafios_vps_v3";
+  var FLAG = "arbishield_af_v4";
 
   function path() {
     return (location.pathname || "/").replace(/\/$/, "") || "/";
   }
 
   function isDesafiosRoute() {
-    var p = path();
-    return p === "/admin/desafios" || /\/admin\/desafios$/.test(p);
+    return /\/admin\/desafios$/.test(path()) || path() === "/admin/desafios";
   }
 
   function isVpsPage() {
@@ -29,16 +26,21 @@
     return Boolean(
       document.getElementById("root") ||
         document.getElementById("app") ||
-        document.querySelector("#root, [data-reactroot], [data-tanstack-router]")
+        document.querySelector("[data-reactroot]")
     );
   }
 
-  function goVpsDesafios(search) {
-    var q = typeof search === "string" ? search : location.search || "";
-    if (q && q.charAt(0) !== "?") q = "?" + q;
+  function goVps(extraQuery) {
+    var q = location.search || "";
+    if (extraQuery) {
+      var u = new URL(location.href);
+      Object.keys(extraQuery).forEach(function (k) {
+        u.searchParams.set(k, extraQuery[k]);
+      });
+      q = u.search;
+    }
     try {
-      if (sessionStorage.getItem(FLAG) === location.href) return;
-      sessionStorage.setItem(FLAG, location.href);
+      sessionStorage.setItem(FLAG, String(Date.now()));
     } catch (e) {}
     location.replace("/admin/desafios" + q);
   }
@@ -52,97 +54,74 @@
     wrap.remove();
   }
 
-  function enforceVpsRoute() {
-    healLegacyWrap();
-    if (!isDesafiosRoute()) {
-      try {
-        sessionStorage.removeItem(FLAG);
-      } catch (e) {}
-      return;
-    }
-    if (isVpsPage()) return;
-    if (!isSpaShell()) return;
-    goVpsDesafios(location.search);
+  function textOf(el) {
+    return ((el && el.textContent) || "").replace(/\s+/g, " ").trim();
   }
 
-  // Captura cliques em links /admin/desafios ANTES do React Router
+  // 1) Clique em LANÇAR DESAFIO da SPA → não deixa o React processar (trava)
   document.addEventListener(
     "click",
     function (e) {
-      var el = e.target;
-      if (!el || !el.closest) return;
-      var a = el.closest("a[href]");
-      if (!a) return;
-      var href = a.getAttribute("href") || "";
-      if (href.indexOf("/admin/desafios") === -1) return;
-      // deixa abrir em nova aba
-      if (e.metaKey || e.ctrlKey || e.shiftKey || a.target === "_blank") return;
+      // Página VPS: deixa o botão nativo funcionar
+      if (isVpsPage()) return;
+
+      var el = e.target && e.target.closest ? e.target.closest("button, a, [role='button']") : null;
+      if (!el) return;
+      var t = textOf(el);
+      if (!/lan[cç]ar\s*desafio/i.test(t)) return;
+
       e.preventDefault();
       e.stopPropagation();
-      if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
-      var u;
-      try {
-        u = new URL(href, location.origin);
-      } catch (err) {
-        location.href = "/admin/desafios";
-        return;
-      }
-      location.href = "/admin/desafios" + (u.search || "") + (u.hash || "");
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+      goVps({ sugestao: "1" });
     },
     true
   );
 
-  // Botões SPA que navegam via router (texto "Desafios")
+  // 2) Links / botões "Desafios" → hard navigation
   document.addEventListener(
     "click",
     function (e) {
       if (isVpsPage()) return;
-      var el = e.target;
-      if (!el || !el.closest) return;
-      var btn = el.closest("button, a, [role='link'], [role='button']");
-      if (!btn) return;
-      var t = (btn.textContent || "").replace(/\s+/g, " ").trim();
-      if (!/^desafios$/i.test(t) && !/gest[aã]o de desafios/i.test(t)) return;
-      // Se já estamos indo para desafios via link tratado acima, ok
-      if (btn.tagName === "A" && (btn.getAttribute("href") || "").indexOf("/admin/desafios") !== -1) {
-        return;
-      }
+      var el = e.target && e.target.closest ? e.target.closest("a, button, [role='link'], [role='button']") : null;
+      if (!el) return;
+
+      var href = (el.getAttribute && el.getAttribute("href")) || "";
+      var t = textOf(el);
+
+      var toDesafios =
+        href.indexOf("/admin/desafios") !== -1 ||
+        /^desafios$/i.test(t) ||
+        /gest[aã]o de desafios/i.test(t);
+
+      if (!toDesafios) return;
+      if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+
       e.preventDefault();
       e.stopPropagation();
-      if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
       location.href = "/admin/desafios";
     },
     true
   );
 
-  function boot() {
-    try {
-      enforceVpsRoute();
-    } catch (err) {
-      console.warn("[arbishield-anti-freeze]", err);
+  function enforce() {
+    healLegacyWrap();
+    if (isDesafiosRoute() && !isVpsPage() && isSpaShell()) {
+      goVps();
     }
   }
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot);
+    document.addEventListener("DOMContentLoaded", enforce);
   } else {
-    boot();
+    enforce();
   }
-  setTimeout(boot, 600);
-  setTimeout(boot, 2000);
-
-  // Poll leve: se a SPA mudou a URL sem reload, corrige
+  setTimeout(enforce, 500);
+  setTimeout(enforce, 1500);
   setInterval(function () {
     try {
-      if (isDesafiosRoute() && !isVpsPage() && isSpaShell()) {
-        goVpsDesafios(location.search);
-      }
+      if (isDesafiosRoute() && !isVpsPage() && isSpaShell()) goVps();
     } catch (e) {}
-  }, 1500);
-
-  setTimeout(function () {
-    try {
-      sessionStorage.removeItem(FLAG);
-    } catch (e) {}
-  }, 8000);
+  }, 2000);
 })();

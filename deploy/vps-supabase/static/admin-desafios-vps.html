@@ -470,28 +470,39 @@
     function fillLaunchFromSuggestion() {
       const data = readSuggestion();
       const step = (data && data.steps && data.steps[0]) || {};
-      $("fTitle").value = (data && data.title) || "SUGESTÃO · Desafio";
-      $("fSubtitle").value =
+      const set = (id, val) => {
+        const el = $(id);
+        if (el) el.value = val;
+      };
+      set("fTitle", (data && data.title) || "SUGESTÃO · Desafio");
+      set(
+        "fSubtitle",
         (data && data.subtitle) ||
-        "Sugestão automática (surebet BetBra ↔ ArbiShield)";
-      $("fHome").value = step.home_team || "";
-      $("fAway").value = step.away_team || "";
-      $("fMercadoCasa").value = step.market_name_casa || step.market_name || "";
-      $("fMercadoArbi").value = step.market_name_arbishield || "";
-      $("fOddCasa").value = step.casa_odd ?? "";
-      $("fOddArbi").value = step.arbi_odd ?? "";
-      $("fStakeCasa").value =
-        step.casa_stake_cents != null ? (step.casa_stake_cents / 100).toFixed(2) : "";
-      $("fLiquidez").value =
-        step.liquidity_cents != null
-          ? Math.round(step.liquidity_cents / 100)
-          : 2000;
-      $("fLink").value = step.external_bet_link || "";
-      $("fStarts").value = toDatetimeLocal(step.starts_at);
-      $("fLucro").value = data?.target_profit_pct ?? data?.profitMarginPct ?? 5;
-      $("launchHint").textContent = data
-        ? "Sugestão carregada do localStorage. Revise e confirme."
-        : "Sem sugestão salva — preencha manualmente ou use Sugestão de Desafio.";
+          "Sugestão automática (surebet BetBra ↔ ArbiShield)"
+      );
+      set("fHome", step.home_team || "");
+      set("fAway", step.away_team || "");
+      set("fMercadoCasa", step.market_name_casa || step.market_name || "");
+      set("fMercadoArbi", step.market_name_arbishield || "");
+      set("fOddCasa", step.casa_odd ?? "");
+      set("fOddArbi", step.arbi_odd ?? "");
+      set(
+        "fStakeCasa",
+        step.casa_stake_cents != null ? (step.casa_stake_cents / 100).toFixed(2) : ""
+      );
+      set(
+        "fLiquidez",
+        step.liquidity_cents != null ? Math.round(step.liquidity_cents / 100) : 2000
+      );
+      set("fLink", step.external_bet_link || "");
+      set("fStarts", toDatetimeLocal(step.starts_at));
+      set("fLucro", data?.target_profit_pct ?? data?.profitMarginPct ?? 5);
+      const hint = $("launchHint");
+      if (hint) {
+        hint.textContent = data
+          ? "Sugestão carregada do localStorage. Revise e confirme."
+          : "Sem sugestão salva — preencha manualmente ou use Sugestão de Desafio.";
+      }
     }
 
     function openLaunch(ev) {
