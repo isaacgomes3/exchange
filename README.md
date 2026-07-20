@@ -1,37 +1,58 @@
-# Exchange · Desafio + IA
+# ArbiShield · Desafio (só VPS)
 
-Área **Sugestão de Desafio** com análise automática ao puxar os jogos.
+App enxuto. **Sem Supabase. Sem Lovable.** Sobe do GitHub para a VPS Hostinger.
 
-## O que faz
+## Caminhos ativos (resto cortado)
 
-1. Você clica em **Puxar jogos + IA**
-2. O backend busca as partidas (hoje: mock estilo Arbishield / pré-live)
-3. Cada jogo é analisado contra os critérios do Desafio:
-   - Over/Under 2.5
-   - BetBra odd **1.60–1.80**
-   - Pré-live **30 min**
-4. Retorna veredito: `entrar` | `observar` | `descartar` + confiança + tese + riscos
+| Caminho | Função |
+|---|---|
+| `/desafio-sugestoes` | UI Sugestão de Desafio + IA |
+| `/api/desafio/puxar` | Puxa jogos 24h e analisa |
 
-## IA
+`/` e `/desafio-sugestoes.html` → redirecionam para `/desafio-sugestoes`.  
+Qualquer outra rota (`/admin`, `/app`, `/auth`, `/functions`, etc.) → **404**.
 
-- Com `OPENAI_API_KEY` → usa **OpenAI** (`gpt-4.1-mini` por padrão)
-- Sem chave → usa **analisador heurístico** local (funciona offline)
-
-## Setup
+## Local
 
 ```bash
 npm install
 cp .env.example .env.local
-# opcional: preencha OPENAI_API_KEY
+# OPENAI_API_KEY=...   (opcional; sem chave usa heurística)
 npm run dev
 ```
 
-Abra [http://localhost:3000](http://localhost:3000).
+Abra `http://localhost:3000/desafio-sugestoes`.
 
-## API
+## Deploy na VPS (GitHub → Docker + Nginx)
 
-`POST /api/desafio/puxar` — puxa jogos e devolve análises.
+Na VPS Hostinger:
 
-## Integrar dados reais
+```bash
+# 1) Código
+git clone https://github.com/isaacgomes3/exchange.git
+cd exchange
+git checkout cursor/desafio-ia-analise-638f   # ou main após merge
+git pull
 
-`puxar-jogos.ts` já busca fixtures de futebol das **próximas 24h** via TheSportsDB e completa a grade localmente se a API vier escassa. Odds Over/Under são enriquecidas para a análise do Desafio — troque esse enriquecimento pela API Arbishield/odds quando for para produção.
+# 2) Pare o site antigo (Supabase / Lovable / admin completo)
+#    Desative o server block nginx antigo que apontava para o stack completo.
+
+# 3) Suba só o Desafio
+export OPENAI_API_KEY='sua-chave'   # cole na VPS, não no chat
+chmod +x deploy/vps-deploy.sh
+./deploy/vps-deploy.sh
+
+# 4) Nginx só com estes caminhos
+sudo cp deploy/nginx-arbishield-desafio.conf /etc/nginx/sites-available/arbishield-desafio
+sudo ln -sf /etc/nginx/sites-available/arbishield-desafio /etc/nginx/sites-enabled/
+# remova/desative o site antigo: sudo rm /etc/nginx/sites-enabled/SITE-ANTIGO
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Depois: `https://arbishield.app/desafio-sugestoes`
+
+## O que NÃO entra neste deploy
+
+- Supabase (auth, rest, edge functions)
+- Lovable
+- `/admin`, `/app`, `/auth`, dashboard e o restante do sistema antigo

@@ -62,10 +62,18 @@
 
 .empty,
 .error,
-.stamp {
+.stamp,
+.vpsNote {
   margin: 1.5rem 0 0;
   color: var(--muted);
   font-size: 0.95rem;
+}
+
+.vpsNote {
+  margin-top: 0.85rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .error {

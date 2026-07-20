@@ -108,6 +108,10 @@ export function DesafioPanel() {
         </button>
       </header>
 
+      <p className={styles.vpsNote}>
+        Modo VPS · sem Supabase · caminhos ativos: /desafio-sugestoes e /api/desafio/puxar
+      </p>
+
       {error && <p className={styles.error}>{error}</p>}
 
       {!data && !pending && (

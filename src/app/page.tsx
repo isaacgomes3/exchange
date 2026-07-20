@@ -1,9 +1,6 @@
-import { DesafioPanel } from "@/components/desafio/DesafioPanel";
+import { redirect } from "next/navigation";
 
+/** Raiz só redireciona — app VPS fica em /desafio-sugestoes */
 export default function HomePage() {
-  return (
-    <main className="page">
-      <DesafioPanel />
-    </main>
-  );
+  redirect("/desafio-sugestoes");
 }
