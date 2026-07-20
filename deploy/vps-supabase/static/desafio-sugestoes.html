@@ -130,7 +130,7 @@
     <header>
       <div>
         <h1>Sugestão de <span>Desafio</span></h1>
-        <p class="sub">Over/Under 2.5 · BetBra 1.60–1.80 · próximas 24h · surebet ArbiShield</p>
+        <p class="sub">Over/Under 2.5 · Ambas Marcam · BetBra 1.60–1.80 · próximas 24h · surebet ArbiShield</p>
       </div>
       <div class="actions">
         <a class="btn btn-ghost" href="/admin/desafios">← Gestão</a>
@@ -179,7 +179,7 @@
       return {
         number: 1,
         title: `SUGESTÃO · ${s.homeTeam} x ${s.awayTeam}`,
-        subtitle: "Sugestão automática Over/Under 2.5 (surebet BetBra ↔ ArbiShield)",
+        subtitle: `Sugestão automática ${s.marketKind === "ambas_marcam" ? "Ambas Marcam" : "Over/Under 2.5"} (surebet BetBra ↔ ArbiShield)`,
         total_steps: 1,
         initial_balance_cents: s.arbiStakeCents,
         is_active: false,
@@ -223,19 +223,24 @@
 
       if (!data.suggestions.length) {
         list.innerHTML =
-          `<div class="empty">Nenhuma linha Over/Under 2.5 entre ` +
+          `<div class="empty">Nenhuma linha Over/Under 2.5 ou Ambas Marcam entre ` +
           `${data.params.casaOddMin} e ${data.params.casaOddMax} nas próximas 24h. ` +
           `Ajuste o filtro de lucro ou a faixa de odds.</div>`;
         return;
       }
 
       list.innerHTML = data.suggestions
-        .map((s, i) => {
+        .map((s) => {
           const payload = encodeURIComponent(JSON.stringify(draftPayload(s)));
+          const kindLabel =
+            s.marketKind === "ambas_marcam" ? "Ambas Marcam" : "Over/Under 2.5";
           return `
           <article class="card">
             <div class="card-top">
-              <div class="match">${s.homeTeam} <span style="color:var(--muted)">x</span> ${s.awayTeam}</div>
+              <div>
+                <div class="match">${s.homeTeam} <span style="color:var(--muted)">x</span> ${s.awayTeam}</div>
+                <div class="kick" style="margin-top:4px;letter-spacing:0.08em">${kindLabel}</div>
+              </div>
               <div class="kick">${fmtKick(s.startsAt, s.minutesToKickoff)}</div>
             </div>
             <div class="grid">

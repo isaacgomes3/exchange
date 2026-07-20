@@ -9,6 +9,12 @@ import {
   isOddInRange,
 } from "@/lib/arbishield/surebet";
 
+export type DesafioSide =
+  | "over_2_5"
+  | "under_2_5"
+  | "btts_yes"
+  | "btts_no";
+
 export type DesafioSuggestion = {
   eventId: string;
   eventName: string;
@@ -19,12 +25,14 @@ export type DesafioSuggestion = {
   league?: string;
   betbraMarketId: string;
   betbraLink: string;
+  /** Tipo de mercado: over_under_25 | ambas_marcam */
+  marketKind: "over_under_25" | "ambas_marcam";
   /** Lado BetBra (entrada do usuário) */
-  casaSide: "over_2_5" | "under_2_5";
+  casaSide: DesafioSide;
   casaMarketName: string;
   casaOdd: number;
   /** Lado ArbiShield (contrário / surebet) */
-  arbiSide: "over_2_5" | "under_2_5";
+  arbiSide: DesafioSide;
   arbiMarketName: string;
   arbiOdd: number;
   profitMarginPct: number;
@@ -87,20 +95,21 @@ function parseTeams(event: BetBraEvent): { home: string; away: string } {
   return { home: event.name, away: "—" };
 }
 
-function isOverUnder25(market: BetBraMarket): boolean {
-  const name = (market.name || "").toLowerCase();
-  const type = (market["market-type"] || "").toLowerCase();
-  // Só partida completa (exclui 1º tempo / 1st half)
-  if (
+function isFullMatchMarket(name: string): boolean {
+  return !(
     name.includes("1º") ||
     name.includes("1o") ||
     name.includes("1st") ||
     name.includes("half") ||
     name.includes("tempo") ||
     name.includes("intervalo")
-  ) {
-    return false;
-  }
+  );
+}
+
+function isOverUnder25(market: BetBraMarket): boolean {
+  const name = (market.name || "").toLowerCase();
+  const type = (market["market-type"] || "").toLowerCase();
+  if (!isFullMatchMarket(name)) return false;
   const runners = market.runners ?? [];
   const labels = runners.map((r) => (r.name || "").toLowerCase());
   const has25 =
@@ -117,9 +126,29 @@ function isOverUnder25(market: BetBraMarket): boolean {
   return Boolean(has25 && isOu);
 }
 
-function classifyRunner(
-  name: string
-): "over_2_5" | "under_2_5" | null {
+/** Ambas Marcam / Both Teams To Score (partida completa). */
+function isAmbasMarcam(market: BetBraMarket): boolean {
+  const name = (market.name || "").toLowerCase();
+  const type = (market["market-type"] || "").toLowerCase();
+  if (!isFullMatchMarket(name)) return false;
+  if (
+    name.includes("ambas") ||
+    name.includes("both teams") ||
+    name.includes("btts") ||
+    type.includes("both_teams") ||
+    type.includes("btts") ||
+    /\bgg\b/.test(name)
+  ) {
+    return true;
+  }
+  const labels = (market.runners ?? []).map((r) => (r.name || "").toLowerCase());
+  const hasYesNo =
+    labels.some((l) => /^(sim|yes|gg)$/.test(l.trim())) &&
+    labels.some((l) => /^(n[aã]o|no|ng)$/.test(l.trim()));
+  return hasYesNo && (name.includes("marcam") || name.includes("score"));
+}
+
+function classifyOuRunner(name: string): "over_2_5" | "under_2_5" | null {
   const n = name.toLowerCase();
   if (!/\b2[.,]5\b/.test(n) && !n.includes("2.5") && !n.includes("2,5")) {
     return null;
@@ -133,24 +162,69 @@ function classifyRunner(
   return null;
 }
 
-function sideLabel(side: "over_2_5" | "under_2_5"): string {
-  return side === "over_2_5"
-    ? "Mais 2.5 gols na partida"
-    : "Menos 2.5 gols na partida";
+function classifyBttsRunner(name: string): "btts_yes" | "btts_no" | null {
+  const n = name.toLowerCase().trim();
+  if (
+    n === "sim" ||
+    n === "yes" ||
+    n === "gg" ||
+    n.includes("ambas sim") ||
+    n.includes("both teams to score - yes") ||
+    /^yes\b/.test(n)
+  ) {
+    return "btts_yes";
+  }
+  if (
+    n === "nao" ||
+    n === "não" ||
+    n === "no" ||
+    n === "ng" ||
+    n.includes("ambas não") ||
+    n.includes("ambas nao") ||
+    n.includes("both teams to score - no") ||
+    /^no\b/.test(n)
+  ) {
+    return "btts_no";
+  }
+  return null;
 }
 
-function opposite(
-  side: "over_2_5" | "under_2_5"
-): "over_2_5" | "under_2_5" {
-  return side === "over_2_5" ? "under_2_5" : "over_2_5";
+function sideLabel(side: DesafioSide): string {
+  switch (side) {
+    case "over_2_5":
+      return "Mais 2.5 gols na partida";
+    case "under_2_5":
+      return "Menos 2.5 gols na partida";
+    case "btts_yes":
+      return "Ambas Marcam — Sim";
+    case "btts_no":
+      return "Ambas Marcam — Não";
+  }
 }
 
-function extractOu25(
-  market: BetBraMarket
-): Partial<Record<"over_2_5" | "under_2_5", number>> {
-  const out: Partial<Record<"over_2_5" | "under_2_5", number>> = {};
+function opposite(side: DesafioSide): DesafioSide {
+  switch (side) {
+    case "over_2_5":
+      return "under_2_5";
+    case "under_2_5":
+      return "over_2_5";
+    case "btts_yes":
+      return "btts_no";
+    case "btts_no":
+      return "btts_yes";
+  }
+}
+
+function extractSides(
+  market: BetBraMarket,
+  kind: "over_under_25" | "ambas_marcam"
+): Partial<Record<DesafioSide, number>> {
+  const out: Partial<Record<DesafioSide, number>> = {};
   for (const runner of market.runners ?? []) {
-    const side = classifyRunner(runner.name || "");
+    const side =
+      kind === "over_under_25"
+        ? classifyOuRunner(runner.name || "")
+        : classifyBttsRunner(runner.name || "");
     if (!side) continue;
     const odd = runnerOdd(runner);
     if (odd != null) out[side] = Number(odd.toFixed(3));
@@ -158,26 +232,27 @@ function extractOu25(
   return out;
 }
 
-function suggestionFromEvent(
-  event: BetBraEvent,
-  params: Required<
-    Pick<
-      SuggestionParams,
-      | "casaOddMin"
-      | "casaOddMax"
-      | "profitMarginPct"
-      | "liquidityCents"
-    >
+type BuildParams = Required<
+  Pick<
+    SuggestionParams,
+    "casaOddMin" | "casaOddMax" | "profitMarginPct" | "liquidityCents"
   >
+>;
+
+function buildSuggestion(
+  event: BetBraEvent,
+  market: BetBraMarket,
+  kind: "over_under_25" | "ambas_marcam",
+  params: BuildParams
 ): DesafioSuggestion | null {
-  const market = (event.markets ?? []).find(isOverUnder25);
-  if (!market) return null;
-  const odds = extractOu25(market);
-  const candidates: Array<{
-    side: "over_2_5" | "under_2_5";
-    odd: number;
-  }> = [];
-  for (const side of ["over_2_5", "under_2_5"] as const) {
+  const odds = extractSides(market, kind);
+  const sides: DesafioSide[] =
+    kind === "over_under_25"
+      ? ["over_2_5", "under_2_5"]
+      : ["btts_yes", "btts_no"];
+
+  const candidates: Array<{ side: DesafioSide; odd: number }> = [];
+  for (const side of sides) {
     const odd = odds[side];
     if (odd != null && isOddInRange(odd, params.casaOddMin, params.casaOddMax)) {
       candidates.push({ side, odd });
@@ -185,11 +260,8 @@ function suggestionFromEvent(
   }
   if (!candidates.length) return null;
 
-  // Prefer odd closest to mid of range (mais estável / “linha”)
   const mid = (params.casaOddMin + params.casaOddMax) / 2;
-  candidates.sort(
-    (a, b) => Math.abs(a.odd - mid) - Math.abs(b.odd - mid)
-  );
+  candidates.sort((a, b) => Math.abs(a.odd - mid) - Math.abs(b.odd - mid));
   const pick = candidates[0];
   const arbiSide = opposite(pick.side);
   const arbiOdd = calcArbiOddFromCasa(pick.odd, params.profitMarginPct);
@@ -206,6 +278,8 @@ function suggestionFromEvent(
     0,
     Math.round((new Date(startsAt).getTime() - Date.now()) / 60000)
   );
+  const marketLabel =
+    kind === "over_under_25" ? "Over/Under 2.5" : "Ambas Marcam";
 
   return {
     eventId: event.id,
@@ -216,6 +290,7 @@ function suggestionFromEvent(
     minutesToKickoff,
     betbraMarketId: String(market.id),
     betbraLink: `${getEventDeepLink(event["sport-id"], event.id)}/market/${market.id}`,
+    marketKind: kind,
     casaSide: pick.side,
     casaMarketName: sideLabel(pick.side),
     casaOdd: pick.odd,
@@ -227,10 +302,34 @@ function suggestionFromEvent(
     arbiStakeCents: stakes.arbiStakeCents,
     liquidityCents: params.liquidityCents,
     rationale:
-      `Entrada BetBra em ${sideLabel(pick.side)} @ ${pick.odd} (faixa ${params.casaOddMin}-${params.casaOddMax}). ` +
+      `Entrada BetBra em ${marketLabel}: ${sideLabel(pick.side)} @ ${pick.odd} ` +
+      `(faixa ${params.casaOddMin}-${params.casaOddMax}). ` +
       `ArbiShield oferece o contrário (${sideLabel(arbiSide)}) @ ${arbiOdd} com margem ~${stakes.marginPct}% — ` +
       `favorável a liquidar na BetBra e não na ArbiShield.`,
   };
+}
+
+/** Extrai sugestões de Over/Under 2.5 e Ambas Marcam do mesmo evento. */
+function suggestionsFromEvent(
+  event: BetBraEvent,
+  params: BuildParams
+): DesafioSuggestion[] {
+  const out: DesafioSuggestion[] = [];
+  const markets = event.markets ?? [];
+
+  const ou = markets.find(isOverUnder25);
+  if (ou) {
+    const s = buildSuggestion(event, ou, "over_under_25", params);
+    if (s) out.push(s);
+  }
+
+  const btts = markets.find(isAmbasMarcam);
+  if (btts) {
+    const s = buildSuggestion(event, btts, "ambas_marcam", params);
+    if (s) out.push(s);
+  }
+
+  return out;
 }
 
 export async function generateDesafioSuggestions(
@@ -291,8 +390,13 @@ export async function generateDesafioSuggestions(
 
   const details = await loadDetails(now, windowTo);
   const suggestions = details
-    .map((ev) => extractSuggestionSafe(ev, resolved))
-    .filter((s): s is DesafioSuggestion => Boolean(s))
+    .flatMap((ev) => {
+      try {
+        return suggestionsFromEvent(ev, resolved);
+      } catch {
+        return [];
+      }
+    })
     .sort((a, b) => a.minutesToKickoff - b.minutesToKickoff);
 
   return {
@@ -305,20 +409,4 @@ export async function generateDesafioSuggestions(
     },
     params: resolved,
   };
-}
-
-function extractSuggestionSafe(
-  event: BetBraEvent,
-  params: Required<
-    Pick<
-      SuggestionParams,
-      "casaOddMin" | "casaOddMax" | "profitMarginPct" | "liquidityCents"
-    >
-  >
-): DesafioSuggestion | null {
-  try {
-    return suggestionFromEvent(event, params);
-  } catch {
-    return null;
-  }
 }

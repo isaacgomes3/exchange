@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Sugestões de desafio (Over/Under 2.5, odds BetBra 1.60–1.80, janela 24h).
+ * Sugestões de desafio (Over/Under 2.5 + Ambas Marcam, odds BetBra 1.60–1.80, janela 24h).
  * Standalone para VPS — também sobe HTTP em --serve.
  *
  * Uso:
@@ -123,7 +123,28 @@ function isOu25(market) {
   return has25 && isOu;
 }
 
-function classify(name) {
+function isAmbasMarcam(market) {
+  const name = (market.name || "").toLowerCase();
+  const type = (market["market-type"] || "").toLowerCase();
+  if (/1st|half|1º|1o|tempo|intervalo/.test(name)) return false;
+  if (
+    name.includes("ambas") ||
+    name.includes("both teams") ||
+    name.includes("btts") ||
+    type.includes("both_teams") ||
+    type.includes("btts") ||
+    /\bgg\b/.test(name)
+  ) {
+    return true;
+  }
+  const labels = (market.runners || []).map((r) => (r.name || "").toLowerCase());
+  const hasYesNo =
+    labels.some((l) => /^(sim|yes|gg)$/.test(l.trim())) &&
+    labels.some((l) => /^(n[aã]o|no|ng)$/.test(l.trim()));
+  return hasYesNo && (name.includes("marcam") || name.includes("score"));
+}
+
+function classifyOu(name) {
   const n = name.toLowerCase();
   if (!/\b2[.,]5\b/.test(n)) return null;
   if (/mais|over|acima/.test(n)) return "over_2_5";
@@ -131,14 +152,51 @@ function classify(name) {
   return null;
 }
 
+function classifyBtts(name) {
+  const n = name.toLowerCase().trim();
+  if (n === "sim" || n === "yes" || n === "gg" || /^yes\b/.test(n)) {
+    return "btts_yes";
+  }
+  if (
+    n === "nao" ||
+    n === "não" ||
+    n === "no" ||
+    n === "ng" ||
+    /^no\b/.test(n)
+  ) {
+    return "btts_no";
+  }
+  return null;
+}
+
 function sideLabel(side) {
-  return side === "over_2_5"
-    ? "Mais 2.5 gols na partida"
-    : "Menos 2.5 gols na partida";
+  switch (side) {
+    case "over_2_5":
+      return "Mais 2.5 gols na partida";
+    case "under_2_5":
+      return "Menos 2.5 gols na partida";
+    case "btts_yes":
+      return "Ambas Marcam — Sim";
+    case "btts_no":
+      return "Ambas Marcam — Não";
+    default:
+      return side;
+  }
 }
 
 function opposite(side) {
-  return side === "over_2_5" ? "under_2_5" : "over_2_5";
+  switch (side) {
+    case "over_2_5":
+      return "under_2_5";
+    case "under_2_5":
+      return "over_2_5";
+    case "btts_yes":
+      return "btts_no";
+    case "btts_no":
+      return "btts_yes";
+    default:
+      return side;
+  }
 }
 
 function parseTeams(event) {
@@ -187,10 +245,13 @@ async function loadDetails(afterMs, beforeMs) {
   return details;
 }
 
-function suggestionFromEvent(event, params) {
-  const market = (event.markets || []).find(isOu25);
-  if (!market) return null;
+function buildSuggestion(event, market, kind, params) {
   const odds = {};
+  const classify = kind === "over_under_25" ? classifyOu : classifyBtts;
+  const sides =
+    kind === "over_under_25"
+      ? ["over_2_5", "under_2_5"]
+      : ["btts_yes", "btts_no"];
   for (const runner of market.runners || []) {
     const side = classify(runner.name || "");
     if (!side) continue;
@@ -198,7 +259,7 @@ function suggestionFromEvent(event, params) {
     if (odd != null) odds[side] = Number(Number(odd).toFixed(3));
   }
   const candidates = [];
-  for (const side of ["over_2_5", "under_2_5"]) {
+  for (const side of sides) {
     const odd = odds[side];
     if (odd != null && odd >= params.casaOddMin && odd <= params.casaOddMax) {
       candidates.push({ side, odd });
@@ -217,6 +278,8 @@ function suggestionFromEvent(event, params) {
     0,
     Math.round((new Date(event.start).getTime() - Date.now()) / 60000)
   );
+  const marketLabel =
+    kind === "over_under_25" ? "Over/Under 2.5" : "Ambas Marcam";
   return {
     eventId: event.id,
     eventName: event.name,
@@ -226,6 +289,7 @@ function suggestionFromEvent(event, params) {
     minutesToKickoff,
     betbraMarketId: String(market.id),
     betbraLink: `${SITE}/b/exchange/sport/soccer/event/${event.id}/market/${market.id}`,
+    marketKind: kind,
     casaSide: pick.side,
     casaMarketName: sideLabel(pick.side),
     casaOdd: pick.odd,
@@ -237,9 +301,25 @@ function suggestionFromEvent(event, params) {
     arbiStakeCents: stakes.arbiStakeCents,
     liquidityCents: params.liquidityCents,
     rationale:
-      `Entrada BetBra em ${sideLabel(pick.side)} @ ${pick.odd}. ` +
+      `Entrada BetBra em ${marketLabel}: ${sideLabel(pick.side)} @ ${pick.odd}. ` +
       `ArbiShield oferece o contrário @ ${arbiOdd} (~${stakes.marginPct}% margem).`,
   };
+}
+
+function suggestionsFromEvent(event, params) {
+  const out = [];
+  const markets = event.markets || [];
+  const ou = markets.find(isOu25);
+  if (ou) {
+    const s = buildSuggestion(event, ou, "over_under_25", params);
+    if (s) out.push(s);
+  }
+  const btts = markets.find(isAmbasMarcam);
+  if (btts) {
+    const s = buildSuggestion(event, btts, "ambas_marcam", params);
+    if (s) out.push(s);
+  }
+  return out;
 }
 
 const WINDOW_24H_MINUTES = 24 * 60;
@@ -268,14 +348,13 @@ export async function generateDesafioSuggestions(input = {}) {
 
   const details = await loadDetails(now, windowTo);
   const suggestions = details
-    .map((ev) => {
+    .flatMap((ev) => {
       try {
-        return suggestionFromEvent(ev, params);
+        return suggestionsFromEvent(ev, params);
       } catch {
-        return null;
+        return [];
       }
     })
-    .filter(Boolean)
     .sort((a, b) => a.minutesToKickoff - b.minutesToKickoff);
 
   return {
