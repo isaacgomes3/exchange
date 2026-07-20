@@ -5,20 +5,62 @@
 (function () {
   var MARK = "arbishield-stable";
 
-  /** Rotas servidas por HTML VPS (nginx). Evita SPA client-side que quebra ao voltar do /admin. */
-  function forceVpsAdminHardLoad() {
-    var VPS = { "/admin/matches": 1, "/admin/desafios": 1 };
-    var path = location.pathname.replace(/\/$/, "") || "/";
-    if (!VPS[path]) return;
-    if (document.body && document.body.dataset.vpsPage) return;
-    var isSpa = !!document.querySelector(
+  /** Gestão de Jogos: sempre HTML VPS (BetBra), nunca SPA com formulário manual. */
+  var JOGOS = "/admin/matches";
+
+  function isSpaBoot() {
+    return !!document.querySelector(
       'script[id="$tsr-stream-barrier"], script[class="$tsr"]'
     );
-    if (!isSpa) return;
-    location.replace(path + location.search + location.hash);
   }
 
-  forceVpsAdminHardLoad();
+  function forceVpsJogosHardLoad() {
+    var path = location.pathname.replace(/\/$/, "") || "/";
+    if (path !== JOGOS) return;
+    if (document.body && document.body.dataset.vpsPage === "jogos") return;
+    if (!isSpaBoot()) return;
+    location.replace(location.pathname + location.search + location.hash);
+  }
+
+  function hookJogosNavigation() {
+    forceVpsJogosHardLoad();
+
+    document.addEventListener(
+      "click",
+      function (ev) {
+        var node = ev.target;
+        var a = node && node.closest ? node.closest("a[href]") : null;
+        if (!a) return;
+        var href = a.getAttribute("href") || "";
+        var path = href.split("?")[0].split("#")[0].replace(/\/$/, "") || "/";
+        if (path !== JOGOS) return;
+        if (a.target === "_blank") return;
+        if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        location.href = href;
+      },
+      true
+    );
+
+    var _push = history.pushState;
+    var _replace = history.replaceState;
+    history.pushState = function () {
+      var r = _push.apply(this, arguments);
+      setTimeout(forceVpsJogosHardLoad, 0);
+      return r;
+    };
+    history.replaceState = function () {
+      var r = _replace.apply(this, arguments);
+      setTimeout(forceVpsJogosHardLoad, 0);
+      return r;
+    };
+    window.addEventListener("popstate", function () {
+      setTimeout(forceVpsJogosHardLoad, 0);
+    });
+  }
+
+  hookJogosNavigation();
 
   function isHeavyPath() {
     var path = location.pathname.replace(/\/$/, "") || "/";

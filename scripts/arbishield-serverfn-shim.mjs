@@ -414,9 +414,16 @@ function extractServerFnData(rawBody) {
   }
   if (!parsed || typeof parsed !== "object") return {};
   if (parsed.data && typeof parsed.data === "object" && !Array.isArray(parsed.data)) {
-    // seroval às vezes embute; se vier plano, ok
-    if (!("t" in parsed.data) || parsed.data.page != null || parsed.data.from != null) {
-      return parsed.data;
+    const d = parsed.data;
+    if (
+      !("t" in d) ||
+      d.page != null ||
+      d.from != null ||
+      d.id != null ||
+      d.title != null ||
+      d.steps != null
+    ) {
+      return d;
     }
   }
   // fallback: procurar campos conhecidos na raiz

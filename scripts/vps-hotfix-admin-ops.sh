@@ -79,7 +79,7 @@ fi
 echo
 echo "OK — hotfix admin aplicado (site principal intacto)"
 echo "  Desafios SPA:  https://arbishield.app/admin/desafios  → Lançar Desafio"
-echo "  Jogos BetBra:  https://arbishield.app/admin/matches   → Próximos jogos"
+echo "  Jogos BetBra:  https://arbishield.app/admin/matches   → Próximos jogos (sempre VPS, nunca SPA manual)"
 echo
 echo "Teste rápido:"
 echo "  curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3098/api/arbishield/prelive-events"
