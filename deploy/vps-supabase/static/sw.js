@@ -1,4 +1,4 @@
-/* ArbiShield — service worker no-op (evita SPA fallback HTML como SW) */
+/* ArbiShield — SW no-op que se remove (sem reload em loop) */
 self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
@@ -11,19 +11,15 @@ self.addEventListener("activate", (event) => {
         await Promise.all(keys.map((k) => caches.delete(k)));
       } catch {}
       try {
-        const regs = await self.registration.unregister();
-        console.log("[arbishield-sw] unregistered", regs);
+        await self.registration.unregister();
       } catch {}
       try {
-        const clientsList = await self.clients.matchAll({ type: "window" });
-        for (const client of clientsList) {
-          client.navigate(client.url);
-        }
+        await self.clients.claim();
       } catch {}
     })()
   );
 });
 
-self.addEventListener("fetch", (event) => {
-  // não intercepta nada
+self.addEventListener("fetch", () => {
+  /* passa direto — não cacheia */
 });
