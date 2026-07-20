@@ -17,8 +17,8 @@ need curl
 need systemctl
 mkdir -p "$WEB" "$SCRIPTS_DIR"
 
-log "1/3 — UI sugestão + gestão de desafios"
-for f in admin-desafio-sugestoes.html admin-desafios.html; do
+log "1/3 — UI desafios (admin + membro) + CSS"
+for f in admin-desafio-sugestoes.html admin-desafios.html app-desafio.html v2.css; do
   curl -fsSL "$RAW/deploy/vps-supabase/static/v2/$f" -o "$WEB/$f"
   chmod 0644 "$WEB/$f"
   echo "  ok $f"

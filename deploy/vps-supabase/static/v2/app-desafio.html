@@ -15,17 +15,24 @@
   <div class="page-head">
     <div>
       <h1>Desafio <span>ArbiShield</span></h1>
-      <p class="sub">Desafios disponíveis · template legado</p>
+      <p class="sub">Escolha um desafio · acompanhe as etapas e o lucro potencial</p>
     </div>
   </div>
   <div id="err" class="err"></div>
   <div class="app-kpi-row">
-    <div class="app-kpi"><div class="l">Disponíveis</div><div class="v lime" id="kAvail">—</div></div>
-    <div class="app-kpi"><div class="l">Ativos</div><div class="v" id="kActive">—</div></div>
-    <div class="app-kpi"><div class="l">Total</div><div class="v" id="kTotal">—</div></div>
+    <div class="app-kpi"><div class="l">Jogos liberados</div><div class="v lime" id="kAvail">—</div></div>
+    <div class="app-kpi"><div class="l">Desafios ativos</div><div class="v" id="kActive">—</div></div>
+    <div class="app-kpi"><div class="l">Etapas</div><div class="v" id="kTotal">—</div></div>
   </div>
+
   <div class="section-label"><span class="dot" style="background:#c6ff00"></span>Desafios disponíveis</div>
-  <div id="list" class="app-desafio-list"><div class="ops-empty">Carregando…</div></div>
+  <p class="app-desafio-lead">Jogos liberados pela ArbiShield. Faça sua entrada para começar.</p>
+  <div id="list" class="app-desafio-grid"><div class="ops-empty">Carregando…</div></div>
+
+  <div id="draftsWrap" hidden>
+    <div class="section-label" style="margin-top:28px"><span class="dot" style="background:#8a8a8f"></span>Rascunhos</div>
+    <div id="drafts" class="app-desafio-grid"></div>
+  </div>
 
   <script>
     (async function () {
@@ -40,87 +47,266 @@
         el.classList.toggle("show", !!msg);
       }
 
+      function esc(v) {
+        return String(v == null ? "" : v)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function splitTeams(step) {
+        var home = (step.home_team || "").trim();
+        var away = (step.away_team || "").trim();
+        if (home && away) return { home: home, away: away };
+        var label = String(step.match_label || "");
+        var parts = label.split(/\s+[x×X]\s+/);
+        if (parts.length >= 2) {
+          return { home: parts[0].trim() || "Casa", away: parts.slice(1).join(" x ").trim() || "Visitante" };
+        }
+        return { home: home || label || "Casa", away: away || "Visitante" };
+      }
+
+      function fmtKick(iso) {
+        if (!iso) return "Horário a definir";
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return "Horário a definir";
+        var now = new Date();
+        var time = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+        if (d.toDateString() === now.toDateString()) return "Hoje · " + time;
+        return (
+          d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) +
+          " · " +
+          time
+        );
+      }
+
+      function stepPhase(step) {
+        if (!step || !step.starts_at) return "ativo";
+        var start = new Date(step.starts_at).getTime();
+        var releaseMin = Number(step.release_minutes_before);
+        if (!Number.isFinite(releaseMin)) releaseMin = 60;
+        var unlock = start - releaseMin * 6e4;
+        var now = Date.now();
+        if (now >= start) return "live";
+        if (now < unlock) return "soon";
+        return "ativo";
+      }
+
+      function badgeHtml(phase, isActiveDesafio) {
+        if (phase === "live") {
+          return '<span class="dz-badge live"><span class="dz-dot"></span>Ao vivo</span>';
+        }
+        if (!isActiveDesafio) {
+          return '<span class="dz-badge muted">Rascunho</span>';
+        }
+        if (phase === "soon") {
+          return '<span class="dz-badge muted">Em breve</span>';
+        }
+        return '<span class="dz-badge on">Ativo</span>';
+      }
+
+      function profitCents(entrada, pct) {
+        var e = Number(entrada) || 0;
+        var p = Number(pct);
+        if (!Number.isFinite(p) || p <= 0) p = 5;
+        return Math.round((e * p) / 100);
+      }
+
+      /** Um card = um jogo/etapa (layout legado) */
+      function gameCard(desafio, step) {
+        var teams = splitTeams(step || {});
+        var phase = stepPhase(step);
+        var entrada = Number(desafio.initial_balance_cents) || 0;
+        var pct = Number(desafio.target_profit_pct);
+        if (!Number.isFinite(pct) || pct <= 0) pct = 5;
+        var lucro = profitCents(entrada, pct);
+        var totalSteps = (desafio.desafio_steps || []).length || Number(desafio.total_steps) || 1;
+        var market =
+          step.market_name_arbishield ||
+          step.market_name_casa ||
+          step.market_name ||
+          "";
+        var arbiOdd = step.arbi_odd != null ? Number(step.arbi_odd) : null;
+        var casaOdd = step.casa_odd != null ? Number(step.casa_odd) : null;
+        var arbiLabel = step.market_name_arbishield || step.arbi_team_name || "ArbiShield";
+        var casaLabel = step.market_name_casa || step.casa_team_name || "Casa Externa";
+
+        return (
+          '<article class="dz-card">' +
+          '<div class="dz-card-top">' +
+          badgeHtml(phase, !!desafio.is_active) +
+          '<span class="dz-kick">' +
+          esc(fmtKick(step.starts_at)) +
+          "</span>" +
+          "</div>" +
+          '<div class="dz-match">' +
+          '<div class="dz-team"><span class="dz-team-name">' +
+          esc(teams.home) +
+          "</span></div>" +
+          '<span class="dz-vs">×</span>' +
+          '<div class="dz-team"><span class="dz-team-name">' +
+          esc(teams.away) +
+          "</span></div>" +
+          "</div>" +
+          (market
+            ? '<div class="dz-market">' + esc(market) + "</div>"
+            : "") +
+          '<div class="dz-meta">' +
+          '<div><span class="l">Entrada</span><span class="v">' +
+          money(entrada) +
+          "</span></div>" +
+          '<div><span class="l">Lucro alvo</span><span class="v lime">+' +
+          esc(pct) +
+          "%</span></div>" +
+          '<div><span class="l">Etapas</span><span class="v">' +
+          esc(totalSteps) +
+          "</span></div>" +
+          "</div>" +
+          '<div class="dz-legs">' +
+          '<div class="dz-leg arbi">' +
+          '<div class="l">Se bater na ArbiShield</div>' +
+          '<div class="name">' +
+          esc(arbiLabel) +
+          (arbiOdd != null && Number.isFinite(arbiOdd) ? " · @" + arbiOdd : "") +
+          "</div>" +
+          '<div class="v">+' +
+          money(lucro) +
+          "</div>" +
+          "</div>" +
+          '<div class="dz-leg casa">' +
+          '<div class="l">Se bater na Casa Externa</div>' +
+          '<div class="name">' +
+          esc(casaLabel) +
+          (casaOdd != null && Number.isFinite(casaOdd) ? " · @" + casaOdd : "") +
+          "</div>" +
+          '<div class="v">+' +
+          money(lucro) +
+          "</div>" +
+          "</div>" +
+          "</div>" +
+          '<div class="dz-foot">' +
+          '<span class="dz-desafio-ref">' +
+          esc(desafio.title || "Desafio") +
+          " #" +
+          esc(desafio.number != null ? String(desafio.number).padStart(3, "0") : "—") +
+          " · etapa " +
+          esc(step.step_index || 1) +
+          "</span>" +
+          '<button type="button" class="dz-cta" data-desafio="' +
+          esc(desafio.id) +
+          '" data-step="' +
+          esc(step.id || step.step_index || 1) +
+          '"' +
+          (phase === "live" || !desafio.is_active ? " disabled" : "") +
+          ">" +
+          (phase === "live"
+            ? "Encerrado para entrada"
+            : !desafio.is_active
+              ? "Rascunho"
+              : phase === "soon"
+                ? "Aguardando liberação"
+                : "Participar") +
+          "</button>" +
+          "</div>" +
+          "</article>"
+        );
+      }
+
+      function emptyDesafioCard(desafio) {
+        return (
+          '<article class="dz-card dz-card-empty">' +
+          badgeHtml("ativo", !!desafio.is_active) +
+          "<h3>" +
+          esc(desafio.title || "Desafio") +
+          " #" +
+          esc(desafio.number != null ? String(desafio.number).padStart(3, "0") : "—") +
+          "</h3>" +
+          "<p>" +
+          esc(desafio.subtitle || "Sem jogos/etapas cadastrados neste desafio.") +
+          "</p>" +
+          '<p class="dz-empty-meta">0 etapas · saldo inicial ' +
+          money(desafio.initial_balance_cents) +
+          "</p>" +
+          "</article>"
+        );
+      }
+
+      function renderGames(desafios, hostId) {
+        var cards = [];
+        desafios.forEach(function (d) {
+          var steps = (d.desafio_steps || [])
+            .slice()
+            .sort(function (a, b) {
+              return (a.step_index || 0) - (b.step_index || 0);
+            });
+          if (!steps.length) {
+            cards.push(emptyDesafioCard(d));
+            return;
+          }
+          steps.forEach(function (s) {
+            cards.push(gameCard(d, s));
+          });
+        });
+        var host = document.getElementById(hostId);
+        host.innerHTML =
+          cards.join("") ||
+          '<div class="ops-empty"><h2>Nenhum desafio disponível no momento</h2><p>Aguarde o lançamento de um novo desafio pela equipe ArbiShield.</p></div>';
+        host.querySelectorAll(".dz-cta:not([disabled])").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            alert(
+              "Participação na etapa ainda está a ser ligada no v2. O jogo já aparece no desafio; em breve o botão confirma a entrada."
+            );
+          });
+        });
+      }
+
       try {
         var res = await fetch("/api/arbishield/desafios", {
           cache: "no-store",
           headers: { accept: "application/json" },
         });
-        var data = await res.json().catch(function () { return []; });
+        var data = await res.json().catch(function () {
+          return [];
+        });
         if (!res.ok) throw new Error((data && data.error) || "Falha ao carregar desafios");
         var rows = Array.isArray(data) ? data : [];
-        var alive = rows.filter(function (d) { return !d.deleted_at; });
-        var active = alive.filter(function (d) { return d.is_active; });
-        document.getElementById("kAvail").textContent = String(active.length);
-        document.getElementById("kActive").textContent = String(active.length);
-        document.getElementById("kTotal").textContent = String(alive.length);
+        var alive = rows.filter(function (d) {
+          return !d.deleted_at;
+        });
+        var active = alive.filter(function (d) {
+          return d.is_active;
+        });
+        var drafts = alive.filter(function (d) {
+          return !d.is_active;
+        });
+        var gameCount = active.reduce(function (n, d) {
+          return n + ((d.desafio_steps && d.desafio_steps.length) || 0);
+        }, 0);
 
-        var host = document.getElementById("list");
-        if (!alive.length) {
-          host.innerHTML = '<div class="ops-empty">Nenhum desafio disponível no momento</div>';
-          return;
+        document.getElementById("kAvail").textContent = String(gameCount || active.length);
+        document.getElementById("kActive").textContent = String(active.length);
+        document.getElementById("kTotal").textContent = String(
+          alive.reduce(function (n, d) {
+            return n + ((d.desafio_steps && d.desafio_steps.length) || 0);
+          }, 0)
+        );
+
+        renderGames(active.length ? active : [], "list");
+        if (!active.length) {
+          document.getElementById("list").innerHTML =
+            '<div class="ops-empty"><h2>Nenhum desafio disponível no momento</h2><p>Aguarde o lançamento de um novo desafio pela equipe ArbiShield.</p></div>';
         }
-        host.innerHTML = alive
-          .slice()
-          .sort(function (a, b) {
-            return Number(!!b.is_active) - Number(!!a.is_active);
-          })
-          .map(function (d) {
-            var steps = (d.desafio_steps || []).length;
-            return (
-              '<article class="app-desafio-card">' +
-              (d.is_active ? '<span class="badge">Ativo</span>' : '<span class="badge" style="color:var(--muted);border-color:var(--border)">Rascunho</span>') +
-              "<h3>" +
-              (d.title || "Desafio") +
-              " #" +
-              (d.number != null ? String(d.number).padStart(3, "0") : "—") +
-              "</h3>" +
-              "<p>" +
-              (d.description || "Complete as etapas e fature o saldo final com lucro.") +
-              "</p>" +
-              '<p style="margin-top:10px">' +
-              steps +
-              " etapa(s) · saldo inicial " +
-              money(d.initial_balance_cents) +
-              "</p>" +
-              "</article>"
-            );
-          })
-          .join("");
+
+        var wrap = document.getElementById("draftsWrap");
+        if (drafts.length) {
+          wrap.hidden = false;
+          renderGames(drafts, "drafts");
+        } else {
+          wrap.hidden = true;
+        }
       } catch (ex) {
-        // fallback REST
-        try {
-          var q = await supa
-            .from("desafios")
-            .select("id,title,number,description,is_active,initial_balance_cents,deleted_at")
-            .is("deleted_at", null)
-            .order("updated_at", { ascending: false })
-            .limit(50);
-          if (q.error) throw q.error;
-          var alive = q.data || [];
-          document.getElementById("kAvail").textContent = String(alive.filter(function (d) { return d.is_active; }).length);
-          document.getElementById("kActive").textContent = document.getElementById("kAvail").textContent;
-          document.getElementById("kTotal").textContent = String(alive.length);
-          document.getElementById("list").innerHTML = alive
-            .map(function (d) {
-              return (
-                '<article class="app-desafio-card">' +
-                (d.is_active ? '<span class="badge">Ativo</span>' : "") +
-                "<h3>" +
-                (d.title || "Desafio") +
-                "</h3>" +
-                "<p>" +
-                (d.description || "—") +
-                "</p>" +
-                '<p style="margin-top:10px">Saldo inicial ' +
-                money(d.initial_balance_cents) +
-                "</p></article>"
-              );
-            })
-            .join("") || '<div class="ops-empty">Nenhum desafio</div>';
-        } catch (e2) {
-          showErr(ex.message || e2.message || "Erro");
-          document.getElementById("list").innerHTML = "";
-        }
+        showErr(ex.message || "Erro");
+        document.getElementById("list").innerHTML = "";
       }
     })();
   </script>

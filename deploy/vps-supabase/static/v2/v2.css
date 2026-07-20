@@ -1318,6 +1318,16 @@ body[data-shell="app"] .btn-primary {
   font-size: 1.05rem;
 }
 .app-desafio-list { display: grid; gap: 12px; }
+.app-desafio-lead {
+  margin: -4px 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.app-desafio-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
 .app-desafio-card {
   background: linear-gradient(160deg, #0b231e, #071a16);
   border: 1px solid rgba(255, 255, 255, 0.05);
@@ -1348,6 +1358,197 @@ body[data-shell="app"] .btn-primary {
   font-size: 13px;
   line-height: 1.45;
 }
+
+/* Cards de jogo/etapa (layout legado DesafioScreen) */
+.dz-card {
+  display: flex;
+  flex-direction: column;
+  background: #0b231e;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 16px;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.dz-card:hover { border-color: rgba(255, 255, 255, 0.12); }
+.dz-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.dz-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.6);
+}
+.dz-badge.on {
+  background: #c6ff00;
+  color: #000;
+}
+.dz-badge.live {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+}
+.dz-badge.muted {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.55);
+}
+.dz-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f87171;
+  animation: dz-pulse 1.2s ease infinite;
+}
+@keyframes dz-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.dz-kick {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  white-space: nowrap;
+}
+.dz-match {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 18px;
+  text-align: center;
+}
+.dz-team { flex: 1; min-width: 0; }
+.dz-team-name {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+.dz-vs {
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.28);
+}
+.dz-market {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+}
+.dz-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 14px;
+  text-align: center;
+}
+.dz-meta .l {
+  display: block;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+.dz-meta .v {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.92rem;
+  font-weight: 900;
+}
+.dz-meta .v.lime { color: #c6ff00; }
+.dz-legs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+.dz-leg {
+  border-radius: 10px;
+  padding: 10px;
+  text-align: center;
+}
+.dz-leg.arbi {
+  border: 1px solid rgba(198, 255, 0, 0.2);
+  background: rgba(198, 255, 0, 0.05);
+}
+.dz-leg.casa {
+  border: 1px solid rgba(47, 128, 255, 0.2);
+  background: rgba(47, 128, 255, 0.05);
+}
+.dz-leg .l {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+.dz-leg.arbi .l { color: rgba(198, 255, 0, 0.8); }
+.dz-leg.casa .l { color: rgba(147, 197, 253, 0.9); }
+.dz-leg .name {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.75);
+  line-height: 1.3;
+  word-break: break-word;
+}
+.dz-leg .v {
+  margin-top: 6px;
+  font-size: 0.95rem;
+  font-weight: 900;
+}
+.dz-leg.arbi .v { color: #c6ff00; }
+.dz-leg.casa .v { color: #60a5fa; }
+.dz-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+.dz-desafio-ref {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+}
+.dz-cta {
+  width: 100%;
+  border: 0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #c6ff00;
+  color: #000;
+  font-weight: 900;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.dz-cta:disabled {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.4);
+  cursor: not-allowed;
+}
+.dz-card-empty h3 {
+  margin: 12px 0 6px;
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+.dz-card-empty p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.dz-empty-meta { margin-top: 10px !important; }
 @media (max-width: 720px) {
   .app-kpi-row { grid-template-columns: 1fr; }
+  .app-desafio-grid { grid-template-columns: 1fr; }
+  .dz-legs { grid-template-columns: 1fr; }
 }
