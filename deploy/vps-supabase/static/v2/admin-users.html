@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Usuários — ArbiShield v2</title>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
@@ -14,27 +14,35 @@
 <body data-shell="admin" data-active="users">
   <div class="page-head">
     <div>
-      <h1>Gestão de <span>usuários</span></h1>
-      <p class="sub">Lista leve · busca com debounce · sem Realtime · máx. 500</p>
+      <h1>Gestão de <span>Usuários</span></h1>
+      <p class="sub">Usuários · layout Jogos · lista leve · máx. 500 · sem Realtime</p>
     </div>
   </div>
   <div id="err" class="err"></div>
-  <div class="search">
-    <input id="q" type="search" placeholder="Pesquisar por nome ou ID…" autocomplete="off" />
-    <span id="count">—</span>
+  <div class="ops-stats" id="stats"></div>
+  <div class="ops-toolbar">
+    <div class="ops-tabs" id="tabs">
+      <button type="button" class="ops-tab active" data-s="all">Todos</button>
+    </div>
+    <input class="ops-search" id="q" type="search" placeholder="Buscar nome ou ID…" autocomplete="off" />
+    <button type="button" class="btn btn-ghost btn-sm" id="btnRefresh">Atualizar</button>
   </div>
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr><th>Perfil</th><th>Status</th><th>Saldo</th><th>Criado</th></tr>
-      </thead>
-      <tbody id="tbody">
-        <tr><td colspan="4">Carregando…</td></tr>
-      </tbody>
-    </table>
+  <div class="meta" id="meta">Carregando…</div>
+  <div class="ops-panel">
+    <div class="ops-table-wrap">
+      <table class="ops-table">
+        <thead>
+          <tr><th>Perfil</th><th>Status</th><th>Saldo</th><th>Criado</th></tr>
+        </thead>
+        <tbody id="tbody">
+          <tr><td colspan="4" class="ops-empty">Carregando…</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
   <script>
     (async function () {
+      var money = ArbiV2.money;
       var supa = ArbiV2.client();
       var user = await ArbiV2.requireUser(supa);
       if (!user) return;
@@ -45,6 +53,7 @@
       }
 
       var rows = [];
+      var statusFilter = "all";
       var qDebounced = "";
       var timer = null;
 
@@ -52,27 +61,66 @@
         return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
       }
 
+      function statusClass(v) {
+        var s = String(v || "").toLowerCase();
+        if (/active|aprov|ok/.test(s)) return "ok";
+        if (/pend|review/.test(s)) return "warn";
+        if (/block|ban|inativ|suspend/.test(s)) return "bad";
+        return "";
+      }
+
+      function renderStats(total, filtered) {
+        document.getElementById("stats").innerHTML =
+          '<div class="ops-stat"><div class="l">Total</div><div class="v">' + total + '</div></div>' +
+          '<div class="ops-stat"><div class="l">Visíveis</div><div class="v lime">' + filtered + '</div></div>' +
+          '<div class="ops-stat"><div class="l">Tabela</div><div class="v">profiles</div></div>';
+      }
+
       function render() {
         var parts = norm(qDebounced).split(/\s+/).filter(Boolean);
-        var filtered = !parts.length
-          ? rows
-          : rows.filter(function (r) {
-              var hay = norm([r.full_name, r.id, r.account_status].filter(Boolean).join(" "));
-              return parts.every(function (p) { return hay.indexOf(p) >= 0; });
-            });
-        document.getElementById("count").textContent = filtered.length + " / " + rows.length;
+        var filtered = rows.filter(function (r) {
+          if (statusFilter !== "all" && String(r.account_status || "") !== statusFilter) return false;
+          if (!parts.length) return true;
+          var hay = norm([r.full_name, r.id, r.account_status].filter(Boolean).join(" "));
+          return parts.every(function (p) { return hay.indexOf(p) >= 0; });
+        });
+        renderStats(rows.length, filtered.length);
+        document.getElementById("meta").textContent = filtered.length + " usuário(s) · layout Jogos";
         var html = filtered.slice(0, 100).map(function (r) {
+          var sc = statusClass(r.account_status);
           return (
-            "<tr><td><strong>" + (r.full_name || "—") + "</strong><small>" +
-            String(r.id).slice(0, 8) + "…</small></td><td>" +
-            (r.account_status || "—") + "</td><td>" +
-            ArbiV2.money(r.balance_cents) + "</td><td>" +
+            "<tr><td><strong>" + (r.full_name || "—") + "</strong><div class=\"meta\">" +
+            String(r.id).slice(0, 8) + "…</div></td><td><span class=\"ops-badge " + sc + "\">" +
+            (r.account_status || "—") + "</span></td><td>" +
+            money(r.balance_cents) + "</td><td>" +
             (r.created_at ? new Date(r.created_at).toLocaleString("pt-BR") : "—") +
             "</td></tr>"
           );
         }).join("");
         document.getElementById("tbody").innerHTML =
-          html || '<tr><td colspan="4">Nenhum usuário</td></tr>';
+          html || '<tr><td colspan="4" class="ops-empty">Nenhum usuário</td></tr>';
+      }
+
+      function buildTabs() {
+        var set = {};
+        rows.forEach(function (r) {
+          if (r.account_status) set[String(r.account_status)] = 1;
+        });
+        var statuses = Object.keys(set).slice(0, 8);
+        var tabs = document.getElementById("tabs");
+        tabs.innerHTML =
+          '<button type="button" class="ops-tab active" data-s="all">Todos</button>' +
+          statuses.map(function (s) {
+            return '<button type="button" class="ops-tab" data-s="' + s + '">' + s + "</button>";
+          }).join("");
+        tabs.querySelectorAll(".ops-tab").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            tabs.querySelectorAll(".ops-tab").forEach(function (b) { b.classList.remove("active"); });
+            btn.classList.add("active");
+            statusFilter = btn.getAttribute("data-s") || "all";
+            render();
+          });
+        });
       }
 
       document.getElementById("q").addEventListener("input", function (e) {
@@ -84,7 +132,8 @@
         }, 350);
       });
 
-      try {
+      async function load() {
+        document.getElementById("err").classList.remove("show");
         var res = await supa
           .from("profiles")
           .select("id,full_name,account_status,balance_cents,created_at")
@@ -92,7 +141,19 @@
           .limit(500);
         if (res.error) throw res.error;
         rows = res.data || [];
+        buildTabs();
         render();
+      }
+
+      document.getElementById("btnRefresh").onclick = function () {
+        load().catch(function (ex) {
+          document.getElementById("err").textContent = ex.message || "Erro";
+          document.getElementById("err").classList.add("show");
+        });
+      };
+
+      try {
+        await load();
       } catch (ex) {
         document.getElementById("err").textContent = ex.message || "Erro";
         document.getElementById("err").classList.add("show");

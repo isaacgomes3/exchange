@@ -1,5 +1,5 @@
 /**
- * Páginas de lista/detalhe nativas do v2 (sem SPA).
+ * Páginas de lista/detalhe nativas do v2 (layout tipo Gestão de Jogos).
  * Uso: ArbiV2Page.mountAdmin({...}) ou ArbiV2Page.mountApp({...})
  */
 (function (global) {
@@ -13,12 +13,6 @@
   function fmtVal(v) {
     if (v == null || v === "") return "—";
     if (typeof v === "boolean") return v ? "sim" : "não";
-    if (typeof v === "number") {
-      if (Math.abs(v) >= 100 && String(v).endsWith("00") === false && /_cents$|amount|balance|value|liquidity/i.test("")) {
-        /* handled by callers */
-      }
-      return String(v);
-    }
     if (typeof v === "object") {
       try {
         return esc(JSON.stringify(v).slice(0, 120));
@@ -37,7 +31,6 @@
   function moneyMaybe(key, v) {
     if (typeof v !== "number") return fmtVal(v);
     if (/cent|amount|balance|value|liquidity|price/i.test(key) && Math.abs(v) >= 1) {
-      // valores em centavos costumam ser inteiros grandes
       if (/cent/i.test(key) || (Number.isInteger(v) && Math.abs(v) >= 100)) {
         return ArbiV2.money(v);
       }
@@ -55,12 +48,22 @@
       if (ok.length) return ok;
     }
     var skip = { raw: 1, metadata: 1, meta: 1, payload: 1 };
-    return keys.filter(function (k) {
-      return !skip[k];
-    }).slice(0, 6);
+    return keys
+      .filter(function (k) {
+        return !skip[k];
+      })
+      .slice(0, 7);
   }
 
-  function renderTable(cols, rows, mapRow) {
+  function statusClass(v) {
+    var s = String(v || "").toLowerCase();
+    if (/active|aprov|paid|open|success|publicado|published/.test(s)) return "ok";
+    if (/pend|review|draft|aguard/.test(s)) return "warn";
+    if (/cancel|reject|block|fail|denied|exclu/.test(s)) return "bad";
+    return "";
+  }
+
+  function renderTable(cols, rows) {
     var head =
       "<tr>" +
       cols
@@ -71,19 +74,73 @@
       "</tr>";
     var body = rows
       .map(function (r) {
-        var cells = (mapRow ? mapRow(r, cols) : cols.map(function (c) {
-          return "<td>" + moneyMaybe(c, r[c]) + "</td>";
-        })).join("");
+        var cells = cols
+          .map(function (c) {
+            var val = moneyMaybe(c, r[c]);
+            if (/status/i.test(c)) {
+              var sc = statusClass(r[c]);
+              return (
+                '<td><span class="ops-badge' +
+                (sc ? " " + sc : "") +
+                '">' +
+                val +
+                "</span></td>"
+              );
+            }
+            return "<td>" + val + "</td>";
+          })
+          .join("");
         return "<tr>" + cells + "</tr>";
       })
       .join("");
     return (
-      '<div class="table-wrap"><table><thead>' +
+      '<div class="ops-panel"><div class="ops-table-wrap"><table class="ops-table"><thead>' +
       head +
       "</thead><tbody>" +
-      (body || '<tr><td colspan="' + cols.length + '">Nenhum registro</td></tr>') +
-      "</tbody></table></div>"
+      (body ||
+        '<tr><td colspan="' +
+          cols.length +
+          '" class="ops-empty">Nenhum registro</td></tr>') +
+      "</tbody></table></div></div>"
     );
+  }
+
+  function renderShell(host, opts) {
+    opts = opts || {};
+    host.innerHTML =
+      '<div class="ops-stats" id="opsStats"></div>' +
+      '<div class="ops-toolbar">' +
+      '<div class="ops-tabs" id="opsTabs"></div>' +
+      '<input class="ops-search" id="q" type="search" placeholder="' +
+      esc(opts.searchPlaceholder || "Buscar…") +
+      '" autocomplete="off" />' +
+      '<button type="button" class="btn btn-ghost btn-sm" id="opsRefresh">Atualizar</button>' +
+      "</div>" +
+      '<div class="meta" id="opsMeta">Carregando…</div>' +
+      '<div id="tableHost"></div>';
+  }
+
+  function renderStats(total, filtered, extra) {
+    var el = document.getElementById("opsStats");
+    if (!el) return;
+    var items = [
+      { l: "Total", v: total, c: "" },
+      { l: "Visíveis", v: filtered, c: "lime" },
+      { l: "Tabela", v: extra || "—", c: "" },
+    ];
+    el.innerHTML = items
+      .map(function (it) {
+        return (
+          '<div class="ops-stat"><div class="l">' +
+          esc(it.l) +
+          '</div><div class="v ' +
+          esc(it.c) +
+          '">' +
+          esc(it.v) +
+          "</div></div>"
+        );
+      })
+      .join("");
   }
 
   async function loadTable(supa, table, opts) {
@@ -128,43 +185,93 @@
     throw lastErr || new Error("Nenhuma tabela disponível");
   }
 
-  function bindSearch(rows, cols, render) {
+  function uniqueStatuses(rows) {
+    var set = {};
+    rows.forEach(function (r) {
+      if (r.status != null && r.status !== "") set[String(r.status)] = 1;
+    });
+    return Object.keys(set).slice(0, 8);
+  }
+
+  function bindFilters(rows, cols, tableName, onReload) {
     var input = document.getElementById("q");
-    var count = document.getElementById("count");
-    if (!input) {
-      render(rows);
-      return;
+    var tabs = document.getElementById("opsTabs");
+    var meta = document.getElementById("opsMeta");
+    var tableHost = document.getElementById("tableHost");
+    var refresh = document.getElementById("opsRefresh");
+    var statusFilter = "all";
+    var statuses = uniqueStatuses(rows);
+
+    if (tabs) {
+      tabs.innerHTML =
+        '<button type="button" class="ops-tab active" data-s="all">Todos</button>' +
+        statuses
+          .map(function (s) {
+            return (
+              '<button type="button" class="ops-tab" data-s="' +
+              esc(s) +
+              '">' +
+              esc(s) +
+              "</button>"
+            );
+          })
+          .join("");
+      tabs.querySelectorAll(".ops-tab").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          tabs.querySelectorAll(".ops-tab").forEach(function (b) {
+            b.classList.remove("active");
+          });
+          btn.classList.add("active");
+          statusFilter = btn.getAttribute("data-s") || "all";
+          go();
+        });
+      });
     }
-    var timer = null;
+
     function norm(s) {
       return String(s || "")
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
         .toLowerCase();
     }
+
     function go() {
-      var parts = norm(input.value).split(/\s+/).filter(Boolean);
-      var filtered = !parts.length
-        ? rows
-        : rows.filter(function (r) {
-            var hay = norm(
-              cols
-                .map(function (c) {
-                  return r[c];
-                })
-                .join(" ")
-            );
-            return parts.every(function (p) {
-              return hay.indexOf(p) >= 0;
-            });
-          });
-      if (count) count.textContent = filtered.length + " / " + rows.length;
-      render(filtered);
+      var parts = norm(input && input.value).split(/\s+/).filter(Boolean);
+      var filtered = rows.filter(function (r) {
+        if (statusFilter !== "all" && String(r.status) !== statusFilter) return false;
+        if (!parts.length) return true;
+        var hay = norm(
+          cols
+            .map(function (c) {
+              return r[c];
+            })
+            .join(" ")
+        );
+        return parts.every(function (p) {
+          return hay.indexOf(p) >= 0;
+        });
+      });
+      renderStats(rows.length, filtered.length, tableName);
+      if (meta) {
+        meta.textContent =
+          filtered.length +
+          " registro(s) · layout Jogos · sem SPA";
+      }
+      tableHost.innerHTML = renderTable(cols, filtered.slice(0, 150));
     }
-    input.addEventListener("input", function () {
-      clearTimeout(timer);
-      timer = setTimeout(go, 280);
-    });
+
+    if (input) {
+      var timer = null;
+      input.addEventListener("input", function () {
+        clearTimeout(timer);
+        timer = setTimeout(go, 280);
+      });
+    }
+    if (refresh && onReload) {
+      refresh.addEventListener("click", function () {
+        onReload();
+      });
+    }
     go();
   }
 
@@ -182,29 +289,31 @@
       if (host) host.innerHTML = "";
       return;
     }
-    try {
-      var loaded = await tryTables(supa, cfg.sources);
-      var cols = pickCols(loaded.rows, cfg.cols || loaded.spec.cols);
-      if (host) {
-        host.innerHTML =
-          '<div class="search"><input id="q" type="search" placeholder="Pesquisar…" autocomplete="off" /><span id="count">—</span></div><div id="tableHost"></div>';
-      }
-      var tableHost = document.getElementById("tableHost");
-      bindSearch(loaded.rows, cols, function (filtered) {
-        tableHost.innerHTML = renderTable(cols, filtered.slice(0, 150));
+
+    async function run() {
+      if (err) err.classList.remove("show");
+      renderShell(host, {
+        searchPlaceholder: cfg.searchPlaceholder || "Buscar na lista…",
       });
-    } catch (ex) {
-      if (err) {
-        err.textContent = (ex && ex.message) || "Erro ao carregar";
-        err.classList.add("show");
-      }
-      if (host) {
-        host.innerHTML =
-          '<div class="bridge-box"><h2>Sem dados nesta tabela</h2><p>' +
-          esc((ex && ex.message) || "Erro") +
-          "</p><p class=\"meta\">Página 100% v2 — sem abrir o SPA.</p></div>";
+      try {
+        var loaded = await tryTables(supa, cfg.sources);
+        var cols = pickCols(loaded.rows, cfg.cols || loaded.spec.cols);
+        bindFilters(loaded.rows, cols, loaded.spec.table, run);
+      } catch (ex) {
+        if (err) {
+          err.textContent = (ex && ex.message) || "Erro ao carregar";
+          err.classList.add("show");
+        }
+        if (host) {
+          host.innerHTML =
+            '<div class="ops-panel"><div class="ops-empty"><h2>Sem dados nesta tabela</h2><p>' +
+            esc((ex && ex.message) || "Erro") +
+            "</p><p class=\"meta\">Página 100% v2 — layout Jogos · sem SPA.</p></div></div>";
+        }
       }
     }
+
+    await run();
   }
 
   async function mountApp(cfg) {
@@ -213,58 +322,67 @@
     var supa = ArbiV2.client();
     var user = await ArbiV2.requireUser(supa);
     if (!user) return;
-    try {
-      var sources = (cfg.sources || []).map(function (s) {
-        var copy = Object.assign({}, s);
-        copy.eq = Object.assign({}, s.eq || {});
-        if (cfg.scopeUser !== false) {
-          if (!copy.eq.user_id && !copy.eq.id) copy.eq.user_id = user.id;
+
+    async function run() {
+      if (err) err.classList.remove("show");
+      try {
+        var sources = (cfg.sources || []).map(function (s) {
+          var copy = Object.assign({}, s);
+          copy.eq = Object.assign({}, s.eq || {});
+          if (cfg.scopeUser !== false) {
+            if (!copy.eq.user_id && !copy.eq.id) copy.eq.user_id = user.id;
+          }
+          return copy;
+        });
+        if (cfg.id === "perfil") {
+          sources = [{ table: "profiles", eq: { id: user.id }, select: "*", limit: 1 }];
         }
-        return copy;
-      });
-      // perfil: profiles by id
-      if (cfg.id === "perfil") {
-        sources = [{ table: "profiles", eq: { id: user.id }, select: "*", limit: 1 }];
-      }
-      var loaded = await tryTables(supa, sources);
-      var cols = pickCols(loaded.rows, cfg.cols || loaded.spec.cols);
-      if (cfg.render === "cards" && loaded.rows[0]) {
-        var r = loaded.rows[0];
-        host.innerHTML =
-          '<div class="grid">' +
-          cols
-            .map(function (c) {
-              return (
-                '<div class="card"><strong>' +
-                esc(c.replace(/_/g, " ")) +
-                "</strong><b style=\"font-size:1.05rem\">" +
-                moneyMaybe(c, r[c]) +
-                "</b></div>"
-              );
-            })
-            .join("") +
-          "</div>";
-        return;
-      }
-      host.innerHTML =
-        '<div class="search"><input id="q" type="search" placeholder="Pesquisar…" autocomplete="off" /><span id="count">—</span></div><div id="tableHost"></div>';
-      var tableHost = document.getElementById("tableHost");
-      bindSearch(loaded.rows, cols, function (filtered) {
-        tableHost.innerHTML = renderTable(cols, filtered.slice(0, 150));
-      });
-    } catch (ex) {
-      if (err) {
-        err.textContent = (ex && ex.message) || "Erro";
-        err.classList.add("show");
-      }
-      if (host) {
-        host.innerHTML =
-          '<div class="bridge-box"><h2>Sem dados</h2><p>' +
-          esc((ex && ex.message) || "Erro") +
-          "</p></div>";
+        var loaded = await tryTables(supa, sources);
+        var cols = pickCols(loaded.rows, cfg.cols || loaded.spec.cols);
+        if (cfg.render === "cards" && loaded.rows[0]) {
+          var r = loaded.rows[0];
+          host.innerHTML =
+            '<div class="ops-stats">' +
+            cols
+              .slice(0, 6)
+              .map(function (c) {
+                return (
+                  '<div class="ops-stat"><div class="l">' +
+                  esc(c.replace(/_/g, " ")) +
+                  '</div><div class="v">' +
+                  moneyMaybe(c, r[c]) +
+                  "</div></div>"
+                );
+              })
+              .join("") +
+            "</div>";
+          return;
+        }
+        renderShell(host, {
+          searchPlaceholder: cfg.searchPlaceholder || "Buscar…",
+        });
+        bindFilters(loaded.rows, cols, loaded.spec.table, run);
+      } catch (ex) {
+        if (err) {
+          err.textContent = (ex && ex.message) || "Erro";
+          err.classList.add("show");
+        }
+        if (host) {
+          host.innerHTML =
+            '<div class="ops-panel"><div class="ops-empty"><h2>Sem dados</h2><p>' +
+            esc((ex && ex.message) || "Erro") +
+            "</p></div></div>";
+        }
       }
     }
+
+    await run();
   }
 
-  global.ArbiV2Page = { mountAdmin: mountAdmin, mountApp: mountApp, moneyMaybe: moneyMaybe, esc: esc };
+  global.ArbiV2Page = {
+    mountAdmin: mountAdmin,
+    mountApp: mountApp,
+    moneyMaybe: moneyMaybe,
+    esc: esc,
+  };
 })(window);
