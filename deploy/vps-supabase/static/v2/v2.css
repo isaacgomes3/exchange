@@ -1328,38 +1328,33 @@ body[data-shell="app"] .btn-primary {
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 14px;
 }
-.app-desafio-card {
-  background: linear-gradient(160deg, #0b231e, #071a16);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 18px;
-  padding: 16px;
+.dz-filters {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 0 0 14px;
+  margin-bottom: 4px;
 }
-.app-desafio-card h3 {
-  margin: 0 0 6px;
-  font-size: 1.05rem;
-  font-weight: 900;
-}
-.app-desafio-card .badge {
-  display: inline-flex;
-  margin-bottom: 10px;
-  padding: 4px 8px;
+.dz-filter {
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
   border-radius: 999px;
-  border: 1px solid rgba(198, 255, 0, 0.35);
-  color: var(--lime-hot);
-  background: rgba(198, 255, 0, 0.08);
-  font-size: 9px;
+  padding: 7px 14px;
+  font-size: 10px;
   font-weight: 800;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
+  cursor: pointer;
 }
-.app-desafio-card p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.45;
+.dz-filter.is-on {
+  background: #fff;
+  color: #000;
+  border-color: #fff;
 }
 
-/* Cards de jogo/etapa (layout legado DesafioScreen) */
+/* Card = DesafioScreen vt() do SPA legado */
 .dz-card {
   display: flex;
   flex-direction: column;
@@ -1419,24 +1414,54 @@ body[data-shell="app"] .btn-primary {
 }
 .dz-match {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  gap: 14px;
-  margin-top: 18px;
+  gap: 16px;
+  margin-top: 20px;
   text-align: center;
 }
-.dz-team { flex: 1; min-width: 0; }
+.dz-team {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.dz-logo,
+.dz-logo-fallback {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  object-fit: contain;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 4px;
+}
+.dz-logo-fallback {
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.8);
+  padding: 0;
+}
 .dz-team-name {
   display: block;
-  font-size: 0.95rem;
-  font-weight: 900;
-  letter-spacing: -0.02em;
+  max-width: 96px;
+  font-size: 12px;
+  font-weight: 700;
   line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .dz-vs {
+  align-self: center;
   font-size: 1.25rem;
   font-weight: 900;
   color: rgba(255, 255, 255, 0.28);
+  padding-top: 14px;
 }
 .dz-market {
   margin-top: 12px;
@@ -1456,11 +1481,11 @@ body[data-shell="app"] .btn-primary {
 }
 .dz-meta .l {
   display: block;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(255, 255, 255, 0.4);
 }
 .dz-meta .v {
   display: block;
@@ -1497,14 +1522,6 @@ body[data-shell="app"] .btn-primary {
 }
 .dz-leg.arbi .l { color: rgba(198, 255, 0, 0.8); }
 .dz-leg.casa .l { color: rgba(147, 197, 253, 0.9); }
-.dz-leg .name {
-  margin-top: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.75);
-  line-height: 1.3;
-  word-break: break-word;
-}
 .dz-leg .v {
   margin-top: 6px;
   font-size: 0.95rem;
@@ -1512,41 +1529,141 @@ body[data-shell="app"] .btn-primary {
 }
 .dz-leg.arbi .v { color: #c6ff00; }
 .dz-leg.casa .v { color: #60a5fa; }
-.dz-foot {
+.dz-return {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  margin-top: 14px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(198, 255, 0, 0.2);
+  background: rgba(198, 255, 0, 0.05);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(198, 255, 0, 0.9);
 }
-.dz-desafio-ref {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.45);
+.dz-return strong {
+  font-size: 0.92rem;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #c6ff00;
 }
+.dz-return small {
+  font-size: 10px;
+  font-weight: 800;
+  color: rgba(198, 255, 0, 0.7);
+}
+.dz-liq {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+}
+.dz-liq-top,
+.dz-liq-mid {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+.dz-liq-mid {
+  margin-top: 8px;
+  align-items: baseline;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.5);
+}
+.dz-liq-mid strong {
+  font-size: 0.9rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #fff;
+}
+.dz-liq-mid strong.low { color: #fca5a5; }
+.dz-liq-mid strong.mid { color: #fde68a; }
+.dz-liq-bar {
+  margin-top: 8px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+.dz-liq-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #c6ff00;
+}
+.dz-liq-bar i.low { background: #ef4444; }
+.dz-liq-bar i.mid { background: #f59e0b; }
+.dz-liq-pct {
+  margin-top: 4px;
+  text-align: right;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+}
+.dz-foot { margin-top: 16px; }
 .dz-cta {
   width: 100%;
   border: 0;
   border-radius: 12px;
-  padding: 12px 14px;
+  padding: 14px 14px;
   background: #c6ff00;
   color: #000;
   font-weight: 900;
   font-size: 11px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   cursor: pointer;
 }
-.dz-cta:disabled {
-  background: rgba(255, 255, 255, 0.08);
+.dz-cta:hover:not(:disabled) { filter: brightness(1.08); }
+.dz-cta:disabled,
+.dz-cta.muted {
+  background: rgba(255, 255, 255, 0.02);
   color: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   cursor: not-allowed;
 }
-.dz-card-empty h3 {
-  margin: 12px 0 6px;
-  font-size: 1.05rem;
-  font-weight: 900;
+.dz-cta.wait {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: rgba(251, 191, 36, 0.15);
+  color: #fef3c7;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  box-shadow: 0 0 24px rgba(251, 191, 36, 0.12);
+  cursor: not-allowed;
 }
-.dz-card-empty p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
-.dz-empty-meta { margin-top: 10px !important; }
+.dz-cta-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: #fde68a;
+}
+.dz-cta-time {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1rem;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
 @media (max-width: 720px) {
   .app-kpi-row { grid-template-columns: 1fr; }
   .app-desafio-grid { grid-template-columns: 1fr; }

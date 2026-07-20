@@ -15,7 +15,7 @@
   <div class="page-head">
     <div>
       <h1>Desafio <span>ArbiShield</span></h1>
-      <p class="sub">Escolha um desafio · acompanhe as etapas e o lucro potencial</p>
+      <p class="sub">Escolha um desafio disponível · modelo legado</p>
     </div>
   </div>
   <div id="err" class="err"></div>
@@ -25,14 +25,17 @@
     <div class="app-kpi"><div class="l">Etapas</div><div class="v" id="kTotal">—</div></div>
   </div>
 
+  <div class="dz-filters" id="filters" role="tablist">
+    <button type="button" class="dz-filter is-on" data-f="Todos">Todos</button>
+    <button type="button" class="dz-filter" data-f="Futebol">Futebol</button>
+    <button type="button" class="dz-filter" data-f="Hoje">Hoje</button>
+    <button type="button" class="dz-filter" data-f="Amanhã">Amanhã</button>
+    <button type="button" class="dz-filter" data-f="Alta">Alta</button>
+  </div>
+
   <div class="section-label"><span class="dot" style="background:#c6ff00"></span>Desafios disponíveis</div>
   <p class="app-desafio-lead">Jogos liberados pela ArbiShield. Faça sua entrada para começar.</p>
   <div id="list" class="app-desafio-grid"><div class="ops-empty">Carregando…</div></div>
-
-  <div id="draftsWrap" hidden>
-    <div class="section-label" style="margin-top:28px"><span class="dot" style="background:#8a8a8f"></span>Rascunhos</div>
-    <div id="drafts" class="app-desafio-grid"></div>
-  </div>
 
   <script>
     (async function () {
@@ -40,6 +43,10 @@
       var supa = ArbiV2.client();
       var user = await ArbiV2.requireUser(supa);
       if (!user) return;
+
+      var filter = "Todos";
+      var items = [];
+      var tickTimer = null;
 
       function showErr(msg) {
         var el = document.getElementById("err");
@@ -54,55 +61,93 @@
           .replace(/"/g, "&quot;");
       }
 
+      function looksLikeMatchLabel(s) {
+        return /\s+[x×X]\s+/.test(String(s || ""));
+      }
+
+      /** Espelha SPA: homeTeam / awayTeam separados — nunca o label inteiro nos dois lados */
       function splitTeams(step) {
-        var home = (step.home_team || "").trim();
-        var away = (step.away_team || "").trim();
-        if (home && away) return { home: home, away: away };
-        var label = String(step.match_label || "");
-        var parts = label.split(/\s+[x×X]\s+/);
-        if (parts.length >= 2) {
-          return { home: parts[0].trim() || "Casa", away: parts.slice(1).join(" x ").trim() || "Visitante" };
+        var home = String(step.home_team || "").trim();
+        var away = String(step.away_team || "").trim();
+        var label = String(step.match_label || "").trim();
+
+        if (home && away && home !== away && !looksLikeMatchLabel(home) && !looksLikeMatchLabel(away)) {
+          return { home: home, away: away };
         }
-        return { home: home || label || "Casa", away: away || "Visitante" };
+
+        var raw = label || (looksLikeMatchLabel(home) ? home : looksLikeMatchLabel(away) ? away : "");
+        if (raw) {
+          var parts = raw.split(/\s+[x×X]\s+/);
+          if (parts.length >= 2) {
+            return {
+              home: parts[0].trim() || "Casa",
+              away: parts.slice(1).join(" x ").trim() || "Visitante",
+            };
+          }
+        }
+        if (home && away && home !== away) return { home: home, away: away };
+        return { home: home || "Casa", away: away || "Visitante" };
+      }
+
+      function initials(name) {
+        return String(name || "?")
+          .split(/\s+/)
+          .map(function (w) { return w[0] || ""; })
+          .join("")
+          .slice(0, 3)
+          .toUpperCase() || "?";
+      }
+
+      function teamBlock(name, logo) {
+        var avatar = logo
+          ? '<img class="dz-logo" src="' + esc(logo) + '" alt="' + esc(name) + '" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'" />' +
+            '<div class="dz-logo-fallback" style="display:none">' + esc(initials(name)) + "</div>"
+          : '<div class="dz-logo-fallback">' + esc(initials(name)) + "</div>";
+        return (
+          '<div class="dz-team">' +
+          avatar +
+          '<span class="dz-team-name">' +
+          esc(name) +
+          "</span></div>"
+        );
       }
 
       function fmtKick(iso) {
-        if (!iso) return "Horário a definir";
+        if (!iso) return "A definir";
         var d = new Date(iso);
-        if (isNaN(d.getTime())) return "Horário a definir";
+        if (isNaN(d.getTime())) return "A definir";
         var now = new Date();
+        var tomorrow = new Date(now);
+        tomorrow.setDate(now.getDate() + 1);
         var time = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-        if (d.toDateString() === now.toDateString()) return "Hoje · " + time;
+        if (d.toDateString() === now.toDateString()) return "Hoje • " + time;
+        if (d.toDateString() === tomorrow.toDateString()) return "Amanhã • " + time;
         return (
           d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) +
-          " · " +
+          " • " +
           time
         );
       }
 
-      function stepPhase(step) {
-        if (!step || !step.starts_at) return "ativo";
-        var start = new Date(step.starts_at).getTime();
-        var releaseMin = Number(step.release_minutes_before);
-        if (!Number.isFinite(releaseMin)) releaseMin = 60;
-        var unlock = start - releaseMin * 6e4;
-        var now = Date.now();
+      function fmtCountdown(ms) {
+        if (ms <= 0) return "00:00:00";
+        var s = Math.floor(ms / 1000);
+        var days = Math.floor(s / 86400);
+        var h = Math.floor((s % 86400) / 3600);
+        var m = Math.floor((s % 3600) / 60);
+        var sec = s % 60;
+        var pad = function (n) { return String(n).padStart(2, "0"); };
+        if (days > 0) return days + "d " + pad(h) + ":" + pad(m) + ":" + pad(sec);
+        return pad(h) + ":" + pad(m) + ":" + pad(sec);
+      }
+
+      function phaseOf(item, now) {
+        var start = item.startsAtMs;
+        if (start == null) return "ativo";
+        var unlock = start - (item.releaseMinutesBefore || 0) * 6e4;
         if (now >= start) return "live";
         if (now < unlock) return "soon";
         return "ativo";
-      }
-
-      function badgeHtml(phase, isActiveDesafio) {
-        if (phase === "live") {
-          return '<span class="dz-badge live"><span class="dz-dot"></span>Ao vivo</span>';
-        }
-        if (!isActiveDesafio) {
-          return '<span class="dz-badge muted">Rascunho</span>';
-        }
-        if (phase === "soon") {
-          return '<span class="dz-badge muted">Em breve</span>';
-        }
-        return '<span class="dz-badge on">Ativo</span>';
       }
 
       function profitCents(entrada, pct) {
@@ -112,198 +157,288 @@
         return Math.round((e * p) / 100);
       }
 
-      /** Um card = um jogo/etapa (layout legado) */
-      function gameCard(desafio, step) {
+      function liquidityShown(item, now) {
+        var total = Math.max(
+          Number(item.displayLiquidityCents) || 0,
+          Number(item.liquidityCents) || 0
+        );
+        if (total <= 0) return null;
+        var used = Number(item.usedLiquidityCents) || 0;
+        var avail = Math.max(0, total - used);
+        // SPA: liquidez “some” após liberação; aproximação simples
+        var start = item.startsAtMs;
+        var unlock =
+          start != null ? start - (item.releaseMinutesBefore || 0) * 6e4 : null;
+        if (unlock != null && now >= unlock && start != null && now < start) {
+          var span = Math.max(1, start - unlock);
+          var ratio = Math.max(0, Math.min(1, (start - now) / span));
+          avail = Math.round(avail * (0.35 + 0.65 * ratio));
+        }
+        return { total: total, shown: avail };
+      }
+
+      function toCardItem(desafio, step) {
         var teams = splitTeams(step || {});
-        var phase = stepPhase(step);
         var entrada = Number(desafio.initial_balance_cents) || 0;
         var pct = Number(desafio.target_profit_pct);
         if (!Number.isFinite(pct) || pct <= 0) pct = 5;
         var lucro = profitCents(entrada, pct);
-        var totalSteps = (desafio.desafio_steps || []).length || Number(desafio.total_steps) || 1;
+        var startsAt = step.starts_at || null;
+        var startsAtMs = startsAt ? new Date(startsAt).getTime() : null;
+        if (startsAtMs != null && isNaN(startsAtMs)) startsAtMs = null;
         var market =
-          step.market_name_arbishield ||
           step.market_name_casa ||
           step.market_name ||
-          "";
-        var arbiOdd = step.arbi_odd != null ? Number(step.arbi_odd) : null;
-        var casaOdd = step.casa_odd != null ? Number(step.casa_odd) : null;
-        var arbiLabel = step.market_name_arbishield || step.arbi_team_name || "ArbiShield";
-        var casaLabel = step.market_name_casa || step.casa_team_name || "Casa Externa";
+          step.market_name_arbishield ||
+          step.casa_team_name ||
+          "Resultado Final";
+
+        return {
+          id: desafio.id + ":" + (step.id || step.step_index || 1),
+          desafioId: desafio.id,
+          desafioTitle: desafio.title || "Desafio",
+          desafioNumber: desafio.number,
+          stepIndex: step.step_index || 1,
+          homeTeam: teams.home,
+          awayTeam: teams.away,
+          homeLogo: step.home_logo_url || step.casa_team_logo_url || null,
+          awayLogo: step.away_logo_url || step.arbi_team_logo_url || null,
+          market: market,
+          startsAt: startsAt,
+          startsAtMs: startsAtMs,
+          releaseMinutesBefore: Number(step.release_minutes_before) || 0,
+          entradaCents: entrada,
+          lucroMaxPct: pct,
+          totalSteps: (desafio.desafio_steps || []).length || Number(desafio.total_steps) || 1,
+          isNew: true,
+          isActiveDesafio: !!desafio.is_active,
+          liquidityCents: Number(step.liquidity_cents) || 0,
+          displayLiquidityCents: Number(step.display_liquidity_cents) || Number(step.liquidity_cents) || 0,
+          usedLiquidityCents: Number(step.used_liquidity_cents) || 0,
+          guaranteedProfitCents: lucro,
+          profitArbiCents: lucro,
+          profitCasaCents: lucro,
+          arbiOdd: step.arbi_odd,
+          casaOdd: step.casa_odd,
+        };
+      }
+
+      function cardHtml(item, now) {
+        var phase = phaseOf(item, now);
+        var locked = phase === "soon" || phase === "live" || !item.isActiveDesafio;
+        var lucro = item.guaranteedProfitCents || 0;
+        var retorno = (item.entradaCents || 0) + lucro;
+        var unlockMs =
+          item.startsAtMs != null
+            ? item.startsAtMs - (item.releaseMinutesBefore || 0) * 6e4
+            : null;
+        var waitMs = unlockMs != null ? unlockMs - now : null;
+        var waiting = phase === "soon" && waitMs != null && waitMs > 0;
+
+        var badge;
+        if (phase === "live") {
+          badge = '<span class="dz-badge live"><span class="dz-dot"></span>Ao vivo</span>';
+        } else if (!item.isActiveDesafio) {
+          badge = '<span class="dz-badge muted">Em breve</span>';
+        } else if (item.isNew && phase !== "soon") {
+          badge = '<span class="dz-badge on">Nova</span>';
+        } else if (phase === "soon") {
+          badge = '<span class="dz-badge muted">Em breve</span>';
+        } else {
+          badge = '<span class="dz-badge on">Nova</span>';
+        }
+
+        var liq = phase !== "live" ? liquidityShown(item, now) : null;
+        var liqHtml = "";
+        if (liq && liq.total > 0) {
+          var pctLeft = Math.round(Math.max(0, Math.min(1, liq.shown / liq.total)) * 100);
+          var barClass = pctLeft < 20 ? "low" : pctLeft < 50 ? "mid" : "ok";
+          liqHtml =
+            '<div class="dz-liq">' +
+            '<div class="dz-liq-top"><span>Liquidez</span><span>Inicial ' +
+            money(liq.total) +
+            "</span></div>" +
+            '<div class="dz-liq-mid"><span>Disponível agora</span><strong class="' +
+            barClass +
+            '">' +
+            money(liq.shown) +
+            "</strong></div>" +
+            '<div class="dz-liq-bar"><i class="' +
+            barClass +
+            '" style="width:' +
+            pctLeft +
+            '%"></i></div>' +
+            '<div class="dz-liq-pct">' +
+            pctLeft +
+            "% restante</div></div>";
+        }
+
+        var cta;
+        if (waiting) {
+          cta =
+            '<button type="button" class="dz-cta wait" disabled>' +
+            '<span class="dz-cta-label">Disponível em</span>' +
+            '<span class="dz-cta-time" data-countdown="' +
+            esc(unlockMs) +
+            '">' +
+            esc(fmtCountdown(waitMs)) +
+            "</span></button>";
+        } else if (phase === "live") {
+          cta = '<button type="button" class="dz-cta muted" disabled>Jogo ao vivo</button>';
+        } else if (!item.isActiveDesafio) {
+          cta = '<button type="button" class="dz-cta muted" disabled>Em breve</button>';
+        } else {
+          cta =
+            '<button type="button" class="dz-cta" data-participate="' +
+            esc(item.id) +
+            '">Participar</button>';
+        }
 
         return (
-          '<article class="dz-card">' +
+          '<article class="dz-card" data-card="' +
+          esc(item.id) +
+          '">' +
           '<div class="dz-card-top">' +
-          badgeHtml(phase, !!desafio.is_active) +
+          badge +
           '<span class="dz-kick">' +
-          esc(fmtKick(step.starts_at)) +
-          "</span>" +
-          "</div>" +
+          esc(fmtKick(item.startsAt)) +
+          " ★</span></div>" +
           '<div class="dz-match">' +
-          '<div class="dz-team"><span class="dz-team-name">' +
-          esc(teams.home) +
-          "</span></div>" +
+          teamBlock(item.homeTeam, item.homeLogo) +
           '<span class="dz-vs">×</span>' +
-          '<div class="dz-team"><span class="dz-team-name">' +
-          esc(teams.away) +
-          "</span></div>" +
+          teamBlock(item.awayTeam, item.awayLogo) +
           "</div>" +
-          (market
-            ? '<div class="dz-market">' + esc(market) + "</div>"
-            : "") +
+          '<div class="dz-market">' +
+          esc(item.market) +
+          "</div>" +
           '<div class="dz-meta">' +
           '<div><span class="l">Entrada</span><span class="v">' +
-          money(entrada) +
+          money(item.entradaCents) +
           "</span></div>" +
-          '<div><span class="l">Lucro alvo</span><span class="v lime">+' +
-          esc(pct) +
+          '<div><span class="l">Lucro</span><span class="v lime">+' +
+          esc(item.lucroMaxPct) +
           "%</span></div>" +
           '<div><span class="l">Etapas</span><span class="v">' +
-          esc(totalSteps) +
-          "</span></div>" +
-          "</div>" +
+          esc(item.totalSteps) +
+          "</span></div></div>" +
           '<div class="dz-legs">' +
-          '<div class="dz-leg arbi">' +
-          '<div class="l">Se bater na ArbiShield</div>' +
-          '<div class="name">' +
-          esc(arbiLabel) +
-          (arbiOdd != null && Number.isFinite(arbiOdd) ? " · @" + arbiOdd : "") +
-          "</div>" +
-          '<div class="v">+' +
+          '<div class="dz-leg arbi"><div class="l">Se bater na ArbiShield</div><div class="v">+' +
+          money(item.profitArbiCents) +
+          "</div></div>" +
+          '<div class="dz-leg casa"><div class="l">Se bater na Casa Externa</div><div class="v">+' +
+          money(item.profitCasaCents) +
+          "</div></div></div>" +
+          '<div class="dz-return"><span>↗ Retorno estimado</span><strong>' +
+          money(retorno) +
+          ' <small>(+' +
           money(lucro) +
-          "</div>" +
-          "</div>" +
-          '<div class="dz-leg casa">' +
-          '<div class="l">Se bater na Casa Externa</div>' +
-          '<div class="name">' +
-          esc(casaLabel) +
-          (casaOdd != null && Number.isFinite(casaOdd) ? " · @" + casaOdd : "") +
-          "</div>" +
-          '<div class="v">+' +
-          money(lucro) +
-          "</div>" +
-          "</div>" +
-          "</div>" +
+          ")</small></strong></div>" +
+          liqHtml +
           '<div class="dz-foot">' +
-          '<span class="dz-desafio-ref">' +
-          esc(desafio.title || "Desafio") +
-          " #" +
-          esc(desafio.number != null ? String(desafio.number).padStart(3, "0") : "—") +
-          " · etapa " +
-          esc(step.step_index || 1) +
-          "</span>" +
-          '<button type="button" class="dz-cta" data-desafio="' +
-          esc(desafio.id) +
-          '" data-step="' +
-          esc(step.id || step.step_index || 1) +
-          '"' +
-          (phase === "live" || !desafio.is_active ? " disabled" : "") +
-          ">" +
-          (phase === "live"
-            ? "Encerrado para entrada"
-            : !desafio.is_active
-              ? "Rascunho"
-              : phase === "soon"
-                ? "Aguardando liberação"
-                : "Participar") +
-          "</button>" +
-          "</div>" +
-          "</article>"
+          cta +
+          "</div></article>"
         );
       }
 
-      function emptyDesafioCard(desafio) {
-        return (
-          '<article class="dz-card dz-card-empty">' +
-          badgeHtml("ativo", !!desafio.is_active) +
-          "<h3>" +
-          esc(desafio.title || "Desafio") +
-          " #" +
-          esc(desafio.number != null ? String(desafio.number).padStart(3, "0") : "—") +
-          "</h3>" +
-          "<p>" +
-          esc(desafio.subtitle || "Sem jogos/etapas cadastrados neste desafio.") +
-          "</p>" +
-          '<p class="dz-empty-meta">0 etapas · saldo inicial ' +
-          money(desafio.initial_balance_cents) +
-          "</p>" +
-          "</article>"
-        );
-      }
-
-      function renderGames(desafios, hostId) {
-        var cards = [];
-        desafios.forEach(function (d) {
-          var steps = (d.desafio_steps || [])
-            .slice()
-            .sort(function (a, b) {
-              return (a.step_index || 0) - (b.step_index || 0);
-            });
-          if (!steps.length) {
-            cards.push(emptyDesafioCard(d));
-            return;
-          }
-          steps.forEach(function (s) {
-            cards.push(gameCard(d, s));
-          });
+      function applyFilter(list) {
+        var now = new Date();
+        var tomorrow = new Date(now);
+        tomorrow.setDate(now.getDate() + 1);
+        return list.filter(function (it) {
+          if (filter === "Todos" || filter === "Futebol") return true;
+          if (!it.startsAtMs) return filter !== "Hoje" && filter !== "Amanhã";
+          var d = new Date(it.startsAtMs);
+          if (filter === "Hoje") return d.toDateString() === now.toDateString();
+          if (filter === "Amanhã") return d.toDateString() === tomorrow.toDateString();
+          if (filter === "Alta") return Number(it.lucroMaxPct) >= 15;
+          return true;
         });
-        var host = document.getElementById(hostId);
-        host.innerHTML =
-          cards.join("") ||
-          '<div class="ops-empty"><h2>Nenhum desafio disponível no momento</h2><p>Aguarde o lançamento de um novo desafio pela equipe ArbiShield.</p></div>';
-        host.querySelectorAll(".dz-cta:not([disabled])").forEach(function (btn) {
+      }
+
+      function render() {
+        var now = Date.now();
+        var visible = applyFilter(items);
+        var host = document.getElementById("list");
+        if (!visible.length) {
+          host.innerHTML =
+            '<div class="ops-empty"><h2>Nenhum desafio disponível no momento</h2><p>Aguarde o lançamento de um novo desafio pela equipe ArbiShield.</p></div>';
+          return;
+        }
+        host.innerHTML = visible.map(function (it) { return cardHtml(it, now); }).join("");
+        host.querySelectorAll("[data-participate]").forEach(function (btn) {
           btn.addEventListener("click", function () {
             alert(
-              "Participação na etapa ainda está a ser ligada no v2. O jogo já aparece no desafio; em breve o botão confirma a entrada."
+              "Participação na etapa ainda está a ser ligada no v2. O card já segue o modelo do SPA."
             );
           });
         });
       }
+
+      function tickCountdowns() {
+        var now = Date.now();
+        document.querySelectorAll("[data-countdown]").forEach(function (el) {
+          var unlock = Number(el.getAttribute("data-countdown"));
+          if (!Number.isFinite(unlock)) return;
+          var left = unlock - now;
+          if (left <= 0) {
+            render();
+            return;
+          }
+          el.textContent = fmtCountdown(left);
+        });
+      }
+
+      document.querySelectorAll(".dz-filter").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          document.querySelectorAll(".dz-filter").forEach(function (b) {
+            b.classList.remove("is-on");
+          });
+          btn.classList.add("is-on");
+          filter = btn.getAttribute("data-f") || "Todos";
+          render();
+        });
+      });
 
       try {
         var res = await fetch("/api/arbishield/desafios", {
           cache: "no-store",
           headers: { accept: "application/json" },
         });
-        var data = await res.json().catch(function () {
-          return [];
-        });
+        var data = await res.json().catch(function () { return []; });
         if (!res.ok) throw new Error((data && data.error) || "Falha ao carregar desafios");
         var rows = Array.isArray(data) ? data : [];
-        var alive = rows.filter(function (d) {
-          return !d.deleted_at;
-        });
-        var active = alive.filter(function (d) {
-          return d.is_active;
-        });
-        var drafts = alive.filter(function (d) {
-          return !d.is_active;
-        });
-        var gameCount = active.reduce(function (n, d) {
-          return n + ((d.desafio_steps && d.desafio_steps.length) || 0);
-        }, 0);
+        var alive = rows.filter(function (d) { return !d.deleted_at; });
+        var active = alive.filter(function (d) { return d.is_active; });
 
-        document.getElementById("kAvail").textContent = String(gameCount || active.length);
-        document.getElementById("kActive").textContent = String(active.length);
-        document.getElementById("kTotal").textContent = String(
-          alive.reduce(function (n, d) {
-            return n + ((d.desafio_steps && d.desafio_steps.length) || 0);
-          }, 0)
+        items = [];
+        active.forEach(function (d) {
+          var steps = (d.desafio_steps || [])
+            .slice()
+            .sort(function (a, b) { return (a.step_index || 0) - (b.step_index || 0); });
+          if (!steps.length) return;
+          steps.forEach(function (s) {
+            items.push(toCardItem(d, s));
+          });
+        });
+
+        // Preferir jogos ainda jogáveis; ao vivo ficam no fim
+        items.sort(function (a, b) {
+          var na = a.startsAtMs || 0;
+          var nb = b.startsAtMs || 0;
+          return na - nb;
+        });
+
+        document.getElementById("kAvail").textContent = String(
+          items.filter(function (it) {
+            return phaseOf(it, Date.now()) === "ativo" || phaseOf(it, Date.now()) === "soon";
+          }).length
         );
+        document.getElementById("kActive").textContent = String(active.length);
+        document.getElementById("kTotal").textContent = String(items.length);
 
-        renderGames(active.length ? active : [], "list");
-        if (!active.length) {
-          document.getElementById("list").innerHTML =
-            '<div class="ops-empty"><h2>Nenhum desafio disponível no momento</h2><p>Aguarde o lançamento de um novo desafio pela equipe ArbiShield.</p></div>';
-        }
-
-        var wrap = document.getElementById("draftsWrap");
-        if (drafts.length) {
-          wrap.hidden = false;
-          renderGames(drafts, "drafts");
-        } else {
-          wrap.hidden = true;
-        }
+        render();
+        if (tickTimer) clearInterval(tickTimer);
+        tickTimer = setInterval(tickCountdowns, 1000);
       } catch (ex) {
         showErr(ex.message || "Erro");
         document.getElementById("list").innerHTML = "";
