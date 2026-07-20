@@ -226,7 +226,7 @@
         <p class="sub">Cockpit de Eventos e Risco · Catálogo Pré-Live BetBra</p>
       </div>
       <div class="actions">
-        <a class="btn btn-ghost" href="/admin">← Admin</a>
+        <a class="btn btn-ghost" href="/admin/matches">← Admin</a>
         <button class="btn btn-ghost" id="btnRefresh" type="button">Atualizar</button>
       </div>
     </header>
@@ -389,7 +389,16 @@
 
       async function apiGet(path) {
         var res = await fetch(path, { cache: "no-store" });
-        var data = await res.json();
+        var text = await res.text();
+        var data;
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch (e) {
+          if (res.status === 502) {
+            throw new Error("502 — API offline. Rode vps-stabilize-arbishield.sh na VPS.");
+          }
+          throw new Error("Resposta inválida (" + res.status + ")");
+        }
         if (!res.ok || data.ok === false) {
           throw new Error(data.error || ("HTTP " + res.status));
         }
