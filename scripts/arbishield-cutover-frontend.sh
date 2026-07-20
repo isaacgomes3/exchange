@@ -77,6 +77,7 @@ if [[ -d "$STATIC_DIR" ]]; then
   mkdir -p "$DEST/assets"
   cp -f "$STATIC_DIR/desafio-sugestoes-inject.js" "$DEST/assets/desafio-sugestoes-inject.js"
   cp -f "$STATIC_DIR/app-stability.js" "$DEST/assets/app-stability.js"
+  cp -f "$STATIC_DIR/admin-jogos-force-vps.js" "$DEST/assets/admin-jogos-force-vps.js"
   cp -f "$STATIC_DIR/admin-modal-fix.js" "$DEST/assets/admin-modal-fix.js"
   cp -f "$STATIC_DIR/auth-boot-fix.js" "$DEST/assets/auth-boot-fix.js"
   # stub do chunk ausente (navegação client-side)
