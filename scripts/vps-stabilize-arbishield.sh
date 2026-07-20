@@ -66,7 +66,7 @@ for pair in \
   chmod 0644 "$dst"
 done
 mkdir -p "$WEB/assets"
-for asset in desafio-sugestoes-inject.js app-stability.js admin-jogos-force-vps.js admin-modal-fix.js auth-boot-fix.js; do
+for asset in admin-jogos-guard.js desafio-sugestoes-inject.js app-stability.js admin-modal-fix.js auth-boot-fix.js; do
   download "deploy/vps-supabase/static/$asset" "$WEB/assets/$asset" || true
 done
 

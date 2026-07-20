@@ -136,8 +136,14 @@ def main() -> None:
 
     early = ""
     late = ""
+    guard_inline = ""
+    guard_path = ASSETS / "admin-jogos-guard-inline.html"
+    if guard_path.exists():
+        guard_inline = guard_path.read_text(encoding="utf-8", errors="replace").strip()
+    if (ASSETS / "admin-jogos-guard.js").exists():
+        early = '<script src="/assets/admin-jogos-guard.js"></script>'
     if (ASSETS / "app-stability.js").exists():
-        early = '<script src="/assets/app-stability.js"></script>'
+        early += '<script src="/assets/app-stability.js"></script>'
     if (ASSETS / "admin-modal-fix.js").exists():
         early += '<script src="/assets/admin-modal-fix.js"></script>'
     if (ASSETS / "auth-boot-fix.js").exists():
@@ -156,6 +162,7 @@ def main() -> None:
     {"".join(icon_links)}
     <link rel="manifest" href="/manifest.json" />
     {css_tags}
+    {guard_inline}
   </head>
   <body class="antialiased" style="background:#011a14;color:#f5f5f7;margin:0;min-height:100vh">
     {early}
