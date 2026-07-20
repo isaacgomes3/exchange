@@ -300,6 +300,8 @@
       var selectedMarket = null;
       var selectedRunner = null;
       var platformMatches = [];
+      var platformLoaded = false;
+      var platformLoading = false;
       var searchTerm = "";
 
       var gate = document.getElementById("gate");
@@ -364,10 +366,13 @@
         });
       }
 
-      async function resolveAuth() {
+      async function resolveAuth(forceRefresh) {
         try {
-          var refreshed = await withTimeout(supa.auth.refreshSession(), 8000, "Sessão");
-          var session = refreshed.data && refreshed.data.session;
+          var session = null;
+          if (forceRefresh) {
+            var refreshed = await withTimeout(supa.auth.refreshSession(), 8000, "Sessão");
+            session = refreshed.data && refreshed.data.session;
+          }
           if (!session) {
             var current = await withTimeout(supa.auth.getSession(), 5000, "Sessão");
             session = current.data && current.data.session;
@@ -650,23 +655,39 @@
         renderStats();
       }
 
-      async function loadPlatformMatches() {
+      async function loadPlatformMatches(options) {
+        options = options || {};
+        var force = !!options.force;
+        if (platformLoading) return;
         if (!auth) {
+          platformLoaded = false;
           platformMatches = [];
           $("platformContent").innerHTML =
             '<div class="empty">Login admin necessário para listar eventos da plataforma.</div>';
           renderStats();
           return;
         }
-        $("platformContent").innerHTML = '<div class="loading">Carregando…</div>';
+        if (platformLoaded && !force && platformMatches.length) {
+          renderPlatformList();
+          renderStats();
+          return;
+        }
+        platformLoading = true;
+        if (!platformLoaded || force) {
+          $("platformContent").innerHTML = '<div class="loading">Carregando…</div>';
+        }
         try {
           platformMatches = await rest(
             "matches?deleted_at=is.null&select=id,home_team,away_team,league,starts_at,is_published,max_protection_cents,used_protection_cents,markets&order=starts_at.asc",
             auth.token
           );
+          platformLoaded = true;
           renderPlatformList();
         } catch (err) {
+          platformLoaded = false;
           $("platformContent").innerHTML = '<div class="error">' + err.message + "</div>";
+        } finally {
+          platformLoading = false;
         }
         renderStats();
       }
@@ -687,11 +708,10 @@
 
         $("btnRefresh").addEventListener("click", function () {
           loadPrelive();
-          loadPlatformMatches();
-          resolveAuth().then(function (next) {
+          resolveAuth(false).then(function (next) {
             auth = next;
             showAuthBanner(!auth);
-            if (auth) loadPlatformMatches();
+            loadPlatformMatches({ force: true });
           });
         });
         $("search").addEventListener("input", function (e) {
@@ -701,7 +721,11 @@
         });
         document.querySelectorAll("#viewTabs .tab").forEach(function (tab) {
           tab.addEventListener("click", function () {
-            setView(tab.getAttribute("data-view"));
+            var next = tab.getAttribute("data-view");
+            setView(next);
+            if (next === "platform" && auth && !platformLoaded) {
+              loadPlatformMatches();
+            }
           });
         });
         $("btnCancelCreate").addEventListener("click", function () {
@@ -724,18 +748,10 @@
 
       window.addEventListener("pageshow", function (ev) {
         if (!ev.persisted) return;
-        resolveAuth().then(function (next) {
+        resolveAuth(false).then(function (next) {
           auth = next;
           showAuthBanner(!auth);
-          loadPlatformMatches();
-        });
-      });
-
-      supa.auth.onAuthStateChange(function () {
-        resolveAuth().then(function (next) {
-          auth = next;
-          showAuthBanner(!auth);
-          if (auth) loadPlatformMatches();
+          if (auth) loadPlatformMatches({ force: true });
         });
       });
     })();
