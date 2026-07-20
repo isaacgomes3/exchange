@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Sobe Next.js (APIs admin ArbiShield) na VPS — arbishield.app
-# Uso na VPS:
-#   bash <(curl -fsSL https://raw.githubusercontent.com/isaacgomes3/exchange/main/scripts/vps-deploy-next-admin.sh)
+# OPCIONAL — painel Next (/arbishield). Não é necessário para admin estável.
+# Use primeiro: scripts/vps-deploy-arbishield-admin.sh (HTML + :3098/:3099 + Supabase)
+#
+# Sobe Next.js na VPS — arbishield.app
 set -euo pipefail
 
 REPO="${ARBISHIELD_REPO:-https://github.com/isaacgomes3/exchange.git}"
