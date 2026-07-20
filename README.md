@@ -15,14 +15,16 @@ Schema + espelho visual → GitHub. Dados → só `/opt/arbishield/backups`.
 ### 2) Ativar `/v2` (HTML estático + layout do site legado)
 
 ```bash
-bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-enable-v2.sh?v=5")
+bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-enable-v2.sh?v=6")
 ```
 
 Se falhar o nginx, use o conf real da VPS:
 
 ```bash
-NGINX_SITE=/etc/nginx/conf.d/arbishield-cutover.conf bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-enable-v2.sh?v=5")
+NGINX_SITE=/etc/nginx/conf.d/arbishield-cutover.conf bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-enable-v2.sh?v=6")
 ```
+
+**Isolamento:** o v2 **não** abre `/app` nem `/admin` do SPA. Menus incompletos vão para `/v2/em-breve.html`.
 
 | Rota | Função |
 |------|--------|

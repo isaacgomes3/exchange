@@ -21,11 +21,17 @@
   <div id="err" class="err"></div>
   <div class="grid" id="cards"></div>
 
-  <div class="section-label"><span class="dot" style="background:#c9f223"></span>Atalhos</div>
+  <div class="section-label"><span class="dot" style="background:#c9f223"></span>Disponível</div>
   <div class="grid">
-    <a class="card primary" href="/v2/app-modulo.html?to=/app/proteger&t=Proteger%20Aposta"><div class="tag">Operações</div><h2>Proteger aposta</h2><p>Abrir proteção no fluxo do app.</p></a>
-    <a class="card" href="/v2/app-modulo.html?to=/app/protecoes&t=Minhas%20Prote%C3%A7%C3%B5es"><div class="tag">Operações</div><h2>Minhas proteções</h2><p>Histórico e status.</p></a>
-    <a class="card" href="/v2/app-modulo.html?to=/app/carteira&t=Financeiro"><div class="tag">Operações</div><h2>Financeiro</h2><p>Saldo, depósitos e saques.</p></a>
+    <a class="card primary" href="/v2/app.html"><div class="tag">Conta</div><h2>Visão geral</h2><p>Saldo e status no sistema novo.</p></a>
+  </div>
+
+  <div class="section-label"><span class="dot" style="background:#8a8a8f"></span>Em breve (só v2)</div>
+  <div class="grid">
+    <a class="card" href="/v2/em-breve.html?id=proteger&t=Proteger%20Aposta"><div class="tag">Em breve</div><h2>Proteger aposta</h2><p>Será reescrito aqui — sem abrir /app.</p></a>
+    <a class="card" href="/v2/em-breve.html?id=protecoes&t=Minhas%20Prote%C3%A7%C3%B5es"><div class="tag">Em breve</div><h2>Minhas proteções</h2><p>Será reescrito aqui — sem abrir /app.</p></a>
+    <a class="card" href="/v2/em-breve.html?id=carteira&t=Financeiro"><div class="tag">Em breve</div><h2>Financeiro</h2><p>Será reescrito aqui — sem abrir /app.</p></a>
+    <a class="card" href="/v2/em-breve.html?id=perfil&t=Perfil"><div class="tag">Em breve</div><h2>Perfil</h2><p>Será reescrito aqui — sem abrir /app/perfil.</p></a>
   </div>
 
   <script>
@@ -35,7 +41,7 @@
       if (!user) return;
 
       document.getElementById("meta").textContent =
-        (user.email || "—") + " · layout do site legado · banco vivo";
+        (user.email || "—") + " · sistema novo isolado · banco vivo";
 
       document.addEventListener("click", async function (e) {
         var t = e.target.closest("#v2LogoutLink");

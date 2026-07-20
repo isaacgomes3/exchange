@@ -3,10 +3,10 @@
 # Corrige tela preta: /v2 deixava de cair no SPA index.html.
 #
 # Uso na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-enable-v2.sh?v=5")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-enable-v2.sh?v=6")
 #
 # Se o auto-detect falhar:
-#   NGINX_SITE=/etc/nginx/conf.d/arbishield-cutover.conf bash <(curl -fsSL ".../vps-enable-v2.sh?v=5")
+#   NGINX_SITE=/etc/nginx/conf.d/arbishield-cutover.conf bash <(curl -fsSL ".../vps-enable-v2.sh?v=6")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/arbishield-v2-backup-723d}"
@@ -23,16 +23,19 @@ command -v python3 >/dev/null || die "python3 não encontrado"
 
 mkdir -p "$WEB/v2"
 
-log "1/3 — baixar páginas v2 estáticas (layout completo)"
+log "1/3 — baixar páginas v2 estáticas (isolado do SPA)"
 for f in \
-  index.html auth.html app.html app-modulo.html \
-  admin.html admin-users.html admin-jogos.html admin-desafios.html admin-modulo.html \
+  index.html auth.html app.html em-breve.html \
+  admin.html admin-users.html admin-jogos.html admin-desafios.html \
   v2.css v2.js v2-shell.js
 do
   curl -fsSL "$RAW/deploy/vps-supabase/static/v2/$f" -o "$WEB/v2/$f"
   chmod 0644 "$WEB/v2/$f"
   echo "  ok $f"
 done
+
+# Remove pontes antigas para o SPA, se existirem
+rm -f "$WEB/v2/admin-modulo.html" "$WEB/v2/app-modulo.html"
 
 find_nginx_site() {
   local c
@@ -84,7 +87,7 @@ if [[ -z "${NGINX_SITE:-}" || ! -f "$NGINX_SITE" ]]; then
   echo "Candidatos em /etc/nginx:" >&2
   ls -la /etc/nginx/conf.d/ 2>/dev/null || true
   ls -la /etc/nginx/sites-enabled/ 2>/dev/null || true
-  die "nginx site não encontrado — rode: NGINX_SITE=/caminho/do.conf bash <(curl -fsSL \"$RAW/scripts/vps-enable-v2.sh?v=5\")"
+  die "nginx site não encontrado — rode: NGINX_SITE=/caminho/do.conf bash <(curl -fsSL \"$RAW/scripts/vps-enable-v2.sh?v=6\")"
 fi
 
 log "usando nginx: $NGINX_SITE"
