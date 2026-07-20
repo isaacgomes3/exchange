@@ -245,6 +245,86 @@ async function listDesafios(token) {
   return Array.isArray(rows) ? rows : [];
 }
 
+async function nextDesafioNumber(token) {
+  const rows = await sb(
+    "/rest/v1/desafios?select=number&order=number.desc&limit=1",
+    { token: token || SERVICE_KEY }
+  );
+  const n = Array.isArray(rows) && rows[0]?.number != null ? Number(rows[0].number) : 0;
+  return (Number.isFinite(n) ? n : 0) + 1;
+}
+
+async function createDesafio(token, body) {
+  const stepIn = body.step || (body.steps && body.steps[0]) || {};
+  const number = body.number != null ? Number(body.number) : await nextDesafioNumber(token);
+  const isActive = Boolean(body.is_active);
+  const desafioRow = {
+    number,
+    title: body.title || `Desafio ${number}`,
+    subtitle: body.subtitle || null,
+    total_steps: Number(body.total_steps) || 1,
+    initial_balance_cents: Number(body.initial_balance_cents) || 20000,
+    is_active: isActive,
+    status: body.status || (isActive ? "active" : "draft"),
+    target_profit_pct: Number(body.target_profit_pct) || 5,
+    auto_link_matches: body.auto_link_matches !== false,
+    published_at: isActive ? new Date().toISOString() : null,
+  };
+
+  const created = await sb("/rest/v1/desafios", {
+    method: "POST",
+    token: token || SERVICE_KEY,
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(desafioRow),
+  });
+  const desafio = Array.isArray(created) ? created[0] : created;
+  if (!desafio?.id) throw new Error("Falha ao criar desafio");
+
+  const stepRow = {
+    desafio_id: desafio.id,
+    step_index: Number(stepIn.step_index) || 1,
+    match_label: stepIn.match_label || null,
+    home_team: stepIn.home_team || null,
+    away_team: stepIn.away_team || null,
+    market_name: stepIn.market_name || stepIn.market_name_casa || null,
+    market_name_casa: stepIn.market_name_casa || stepIn.market_name || null,
+    market_name_arbishield: stepIn.market_name_arbishield || null,
+    casa_odd: stepIn.casa_odd != null ? Number(stepIn.casa_odd) : null,
+    arbi_odd: stepIn.arbi_odd != null ? Number(stepIn.arbi_odd) : null,
+    casa_stake_cents:
+      stepIn.casa_stake_cents != null ? Number(stepIn.casa_stake_cents) : null,
+    liquidity_cents:
+      stepIn.liquidity_cents != null ? Number(stepIn.liquidity_cents) : 200000,
+    display_liquidity_cents:
+      stepIn.display_liquidity_cents != null
+        ? Number(stepIn.display_liquidity_cents)
+        : stepIn.liquidity_cents != null
+          ? Number(stepIn.liquidity_cents)
+          : 200000,
+    external_bet_link: stepIn.external_bet_link || null,
+    starts_at: stepIn.starts_at || null,
+    release_minutes_before:
+      stepIn.release_minutes_before != null
+        ? Number(stepIn.release_minutes_before)
+        : 1440,
+    status: stepIn.status || "pending",
+    casa_commission_pct:
+      stepIn.casa_commission_pct != null ? Number(stepIn.casa_commission_pct) : 4.5,
+    arbi_commission_pct:
+      stepIn.arbi_commission_pct != null ? Number(stepIn.arbi_commission_pct) : 0,
+    is_published: stepIn.is_published != null ? Boolean(stepIn.is_published) : isActive,
+  };
+
+  const steps = await sb("/rest/v1/desafio_steps", {
+    method: "POST",
+    token: token || SERVICE_KEY,
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(stepRow),
+  });
+  const step = Array.isArray(steps) ? steps[0] : steps;
+  return { ...desafio, desafio_steps: step ? [step] : [] };
+}
+
 function extractServerFnData(rawBody) {
   if (!rawBody) return {};
   let parsed;
@@ -1059,8 +1139,22 @@ const server = createServer(async (req, res) => {
   if (url.pathname === "/api/arbishield/desafios") {
     try {
       const token = bearerFromReq(req);
-      const data = await listDesafios(token);
-      return sendJson(res, 200, data);
+      if (req.method === "GET") {
+        const data = await listDesafios(token);
+        return sendJson(res, 200, data);
+      }
+      if (req.method === "POST") {
+        const raw = await parseBody(req);
+        let body = {};
+        try {
+          body = raw ? JSON.parse(raw) : {};
+        } catch {
+          return sendJson(res, 400, { error: "JSON inválido" });
+        }
+        const created = await createDesafio(token, body);
+        return sendJson(res, 201, { ok: true, desafio: created });
+      }
+      return sendJson(res, 405, { error: "method_not_allowed" });
     } catch (err) {
       return sendJson(res, 500, {
         error: err instanceof Error ? err.message : String(err),

@@ -122,6 +122,34 @@
     .suggest .v { font-weight: 700; margin-top: 2px; word-break: break-word; }
     .suggest .hint { color: var(--muted); font-size: 13px; margin: 0 0 4px; }
     .suggest .actions { margin-top: 14px; }
+    .modal-bg {
+      display: none; position: fixed; inset: 0; z-index: 50;
+      background: rgba(0,0,0,0.72); align-items: center; justify-content: center;
+      padding: 16px;
+    }
+    .modal-bg.show { display: flex; }
+    .modal {
+      width: min(560px, 100%); max-height: 90vh; overflow: auto;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 16px; padding: 18px;
+    }
+    .modal h2 {
+      margin: 0 0 14px; font-size: 0.95rem; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--lime);
+    }
+    .modal label {
+      display: flex; flex-direction: column; gap: 6px;
+      font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted); font-weight: 700; margin-bottom: 10px;
+    }
+    .modal input, .modal textarea {
+      background: #121212; border: 1px solid var(--border); color: var(--text);
+      border-radius: 10px; padding: 10px 12px; font: inherit; font-size: 14px;
+    }
+    .modal .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 560px) { .modal .row { grid-template-columns: 1fr; } }
+    .modal .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+    .modal .err { color: #fca5a5; font-size: 13px; margin: 0 0 8px; }
   </style>
 </head>
 <body>
@@ -134,7 +162,8 @@
       <div class="actions">
         <a class="btn btn-ghost" href="/admin">← Admin</a>
         <a class="btn btn-lime-outline" href="/desafio-sugestoes.html">Sugestão de Desafio</a>
-        <button class="btn btn-primary" id="btnRefresh" type="button">Atualizar</button>
+        <button class="btn btn-primary" id="btnLaunch" type="button">⚡ Lançar Desafio</button>
+        <button class="btn btn-ghost" id="btnRefresh" type="button">Atualizar</button>
       </div>
     </header>
 
@@ -152,6 +181,68 @@
     <div class="stats" id="stats"></div>
     <div class="meta" id="meta">Carregando…</div>
     <div class="list" id="list"></div>
+  </div>
+
+  <div class="modal-bg" id="launchModal" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h2>Lançar desafio</h2>
+      <p class="hint" id="launchHint">Preencha a partida. Se houver sugestão salva, os campos já vêm preenchidos.</p>
+      <p class="err" id="launchErr" hidden></p>
+      <label>Título
+        <input id="fTitle" type="text" />
+      </label>
+      <label>Subtítulo
+        <input id="fSubtitle" type="text" />
+      </label>
+      <div class="row">
+        <label>Time casa
+          <input id="fHome" type="text" />
+        </label>
+        <label>Time fora
+          <input id="fAway" type="text" />
+        </label>
+      </div>
+      <label>Mercado BetBra
+        <input id="fMercadoCasa" type="text" placeholder="Ex: Ambas Marcam — Sim" />
+      </label>
+      <label>Mercado ArbiShield (contrário)
+        <input id="fMercadoArbi" type="text" />
+      </label>
+      <div class="row">
+        <label>Odd BetBra
+          <input id="fOddCasa" type="number" step="0.001" min="1.01" />
+        </label>
+        <label>Odd Arbi
+          <input id="fOddArbi" type="number" step="0.001" min="1.01" />
+        </label>
+      </div>
+      <div class="row">
+        <label>Stake BetBra (R$)
+          <input id="fStakeCasa" type="number" step="0.01" min="1" />
+        </label>
+        <label>Liquidez (R$)
+          <input id="fLiquidez" type="number" step="1" min="1" value="2000" />
+        </label>
+      </div>
+      <label>Link BetBra
+        <input id="fLink" type="url" />
+      </label>
+      <label>Início (ISO / datetime-local)
+        <input id="fStarts" type="datetime-local" />
+      </label>
+      <div class="row">
+        <label>Lucro alvo (%)
+          <input id="fLucro" type="number" step="0.1" value="5" />
+        </label>
+        <label>Ativar agora
+          <input id="fActive" type="checkbox" checked style="width:auto;margin-top:10px" />
+        </label>
+      </div>
+      <div class="actions">
+        <button class="btn btn-ghost" type="button" id="launchCancel">Cancelar</button>
+        <button class="btn btn-primary" type="button" id="launchSubmit">Confirmar lançamento</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -367,6 +458,153 @@
     $("btnRefresh").addEventListener("click", load);
     renderSuggestion();
     load();
+
+    function toDatetimeLocal(iso) {
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return "";
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function fillLaunchFromSuggestion() {
+      const data = readSuggestion();
+      const step = (data && data.steps && data.steps[0]) || {};
+      $("fTitle").value = (data && data.title) || "SUGESTÃO · Desafio";
+      $("fSubtitle").value =
+        (data && data.subtitle) ||
+        "Sugestão automática (surebet BetBra ↔ ArbiShield)";
+      $("fHome").value = step.home_team || "";
+      $("fAway").value = step.away_team || "";
+      $("fMercadoCasa").value = step.market_name_casa || step.market_name || "";
+      $("fMercadoArbi").value = step.market_name_arbishield || "";
+      $("fOddCasa").value = step.casa_odd ?? "";
+      $("fOddArbi").value = step.arbi_odd ?? "";
+      $("fStakeCasa").value =
+        step.casa_stake_cents != null ? (step.casa_stake_cents / 100).toFixed(2) : "";
+      $("fLiquidez").value =
+        step.liquidity_cents != null
+          ? Math.round(step.liquidity_cents / 100)
+          : 2000;
+      $("fLink").value = step.external_bet_link || "";
+      $("fStarts").value = toDatetimeLocal(step.starts_at);
+      $("fLucro").value = data?.target_profit_pct ?? data?.profitMarginPct ?? 5;
+      $("launchHint").textContent = data
+        ? "Sugestão carregada do localStorage. Revise e confirme."
+        : "Sem sugestão salva — preencha manualmente ou use Sugestão de Desafio.";
+    }
+
+    function openLaunch() {
+      $("launchErr").hidden = true;
+      fillLaunchFromSuggestion();
+      $("launchModal").classList.add("show");
+    }
+
+    function closeLaunch() {
+      $("launchModal").classList.remove("show");
+    }
+
+    async function submitLaunch() {
+      $("launchErr").hidden = true;
+      const home = $("fHome").value.trim();
+      const away = $("fAway").value.trim();
+      const casaOdd = Number($("fOddCasa").value);
+      const arbiOdd = Number($("fOddArbi").value);
+      const stakeReais = Number($("fStakeCasa").value);
+      const liqReais = Number($("fLiquidez").value);
+      const startsLocal = $("fStarts").value;
+      if (!home || !away) {
+        $("launchErr").textContent = "Informe os times.";
+        $("launchErr").hidden = false;
+        return;
+      }
+      if (!Number.isFinite(casaOdd) || casaOdd <= 1) {
+        $("launchErr").textContent = "Odd BetBra inválida.";
+        $("launchErr").hidden = false;
+        return;
+      }
+      if (!Number.isFinite(arbiOdd) || arbiOdd <= 1) {
+        $("launchErr").textContent = "Odd Arbi inválida.";
+        $("launchErr").hidden = false;
+        return;
+      }
+      const startsAt = startsLocal
+        ? new Date(startsLocal).toISOString()
+        : new Date(Date.now() + 60 * 60_000).toISOString();
+      const releaseMinutes = Math.max(
+        1,
+        Math.round((new Date(startsAt).getTime() - Date.now()) / 60_000)
+      );
+      const payload = {
+        title: $("fTitle").value.trim() || `SUGESTÃO · ${home} x ${away}`,
+        subtitle: $("fSubtitle").value.trim(),
+        total_steps: 1,
+        initial_balance_cents: Math.round(
+          (Number.isFinite(stakeReais) ? stakeReais : 0) * (arbiOdd / casaOdd) * 100
+        ) || 20000,
+        is_active: $("fActive").checked,
+        status: $("fActive").checked ? "active" : "draft",
+        target_profit_pct: Number($("fLucro").value) || 5,
+        auto_link_matches: true,
+        step: {
+          step_index: 1,
+          match_label: `${home} x ${away}`,
+          home_team: home,
+          away_team: away,
+          market_name: $("fMercadoCasa").value.trim(),
+          market_name_casa: $("fMercadoCasa").value.trim(),
+          market_name_arbishield: $("fMercadoArbi").value.trim(),
+          casa_odd: casaOdd,
+          arbi_odd: arbiOdd,
+          casa_stake_cents: Math.round((Number.isFinite(stakeReais) ? stakeReais : 0) * 100),
+          liquidity_cents: Math.round((Number.isFinite(liqReais) ? liqReais : 2000) * 100),
+          display_liquidity_cents: Math.round((Number.isFinite(liqReais) ? liqReais : 2000) * 100),
+          external_bet_link: $("fLink").value.trim() || null,
+          starts_at: startsAt,
+          release_minutes_before: releaseMinutes,
+          status: "pending",
+          casa_commission_pct: 4.5,
+          arbi_commission_pct: 0,
+          is_published: $("fActive").checked,
+        },
+      };
+
+      $("launchSubmit").disabled = true;
+      $("launchSubmit").textContent = "Salvando…";
+      try {
+        const res = await fetch("/api/arbishield/desafios", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", accept: "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.error || res.statusText || "Falha ao criar");
+        localStorage.removeItem("arbishield_desafio_suggestion");
+        localStorage.removeItem("arbishield_desafio_suggestion_at");
+        closeLaunch();
+        renderSuggestion();
+        await load();
+        alert("Desafio lançado com sucesso.");
+      } catch (err) {
+        $("launchErr").textContent = String(err.message || err);
+        $("launchErr").hidden = false;
+      } finally {
+        $("launchSubmit").disabled = false;
+        $("launchSubmit").textContent = "Confirmar lançamento";
+      }
+    }
+
+    $("btnLaunch").addEventListener("click", openLaunch);
+    $("launchCancel").addEventListener("click", closeLaunch);
+    $("launchModal").addEventListener("click", (e) => {
+      if (e.target === $("launchModal")) closeLaunch();
+    });
+    $("launchSubmit").addEventListener("click", submitLaunch);
+
+    // Se veio de ?sugestao=1, abre o lançamento automaticamente
+    if (new URLSearchParams(location.search).get("sugestao") === "1") {
+      openLaunch();
+    }
   </script>
 </body>
 </html>

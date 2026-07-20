@@ -1,8 +1,10 @@
 /**
  * Link "Sugestão de Desafio" + preencher formulário a partir do localStorage.
  *
- * IMPORTANTE: NÃO usa MutationObserver no documento inteiro — isso + React
- * gerava loop (mutation → fill → re-render → mutation) e congelava o admin.
+ * CRÍTICO:
+ * - NÃO usa MutationObserver (congelava o admin com o React)
+ * - NÃO move o botão React "Lançar Desafio"
+ * - Se achar o wrap antigo (versão bugada), DESEMPACOTA o botão
  */
 (function () {
   const BTN_ID = "arbishield-desafio-sugestao-btn";
@@ -20,9 +22,25 @@
     );
   }
 
+  /**
+   * Versão antiga encapsulava o botão React num <div id=BTN_ID> e quebrava o clique.
+   * Aqui desfazemos isso.
+   */
+  function healBrokenWrap() {
+    const wrap = document.getElementById(BTN_ID);
+    if (!wrap || wrap.tagName !== "DIV") return;
+    const parent = wrap.parentElement;
+    if (!parent) return;
+    while (wrap.firstChild) {
+      parent.insertBefore(wrap.firstChild, wrap);
+    }
+    wrap.remove();
+  }
+
   /** Insere o link ao lado do botão, sem mover o nó React. */
   function ensureButton() {
     if (!onDesafiosPage()) return;
+    healBrokenWrap();
     if (document.getElementById(BTN_ID)) return;
     const launch = findLaunchButton();
     if (!launch || !launch.parentElement) return;
@@ -52,7 +70,6 @@
     el.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
-  /** Só limpa o flag UMA vez quando a URL traz sugestao=1 (evita loop). */
   function acceptNewSuggestionOnce() {
     const qs = new URLSearchParams(location.search);
     if (qs.get("sugestao") !== "1") return;
@@ -103,7 +120,6 @@
 
     if (inputs.length < 3) return;
 
-    // Marca ANTES de preencher — senão o re-render do React reentra e trava
     sessionStorage.setItem(APPLIED_FLAG, "1");
 
     let filled = 0;
@@ -131,7 +147,6 @@
     }
 
     if (filled === 0) {
-      // Formulário ainda não é o de lançamento — tenta de novo depois
       sessionStorage.removeItem(APPLIED_FLAG);
       return;
     }
@@ -147,8 +162,10 @@
   }
 
   function tick() {
-    if (!onDesafiosPage()) return;
     try {
+      // Sempre tenta curar wrap quebrado, mesmo fora da rota (SPA)
+      healBrokenWrap();
+      if (!onDesafiosPage()) return;
       ensureButton();
       applySuggestionToOpenForm();
     } catch (err) {
@@ -156,7 +173,6 @@
     }
   }
 
-  // Polling leve — sem MutationObserver (causava freeze no admin)
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", tick);
   } else {
@@ -164,7 +180,6 @@
   }
   setInterval(tick, 2000);
 
-  // Reage a navegação SPA (pushState/replaceState) sem observar o DOM
   const _push = history.pushState;
   const _replace = history.replaceState;
   history.pushState = function () {
