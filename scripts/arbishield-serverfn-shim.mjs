@@ -80,6 +80,17 @@ const FN = {
     "ab2bcac276202b9ac1d2f136884f8c3a1f072f457032e6d2062cdfce05358fd1",
   DELETE_DESAFIO:
     "1c8b336e8819e53d0326cf2fe66ad5c1b03a3c3cbb7235ae67de5d8ab739a4c3",
+  /** banners.functions — público + admin CRUD */
+  BANNERS_PUBLIC_LIST:
+    "cb53fc03069486f35e46a97afc68d768074eaa2682e6703751b5b4346f64d44d",
+  BANNERS_ADMIN_LIST:
+    "1ba88b9010fce03e0ff3c3c5c51fa278db819ebf4bd77b99867e3064c86e091d",
+  BANNERS_UPSERT:
+    "e5068c82295243a913a4850dfd5bd1c64c5a4166ae501581a3a459960e630a87",
+  BANNERS_DELETE:
+    "198b78c34f17e6663dd0b2aee49a4b143a2d04f70a88a721d7a7b7992040a0f5",
+  BANNERS_REORDER:
+    "6bb5b94ad984dfda9b3f6d2310eceb0106f341515295fa988444b412c57367ca",
 };
 
 function cors(res) {
@@ -724,6 +735,110 @@ async function currentUserIsSuperAdmin(token) {
   return !!row?.is_super_admin;
 }
 
+async function currentUserIsAdmin(token) {
+  if (await currentUserIsSuperAdmin(token)) return true;
+  const payload = decodeJwtPayload(token);
+  const uid = payload?.sub;
+  if (!uid) return false;
+  const roles = await sb(
+    `/rest/v1/user_roles?select=role&user_id=eq.${encodeURIComponent(uid)}`,
+    { token: SERVICE_KEY }
+  );
+  return (Array.isArray(roles) ? roles : []).some(
+    (r) => r.role === "admin" || r.role === "master_admin"
+  );
+}
+
+function normalizeBannerRow(body = {}) {
+  const variant = String(body.variant || "custom").toLowerCase();
+  const allowed = new Set(["custom", "affiliate", "match", "desafio"]);
+  return {
+    title: String(body.title || "").trim() || "Banner",
+    subtitle: body.subtitle != null ? String(body.subtitle) : null,
+    description: body.description != null ? String(body.description) : null,
+    cta_label: body.cta_label != null ? String(body.cta_label) : null,
+    cta_url: body.cta_url != null ? String(body.cta_url) : null,
+    image_url: String(body.image_url || "").trim(),
+    badge: body.badge != null ? String(body.badge) : null,
+    variant: allowed.has(variant) ? variant : "custom",
+    active: body.active !== false && body.active !== "false",
+    sort_order:
+      body.sort_order != null && Number.isFinite(Number(body.sort_order))
+        ? Number(body.sort_order)
+        : 0,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+async function listBannersPublic() {
+  const rows = await sb(
+    "/rest/v1/banners?select=*&active=eq.true&order=sort_order.asc,created_at.desc",
+    { token: SERVICE_KEY }
+  );
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function listBannersAdmin(token) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Sem permissão admin");
+  const rows = await sb(
+    "/rest/v1/banners?select=*&order=sort_order.asc,created_at.desc",
+    { token: SERVICE_KEY }
+  );
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function upsertBanner(token, body) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Sem permissão admin");
+  const row = normalizeBannerRow(body);
+  if (!row.image_url) throw new Error("Imagem do banner obrigatória");
+
+  if (body.id) {
+    const updated = await sb(
+      `/rest/v1/banners?id=eq.${encodeURIComponent(String(body.id))}`,
+      { method: "PATCH", token: SERVICE_KEY, body: row }
+    );
+    return Array.isArray(updated) ? updated[0] : updated;
+  }
+
+  const created = await sb("/rest/v1/banners", {
+    method: "POST",
+    token: SERVICE_KEY,
+    body: { ...row, created_at: new Date().toISOString() },
+  });
+  return Array.isArray(created) ? created[0] : created;
+}
+
+async function deleteBanner(token, body) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Sem permissão admin");
+  const id = body?.id;
+  if (!id) throw new Error("id obrigatório");
+  await sb(`/rest/v1/banners?id=eq.${encodeURIComponent(String(id))}`, {
+    method: "DELETE",
+    token: SERVICE_KEY,
+  });
+  return { ok: true };
+}
+
+async function reorderBanners(token, body) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Sem permissão admin");
+  const ids = Array.isArray(body?.ids)
+    ? body.ids
+    : Array.isArray(body?.order)
+      ? body.order
+      : [];
+  if (!ids.length) return { ok: true };
+  await Promise.all(
+    ids.map((id, index) =>
+      sb(`/rest/v1/banners?id=eq.${encodeURIComponent(String(id))}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: { sort_order: index, updated_at: new Date().toISOString() },
+      })
+    )
+  );
+  return { ok: true };
+}
+
 function requireUserId(token) {
   const payload = decodeJwtPayload(token);
   const uid = payload?.sub;
@@ -1116,6 +1231,66 @@ async function handleServerFn(req, res, id, rawBody = "") {
       return sendTsrOk(res, data);
     } catch (err) {
       console.error("[serverfn-shim] DELETE_DESAFIO error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.BANNERS_PUBLIC_LIST) {
+    try {
+      return sendTsrOk(res, await listBannersPublic());
+    } catch (err) {
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.BANNERS_ADMIN_LIST) {
+    try {
+      return sendTsrOk(res, await listBannersAdmin(token));
+    } catch (err) {
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.BANNERS_UPSERT && req.method === "POST") {
+    try {
+      const params = extractServerFnData(rawBody);
+      return sendTsrOk(res, await upsertBanner(token, params));
+    } catch (err) {
+      console.error("[serverfn-shim] BANNERS_UPSERT error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.BANNERS_DELETE && req.method === "POST") {
+    try {
+      const params = extractServerFnData(rawBody);
+      return sendTsrOk(res, await deleteBanner(token, params));
+    } catch (err) {
+      console.error("[serverfn-shim] BANNERS_DELETE error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.BANNERS_REORDER && req.method === "POST") {
+    try {
+      const params = extractServerFnData(rawBody);
+      return sendTsrOk(res, await reorderBanners(token, params));
+    } catch (err) {
       return sendTsrError(
         res,
         err instanceof Error ? err.message : String(err)
