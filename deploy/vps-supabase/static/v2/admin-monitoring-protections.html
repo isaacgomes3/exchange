@@ -5,24 +5,216 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Monitor de Proteções — ArbiShield v2</title>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
-  <script src="/v2-pages.js"></script>
   <script src="/v2-shell.js" defer></script>
+  <style>
+    .page-head h1 span { color: var(--monitor); }
+    .tpl-sub-monitor {
+      display: inline-flex; align-items: center; gap: 8px;
+      margin-top: 8px; color: var(--monitor);
+      font-size: 10px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
+    }
+    .btn-monitor {
+      background: transparent; color: var(--monitor);
+      border: 1px solid rgba(0,255,0,0.45);
+      border-radius: 12px; padding: 12px 16px;
+      font-weight: 800; font-size: 10px; letter-spacing: 0.12em;
+      text-transform: uppercase; cursor: pointer;
+    }
+  </style>
 </head>
 <body data-shell="admin" data-active="monitoring-protections">
   <div class="page-head">
     <div>
-      <h1>Monitor <span>de Proteções</span></h1>
-      <p class="sub">Proteções ativas e auditoria · nativo v2 · sem SPA</p>
+      <h1>Monitor de <span>Proteções</span></h1>
+      <div class="tpl-sub-monitor"><span class="v2-status-dot" style="background:var(--monitor);box-shadow:0 0 10px var(--monitor)"></span>Vigilância Ativa</div>
+      <p class="sub">Monitoramento de fluxo em tempo real · nativo v2</p>
     </div>
   </div>
+
   <div id="err" class="err"></div>
-  <div id="pageBody"><div class="meta">Carregando…</div></div>
+
+  <div class="tpl-filters">
+    <input id="q" type="search" placeholder="Buscar jogo ou usuário" />
+    <select id="status">
+      <option value="active">Ativas</option>
+      <option value="all">Todas</option>
+      <option value="pending">Pendentes</option>
+      <option value="cancelled">Canceladas</option>
+      <option value="settled">Encerradas</option>
+    </select>
+    <input id="day" type="date" />
+    <label class="tpl-pill" style="gap:8px;cursor:pointer">
+      <input id="showClosed" type="checkbox" /> Ver encerrados
+    </label>
+    <button type="button" class="btn-monitor" id="btnFilter">Filtrar</button>
+  </div>
+
+  <div class="tpl-stat-row">
+    <div class="tpl-stat"><div class="l">Proteções Ativas</div><div class="v" id="sAct">—</div><div class="s">Ativas + pendentes</div></div>
+    <div class="tpl-stat"><div class="l">Cobertura Total</div><div class="v" id="sVol">—</div><div class="s">Volume travado</div></div>
+    <div class="tpl-stat"><div class="l">Payout em Proteção</div><div class="v" id="sPay">—</div><div class="s">Payout potencial</div></div>
+    <div class="tpl-stat"><div class="l">Última Hora</div><div class="v" id="sHour">—</div><div class="s">Novas proteções</div></div>
+  </div>
+
+  <section class="tpl-card">
+    <div class="tpl-card-head"><h2>Monitoramento por Jogo</h2></div>
+    <div id="list"><div class="tpl-empty">Carregando…</div></div>
+  </section>
+
   <script>
-    ArbiV2Page.mountAdmin({"sources": [{"table": "view_all_protections", "limit": 200}, {"table": "protections", "limit": 200}], "cols": ["id", "user_id", "status", "created_at"]});
+    (async function () {
+      var money = ArbiV2.money;
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+      if (!(await ArbiV2.requireAdmin(supa, user))) {
+        document.getElementById("err").textContent = "Sem permissão administrativa";
+        document.getElementById("err").classList.add("show");
+        return;
+      }
+
+      var cache = { rows: [], matches: {} };
+
+      function showErr(msg) {
+        var el = document.getElementById("err");
+        el.textContent = msg || "";
+        el.classList.toggle("show", !!msg);
+      }
+
+      async function load() {
+        showErr("");
+        var status = document.getElementById("status").value;
+        var showClosed = document.getElementById("showClosed").checked;
+        var day = document.getElementById("day").value;
+        var q = (document.getElementById("q").value || "").trim().toLowerCase();
+
+        var query = supa
+          .from("protections")
+          .select("id,user_id,match_id,status,amount_cents,user_profit_cents,created_at,side,odd")
+          .order("created_at", { ascending: false })
+          .limit(500);
+        if (status !== "all") query = query.eq("status", status);
+        if (day) {
+          var from = day + "T00:00:00";
+          var to = day + "T23:59:59.999";
+          query = query.gte("created_at", from).lte("created_at", to);
+        }
+        var res = await query;
+        if (res.error) throw res.error;
+        var rows = res.data || [];
+
+        var back = await supa
+          .from("back_protections")
+          .select("id,user_id,match_id,status,amount_cents,user_profit_cents,created_at,odd")
+          .order("created_at", { ascending: false })
+          .limit(300);
+        var backRows = (back.data || []).map(function (r) {
+          return Object.assign({}, r, { side: "BACK" });
+        });
+        if (status !== "all") {
+          backRows = backRows.filter(function (r) { return r.status === status; });
+        }
+        rows = rows.concat(backRows);
+
+        if (!showClosed) {
+          rows = rows.filter(function (r) {
+            return r.status === "active" || r.status === "pending" || r.status === "review_odd";
+          });
+        }
+
+        var matchIds = Array.from(new Set(rows.map(function (r) { return r.match_id; }).filter(Boolean)));
+        var matchMap = {};
+        if (matchIds.length) {
+          var mres = await supa
+            .from("matches")
+            .select("id,home_team,away_team,league,starts_at")
+            .in("id", matchIds);
+          (mres.data || []).forEach(function (m) { matchMap[m.id] = m; });
+        }
+
+        if (q) {
+          rows = rows.filter(function (r) {
+            var m = matchMap[r.match_id] || {};
+            var hay = [
+              r.user_id, r.id, m.home_team, m.away_team, m.league
+            ].join(" ").toLowerCase();
+            return hay.indexOf(q) >= 0;
+          });
+        }
+
+        cache.rows = rows;
+        cache.matches = matchMap;
+        render();
+      }
+
+      function render() {
+        var rows = cache.rows;
+        var hourAgo = Date.now() - 3600 * 1000;
+        var active = rows.filter(function (r) {
+          return r.status === "active" || r.status === "pending" || r.status === "review_odd";
+        });
+        var vol = active.reduce(function (a, r) { return a + Number(r.amount_cents || 0); }, 0);
+        var pay = active.reduce(function (a, r) { return a + Number(r.user_profit_cents || 0); }, 0);
+        var lastHour = rows.filter(function (r) {
+          return new Date(r.created_at).getTime() >= hourAgo;
+        }).length;
+
+        document.getElementById("sAct").textContent = String(active.length);
+        document.getElementById("sVol").textContent = money(vol);
+        document.getElementById("sPay").textContent = money(pay);
+        document.getElementById("sHour").textContent = String(lastHour);
+
+        var byMatch = {};
+        rows.forEach(function (r) {
+          var key = r.match_id || "sem-jogo";
+          if (!byMatch[key]) byMatch[key] = [];
+          byMatch[key].push(r);
+        });
+        var keys = Object.keys(byMatch);
+        var el = document.getElementById("list");
+        if (!keys.length) {
+          el.innerHTML = '<div class="tpl-empty">Nenhuma proteção no filtro atual</div>';
+          return;
+        }
+        el.innerHTML = keys.map(function (id) {
+          var list = byMatch[id];
+          var m = cache.matches[id] || {};
+          var volume = list.reduce(function (a, r) { return a + Number(r.amount_cents || 0); }, 0);
+          return (
+            '<article class="tpl-game-row">' +
+              "<div>" +
+                '<div class="league">' + (m.league || "Sem liga") + "</div>" +
+                '<div class="match">' + (m.home_team || "?") + " vs " + (m.away_team || "?") + "</div>" +
+              "</div>" +
+              '<div class="tpl-game-metrics">' +
+                '<div class="m"><div class="l">Volume protegido</div><div class="v">' + money(volume) + "</div></div>" +
+                '<span class="tpl-pill">' + list.length + " registro" + (list.length === 1 ? "" : "s") + "</span>" +
+              "</div>" +
+            "</article>"
+          );
+        }).join("");
+      }
+
+      document.getElementById("btnFilter").onclick = function () {
+        load().catch(function (ex) { showErr(ex.message); });
+      };
+      ["q", "status", "day", "showClosed"].forEach(function (id) {
+        document.getElementById(id).addEventListener("change", function () {
+          load().catch(function (ex) { showErr(ex.message); });
+        });
+      });
+
+      try {
+        await load();
+      } catch (ex) {
+        showErr(ex.message || "Erro");
+        document.getElementById("list").innerHTML = "";
+      }
+    })();
   </script>
 </body>
 </html>

@@ -166,7 +166,7 @@
       .join("");
   }
 
-  function mount() {
+  async function mount() {
     var body = document.body;
     var shell = body.getAttribute("data-shell");
     if (!shell || (shell !== "admin" && shell !== "app")) return;
@@ -206,10 +206,30 @@
         brandHref +
         '">Arbi<span>Shield</span></a>';
       main.appendChild(top);
+      if (shell === "admin") {
+        var adminHeader = document.createElement("header");
+        adminHeader.className = "v2-admin-header";
+        adminHeader.id = "v2AdminHeader";
+        adminHeader.innerHTML =
+          '<div class="v2-admin-header-left">' +
+          '<span class="v2-status-pill"><span class="v2-status-dot" aria-hidden="true"></span>Terminal de Segurança Ativo</span>' +
+          '<div class="v2-user-chip" id="v2UserChip">' +
+          '<div class="avatar">AD</div>' +
+          "<div><strong id=\"v2UserName\">Admin</strong><small>Acesso Master</small></div>" +
+          "</div></div>" +
+          '<div class="v2-admin-header-right">' +
+          '<button type="button" class="v2-search-chip" id="v2SearchPages">Buscar página <kbd>⌘K</kbd></button>' +
+          '<button type="button" class="v2-logout-btn" id="v2AdminLogout">Sair do Sistema</button>' +
+          "</div>";
+        main.appendChild(adminHeader);
+      }
+      var page = document.createElement("div");
+      page.className = "v2-page";
       children.forEach(function (n) {
         if (n.nodeType === 1 && (n.id === "v2-sidebar" || n.classList.contains("v2-sidebar"))) return;
-        main.appendChild(n);
+        page.appendChild(n);
       });
+      main.appendChild(page);
       layout.appendChild(aside);
       layout.appendChild(main);
       body.appendChild(layout);
@@ -231,10 +251,9 @@
       renderSections(sections, active) +
       "</div>" +
       '<div class="v2-sidebar-foot">' +
-      '<a class="v2-nav-link" href="/">Home</a>' +
       (shell === "admin"
-        ? '<a class="v2-nav-link" href="/app.html">App membro</a><a class="v2-nav-link" href="https://legado.arbishield.app/" target="_blank" rel="noopener">SPA legado</a>'
-        : '<a class="v2-nav-link" href="#" id="v2LogoutLink">Sair</a><a class="v2-nav-link" href="https://legado.arbishield.app/" target="_blank" rel="noopener">SPA legado</a>') +
+        ? '<a class="v2-nav-link" href="#" id="v2LogoutLink">Sair</a>'
+        : '<a class="v2-nav-link" href="/" >Home</a><a class="v2-nav-link" href="#" id="v2LogoutLink">Sair</a>') +
       "</div>";
 
     if (!document.querySelector('link[data-v2-favicon]')) {
@@ -261,6 +280,76 @@
       btn.addEventListener("click", function () {
         body.classList.toggle("v2-nav-open");
       });
+    }
+
+    async function doLogout(e) {
+      if (e) e.preventDefault();
+      try {
+        if (global.ArbiV2 && global.ArbiV2.client) {
+          await global.ArbiV2.client().auth.signOut();
+        }
+      } catch (err) {}
+      location.replace("/auth.html");
+    }
+    var logoutLinks = document.querySelectorAll("#v2LogoutLink, #v2AdminLogout");
+    logoutLinks.forEach(function (el) {
+      el.addEventListener("click", doLogout);
+    });
+
+    if (shell === "admin") {
+      try {
+        if (global.ArbiV2 && global.ArbiV2.client) {
+          var supa = global.ArbiV2.client();
+          var sess = await supa.auth.getUser();
+          var u = sess.data && sess.data.user;
+          if (u) {
+            var pr = await supa
+              .from("profiles")
+              .select("full_name,is_super_admin")
+              .eq("id", u.id)
+              .maybeSingle();
+            var name =
+              (pr.data && pr.data.full_name) ||
+              (u.email ? u.email.split("@")[0] : "Admin");
+            var nameEl = document.getElementById("v2UserName");
+            if (nameEl) nameEl.textContent = name;
+            var av = document.querySelector("#v2UserChip .avatar");
+            if (av) {
+              av.textContent = String(name)
+                .split(/\s+/)
+                .slice(0, 2)
+                .map(function (p) {
+                  return p[0] || "";
+                })
+                .join("")
+                .toUpperCase() || "AD";
+            }
+          }
+        }
+      } catch (err) {}
+
+      var searchBtn = document.getElementById("v2SearchPages");
+      if (searchBtn) {
+        searchBtn.addEventListener("click", function () {
+          var q = window.prompt("Buscar página admin (ex: jogos, desafios, saques)");
+          if (!q) return;
+          var needle = q.trim().toLowerCase();
+          var hit = null;
+          ADMIN_SECTIONS.forEach(function (sec) {
+            (sec.items || []).forEach(function (it) {
+              if (hit) return;
+              if (
+                String(it.label).toLowerCase().indexOf(needle) >= 0 ||
+                String(it.id).toLowerCase().indexOf(needle) >= 0
+              ) {
+                hit = it;
+              }
+            });
+          });
+          if (hit) location.href = hit.href;
+          else window.alert("Página não encontrada");
+        });
+      }
     }
 
     global.ArbiV2Shell = { adminSections: ADMIN_SECTIONS, appSections: APP_SECTIONS };
