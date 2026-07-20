@@ -44,7 +44,41 @@
     if (n >= 20) clearInterval(timer);
   }, 500);
 
+  function clearCorruptDashCache() {
+    try {
+      var keys = Object.keys(localStorage);
+      for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        if (
+          k.indexOf("dash:critical:") !== 0 &&
+          k.indexOf("dash:secondary:") !== 0
+        ) {
+          continue;
+        }
+        try {
+          var raw = localStorage.getItem(k);
+          if (!raw || raw === "[]" || raw === "null" || raw === "{}") {
+            localStorage.removeItem(k);
+            continue;
+          }
+          var parsed = JSON.parse(raw);
+          // Stubs antigos gravavam [] (truthy) e quebravam o dashboard
+          if (Array.isArray(parsed) || typeof parsed !== "object") {
+            localStorage.removeItem(k);
+          } else if (!parsed.profile && !parsed.protections && !parsed.metrics) {
+            localStorage.removeItem(k);
+          }
+        } catch (e2) {
+          try {
+            localStorage.removeItem(k);
+          } catch (e3) {}
+        }
+      }
+    } catch (e) {}
+  }
+
   function cleanup() {
+    clearCorruptDashCache();
     try {
       if ("serviceWorker" in navigator) {
         navigator.serviceWorker.getRegistrations().then(function (regs) {

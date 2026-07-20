@@ -65,6 +65,17 @@ const FN = {
     "fb16933f5d8f0788db13c8b74f3c53149e2989eeae483bd064ab7a9a15432c7a",
   ADMIN_IS_SUPER:
     "7522f63695242dffa7a9bd8ff11c911129bae721fcfbe52bc99240398508d149",
+  /** App usuário — useDashboardData / useMyProfile / notifications */
+  USER_MY_PROFILE:
+    "0b9cedaa2cd8cfbb349649b17fbb90b7787010fd34877267a0cc05b0344fe963",
+  USER_DASH_CRITICAL:
+    "ab071cfb2fe9b23085f40d59daf5a3ae60da0b5bff9b5c52014742fc892fd3d7",
+  USER_DASH_SECONDARY:
+    "b8374a52968db3ecab37d916b7b4d5690cdd213df514104e2d8285786240cd29",
+  USER_NOTIFICATIONS:
+    "a7dd1971020b4c9784307d27a0d0453a2ab0c88a98414b556ad61ef25e275a50",
+  USER_GEO_LOG:
+    "2536c7837adaa096529fad853f0b0284e9e9ee6f8a90557a96d0ff98cede975d",
 };
 
 function cors(res) {
@@ -525,6 +536,139 @@ async function currentUserIsSuperAdmin(token) {
   return !!row?.is_super_admin;
 }
 
+function requireUserId(token) {
+  const payload = decodeJwtPayload(token);
+  const uid = payload?.sub;
+  if (!uid) throw new Error("Não autorizado");
+  return uid;
+}
+
+async function getUserProfileBundle(userId) {
+  const dayIso = startOfDaySaoPaulo().toISOString();
+  const [profiles, aff, protectedToday] = await Promise.all([
+    sb(
+      `/rest/v1/profiles?select=*&id=eq.${userId}&limit=1`,
+      { token: SERVICE_KEY }
+    ),
+    sb(
+      `/rest/v1/affiliate_stats?select=*&profile_id=eq.${userId}&limit=1`,
+      { token: SERVICE_KEY }
+    ).catch(() => []),
+    sb(
+      `/rest/v1/protections?select=amount_cents&user_id=eq.${userId}&created_at=gte.${dayIso}`,
+      { token: SERVICE_KEY }
+    ).catch(() => []),
+  ]);
+  const profile = Array.isArray(profiles) ? profiles[0] || null : null;
+  const affiliateStats = Array.isArray(aff) ? aff[0] || null : null;
+  const protectedTodayCents = (Array.isArray(protectedToday) ? protectedToday : []).reduce(
+    (a, r) => a + n(r.amount_cents),
+    0
+  );
+  return { profile, protectedTodayCents, affiliateStats };
+}
+
+async function getUserDashboardMetrics(userId) {
+  const dayIso = startOfDaySaoPaulo().toISOString();
+  const [active, settledToday] = await Promise.all([
+    sb(
+      `/rest/v1/protections?select=amount_cents&user_id=eq.${userId}&status=eq.active`,
+      { token: SERVICE_KEY }
+    ).catch(() => []),
+    sb(
+      `/rest/v1/protections?select=user_profit_cents,settled_at,status&user_id=eq.${userId}&settled_at=gte.${dayIso}`,
+      { token: SERVICE_KEY }
+    ).catch(() => []),
+  ]);
+  const activeProtectionCents = (Array.isArray(active) ? active : []).reduce(
+    (a, r) => a + n(r.amount_cents),
+    0
+  );
+  const todayEarningsCents = (Array.isArray(settledToday) ? settledToday : []).reduce(
+    (a, r) => a + n(r.user_profit_cents),
+    0
+  );
+  return { todayEarningsCents, activeProtectionCents };
+}
+
+async function getUserDashboardCritical(token) {
+  const userId = requireUserId(token);
+  const [profileBundle, metrics] = await Promise.all([
+    getUserProfileBundle(userId),
+    getUserDashboardMetrics(userId),
+  ]);
+  return { profile: profileBundle, metrics };
+}
+
+async function getUserDashboardSecondary(token) {
+  const userId = requireUserId(token);
+  const [protections, openMatches] = await Promise.all([
+    sb(
+      `/rest/v1/protections?select=*&user_id=eq.${userId}&order=created_at.desc&limit=200`,
+      { token: SERVICE_KEY }
+    ).catch(() => []),
+    sb(`/rest/v1/matches?select=id&status=eq.open`, { token: SERVICE_KEY }).catch(
+      () => []
+    ),
+  ]);
+  const list = Array.isArray(protections) ? protections : [];
+  const openCount = Array.isArray(openMatches) ? openMatches.length : 0;
+
+  // pontos semanais (Seg–Dom) a partir de user_profit_cents settled
+  const labels = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+  const now = new Date();
+  const weekStart = new Date(now);
+  const day = weekStart.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  weekStart.setDate(weekStart.getDate() + diff);
+  weekStart.setHours(0, 0, 0, 0);
+  const points = [];
+  for (let i = 0; i < 7; i++) {
+    const start = new Date(weekStart);
+    start.setDate(weekStart.getDate() + i);
+    const end = new Date(start);
+    end.setHours(23, 59, 59, 999);
+    const value =
+      list
+        .filter((p) => {
+          if (!p.settled_at) return false;
+          const d = new Date(p.settled_at);
+          return d >= start && d <= end;
+        })
+        .reduce((a, p) => a + n(p.user_profit_cents), 0) / 100;
+    points.push({ name: labels[i], value });
+  }
+  const hasData = list.some((p) => p.settled_at);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  let monthProfit = 0;
+  for (const p of list) {
+    if (!p.settled_at) continue;
+    if (!["lost_platform", "won_exchange", "settled"].includes(String(p.status || ""))) {
+      continue;
+    }
+    if (new Date(p.settled_at) >= monthStart) monthProfit += n(p.user_profit_cents);
+  }
+
+  return {
+    protections: list,
+    newMarkets: { count: openCount },
+    bankPerformance: {
+      points,
+      variationPct: hasData ? Number(((monthProfit / 100) || 0).toFixed(2)) : null,
+      hasData,
+    },
+  };
+}
+
+async function getUserNotifications(token) {
+  const userId = requireUserId(token);
+  const rows = await sb(
+    `/rest/v1/notifications?select=*&user_id=eq.${userId}&order=created_at.desc&limit=50`,
+    { token: SERVICE_KEY }
+  );
+  return Array.isArray(rows) ? rows : [];
+}
+
 async function getProfileMap(userIds) {
   const ids = [...new Set(userIds.filter(Boolean))];
   const map = new Map();
@@ -819,11 +963,76 @@ async function handleServerFn(req, res, id, rawBody = "") {
     }
   }
 
+  if (id === FN.USER_MY_PROFILE) {
+    console.log("[serverfn-shim] USER_MY_PROFILE");
+    try {
+      const userId = requireUserId(token);
+      const data = await getUserProfileBundle(userId);
+      return sendTsrOk(res, data);
+    } catch (err) {
+      console.error("[serverfn-shim] USER_MY_PROFILE error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.USER_DASH_CRITICAL) {
+    console.log("[serverfn-shim] USER_DASH_CRITICAL");
+    try {
+      const data = await getUserDashboardCritical(token);
+      return sendTsrOk(res, data);
+    } catch (err) {
+      console.error("[serverfn-shim] USER_DASH_CRITICAL error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.USER_DASH_SECONDARY) {
+    console.log("[serverfn-shim] USER_DASH_SECONDARY");
+    try {
+      const data = await getUserDashboardSecondary(token);
+      return sendTsrOk(res, data);
+    } catch (err) {
+      console.error("[serverfn-shim] USER_DASH_SECONDARY error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.USER_NOTIFICATIONS) {
+    console.log("[serverfn-shim] USER_NOTIFICATIONS");
+    try {
+      const data = await getUserNotifications(token);
+      return sendTsrOk(res, data);
+    } catch (err) {
+      console.error("[serverfn-shim] USER_NOTIFICATIONS error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.USER_GEO_LOG) {
+    console.log("[serverfn-shim] USER_GEO_LOG");
+    // Aceita o log de geo sem persistir (evita retry infinito no SecurityMonitor)
+    return sendTsrOk(res, { ok: true });
+  }
+
   // Stubs: não lançar erro (travava o admin). Geo/session e mutações
   // ainda não portadas — retornam sucesso vazio.
+  // IMPORTANTE: GET default = null (não []). [] corrompe cache do dashboard
+  // (dash:critical / dash:secondary) porque [] é truthy e sem .profile.
   console.log("[serverfn-shim]", req.method, id.slice(0, 12));
   if (req.method === "GET") {
-    return sendTsrOk(res, []);
+    return sendTsrOk(res, null);
   }
   return sendTsrOk(res, null);
 }
