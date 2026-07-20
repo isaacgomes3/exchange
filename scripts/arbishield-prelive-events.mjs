@@ -80,6 +80,10 @@ async function betbra(url, headers = {}) {
 }
 
 function endOfDaySaoPaulo(from = Date.now()) {
+  const hours = Number(process.env.PRELIVE_WINDOW_HOURS || "24");
+  if (hours > 0 && hours <= 168) {
+    return from + hours * 60 * 60 * 1000;
+  }
   const brDay = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Sao_Paulo",
     year: "numeric",

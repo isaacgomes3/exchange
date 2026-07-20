@@ -1,10 +1,15 @@
 /**
- * Injeta o botão "Sugestão de Desafio" na Gestão de Desafios sem alterar o bundle React.
- * Também aplica sugestão salva no localStorage ao abrir "Lançar Desafio".
+ * Link "Sugestão de Desafio" + preencher formulário a partir do localStorage.
+ *
+ * CRÍTICO:
+ * - NÃO usa MutationObserver (congelava o admin com o React)
+ * - NÃO move o botão React "Lançar Desafio"
+ * - Se achar o wrap antigo (versão bugada), DESEMPACOTA o botão
  */
 (function () {
   const BTN_ID = "arbishield-desafio-sugestao-btn";
   const APPLIED_FLAG = "arbishield_desafio_suggestion_applied";
+  const SEEN_SUGESTAO = "arbishield_desafio_sugestao_seen";
 
   function onDesafiosPage() {
     const p = location.pathname.replace(/\/$/, "");
@@ -12,38 +17,47 @@
   }
 
   function findLaunchButton() {
-    const buttons = Array.from(document.querySelectorAll("button"));
-    return buttons.find((b) => /lançar\s*desafio/i.test(b.textContent || ""));
+    return Array.from(document.querySelectorAll("button")).find((b) =>
+      /lançar\s*desafio/i.test(b.textContent || "")
+    );
+  }
+
+  function healBrokenWrap() {
+    const wrap = document.getElementById(BTN_ID);
+    if (!wrap || wrap.tagName !== "DIV") return;
+    const parent = wrap.parentElement;
+    if (!parent) return;
+    while (wrap.firstChild) {
+      parent.insertBefore(wrap.firstChild, wrap);
+    }
+    wrap.remove();
   }
 
   function ensureButton() {
     if (!onDesafiosPage()) return;
+    healBrokenWrap();
     if (document.getElementById(BTN_ID)) return;
     const launch = findLaunchButton();
     if (!launch || !launch.parentElement) return;
 
-    const wrap = document.createElement("div");
-    wrap.id = BTN_ID;
-    wrap.style.cssText = "display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap;";
-
     const link = document.createElement("a");
+    link.id = BTN_ID;
     link.href = "/desafio-sugestoes.html";
     link.textContent = "Sugestão de Desafio";
     link.style.cssText =
       "display:inline-flex;align-items:center;border-radius:12px;border:1px solid rgba(201,242,35,0.4);" +
       "color:#C9F223;font-weight:900;text-transform:uppercase;letter-spacing:0.12em;font-size:10px;" +
-      "padding:10px 16px;text-decoration:none;background:transparent;";
+      "padding:10px 16px;text-decoration:none;background:transparent;margin-right:8px;";
 
-    // Move launch into wrap next to suggestion
-    const parent = launch.parentElement;
-    parent.insertBefore(wrap, launch);
-    wrap.appendChild(link);
-    wrap.appendChild(launch);
+    launch.parentElement.insertBefore(link, launch);
   }
 
   function fillInput(el, value) {
     if (!el || value == null || value === "") return;
-    const proto = el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const proto =
+      el.tagName === "TEXTAREA"
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
     if (setter) setter.call(el, String(value));
     else el.value = String(value);
@@ -51,16 +65,22 @@
     el.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
+  function acceptNewSuggestionOnce() {
+    const qs = new URLSearchParams(location.search);
+    if (qs.get("sugestao") !== "1") return;
+    if (sessionStorage.getItem(SEEN_SUGESTAO) === location.href) return;
+    sessionStorage.setItem(SEEN_SUGESTAO, location.href);
+    sessionStorage.removeItem(APPLIED_FLAG);
+  }
+
   function applySuggestionToOpenForm() {
     if (!onDesafiosPage()) return;
-    if (sessionStorage.getItem(APPLIED_FLAG) === "1") return;
-    const want =
-      new URLSearchParams(location.search).get("sugestao") === "1" ||
-      Boolean(localStorage.getItem("arbishield_desafio_suggestion"));
-    if (!want) return;
+    acceptNewSuggestionOnce();
 
-    let raw = localStorage.getItem("arbishield_desafio_suggestion");
-    if (!raw) return;
+    if (sessionStorage.getItem(APPLIED_FLAG) === "1") return;
+    if (!localStorage.getItem("arbishield_desafio_suggestion")) return;
+
+    const raw = localStorage.getItem("arbishield_desafio_suggestion");
     let data;
     try {
       data = JSON.parse(raw);
@@ -69,18 +89,16 @@
     }
     const step = (data.steps && data.steps[0]) || {};
 
-    // Heurística: preencher inputs visíveis do formulário de lançamento
-    const labels = Array.from(document.querySelectorAll("label, span, p, div"));
     const map = [
       ["title", data.title],
       ["subtitle", data.subtitle],
       ["home", step.home_team],
-      ["casa", step.home_team],
+      ["casa(?!_odd|_stake|_commission)", step.home_team],
       ["away", step.away_team],
       ["fora", step.away_team],
       ["match", step.match_label],
       ["partida", step.match_label],
-      ["mercado.*casa|market_name_casa|betbra", step.market_name_casa],
+      ["mercado.*casa|market_name_casa", step.market_name_casa],
       ["mercado.*arbi|market_name_arbishield|arbishield", step.market_name_arbishield],
       ["odd.*casa|casa_odd", step.casa_odd],
       ["odd.*arbi|arbi_odd", step.arbi_odd],
@@ -88,13 +106,16 @@
       ["liquidez|liquidity", step.liquidity_cents],
       ["link|external|betbra", step.external_bet_link],
       ["in[ií]cio|starts|data", step.starts_at],
+      ["release|libera|minutos.?antes", step.release_minutes_before],
     ];
 
     const inputs = Array.from(
       document.querySelectorAll('input:not([type="hidden"]), textarea')
     ).filter((el) => el.offsetParent !== null);
 
-    if (inputs.length < 3) return; // formulário ainda não aberto
+    if (inputs.length < 3) return;
+
+    sessionStorage.setItem(APPLIED_FLAG, "1");
 
     let filled = 0;
     for (const input of inputs) {
@@ -120,22 +141,25 @@
       }
     }
 
-    if (filled > 0) {
-      sessionStorage.setItem(APPLIED_FLAG, "1");
-      localStorage.removeItem("arbishield_desafio_suggestion");
-      // limpa query
-      try {
-        const u = new URL(location.href);
-        if (u.searchParams.has("sugestao")) {
-          u.searchParams.delete("sugestao");
-          history.replaceState({}, "", u.pathname + u.search);
-        }
-      } catch {}
+    if (filled === 0) {
+      sessionStorage.removeItem(APPLIED_FLAG);
+      return;
     }
+
+    localStorage.removeItem("arbishield_desafio_suggestion");
+    try {
+      const u = new URL(location.href);
+      if (u.searchParams.has("sugestao")) {
+        u.searchParams.delete("sugestao");
+        history.replaceState({}, "", u.pathname + u.search);
+      }
+    } catch {}
   }
 
   function tick() {
     try {
+      healBrokenWrap();
+      if (!onDesafiosPage()) return;
       ensureButton();
       applySuggestionToOpenForm();
     } catch (err) {
@@ -143,12 +167,24 @@
     }
   }
 
-  const obs = new MutationObserver(() => tick());
-  obs.observe(document.documentElement, { childList: true, subtree: true });
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", tick);
   } else {
     tick();
   }
-  setInterval(tick, 1500);
+  setInterval(tick, 2000);
+
+  const _push = history.pushState;
+  const _replace = history.replaceState;
+  history.pushState = function () {
+    const r = _push.apply(this, arguments);
+    setTimeout(tick, 50);
+    return r;
+  };
+  history.replaceState = function () {
+    const r = _replace.apply(this, arguments);
+    setTimeout(tick, 50);
+    return r;
+  };
+  window.addEventListener("popstate", () => setTimeout(tick, 50));
 })();

@@ -76,6 +76,10 @@ const FN = {
     "a7dd1971020b4c9784307d27a0d0453a2ab0c88a98414b556ad61ef25e275a50",
   USER_GEO_LOG:
     "2536c7837adaa096529fad853f0b0284e9e9ee6f8a90557a96d0ff98cede975d",
+  UPSERT_DESAFIO:
+    "ab2bcac276202b9ac1d2f136884f8c3a1f072f457032e6d2062cdfce05358fd1",
+  DELETE_DESAFIO:
+    "1c8b336e8819e53d0326cf2fe66ad5c1b03a3c3cbb7235ae67de5d8ab739a4c3",
 };
 
 function cors(res) {
@@ -245,6 +249,161 @@ async function listDesafios(token) {
   return Array.isArray(rows) ? rows : [];
 }
 
+async function nextDesafioNumber(token) {
+  const rows = await sb(
+    "/rest/v1/desafios?select=number&order=number.desc&limit=1",
+    { token: token || SERVICE_KEY }
+  );
+  const n =
+    Array.isArray(rows) && rows[0]?.number != null ? Number(rows[0].number) : 0;
+  return (Number.isFinite(n) ? n : 0) + 1;
+}
+
+function buildDesafioRow(body) {
+  const isActive = Boolean(body.is_active);
+  return {
+    number: body.number != null ? Number(body.number) : undefined,
+    title: body.title || "Desafio",
+    subtitle: body.subtitle ?? null,
+    total_steps: Number(body.total_steps) || (body.steps || []).length || 1,
+    initial_balance_cents: Number(body.initial_balance_cents) || 20000,
+    is_active: isActive,
+    status: body.status || (isActive ? "active" : "draft"),
+    target_profit_pct: Number(body.target_profit_pct) || 5,
+    auto_link_matches: body.auto_link_matches !== false,
+    published_at: isActive ? new Date().toISOString() : null,
+  };
+}
+
+function buildStepRow(desafioId, stepIn, isActive) {
+  return {
+    desafio_id: desafioId,
+    step_index: Number(stepIn.step_index) || 1,
+    match_label: stepIn.match_label || null,
+    league_name: stepIn.league_name ?? null,
+    home_team: stepIn.home_team || null,
+    away_team: stepIn.away_team || null,
+    market_name: stepIn.market_name || stepIn.market_name_casa || null,
+    market_name_casa: stepIn.market_name_casa || stepIn.market_name || null,
+    market_name_arbishield: stepIn.market_name_arbishield || null,
+    home_odd: stepIn.home_odd != null ? Number(stepIn.home_odd) : null,
+    away_odd: stepIn.away_odd != null ? Number(stepIn.away_odd) : null,
+    arbi_team_name: stepIn.arbi_team_name ?? null,
+    arbi_team_logo_url: stepIn.arbi_team_logo_url ?? null,
+    arbi_odd: stepIn.arbi_odd != null ? Number(stepIn.arbi_odd) : null,
+    casa_team_name: stepIn.casa_team_name ?? null,
+    casa_team_logo_url: stepIn.casa_team_logo_url ?? null,
+    casa_odd: stepIn.casa_odd != null ? Number(stepIn.casa_odd) : null,
+    casa_stake_cents:
+      stepIn.casa_stake_cents != null ? Number(stepIn.casa_stake_cents) : null,
+    arbi_commission_pct:
+      stepIn.arbi_commission_pct != null
+        ? Number(stepIn.arbi_commission_pct)
+        : null,
+    casa_commission_pct:
+      stepIn.casa_commission_pct != null
+        ? Number(stepIn.casa_commission_pct)
+        : 4.5,
+    liquidity_cents:
+      stepIn.liquidity_cents != null ? Number(stepIn.liquidity_cents) : 200000,
+    display_liquidity_cents:
+      stepIn.display_liquidity_cents != null
+        ? Number(stepIn.display_liquidity_cents)
+        : stepIn.liquidity_cents != null
+          ? Number(stepIn.liquidity_cents)
+          : 200000,
+    external_bet_link: stepIn.external_bet_link || null,
+    starts_at: stepIn.starts_at || null,
+    release_minutes_before:
+      stepIn.release_minutes_before != null
+        ? Number(stepIn.release_minutes_before)
+        : 60,
+    status: stepIn.status || "pending",
+    is_published:
+      stepIn.is_published != null ? Boolean(stepIn.is_published) : isActive,
+  };
+}
+
+async function createDesafio(token, body) {
+  const auth = token || SERVICE_KEY;
+  const stepIn = body.step || (body.steps && body.steps[0]) || {};
+  const desafioRow = buildDesafioRow(body);
+  if (desafioRow.number == null) {
+    desafioRow.number = await nextDesafioNumber(auth);
+  }
+
+  const created = await sb("/rest/v1/desafios", {
+    method: "POST",
+    token: auth,
+    body: desafioRow,
+  });
+  const desafio = Array.isArray(created) ? created[0] : created;
+  if (!desafio?.id) throw new Error("Falha ao criar desafio");
+
+  const stepsOut = [];
+  for (const step of body.steps || [stepIn]) {
+    const stepRow = buildStepRow(desafio.id, step, desafioRow.is_active);
+    const inserted = await sb("/rest/v1/desafio_steps", {
+      method: "POST",
+      token: auth,
+      body: stepRow,
+    });
+    stepsOut.push(Array.isArray(inserted) ? inserted[0] : inserted);
+  }
+  return { ...desafio, desafio_steps: stepsOut.filter(Boolean) };
+}
+
+async function upsertDesafio(token, body) {
+  const auth = token || SERVICE_KEY;
+  if (!body?.id) return createDesafio(auth, body);
+
+  const desafioRow = buildDesafioRow(body);
+  delete desafioRow.number;
+  await sb(`/rest/v1/desafios?id=eq.${encodeURIComponent(body.id)}`, {
+    method: "PATCH",
+    token: auth,
+    body: desafioRow,
+  });
+
+  const stepsOut = [];
+  for (const step of body.steps || []) {
+    const stepRow = buildStepRow(body.id, step, desafioRow.is_active);
+    if (step.id) {
+      const { desafio_id: _d, ...patch } = stepRow;
+      const updated = await sb(
+        `/rest/v1/desafio_steps?id=eq.${encodeURIComponent(step.id)}`,
+        { method: "PATCH", token: auth, body: patch }
+      );
+      stepsOut.push(Array.isArray(updated) ? updated[0] : updated);
+    } else {
+      const inserted = await sb("/rest/v1/desafio_steps", {
+        method: "POST",
+        token: auth,
+        body: stepRow,
+      });
+      stepsOut.push(Array.isArray(inserted) ? inserted[0] : inserted);
+    }
+  }
+
+  const rows = await sb(
+    `/rest/v1/desafios?select=*,desafio_steps(*)&id=eq.${encodeURIComponent(body.id)}&limit=1`,
+    { token: auth }
+  );
+  return Array.isArray(rows) && rows[0] ? rows[0] : { id: body.id, desafio_steps: stepsOut };
+}
+
+async function deleteDesafio(token, body) {
+  const auth = token || SERVICE_KEY;
+  const id = body?.id;
+  if (!id) throw new Error("id obrigatório");
+  await sb(`/rest/v1/desafios?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    token: auth,
+    body: { deleted_at: new Date().toISOString() },
+  });
+  return { ok: true };
+}
+
 function extractServerFnData(rawBody) {
   if (!rawBody) return {};
   let parsed;
@@ -262,7 +421,24 @@ function extractServerFnData(rawBody) {
   }
   // fallback: procurar campos conhecidos na raiz
   const out = {};
-  for (const k of ["category", "search", "from", "to", "page", "pageSize"]) {
+  for (const k of [
+    "category",
+    "search",
+    "from",
+    "to",
+    "page",
+    "pageSize",
+    "id",
+    "number",
+    "title",
+    "subtitle",
+    "total_steps",
+    "initial_balance_cents",
+    "is_active",
+    "steps",
+    "stepId",
+    "winningSide",
+  ]) {
     if (parsed[k] !== undefined) out[k] = parsed[k];
   }
   return out;
@@ -905,6 +1081,36 @@ async function handleServerFn(req, res, id, rawBody = "") {
     }
   }
 
+  if (id === FN.UPSERT_DESAFIO && req.method === "POST") {
+    console.log("[serverfn-shim] UPSERT_DESAFIO");
+    try {
+      const params = extractServerFnData(rawBody);
+      const data = await upsertDesafio(token, params);
+      return sendTsrOk(res, data);
+    } catch (err) {
+      console.error("[serverfn-shim] UPSERT_DESAFIO error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.DELETE_DESAFIO && req.method === "POST") {
+    console.log("[serverfn-shim] DELETE_DESAFIO");
+    try {
+      const params = extractServerFnData(rawBody);
+      const data = await deleteDesafio(token, params);
+      return sendTsrOk(res, data);
+    } catch (err) {
+      console.error("[serverfn-shim] DELETE_DESAFIO error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
   if (id === FN.DASHBOARD_STATS) {
     console.log("[serverfn-shim] DASHBOARD_STATS");
     try {
@@ -1059,8 +1265,22 @@ const server = createServer(async (req, res) => {
   if (url.pathname === "/api/arbishield/desafios") {
     try {
       const token = bearerFromReq(req);
-      const data = await listDesafios(token);
-      return sendJson(res, 200, data);
+      if (req.method === "GET") {
+        const data = await listDesafios(token);
+        return sendJson(res, 200, data);
+      }
+      if (req.method === "POST") {
+        const raw = await parseBody(req);
+        let body = {};
+        try {
+          body = raw ? JSON.parse(raw) : {};
+        } catch {
+          return sendJson(res, 400, { error: "JSON inválido" });
+        }
+        const created = await createDesafio(token, body);
+        return sendJson(res, 201, { ok: true, desafio: created });
+      }
+      return sendJson(res, 405, { error: "method_not_allowed" });
     } catch (err) {
       return sendJson(res, 500, {
         error: err instanceof Error ? err.message : String(err),

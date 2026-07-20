@@ -235,7 +235,7 @@
 
     <div class="toolbar">
       <div class="tabs" id="viewTabs">
-        <button class="tab active" data-view="prelive" type="button">Pré-Live do Dia</button>
+        <button class="tab active" data-view="prelive" type="button">Próximos jogos</button>
         <button class="tab" data-view="platform" type="button">Eventos ArbiShield</button>
       </div>
       <input class="search" id="search" type="search" placeholder="Buscar time ou liga…" />
@@ -244,7 +244,7 @@
     <section class="panel" id="prelivePanel">
       <div class="panel-head">
         <div>
-          <h2>Jogos pré-live disponíveis hoje</h2>
+          <h2>Próximos jogos (BetBra)</h2>
           <div class="breadcrumb" id="breadcrumb">
             <span>Lista do dia</span>
           </div>
@@ -269,12 +269,12 @@
 
   <div class="modal-backdrop" id="createModal">
     <div class="modal">
-      <h3>Incluir como novo evento</h3>
+      <h3>Lançar evento na plataforma</h3>
       <p>O jogo será criado como rascunho na ArbiShield com o mercado selecionado da BetBra.</p>
       <div class="grid" id="createSummary"></div>
       <div class="modal-actions">
         <button class="btn btn-ghost btn-sm" id="btnCancelCreate" type="button">Cancelar</button>
-        <button class="btn btn-primary btn-sm" id="btnConfirmCreate" type="button">Criar evento</button>
+        <button class="btn btn-primary btn-sm" id="btnConfirmCreate" type="button">Confirmar lançamento</button>
       </div>
     </div>
   </div>
@@ -534,7 +534,7 @@
               '<div class="runner">' +
                 '<span class="name">' + runner.name + '</span>' +
                 '<span class="odd">@ ' + odd + '</span>' +
-                '<button class="btn btn-primary btn-sm" type="button" data-market="' + market.marketId + '" data-runner="' + runner.runnerId + '">Incluir</button>' +
+                '<button class="btn btn-primary btn-sm" type="button" data-market="' + market.marketId + '" data-runner="' + runner.runnerId + '">Lançar evento</button>' +
               "</div>"
             );
           }).join("");
@@ -629,7 +629,7 @@
           alert(err.message || "Erro ao criar evento");
         } finally {
           $("btnConfirmCreate").disabled = false;
-          $("btnConfirmCreate").textContent = "Criar evento";
+          $("btnConfirmCreate").textContent = "Confirmar lançamento";
         }
       }
 
