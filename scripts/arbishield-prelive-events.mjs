@@ -421,6 +421,357 @@ async function listDesafios() {
   return Array.isArray(rows) ? rows : [];
 }
 
+function decodeJwtPayload(token) {
+  try {
+    const parts = String(token || "").split(".");
+    if (parts.length < 2) return null;
+    const json = Buffer.from(
+      parts[1].replace(/-/g, "+").replace(/_/g, "/"),
+      "base64"
+    ).toString("utf8");
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+function n(v) {
+  const x = Number(v);
+  return Number.isFinite(x) ? x : 0;
+}
+
+/** LAY: amount = responsabilidade (espelha SPA SQe) */
+function calcLay(amountCents, odd, lockRatio = 0.9073) {
+  const responsibilityCents =
+    Number.isFinite(amountCents) && amountCents > 0 ? Math.floor(amountCents) : 0;
+  const o = Number.isFinite(odd) && odd > 1.01 ? odd : 1.01;
+  const ratio =
+    Number.isFinite(lockRatio) && lockRatio >= 0 && lockRatio <= 1
+      ? lockRatio
+      : 0.9073;
+  const stakeRealCents = Math.round(responsibilityCents / (o - 1));
+  const lockedDeductionCents = Math.round(stakeRealCents * ratio);
+  const exchangeProfitGrossCents = stakeRealCents;
+  const exchangeFeeCents = Math.round(exchangeProfitGrossCents * 0.045);
+  const exchangeProfitNetCents = exchangeProfitGrossCents - exchangeFeeCents;
+  const userProfitCents = Math.round(responsibilityCents * 0.015);
+  const arbiShieldDeductionCents = exchangeProfitNetCents - userProfitCents;
+  return {
+    responsibilityCents,
+    odd: o,
+    stakeRealCents,
+    lockedDeductionCents,
+    exchangeFeeCents,
+    exchangeProfitNetCents,
+    userProfitCents,
+    arbiShieldDeductionCents,
+  };
+}
+
+/** BACK: amount = cobertura (espelha SPA _Qe) */
+function calcBack(amountCents, odd) {
+  const coverage =
+    Number.isFinite(amountCents) && amountCents > 0 ? Math.floor(amountCents) : 0;
+  const o = Number.isFinite(odd) && odd >= 1.01 ? odd : 1.01;
+  const grossReturnCents = Math.round(coverage * o);
+  const grossProfitCents = Math.max(0, grossReturnCents - coverage);
+  const exchangeFeeCents = Math.round(grossProfitCents * 0.045);
+  const netProfitExchangeCents = grossProfitCents - exchangeFeeCents;
+  const userProfitCents = Math.round(coverage * 0.015);
+  const arbiShieldDeductionCents = netProfitExchangeCents - userProfitCents;
+  return {
+    coverageCents: coverage,
+    odd: o,
+    grossReturnCents,
+    grossProfitCents,
+    exchangeFeeCents,
+    netProfitExchangeCents,
+    userProfitCents,
+    arbiShieldDeductionCents,
+  };
+}
+
+async function createProtection(body, userToken) {
+  if (!SERVICE_KEY) throw new Error("SERVICE_ROLE_KEY ausente no .env da VPS");
+  const payload = decodeJwtPayload(userToken);
+  const userId = payload?.sub;
+  if (!userId) {
+    const err = new Error("Não autorizado");
+    err.status = 401;
+    throw err;
+  }
+
+  const matchId = String(body.matchId || "");
+  const marketId = body.marketId ? String(body.marketId) : null;
+  const amountCents = Math.floor(Number(body.amountCents));
+  const odd = Number(body.odd);
+  const balanceType = String(body.balanceType || "REAL").toUpperCase();
+  const side = body.side ? String(body.side) : "home";
+
+  if (!matchId) {
+    const err = new Error("matchId obrigatório");
+    err.status = 400;
+    throw err;
+  }
+  if (!(amountCents > 0)) {
+    const err = new Error("Valor inválido");
+    err.status = 400;
+    throw err;
+  }
+  if (!(odd > 1.01)) {
+    const err = new Error("Odd inválida");
+    err.status = 400;
+    throw err;
+  }
+
+  const matchRows = await sb(
+    `/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}&select=id,home_team,away_team,starts_at,status,status_v2,is_published,deleted_at,markets,max_protection_cents,used_protection_cents,metadata&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const match = Array.isArray(matchRows) ? matchRows[0] : null;
+  if (!match || match.deleted_at) {
+    const err = new Error("Jogo não encontrado");
+    err.status = 404;
+    throw err;
+  }
+  if (match.is_published === false) {
+    const err = new Error("Jogo não publicado");
+    err.status = 400;
+    throw err;
+  }
+  if (match.starts_at && new Date(match.starts_at).getTime() <= Date.now()) {
+    const err = new Error(
+      "Jogo já iniciado. Não é possível criar novas proteções."
+    );
+    err.status = 400;
+    throw err;
+  }
+
+  const markets = Array.isArray(match.markets) ? [...match.markets] : [];
+  let market =
+    (marketId && markets.find((m) => String(m.id) === marketId)) ||
+    markets[0] ||
+    null;
+
+  const marketType =
+    body.marketType === "BACK" || body.marketType === "LAY"
+      ? body.marketType
+      : String(market?.market_type || "").toUpperCase() === "BACK"
+        ? "BACK"
+        : "LAY";
+
+  if (market) {
+    const liq = n(market.liquidity);
+    const used = n(market.used_liquidity);
+    if (liq > 0 && amountCents > liq - used) {
+      const err = new Error("Liquidez insuficiente neste mercado");
+      err.status = 400;
+      throw err;
+    }
+  }
+
+  const usedMatch = n(match.used_protection_cents);
+  const maxMatch = n(match.max_protection_cents);
+  if (maxMatch > 0 && amountCents > maxMatch - usedMatch) {
+    const err = new Error("Liquidez insuficiente neste jogo");
+    err.status = 400;
+    throw err;
+  }
+
+  const profileRows = await sb(
+    `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=id,balance_cents,reusable_balance_cents,demo_balance_cents,investor_balance_cents,account_status,locked_balance_cents&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const profile = Array.isArray(profileRows) ? profileRows[0] : null;
+  if (!profile) {
+    const err = new Error("Perfil não encontrado");
+    err.status = 404;
+    throw err;
+  }
+  const st = String(profile.account_status || "").toLowerCase();
+  if (["blocked", "suspended", "banned", "inactive", "inativo"].includes(st)) {
+    const err = new Error("Conta bloqueada para operar");
+    err.status = 403;
+    throw err;
+  }
+
+  let available = 0;
+  if (balanceType === "DEMO") available = n(profile.demo_balance_cents);
+  else if (balanceType === "INVESTOR")
+    available = n(profile.investor_balance_cents);
+  else
+    available = n(profile.balance_cents) + n(profile.reusable_balance_cents);
+
+  if (amountCents > available) {
+    const err = new Error("Saldo insuficiente");
+    err.status = 400;
+    throw err;
+  }
+
+  const balanceBefore = available;
+  const patch = {
+    locked_balance_cents: n(profile.locked_balance_cents) + amountCents,
+    updated_at: new Date().toISOString(),
+  };
+  let balanceAfter = 0;
+
+  if (balanceType === "DEMO") {
+    patch.demo_balance_cents = n(profile.demo_balance_cents) - amountCents;
+    balanceAfter = patch.demo_balance_cents;
+  } else if (balanceType === "INVESTOR") {
+    patch.investor_balance_cents =
+      n(profile.investor_balance_cents) - amountCents;
+    balanceAfter = patch.investor_balance_cents;
+  } else {
+    const bal = n(profile.balance_cents);
+    const reusable = n(profile.reusable_balance_cents);
+    if (bal >= amountCents) {
+      patch.balance_cents = bal - amountCents;
+      balanceAfter = bal - amountCents + reusable;
+    } else {
+      patch.balance_cents = 0;
+      patch.reusable_balance_cents = reusable - (amountCents - bal);
+      balanceAfter = patch.reusable_balance_cents;
+    }
+  }
+
+  await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: patch,
+  });
+
+  const meta = {
+    ...(body.metadata && typeof body.metadata === "object" ? body.metadata : {}),
+    market_id: market?.id || marketId || null,
+    market_name: market?.name || null,
+    market_type: marketType,
+    market_odd: market?.odd ?? odd,
+    source: "v2_create_protection",
+  };
+
+  let protectionId = "";
+  try {
+    if (marketType === "BACK") {
+      const c = calcBack(amountCents, odd);
+      const inserted = await sb("/rest/v1/back_protections", {
+        method: "POST",
+        token: SERVICE_KEY,
+        body: {
+          user_id: userId,
+          match_id: matchId,
+          odd: c.odd,
+          status: "active",
+          amount_cents: c.coverageCents,
+          user_profit_cents: c.userProfitCents,
+          platform_deduction_cents: c.arbiShieldDeductionCents,
+          balance_before_cents: balanceBefore,
+          balance_after_cents: balanceAfter,
+          metadata: {
+            ...meta,
+            exchange_fee_cents: c.exchangeFeeCents,
+            calculations: c,
+            balance_type: balanceType,
+          },
+        },
+      });
+      protectionId = Array.isArray(inserted) ? inserted[0]?.id : inserted?.id;
+    } else {
+      const c = calcLay(amountCents, odd);
+      const inserted = await sb("/rest/v1/protections", {
+        method: "POST",
+        token: SERVICE_KEY,
+        body: {
+          user_id: userId,
+          match_id: matchId,
+          side,
+          odd: c.odd,
+          status: "active",
+          amount_cents: c.responsibilityCents,
+          responsibility_cents: c.responsibilityCents,
+          user_profit_cents: c.userProfitCents,
+          platform_deduction_cents: c.arbiShieldDeductionCents,
+          platform_profit_cents: c.arbiShieldDeductionCents,
+          locked_deduction_cents: c.lockedDeductionCents,
+          exchange_fee_cents: c.exchangeFeeCents,
+          exchange_profit_net_cents: c.exchangeProfitNetCents,
+          balance_before_cents: balanceBefore,
+          balance_after_cents: balanceAfter,
+          metadata: {
+            ...meta,
+            balance_type: balanceType,
+          },
+        },
+      });
+      protectionId = Array.isArray(inserted) ? inserted[0]?.id : inserted?.id;
+    }
+    if (!protectionId) throw new Error("Falha ao gravar proteção");
+  } catch (err) {
+    await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        balance_cents: profile.balance_cents,
+        reusable_balance_cents: profile.reusable_balance_cents,
+        demo_balance_cents: profile.demo_balance_cents,
+        investor_balance_cents: profile.investor_balance_cents,
+        locked_balance_cents: profile.locked_balance_cents,
+        updated_at: new Date().toISOString(),
+      },
+    }).catch(() => {});
+    throw err;
+  }
+
+  if (market) {
+    const idx = markets.findIndex((m) => String(m.id) === String(market.id));
+    if (idx >= 0) {
+      markets[idx] = {
+        ...markets[idx],
+        used_liquidity: n(markets[idx].used_liquidity) + amountCents,
+      };
+    }
+  }
+
+  await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: {
+      markets,
+      used_protection_cents: usedMatch + amountCents,
+      updated_at: new Date().toISOString(),
+    },
+  });
+
+  await sb("/rest/v1/wallet_transactions", {
+    method: "POST",
+    token: SERVICE_KEY,
+    body: {
+      user_id: userId,
+      type: "protection_lock",
+      amount_cents: amountCents,
+      balance_before_cents: balanceBefore,
+      balance_after_cents: balanceAfter,
+      ref: protectionId,
+      metadata: {
+        protection_id: protectionId,
+        match_id: matchId,
+        market_type: marketType,
+        balance_type: balanceType,
+      },
+    },
+  }).catch((e) => {
+    console.warn("[createProtection] wallet_transactions:", e.message || e);
+  });
+
+  return {
+    ok: true,
+    protectionId,
+    marketType,
+    amountCents,
+    balanceAfterCents: balanceAfter,
+  };
+}
+
 async function handleApi(req, res) {
   if (req.method === "OPTIONS") return sendJson(res, 204, {});
 
@@ -467,6 +818,24 @@ async function handleApi(req, res) {
       return sendJson(res, 200, { ok: true, ...result });
     } catch (err) {
       const status = err.status === 409 ? 409 : err.status || 500;
+      return sendJson(res, status, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/protections" && req.method === "POST") {
+    try {
+      const body = await parseBody(req);
+      const token = bearerFromReq(req);
+      if (!token) {
+        return sendJson(res, 401, { ok: false, error: "Não autorizado" });
+      }
+      const result = await createProtection(body, token);
+      return sendJson(res, 200, result);
+    } catch (err) {
+      const status = err.status || 500;
       return sendJson(res, status, {
         ok: false,
         error: err instanceof Error ? err.message : String(err),

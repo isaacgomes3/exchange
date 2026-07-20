@@ -22,7 +22,7 @@
   <div id="err" class="err"></div>
   <div id="pageBody"><div class="meta">Carregando…</div></div>
   <script>
-    ArbiV2Page.mountApp({"id": "protecoes", "scopeUser": true, "render": "table", "sources": [{"table": "protections", "limit": 200}, {"table": "back_protections", "limit": 200}], "cols": ["id", "status", "stake_cents", "created_at"]});
+    ArbiV2Page.mountApp({"id": "protecoes", "scopeUser": true, "render": "table", "sources": [{"table": "protections", "limit": 200}, {"table": "back_protections", "limit": 200}], "cols": ["id", "status", "amount_cents", "odd", "match_id", "created_at"]});
   </script>
 </body>
 </html>

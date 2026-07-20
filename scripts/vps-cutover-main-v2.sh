@@ -5,7 +5,7 @@
 #   A  legado  →  mesmo IP de arbishield.app
 #
 # Uso (root na VPS):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-cutover-main-v2.sh?v=3")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-cutover-main-v2.sh?v=4")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/arbishield-v2-backup-723d}"
@@ -162,7 +162,18 @@ print("fallback cert arbishield.app aplicado em", p)
 PY
 fi
 
-log "5/5 — nginx -t && reload"
+log "5/5 — nginx -t && reload + worker proteções :3098"
+# atualiza worker com POST /api/arbishield/protections
+if [[ -d /opt/arbishield/scripts ]]; then
+  curl -fsSL "$RAW/scripts/arbishield-prelive-events.mjs" -o /opt/arbishield/scripts/arbishield-prelive-events.mjs
+  chmod 755 /opt/arbishield/scripts/arbishield-prelive-events.mjs
+  if systemctl is-active --quiet arbishield-prelive-events.service 2>/dev/null; then
+    systemctl restart arbishield-prelive-events.service
+    echo "  prelive :3098 reiniciado (protections)"
+  else
+    echo "  AVISO: arbishield-prelive-events inativo — suba o worker :3098"
+  fi
+fi
 nginx -t
 systemctl reload nginx
 
