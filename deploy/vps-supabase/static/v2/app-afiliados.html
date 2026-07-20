@@ -5,24 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Afiliados — ArbiShield</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css" />
+  <link rel="stylesheet" href="/v2.css?v=12" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js"></script>
-  <script src="/v2-pages.js"></script>
-  <script src="/v2-shell.js" defer></script>
+  <script src="/v2.js?v=12"></script>
+  <script src="/v2-shell.js?v=12" defer></script>
+  <script src="/v2-afiliados.js?v=12" defer></script>
 </head>
 <body data-shell="app" data-active="afiliados">
-  <div class="page-head">
-    <div>
-      <h1>Afili<span>ados</span></h1>
-      <p class="sub">Rede e comissões · template legado</p>
-    </div>
-  </div>
   <div id="err" class="err"></div>
-  <div id="pageBody"><div class="meta">Carregando…</div></div>
-  <script>
-    ArbiV2Page.mountApp({"id": "afiliados", "scopeUser": true, "render": "table", "sources": [{"table": "affiliate_stats", "limit": 50}], "cols": ["id", "profile_id", "created_at"]});
-  </script>
+  <div id="affRoot" class="aff-page">
+    <div class="aff-loading">Carregando…</div>
+  </div>
 </body>
 </html>

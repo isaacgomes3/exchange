@@ -86,6 +86,7 @@ for f in \
   v2-deposit.js \
   v2-financeiro.js \
   v2-provedor.js \
+  v2-afiliados.js \
   v2.css \
   v2.js \
   brand/logo.png \

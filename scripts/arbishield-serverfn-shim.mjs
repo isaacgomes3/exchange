@@ -94,6 +94,11 @@ const FN = {
   /** App carteira — transferência banca → desafio (máx. 50%) */
   TRANSFER_TO_DESAFIO:
     "f0610601d4285267b31d611e5eb632c530485702882605895d90b39b8be5922c",
+  /** App afiliados */
+  AFFILIATE_ENSURE_CODE:
+    "fbc95c35a41b7d1f4cbff94481e4cc717dd5380d319f9c14ff638a68fe355a1c",
+  AFFILIATE_WITHDRAW:
+    "fe464d9378f5852cb8f2f20c8e6b6ee390d83b070e7008ed29ccfbf7ac320d89",
 };
 
 function cors(res) {
@@ -897,6 +902,123 @@ async function getUserDashboardMetrics(userId) {
   return { todayEarningsCents, activeProtectionCents };
 }
 
+function randomReferralCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let out = "";
+  for (let i = 0; i < 8; i++) {
+    out += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return out;
+}
+
+async function ensureAffiliateReferralCode(token) {
+  const userId = requireUserId(token);
+  const rows = await sb(
+    `/rest/v1/profiles?select=id,referral_code&id=eq.${userId}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const p = Array.isArray(rows) ? rows[0] : null;
+  if (!p) throw new Error("Perfil não encontrado");
+  if (p.referral_code) {
+    return { ok: true, referral_code: p.referral_code, code: p.referral_code };
+  }
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const code = randomReferralCode();
+    try {
+      await sb(`/rest/v1/profiles?id=eq.${userId}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: { referral_code: code, updated_at: new Date().toISOString() },
+      });
+      return { ok: true, referral_code: code, code };
+    } catch {
+      /* retry on unique collision */
+    }
+  }
+  throw new Error("Não foi possível gerar o código de indicação");
+}
+
+async function requestAffiliateWithdrawal(token, body) {
+  const userId = requireUserId(token);
+  const amountCents = Math.round(
+    Number(body?.amountCents ?? body?.amount_cents ?? 0)
+  );
+  const pixKey = String(body?.pix_key ?? body?.pixKey ?? "").trim();
+  if (!Number.isFinite(amountCents) || amountCents <= 0) {
+    throw new Error("Valor inválido");
+  }
+  if (!pixKey) throw new Error("Informe a chave Pix");
+
+  const day = new Date().getDate();
+  if (day !== 15 && day !== 30) {
+    throw new Error("Saques de afiliado só nos dias 15 e 30");
+  }
+
+  const open = await sb(
+    `/rest/v1/withdrawals?select=id,status,metadata&user_id=eq.${userId}&status=in.(pending,approved,processing)&order=created_at.desc&limit=20`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  const hasOpen = (Array.isArray(open) ? open : []).some((w) => {
+    const meta = w?.metadata || {};
+    const origin = String(meta.origin || meta.request_type || meta.type || "").toUpperCase();
+    return (
+      origin === "AFFILIATE_WITHDRAWAL" ||
+      origin === "AFFILIATE_COMMISSION_WITHDRAWAL" ||
+      origin === "AFFILIATE_PAYOUT_REQUEST"
+    );
+  });
+  if (hasOpen) {
+    throw new Error("Você já possui uma solicitação de saque em análise.");
+  }
+
+  const commissions = await sb(
+    `/rest/v1/affiliate_commissions?select=amount_cents,status&affiliate_id=eq.${userId}`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  const okStatus = new Set(["approved", "available", "pending_payout", "paid"]);
+  const earned = (Array.isArray(commissions) ? commissions : [])
+    .filter((c) => okStatus.has(String(c.status || "").toLowerCase()))
+    .reduce((a, c) => a + n(c.amount_cents), 0);
+
+  const wds = await sb(
+    `/rest/v1/withdrawals?select=amount_cents,status,metadata&user_id=eq.${userId}`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  const openStatuses = new Set(["pending", "approved", "paid", "processing"]);
+  const alreadyOut = (Array.isArray(wds) ? wds : [])
+    .filter((w) => {
+      const meta = w?.metadata || {};
+      const origin = String(meta.origin || meta.request_type || meta.type || "").toUpperCase();
+      const isAff =
+        origin === "AFFILIATE_WITHDRAWAL" ||
+        origin === "AFFILIATE_COMMISSION_WITHDRAWAL" ||
+        origin === "AFFILIATE_PAYOUT_REQUEST";
+      return isAff && openStatuses.has(String(w.status || "").toLowerCase());
+    })
+    .reduce((a, w) => a + n(w.amount_cents), 0);
+
+  const available = Math.max(0, earned - alreadyOut);
+  if (amountCents > available) {
+    throw new Error(
+      `Saldo insuficiente (disponível ${(available / 100).toFixed(2)})`
+    );
+  }
+
+  const created = await sb("/rest/v1/withdrawals", {
+    method: "POST",
+    token: SERVICE_KEY,
+    body: {
+      user_id: userId,
+      amount_cents: amountCents,
+      pix_key: pixKey,
+      status: "pending",
+      metadata: { origin: "AFFILIATE_WITHDRAWAL" },
+    },
+  });
+  const row = Array.isArray(created) ? created[0] : created;
+  return { ok: true, withdrawal: row, amountCents };
+}
+
 async function transferRealToDesafio(token, body) {
   const userId = requireUserId(token);
   const amountCents = Math.round(Number(body?.amountCents ?? body?.amount_cents ?? 0));
@@ -1375,6 +1497,31 @@ async function handleServerFn(req, res, id, rawBody = "") {
     }
   }
 
+  if (id === FN.AFFILIATE_ENSURE_CODE && (req.method === "POST" || req.method === "GET")) {
+    try {
+      return sendTsrOk(res, await ensureAffiliateReferralCode(token));
+    } catch (err) {
+      console.error("[serverfn-shim] AFFILIATE_ENSURE_CODE error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.AFFILIATE_WITHDRAW && req.method === "POST") {
+    try {
+      const params = extractServerFnData(rawBody);
+      return sendTsrOk(res, await requestAffiliateWithdrawal(token, params));
+    } catch (err) {
+      console.error("[serverfn-shim] AFFILIATE_WITHDRAW error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
   if (id === FN.BANNERS_REORDER && req.method === "POST") {
     try {
       const params = extractServerFnData(rawBody);
@@ -1586,6 +1733,37 @@ const server = createServer(async (req, res) => {
         body = {};
       }
       const data = await transferRealToDesafio(token, body.data || body);
+      return sendJson(res, 200, data);
+    } catch (err) {
+      return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/affiliate-ensure-code" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      const data = await ensureAffiliateReferralCode(token);
+      return sendJson(res, 200, data);
+    } catch (err) {
+      return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/affiliate-withdraw" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      const data = await requestAffiliateWithdrawal(token, body.data || body);
       return sendJson(res, 200, data);
     } catch (err) {
       return sendJson(res, 400, {
