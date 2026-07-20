@@ -331,6 +331,10 @@ async function createMatchFromMarket(body, token) {
   const dbToken = SERVICE_KEY || token;
   const eventExternalId = String(body.eventId);
   const betbraMarketId = String(body.marketId);
+  // Mesmo mercado BetBra (ex. placar exato) tem vários runners — chave por mercado+seleção
+  const betbraSelectionKey = body.runnerId
+    ? `${betbraMarketId}:${body.runnerId}`
+    : betbraMarketId;
 
   const newMarket = {
     id: marketUuid,
@@ -340,7 +344,9 @@ async function createMatchFromMarket(body, token) {
     display_liquidity: null,
     used_liquidity: 0,
     market_type: "LAY",
-    external_id: betbraMarketId,
+    external_id: betbraSelectionKey,
+    betbra_market_id: betbraMarketId,
+    betbra_runner_id: body.runnerId ? String(body.runnerId) : null,
   };
 
   const existingRows = await sb(
@@ -351,14 +357,32 @@ async function createMatchFromMarket(body, token) {
 
   if (existing?.id) {
     const markets = Array.isArray(existing.markets) ? existing.markets : [];
-    const dup = markets.find(
-      (m) =>
-        String(m.external_id || "") === betbraMarketId ||
+    const dup = markets.find((m) => {
+      const ext = String(m.external_id || "");
+      const runner = String(m.betbra_runner_id || m.runner_id || "");
+      // chave nova mercado:runner
+      if (ext === betbraSelectionKey) return true;
+      // legado: só marketId + mesmo runner
+      if (
+        body.runnerId &&
+        (ext === betbraMarketId ||
+          String(m.betbra_market_id || "") === betbraMarketId) &&
+        runner === String(body.runnerId)
+      ) {
+        return true;
+      }
+      // sem runnerId: só bloqueia nome idêntico no mesmo jogo
+      if (
+        !body.runnerId &&
         String(m.name || "").toLowerCase() === marketLabel.toLowerCase()
-    );
+      ) {
+        return true;
+      }
+      return false;
+    });
     if (dup) {
       const err = new Error(
-        `Este mercado já está cadastrado em ${existing.home_team} vs ${existing.away_team}.`
+        `Esta seleção já está cadastrada em ${existing.home_team} vs ${existing.away_team}. Escolha outra entrada (ex.: outro placar).`
       );
       err.status = 409;
       err.code = "MARKET_EXISTS";
@@ -390,7 +414,11 @@ async function createMatchFromMarket(body, token) {
       },
     });
     const match = Array.isArray(updated) ? updated[0] : updated;
-    return { action: "market_added", match: match || { ...existing, markets: nextMarkets } };
+    return {
+      action: "market_added",
+      match: match || { ...existing, markets: nextMarkets },
+      marketsCount: nextMarkets.length,
+    };
   }
 
   const row = {

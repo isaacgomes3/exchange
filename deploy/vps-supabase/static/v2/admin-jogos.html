@@ -261,6 +261,23 @@
     }
     .badge.pub { color: var(--lime); border-color: rgba(201,242,35,0.35); }
     .badge.draft { color: var(--amber); border-color: rgba(245,158,11,0.35); }
+    .badge.done { color: #93c5fd; border-color: rgba(59,130,246,0.35); }
+    .badge.live { color: #fca5a5; border-color: rgba(239,68,68,0.4); }
+    .platform-filters {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      padding: 0 16px 12px;
+    }
+    .chip {
+      border: 1px solid var(--border); background: transparent; color: var(--muted);
+      border-radius: 999px; padding: 8px 12px; cursor: pointer;
+      font-size: 10px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+    }
+    .chip.is-on {
+      color: #000; background: var(--lime); border-color: transparent;
+    }
+    .row .entries {
+      margin-top: 6px; font-size: 11px; color: var(--muted);
+    }
     .v2-nav {
       display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px;
     }
@@ -330,6 +347,12 @@
         <h2>Eventos cadastrados na plataforma</h2>
         <span class="hint" id="platformMeta">—</span>
       </div>
+      <div class="platform-filters" id="platformFilters">
+        <button type="button" class="chip is-on" data-pf="fila">Fila (atuais)</button>
+        <button type="button" class="chip" data-pf="draft">Rascunhos</button>
+        <button type="button" class="chip" data-pf="done">Finalizados</button>
+        <button type="button" class="chip" data-pf="all">Todos</button>
+      </div>
       <div id="platformContent">
         <div class="loading">Carregando eventos…</div>
       </div>
@@ -369,6 +392,7 @@
       var selectedMarket = null;
       var selectedRunner = null;
       var platformMatches = [];
+      var platformFilter = "fila";
       var platformLoaded = false;
       var platformLoading = false;
       var searchTerm = "";
@@ -717,11 +741,14 @@
           $("createModal").classList.remove("show");
           var msg =
             result.action === "market_added"
-              ? "Mercado incluído no evento existente (" +
+              ? "Entrada adicionada ao jogo existente (" +
                 (result.match && result.match.home_team) +
                 " vs " +
                 (result.match && result.match.away_team) +
-                ")."
+                ")" +
+                (result.marketsCount
+                  ? " · " + result.marketsCount + " entrada(s) no total."
+                  : ".")
               : "Evento criado como rascunho! Veja em Eventos ArbiShield.";
           alert(msg);
           platformLoaded = false;
@@ -735,26 +762,122 @@
         }
       }
 
+      function matchBucket(m) {
+        var st = String(m.status || m.status_v2 || "").toLowerCase();
+        var finished =
+          !!m.final_score ||
+          !!m.settled_at ||
+          ["settled", "finished", "closed", "cancelled", "finalizado"].indexOf(st) >= 0;
+        if (finished) return "done";
+        var start = m.starts_at ? new Date(m.starts_at).getTime() : NaN;
+        if (Number.isFinite(start) && start <= Date.now() - 3 * 60 * 60 * 1000) {
+          // começou há +3h e sem settle marcado → trata como encerrado na fila
+          return "done";
+        }
+        if (!m.is_published) return "draft";
+        if (Number.isFinite(start) && start <= Date.now()) return "live";
+        return "open";
+      }
+
+      function sortPlatform(rows) {
+        var rank = { live: 0, open: 1, draft: 2, done: 3 };
+        return rows.slice().sort(function (a, b) {
+          var ba = matchBucket(a);
+          var bb = matchBucket(b);
+          if (rank[ba] !== rank[bb]) return rank[ba] - rank[bb];
+          var ta = new Date(a.starts_at || 0).getTime();
+          var tb = new Date(b.starts_at || 0).getTime();
+          // atuais/próximos: mais cedo primeiro; finalizados: mais recentes primeiro
+          if (ba === "done" && bb === "done") return tb - ta;
+          return ta - tb;
+        });
+      }
+
       function renderPlatformList() {
-        var filtered = platformMatches.filter(filterText);
-        $("platformMeta").textContent = filtered.length + " eventos";
+        var filtered = sortPlatform(
+          platformMatches.filter(function (m) {
+            if (!filterText(m)) return false;
+            var bucket = matchBucket(m);
+            if (platformFilter === "fila") return bucket === "open" || bucket === "live";
+            if (platformFilter === "draft") return bucket === "draft";
+            if (platformFilter === "done") return bucket === "done";
+            return true;
+          })
+        );
+        var counts = { fila: 0, draft: 0, done: 0, all: platformMatches.length };
+        platformMatches.forEach(function (m) {
+          var b = matchBucket(m);
+          if (b === "open" || b === "live") counts.fila += 1;
+          if (b === "draft") counts.draft += 1;
+          if (b === "done") counts.done += 1;
+        });
+        $("platformMeta").textContent =
+          filtered.length +
+          " na vista · fila " +
+          counts.fila +
+          " · rascunhos " +
+          counts.draft +
+          " · finalizados " +
+          counts.done;
+
         if (!filtered.length) {
-          $("platformContent").innerHTML = '<div class="empty">Nenhum jogo encontrado nesta categoria</div>';
+          $("platformContent").innerHTML =
+            '<div class="empty">' +
+            (platformFilter === "fila"
+              ? "Nenhum jogo atual/próximo na fila. Rascunhos e finalizados estão nas outras abas."
+              : "Nenhum jogo encontrado nesta categoria") +
+            "</div>";
           return;
         }
-        $("platformContent").innerHTML = '<div class="list">' + filtered.map(function (m) {
-          var badge = m.is_published
-            ? '<span class="badge pub">Publicado</span>'
-            : '<span class="badge draft">Rascunho</span>';
-          var market = (m.markets && m.markets[0]) || {};
-          return (
-            '<div class="row" style="cursor:default">' +
-              '<div><div class="teams">' + m.home_team + " vs " + m.away_team + '</div>' +
-              '<div class="meta">' + (m.league || "—") + " · " + (market.name || "—") + '</div></div>' +
-              '<div class="time">' + badge + '<div class="when">' + fmtDate(m.starts_at) + "</div></div></div>"
-          );
-        }).join("") + "</div>";
+        $("platformContent").innerHTML =
+          '<div class="list">' +
+          filtered
+            .map(function (m) {
+              var bucket = matchBucket(m);
+              var badge =
+                bucket === "live"
+                  ? '<span class="badge live">Ao vivo</span>'
+                  : bucket === "done"
+                    ? '<span class="badge done">Finalizado</span>'
+                    : m.is_published
+                      ? '<span class="badge pub">Na fila</span>'
+                      : '<span class="badge draft">Rascunho</span>';
+              var markets = Array.isArray(m.markets) ? m.markets : [];
+              var names = markets
+                .map(function (x) { return x && x.name; })
+                .filter(Boolean)
+                .slice(0, 3)
+                .join(" · ");
+              var extra =
+                markets.length > 3 ? " + " + (markets.length - 3) + " mais" : "";
+              return (
+                '<div class="row" style="cursor:default">' +
+                "<div><div class=\"teams\">" +
+                m.home_team +
+                " vs " +
+                m.away_team +
+                "</div>" +
+                '<div class="meta">' +
+                (m.league || "—") +
+                (names ? " · " + names + extra : "") +
+                "</div>" +
+                '<div class="entries">' +
+                markets.length +
+                " entrada(s) · liquidez " +
+                money(m.max_protection_cents) +
+                "</div></div>" +
+                '<div class="time">' +
+                badge +
+                '<div class="when">' +
+                fmtDate(m.starts_at) +
+                "</div></div></div>"
+              );
+            })
+            .join("") +
+          "</div>";
       }
+
+      // (filterText já cobre home_team/away_team da plataforma)
 
       async function loadPrelive() {
         $("preliveContent").innerHTML = '<div class="loading">Consultando BetBra…</div>';
@@ -798,7 +921,7 @@
         }
         try {
           platformMatches = await rest(
-            "matches?deleted_at=is.null&select=id,home_team,away_team,league,starts_at,is_published,max_protection_cents,used_protection_cents,markets&order=starts_at.asc",
+            "matches?deleted_at=is.null&select=id,home_team,away_team,league,starts_at,is_published,status,status_v2,final_score,settled_at,max_protection_cents,used_protection_cents,markets&order=starts_at.asc&limit=200",
             auth.token
           );
           platformLoaded = true;

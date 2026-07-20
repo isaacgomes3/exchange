@@ -52,6 +52,9 @@ async function createMatchFromMarket(body: CreateMatchBody) {
     : body.marketName;
   const eventExternalId = String(body.eventId);
   const betbraMarketId = String(body.marketId);
+  const betbraSelectionKey = body.runnerId
+    ? `${betbraMarketId}:${body.runnerId}`
+    : betbraMarketId;
 
   const newMarket = {
     id: crypto.randomUUID(),
@@ -61,7 +64,9 @@ async function createMatchFromMarket(body: CreateMatchBody) {
     display_liquidity: null,
     used_liquidity: 0,
     market_type: "LAY" as const,
-    external_id: betbraMarketId,
+    external_id: betbraSelectionKey,
+    betbra_market_id: betbraMarketId,
+    betbra_runner_id: body.runnerId ? String(body.runnerId) : null,
   };
 
   const { data: existingRows } = await admin
@@ -78,13 +83,36 @@ async function createMatchFromMarket(body: CreateMatchBody) {
   if (existing?.id) {
     const markets = Array.isArray(existing.markets) ? existing.markets : [];
     const dup = markets.find(
-      (m: { external_id?: string; name?: string }) =>
-        String(m.external_id || "") === betbraMarketId ||
-        String(m.name || "").toLowerCase() === marketLabel.toLowerCase()
+      (m: {
+        external_id?: string;
+        name?: string;
+        betbra_runner_id?: string;
+        betbra_market_id?: string;
+        runner_id?: string;
+      }) => {
+        const ext = String(m.external_id || "");
+        const runner = String(m.betbra_runner_id || m.runner_id || "");
+        if (ext === betbraSelectionKey) return true;
+        if (
+          body.runnerId &&
+          (ext === betbraMarketId ||
+            String(m.betbra_market_id || "") === betbraMarketId) &&
+          runner === String(body.runnerId)
+        ) {
+          return true;
+        }
+        if (
+          !body.runnerId &&
+          String(m.name || "").toLowerCase() === marketLabel.toLowerCase()
+        ) {
+          return true;
+        }
+        return false;
+      }
     );
     if (dup) {
       const err = new Error(
-        `Este mercado já está cadastrado em ${existing.home_team} vs ${existing.away_team}.`
+        `Esta seleção já está cadastrada em ${existing.home_team} vs ${existing.away_team}. Escolha outra entrada (ex.: outro placar).`
       );
       (err as Error & { status?: number }).status = 409;
       throw err;
@@ -117,7 +145,11 @@ async function createMatchFromMarket(body: CreateMatchBody) {
       .single();
 
     if (error) throw new Error(error.message);
-    return { action: "market_added" as const, match: updated };
+    return {
+      action: "market_added" as const,
+      match: updated,
+      marketsCount: nextMarkets.length,
+    };
   }
 
   const row = {
