@@ -54,7 +54,9 @@
     } catch {}
   }
 
-  // Limpeza leve em qualquer rota; agressiva no /auth
+  // Limpeza agressiva só no /auth (no /app apagar cache quebra o boot da SPA)
+  if (!onAuth) return;
+
   if ("requestIdleCallback" in window) {
     requestIdleCallback(() => {
       nukeServiceWorkers();
@@ -62,8 +64,6 @@
   } else {
     setTimeout(nukeServiceWorkers, 300);
   }
-
-  if (!onAuth) return;
 
   const STORAGE_KEYS = [
     "sb-arbishield-auth-token",

@@ -1,19 +1,30 @@
 /**
  * Estabilidade global ArbiShield (VPS).
- * Gestão de Jogos: ver admin-jogos-guard.js (carregado antes do React).
+ * Não altera history/router e não apaga caches no /app (evita freeze).
  */
 (function () {
   var MARK = "arbishield-stable";
 
+  function normPath() {
+    return (location.pathname || "/").replace(/\/$/, "") || "/";
+  }
+
   function isHeavyPath() {
-    var path = location.pathname.replace(/\/$/, "") || "/";
+    var path = normPath();
     return (
       path === "/app" ||
       path.indexOf("/app/") === 0 ||
+      path === "/m" ||
+      path.indexOf("/m/") === 0 ||
       path === "/admin" ||
       path.indexOf("/admin/") === 0 ||
       path === "/auth"
     );
+  }
+
+  function isAuthPath() {
+    var path = normPath();
+    return path === "/auth" || path.endsWith("/auth");
   }
 
   function ensureStyle() {
@@ -57,6 +68,7 @@
   }, 500);
 
   function clearCorruptDashCache() {
+    if (!isAuthPath()) return;
     try {
       var keys = Object.keys(localStorage);
       for (var i = 0; i < keys.length; i++) {
@@ -88,7 +100,8 @@
     } catch (e) {}
   }
 
-  function cleanup() {
+  function cleanupAuthOnly() {
+    if (!isAuthPath()) return;
     clearCorruptDashCache();
     try {
       if ("serviceWorker" in navigator) {
@@ -110,8 +123,9 @@
     } catch (e) {}
   }
 
-  setTimeout(cleanup, 100);
-  setTimeout(cleanup, 3000);
+  if (isAuthPath()) {
+    setTimeout(cleanupAuthOnly, 100);
+  }
 
   try {
     window.__ARBISHIELD_STABILITY__ = true;
