@@ -1,20 +1,19 @@
 # Admin estável — arbishield.app
 
-Visual e banco **intactos**.
+**Híbrido:** admin HTML rápido + app usuario SPA (`/app`) + Supabase.
 
-## Estrutura
+| URL | Entrega |
+|-----|---------|
+| `/app`, `/` (rotas SPA) | `index.html` + assets |
+| `/admin`, `/admin/matches`, `/admin/desafios` | HTML admin VPS |
+| `/arbishield/admin` | Painel geral Next |
+| `/_serverFn/*` | shim :3101 (se existir na VPS) |
+| `/auth/v1`, `/rest/v1` | Supabase Kong |
 
-| URL | Função |
-|-----|--------|
-| **`/admin`** | Hub — menu de tudo |
-| **`/arbishield/admin`** | Painel geral (usuários, depósitos, tickets) |
-| **`/admin/matches`** | Gestão de jogos (rápido, :3098) |
-| **`/admin/desafios`** | Gestão de desafios (rápido, :3098) |
-
-## Estabilizar na VPS
+## Estabilizar
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/consolidate-arbishield-app-723d/scripts/vps-stabilize-arbishield.sh)
 ```
 
-Só HTML rápido (sem build Next): `SKIP_NEXT=1 bash ...`
+Restaura `index.html` se foi arquivado como `.bak-stabilize`.

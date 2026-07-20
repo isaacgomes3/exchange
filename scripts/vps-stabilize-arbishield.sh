@@ -66,10 +66,12 @@ done
 mkdir -p "$WEB/assets"
 download "deploy/vps-supabase/static/desafio-sugestoes-inject.js" "$WEB/assets/desafio-sugestoes-inject.js" || true
 
-log "Arquivando SPA antigo (evita rotas corrompidas)"
-if [[ -f "$WEB/index.html" && ! -f "$WEB/index.html.bak-stabilize" ]]; then
-  mv "$WEB/index.html" "$WEB/index.html.bak-stabilize"
-  warn "index.html antigo → index.html.bak-stabilize"
+log "SPA usuario (index.html + /app)"
+if [[ -f "$WEB/index.html.bak-stabilize" && ! -f "$WEB/index.html" ]]; then
+  mv "$WEB/index.html.bak-stabilize" "$WEB/index.html"
+  log "index.html restaurado do backup"
+elif [[ ! -f "$WEB/index.html" ]]; then
+  warn "index.html ausente em $WEB — /app ficará 404 até restaurar o espelho SPA"
 fi
 
 log "Nginx limpo (admin → :3098/:3099/:8000)"
@@ -111,8 +113,34 @@ if [[ -d "$COMPOSE_DIR" ]]; then
   curl -fsS -o /dev/null "http://127.0.0.1:8000/auth/v1/health" || warn "Kong :8000 não responde — suba Supabase: cd $COMPOSE_DIR && docker compose up -d"
 fi
 
-log "Desligando shim legado (:3101)"
-systemctl disable --now arbishield-serverfn-shim.service 2>/dev/null || true
+log "Shim SPA (:3101) se existir na VPS"
+SHIM="$SCRIPTS_DIR/arbishield-serverfn-shim.mjs"
+if [[ -f "$SHIM" ]]; then
+  if [[ ! -f /etc/systemd/system/arbishield-serverfn-shim.service ]]; then
+    cat > /etc/systemd/system/arbishield-serverfn-shim.service <<EOF
+[Unit]
+Description=ArbiShield SPA serverFn shim :3101
+After=network.target
+[Service]
+Type=simple
+EnvironmentFile=-$ENV_FILE
+Environment=ARBISHIELD_SUPABASE_URL=http://127.0.0.1:8000
+ExecStart=/usr/bin/node $SHIM
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target
+EOF
+  fi
+  systemctl daemon-reload
+  systemctl enable arbishield-serverfn-shim.service
+  systemctl restart arbishield-serverfn-shim.service
+else
+  systemctl disable --now arbishield-serverfn-shim.service 2>/dev/null || true
+  warn "serverfn-shim ausente — app SPA pode falhar em dados dinâmicos"
+fi
+
+log "Desligando apenas rotas nginx mortas (:3101 sem processo)"
 
 log "systemd workers :3098 / :3099"
 cat > /etc/systemd/system/arbishield-prelive-events.service <<EOF
@@ -195,6 +223,7 @@ check "API desafios" "http://127.0.0.1:3098/api/arbishield/desafios"
 check "API prelive" "http://127.0.0.1:3098/api/arbishield/prelive-events"
 check "HTTPS desafios" "https://arbishield.app/api/arbishield/desafios"
 check "HTTPS admin hub" "https://arbishield.app/admin"
+check "HTTPS app usuario" "https://arbishield.app/app"
 check "HTTPS admin jogos" "https://arbishield.app/admin/matches"
 check "HTTPS admin desafios" "https://arbishield.app/admin/desafios"
 
@@ -213,6 +242,7 @@ if [[ "$FAIL" -ne 0 ]]; then
 fi
 
 echo "OK — arbishield.app estabilizado"
+echo "  App usuario:        https://arbishield.app/app"
 echo "  Hub admin:          https://arbishield.app/admin"
 echo "  Painel geral:       https://arbishield.app/arbishield/admin"
 echo "  Gestão de Jogos:    https://arbishield.app/admin/matches"
