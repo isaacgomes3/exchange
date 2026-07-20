@@ -17,15 +17,15 @@ O script:
 - verifica Supabase Kong `:8000`
 - roda checks HTTP e falha se algo crítico estiver offline
 
-Rotas:
+## Rotas
 
 | URL | Função |
 |-----|--------|
+| **`/admin`** | Hub — menu admin |
+| **`/arbishield/admin`** | Painel geral |
 | `/admin/matches` | Gestão de Jogos |
 | `/admin/desafios` | Gestão de Desafios |
 | `/auth` | Login |
-| `/api/arbishield/*` | APIs Node |
-| `/rest/v1`, `/auth/v1` | Supabase |
 
 Doc: [`deploy/vps-supabase/ADMIN-STABLE.md`](deploy/vps-supabase/ADMIN-STABLE.md)
 

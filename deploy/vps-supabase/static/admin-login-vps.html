@@ -94,7 +94,7 @@
     </form>
     <div class="links">
       <a href="/auth">Login do app</a>
-      <a href="/admin/matches">Ir ao dashboard</a>
+      <a href="/admin">Ir ao dashboard</a>
     </div>
   </div>
   <script>
@@ -105,7 +105,7 @@
     const STORAGE_KEY = "sb-arbishield-auth-token";
 
     const params = new URLSearchParams(location.search);
-    const redirectTo = params.get("redirect") || "/admin/matches";
+    const redirectTo = params.get("redirect") || "/admin";
 
     const { createClient } = supabase;
     const client = createClient(SUPABASE_URL, ANON_KEY, {

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Admin — ArbiShield</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #050505;
+      --panel: #0a0a0a;
+      --border: #1f1f1f;
+      --text: #f5f5f7;
+      --muted: #8a8a8f;
+      --lime: #c9f223;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      background: radial-gradient(900px 500px at 0% 0%, rgba(201,242,35,0.07), transparent 50%), var(--bg);
+      color: var(--text);
+    }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 32px 18px 64px; }
+    h1 {
+      margin: 0; font-size: clamp(1.6rem, 3vw, 2.2rem);
+      font-weight: 800; letter-spacing: -0.04em; text-transform: uppercase;
+    }
+    h1 span { color: var(--lime); }
+    .sub {
+      margin: 8px 0 28px; color: var(--muted); font-size: 0.72rem;
+      letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;
+    }
+    .grid {
+      display: grid; gap: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+    .card {
+      display: block; text-decoration: none; color: inherit;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 16px; padding: 20px 18px;
+      transition: border-color .15s, transform .15s;
+    }
+    .card:hover { border-color: rgba(201,242,35,0.45); transform: translateY(-1px); }
+    .card.primary { border-color: rgba(201,242,35,0.35); }
+    .card .tag {
+      font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--lime); font-weight: 800; margin-bottom: 8px;
+    }
+    .card h2 { margin: 0 0 8px; font-size: 1.05rem; font-weight: 800; }
+    .card p { margin: 0; color: var(--muted); font-size: 0.88rem; line-height: 1.45; }
+    .foot {
+      margin-top: 28px; display: flex; flex-wrap: wrap; gap: 10px;
+    }
+    .btn {
+      border: 0; border-radius: 12px; padding: 11px 14px;
+      font-weight: 800; font-size: 10px; letter-spacing: 0.12em;
+      text-transform: uppercase; cursor: pointer; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Admin <span>ArbiShield</span></h1>
+    <p class="sub">Centro de controle · arbishield.app</p>
+
+    <div class="grid">
+      <a class="card primary" href="/arbishield/admin">
+        <div class="tag">Principal</div>
+        <h2>Painel geral</h2>
+        <p>Usuários, depósitos, saques, tickets, fila de aprovação e estatísticas.</p>
+      </a>
+      <a class="card" href="/admin/matches">
+        <div class="tag">Operação</div>
+        <h2>Gestão de jogos</h2>
+        <p>Pré-live BetBra, mercados e inclusão de novos eventos.</p>
+      </a>
+      <a class="card" href="/admin/desafios">
+        <div class="tag">Operação</div>
+        <h2>Gestão de desafios</h2>
+        <p>Desafios ativos, etapas e lançamentos.</p>
+      </a>
+      <a class="card" href="/desafio-sugestoes.html">
+        <div class="tag">Ferramenta</div>
+        <h2>Sugestão de desafio</h2>
+        <p>Surebet BetBra → desafio ArbiShield.</p>
+      </a>
+    </div>
+
+    <div class="foot">
+      <a class="btn btn-ghost" href="/admin/login">Login admin</a>
+      <a class="btn btn-ghost" href="/auth">Login usuário</a>
+    </div>
+  </div>
+</body>
+</html>

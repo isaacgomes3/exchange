@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Estabilização completa arbishield.app — visual + banco intactos.
-# Corrige nginx morto (:3101/:3000), sobe workers :3098/:3099, desliga legado.
+# HTML admin (:3098/:3099) + hub /admin + painel geral Next (:3000).
 #
 # Uso na VPS (root):
 #   bash <(curl -fsSL https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/consolidate-arbishield-app-723d/scripts/vps-stabilize-arbishield.sh)
@@ -52,6 +52,7 @@ fi
 
 log "HTML admin (visual inalterado)"
 for pair in \
+  "deploy/vps-supabase/static/admin-hub-vps.html:$WEB/admin-hub-vps.html" \
   "deploy/vps-supabase/static/admin-jogos-vps.html:$WEB/admin-jogos-vps.html" \
   "deploy/vps-supabase/static/admin-desafios-vps.html:$WEB/admin-desafios-vps.html" \
   "deploy/vps-supabase/static/admin-login-vps.html:$WEB/admin-login-vps.html" \
@@ -85,31 +86,13 @@ from pathlib import Path
 def clean(text: str) -> str:
     text = re.sub(r"\n\s*location \^~ /_serverFn/ \{.*?\n\s*\}\n", "\n", text, flags=re.DOTALL)
     text = re.sub(r"proxy_pass http://127\.0\.0\.1:3101;", "proxy_pass http://127.0.0.1:3098;", text)
-    text = re.sub(
-        r"location /api/arbishield/ \{[^}]*proxy_pass http://127\.0\.0\.1:3000;[^}]*\}",
-        "",
-        text,
-        flags=re.DOTALL,
-    )
-    text = re.sub(
-        r"location /arbishield \{[^}]*proxy_pass http://127\.0\.0\.1:3000;[^}]*\}",
-        "",
-        text,
-        flags=re.DOTALL,
-    )
-    text = re.sub(
-        r"location /_next/ \{[^}]*proxy_pass http://127\.0\.0\.1:3000;[^}]*\}",
-        "",
-        text,
-        flags=re.DOTALL,
-    )
     return text
 
 for p in list(Path("/etc/nginx/conf.d").glob("*.conf")) + list(Path("/etc/nginx/sites-enabled").glob("*")):
     if not p.is_file():
         continue
     t = p.read_text(errors="ignore")
-    if "_serverFn" in t or ":3101" in t or ("arbishield" in t.lower() and ":3000" in t):
+    if "_serverFn" in t or ":3101" in t:
         p.write_text(clean(t))
         print("limpo:", p)
 PY
@@ -128,10 +111,8 @@ if [[ -d "$COMPOSE_DIR" ]]; then
   curl -fsS -o /dev/null "http://127.0.0.1:8000/auth/v1/health" || warn "Kong :8000 não responde — suba Supabase: cd $COMPOSE_DIR && docker compose up -d"
 fi
 
-log "Desligando serviços legados"
-for svc in arbishield-serverfn-shim arbishield-next; do
-  systemctl disable --now "$svc.service" 2>/dev/null || true
-done
+log "Desligando shim legado (:3101)"
+systemctl disable --now arbishield-serverfn-shim.service 2>/dev/null || true
 
 log "systemd workers :3098 / :3099"
 cat > /etc/systemd/system/arbishield-prelive-events.service <<EOF
@@ -178,6 +159,23 @@ systemctl restart arbishield-prelive-events.service arbishield-desafio-suggestio
 nginx -t
 systemctl reload nginx
 
+if [[ "${SKIP_NEXT:-0}" != "1" ]] && command -v npm >/dev/null 2>&1 && [[ -f "$APP_DIR/package.json" ]]; then
+  log "Painel geral (Next :3000)"
+  if ARBISHIELD_BRANCH="$BRANCH" APP_DIR="$APP_DIR" bash "$APP_DIR/scripts/vps-deploy-next-admin.sh"; then
+    log "Next OK — /arbishield/admin"
+  else
+    warn "Next falhou — hub /admin e jogos/desafios continuam"
+  fi
+  if [[ -f /etc/letsencrypt/live/arbishield.app/fullchain.pem ]]; then
+    download "deploy/vps-supabase/nginx-arbishield.app.conf" "$NGINX_CONF"
+  else
+    download "deploy/vps-supabase/nginx-cutover.conf" "$NGINX_CONF"
+  fi
+  nginx -t && systemctl reload nginx
+else
+  warn "Painel geral Next não instalado (precisa git clone + npm). Hub /admin disponível."
+fi
+
 sleep 2
 log "Verificação"
 FAIL=0
@@ -196,8 +194,15 @@ check "Worker :3099 health" "http://127.0.0.1:3099/health"
 check "API desafios" "http://127.0.0.1:3098/api/arbishield/desafios"
 check "API prelive" "http://127.0.0.1:3098/api/arbishield/prelive-events"
 check "HTTPS desafios" "https://arbishield.app/api/arbishield/desafios"
+check "HTTPS admin hub" "https://arbishield.app/admin"
 check "HTTPS admin jogos" "https://arbishield.app/admin/matches"
 check "HTTPS admin desafios" "https://arbishield.app/admin/desafios"
+
+if systemctl is-active --quiet arbishield-next.service 2>/dev/null; then
+  code="$(curl -sS -o /dev/null -w '%{http_code}' "https://arbishield.app/arbishield/admin" || echo 000)"
+  printf "  %-28s %s\n" "HTTPS painel geral" "$code"
+  [[ "$code" =~ ^(200|307|308)$ ]] || warn "Painel geral respondeu $code"
+fi
 
 echo
 if [[ "$FAIL" -ne 0 ]]; then
@@ -208,6 +213,7 @@ if [[ "$FAIL" -ne 0 ]]; then
 fi
 
 echo "OK — arbishield.app estabilizado"
+echo "  Hub admin:          https://arbishield.app/admin"
+echo "  Painel geral:       https://arbishield.app/arbishield/admin"
 echo "  Gestão de Jogos:    https://arbishield.app/admin/matches"
 echo "  Gestão de Desafios: https://arbishield.app/admin/desafios"
-echo "  Login:              https://arbishield.app/auth"

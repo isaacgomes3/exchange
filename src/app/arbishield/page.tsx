@@ -8,10 +8,10 @@ export default function ArbiShieldLoginPage() {
         <p className="as-brand">ArbiShield</p>
         <h1 className="as-headline">Painel operacional</h1>
         <p className="as-lede">
-          Dashboard admin (usuários, depósitos, tickets). Para{" "}
-          <strong>Gestão de Jogos</strong> e <strong>Desafios</strong>, use{" "}
-          <Link href="/admin/matches">/admin/matches</Link> e{" "}
-          <Link href="/admin/desafios">/admin/desafios</Link>.
+          Dashboard geral (usuários, depósitos, tickets). Voltar ao{" "}
+          <Link href="/admin">centro admin</Link> ·{" "}
+          <Link href="/admin/matches">jogos</Link> ·{" "}
+          <Link href="/admin/desafios">desafios</Link>.
         </p>
         <ArbiShieldLoginForm />
       </div>

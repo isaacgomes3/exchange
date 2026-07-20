@@ -6,7 +6,7 @@
 set -euo pipefail
 
 REPO="${ARBISHIELD_REPO:-https://github.com/isaacgomes3/exchange.git}"
-BRANCH="${ARBISHIELD_BRANCH:-main}"
+BRANCH="${ARBISHIELD_BRANCH:-cursor/consolidate-arbishield-app-723d}"
 APP_DIR="${APP_DIR:-/opt/arbishield/app}"
 ROOT="${ARBISHIELD_ROOT:-/opt/arbishield}"
 WEB="${ARBISHIELD_WEB:-/var/www/arbishield}"
