@@ -1441,6 +1441,7 @@ body[data-shell="app"] {
 }
 body[data-shell="app"] .v2-sidebar,
 body[data-shell="app"] .v2-sidebar-app {
+  position: sticky;
   width: var(--sidebar-w);
   background: #070707;
   border-right: 1px solid rgba(255, 255, 255, 0.06);

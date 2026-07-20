@@ -96,6 +96,6 @@ app-suporte.html
 EOF
 
 echo
-echo "OK — UI v2 atualizada (landing + dashboard + Terminal Proteger Aposta)"
-echo "  Abra https://arbishield.app/app-proteger.html e faça hard refresh (Ctrl+Shift+R)"
+echo "OK — UI v2 atualizada (menu lateral SPA + landing + dashboard + terminal)"
+echo "  Abra https://arbishield.app/app.html e faça hard refresh (Ctrl+Shift+R)"
 echo "  Admin: https://arbishield.app/admin.html"
