@@ -25,7 +25,9 @@ export type CreateProtectionResult = {
   balanceAfterCents: number;
 };
 
+/* Cliente admin Supabase — tipagem frouxa para não acoplar ao Postgrest. */
 type Sb = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PostgrestQueryBuilder
   from: (table: string) => any;
 };
 
@@ -140,7 +142,7 @@ export async function createProtection(
   }
 
   const markets = Array.isArray(match.markets) ? [...match.markets] : [];
-  let market =
+  const market =
     (input.marketId &&
       markets.find((m: { id?: string }) => String(m.id) === String(input.marketId))) ||
     markets[0] ||

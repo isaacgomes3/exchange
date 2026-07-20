@@ -15,6 +15,8 @@ const eslintConfig = defineConfig([
     "arbishield-local/**",
     "deploy/**",
     "supabase-export/**",
+    // Espelho do SPA legado (JS minificado) — não lintar.
+    "backup/**",
   ]),
 ]);
 
