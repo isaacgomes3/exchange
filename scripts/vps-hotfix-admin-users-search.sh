@@ -49,6 +49,7 @@ else:
 PY
 
 echo
-echo "OK — busca de usuários destravada"
-echo "  Teste: https://arbishield.app/admin/users → digite no campo Pesquisar"
-echo "  (hard refresh Ctrl+Shift+R se o browser cachear o JS antigo)"
+echo "OK — busca de usuários destravada (debounce 400ms, sem re-render a cada tecla)"
+echo "  Teste: https://arbishield.app/admin/users"
+echo "  OBRIGATÓRIO: Ctrl+Shift+R (o nome do JS é o mesmo e o browser cacheia)"
+echo "  Digite no Pesquisar — a lista só filtra ~0,4s após parar de digitar"
