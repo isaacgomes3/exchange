@@ -274,8 +274,7 @@ async function createDesafio(token, body) {
   const created = await sb("/rest/v1/desafios", {
     method: "POST",
     token: token || SERVICE_KEY,
-    headers: { Prefer: "return=representation" },
-    body: JSON.stringify(desafioRow),
+    body: desafioRow,
   });
   const desafio = Array.isArray(created) ? created[0] : created;
   if (!desafio?.id) throw new Error("Falha ao criar desafio");
@@ -318,8 +317,7 @@ async function createDesafio(token, body) {
   const steps = await sb("/rest/v1/desafio_steps", {
     method: "POST",
     token: token || SERVICE_KEY,
-    headers: { Prefer: "return=representation" },
-    body: JSON.stringify(stepRow),
+    body: stepRow,
   });
   const step = Array.isArray(steps) ? steps[0] : steps;
   return { ...desafio, desafio_steps: step ? [step] : [] };

@@ -6,6 +6,7 @@ set -euo pipefail
 
 BRANCH="${ARBISHIELD_HOTFIX_BRANCH:-cursor/jogos-24h-remove-30min-723d}"
 BASE="https://raw.githubusercontent.com/isaacgomes3/exchange/${BRANCH}/deploy/vps-supabase/static"
+SCRIPT_BASE="https://raw.githubusercontent.com/isaacgomes3/exchange/${BRANCH}/scripts"
 WWW="${ARBISHIELD_WWW:-/var/www/arbishield}"
 OPT="${ARBISHIELD_OPT:-/opt/arbishield}"
 
