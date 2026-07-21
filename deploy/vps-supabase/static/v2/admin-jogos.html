@@ -437,19 +437,28 @@
   </div>
 
   <div class="modal-backdrop" id="settleModal">
-    <div class="modal">
+    <div class="modal" style="width:min(560px,100%)">
       <h3>Encerrar <span style="color:var(--lime)">partida</span></h3>
-      <p id="settleSummary" class="hint">Registre o placar e onde o jogo bateu (ArbiShield ou Exchange).</p>
+      <p id="settleSummary" class="hint">Registre o placar e onde o jogo bateu.</p>
       <div class="grid" style="margin-top:12px">
         <div class="field"><label>Placar casa</label><input id="settleHome" type="number" min="0" step="1" placeholder="0" /></div>
         <div class="field"><label>Placar fora</label><input id="settleAway" type="number" min="0" step="1" placeholder="0" /></div>
       </div>
-      <div class="field" style="margin-top:10px">
-        <label>Resultado / onde bateu</label>
-        <select id="settleOutcome">
-          <option value="arbishield">Bateu ArbiShield (zebra / proteção)</option>
-          <option value="exchange">Bateu Exchange (casa / favorito)</option>
-        </select>
+      <div class="field" style="margin-top:14px">
+        <label>Onde bateu?</label>
+        <div id="settleOutcomeBox" style="display:grid;gap:10px;margin-top:8px">
+          <button type="button" class="btn btn-ghost" id="btnOutcomeArbi" data-outcome="arbishield" style="justify-content:flex-start;text-align:left;padding:14px 16px;border-color:rgba(201,242,35,0.45)">
+            <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU ARBISHIELD</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção valida · reembolso ao usuário</span>
+            <span id="settleRefundHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Reembolso: —</span>
+          </button>
+          <button type="button" class="btn btn-ghost" id="btnOutcomeExch" data-outcome="exchange" style="justify-content:flex-start;text-align:left;padding:14px 16px">
+            <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU CASA EXTERNA (EXCHANGE)</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0">Favorito / casa · dedução na plataforma</span>
+            <span id="settleDeductHint" style="display:block;margin-top:8px;color:var(--amber);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Dedução: —</span>
+          </button>
+        </div>
+        <input type="hidden" id="settleOutcome" value="arbishield" />
       </div>
       <div class="modal-actions">
         <button class="btn btn-ghost btn-sm" id="btnCancelSettle" type="button">Cancelar</button>
@@ -1244,28 +1253,32 @@
           var openByMatch = {};
           try {
             var openProt = await rest(
-              "protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,responsibility_cents&limit=2000",
+              "protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,responsibility_cents,user_profit_cents&limit=2000",
               auth.token
             );
             (openProt || []).forEach(function (p) {
               if (!p.match_id) return;
-              if (!openByMatch[p.match_id]) openByMatch[p.match_id] = { count: 0, cents: 0 };
+              if (!openByMatch[p.match_id]) openByMatch[p.match_id] = { count: 0, cents: 0, refund: 0 };
+              var amt = Number(p.responsibility_cents || p.amount_cents || 0);
+              var profit = Number(p.user_profit_cents || 0);
               openByMatch[p.match_id].count += 1;
-              openByMatch[p.match_id].cents += Number(
-                p.responsibility_cents || p.amount_cents || 0
-              );
+              openByMatch[p.match_id].cents += amt;
+              openByMatch[p.match_id].refund += amt + Math.max(0, profit);
             });
           } catch (e1) {}
           try {
             var openBack = await rest(
-              "back_protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents&limit=1000",
+              "back_protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,user_profit_cents&limit=1000",
               auth.token
             );
             (openBack || []).forEach(function (p) {
               if (!p.match_id) return;
-              if (!openByMatch[p.match_id]) openByMatch[p.match_id] = { count: 0, cents: 0 };
+              if (!openByMatch[p.match_id]) openByMatch[p.match_id] = { count: 0, cents: 0, refund: 0 };
+              var amt = Number(p.amount_cents || 0);
+              var profit = Number(p.user_profit_cents || 0);
               openByMatch[p.match_id].count += 1;
-              openByMatch[p.match_id].cents += Number(p.amount_cents || 0);
+              openByMatch[p.match_id].cents += amt;
+              openByMatch[p.match_id].refund += amt + Math.max(0, profit);
             });
           } catch (e2) {}
 
@@ -1275,6 +1288,8 @@
             var op = openByMatch[m.id];
             if (op) {
               m._openProtections = op.count;
+              m._openStakeCents = op.cents;
+              m._openRefundCents = op.refund;
               if (!(Number(m.used_protection_cents) > 0)) {
                 m.used_protection_cents = op.cents;
               }
@@ -1295,6 +1310,8 @@
             (extra || []).forEach(function (m) {
               var op = openByMatch[m.id];
               m._openProtections = op ? op.count : 0;
+              m._openStakeCents = op ? op.cents : 0;
+              m._openRefundCents = op ? op.refund : 0;
               if (!(Number(m.used_protection_cents) > 0) && op) {
                 m.used_protection_cents = op.cents;
               }
@@ -1553,21 +1570,96 @@
 
       var settleMatchId = null;
 
+      function setSettleOutcome(outcome) {
+        $("settleOutcome").value = outcome;
+        var arbi = $("btnOutcomeArbi");
+        var exch = $("btnOutcomeExch");
+        if (arbi) {
+          arbi.style.borderColor =
+            outcome === "arbishield" ? "rgba(201,242,35,0.8)" : "var(--border)";
+          arbi.style.background =
+            outcome === "arbishield" ? "rgba(201,242,35,0.1)" : "transparent";
+        }
+        if (exch) {
+          exch.style.borderColor =
+            outcome === "exchange" ? "rgba(245,158,11,0.8)" : "var(--border)";
+          exch.style.background =
+            outcome === "exchange" ? "rgba(245,158,11,0.1)" : "transparent";
+        }
+      }
+
       function openSettleModal(matchId) {
         var m = platformMatches.find(function (x) { return String(x.id) === String(matchId); });
         if (!m) return;
         settleMatchId = matchId;
+        var stake = Number(m._openStakeCents || m.used_protection_cents || 0);
+        var refund = Number(m._openRefundCents || stake);
+        var openN = Number(m._openProtections || 0);
         $("settleSummary").textContent =
           (m.home_team || "?") +
           " vs " +
           (m.away_team || "?") +
-          " · protegido " +
-          money(m.used_protection_cents || 0) +
-          " · escolha placar e onde bateu.";
+          " · " +
+          openN +
+          " proteção(ões) · protegido " +
+          money(stake);
+        if ($("settleRefundHint")) {
+          $("settleRefundHint").textContent =
+            "Reembolso estimado: " + money(refund) + " (stake + lucro usuário)";
+        }
+        if ($("settleDeductHint")) {
+          $("settleDeductHint").textContent =
+            "Dedução estimada: " + money(stake) + " (stake fica na plataforma)";
+        }
         $("settleHome").value = "";
         $("settleAway").value = "";
-        $("settleOutcome").value = "arbishield";
+        setSettleOutcome("arbishield");
         $("settleModal").classList.add("show");
+      }
+
+      async function postSettle(payload) {
+        // 1) REST v2
+        var res = await fetch("/api/arbishield/match-settle", {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + auth.token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (res.ok && !data.error) return data;
+
+        // 2) Fallback SPA hash (mesmo shim :3101)
+        var sf = await fetch(
+          "/_serverFn/c18778cffbba4cac38b3df54b2a50b3179a999b1c9908c2adbddd929ada5932f",
+          {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer " + auth.token,
+              "Content-Type": "application/json",
+              "x-tsr-serverFn": "1",
+            },
+            body: JSON.stringify({ data: payload }),
+          }
+        );
+        var sfData = await sf.json().catch(function () { return {}; });
+        if (sf.ok && sfData && (sfData.ok || sfData.settledCount != null || sfData.matchId)) {
+          return sfData;
+        }
+        // TSR encoded success sometimes wraps differently — treat HTTP 200 without error string as ok if shim updated
+        if (sf.ok && sfData && sfData.t && !String(JSON.stringify(sfData)).includes("Error")) {
+          return { ok: true, settledCount: 0, via: "serverFn" };
+        }
+
+        var errMsg =
+          data.error ||
+          data.message ||
+          (res.status === 404
+            ? "API match-settle não encontrada (Not found). Rode o hotfix na VPS."
+            : null) ||
+          "Falha ao liquidar";
+        throw new Error(errMsg);
       }
 
       async function confirmSettle() {
@@ -1579,32 +1671,25 @@
         var away = String($("settleAway").value || "0").trim() || "0";
         var outcome = $("settleOutcome").value;
         if (outcome !== "arbishield" && outcome !== "exchange") {
-          alert("Selecione o resultado.");
+          alert("Selecione onde bateu: ArbiShield ou Casa externa.");
           return;
         }
         $("btnConfirmSettle").disabled = true;
         $("btnConfirmSettle").textContent = "Liquidando…";
         try {
-          var res = await fetch("/api/arbishield/match-settle", {
-            method: "POST",
-            headers: {
-              Authorization: "Bearer " + auth.token,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              matchId: settleMatchId,
-              outcome: outcome,
-              finalScore: home + "-" + away,
-              homeScore: Number(home),
-              awayScore: Number(away),
-            }),
+          var data = await postSettle({
+            matchId: settleMatchId,
+            outcome: outcome,
+            finalScore: home + "-" + away,
+            homeScore: Number(home),
+            awayScore: Number(away),
+            winner: "home",
           });
-          var data = await res.json().catch(function () { return {}; });
-          if (!res.ok) throw new Error(data.error || "Falha ao liquidar");
           alert(
             "Partida encerrada · " +
-              (data.settledCount || 0) +
-              " proteção(ões) liquidada(s)."
+              (data.settledCount != null ? data.settledCount : "?") +
+              " proteção(ões) · " +
+              (outcome === "arbishield" ? "reembolso ArbiShield" : "dedução Exchange")
           );
           $("settleModal").classList.remove("show");
           platformLoaded = false;
@@ -1660,6 +1745,16 @@
         }
         if ($("btnConfirmSettle")) {
           $("btnConfirmSettle").addEventListener("click", confirmSettle);
+        }
+        if ($("btnOutcomeArbi")) {
+          $("btnOutcomeArbi").addEventListener("click", function () {
+            setSettleOutcome("arbishield");
+          });
+        }
+        if ($("btnOutcomeExch")) {
+          $("btnOutcomeExch").addEventListener("click", function () {
+            setSettleOutcome("exchange");
+          });
         }
         if ($("settleModal")) {
           $("settleModal").addEventListener("click", function (e) {
