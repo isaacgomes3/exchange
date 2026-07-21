@@ -326,42 +326,33 @@
     var sidebar = document.getElementById("v2-sidebar");
     if (!sidebar) return;
 
-    if (shell === "app") {
-      sidebar.classList.add("v2-sidebar-app");
-      try {
-        if (localStorage.getItem("arbishield.sidebarCollapsed") === "1") {
-          body.classList.add("v2-sidebar-collapsed");
-        }
-      } catch (e) {}
-    }
+    // Cliente e ADM compartilham o mesmo chrome de sidebar
+    sidebar.classList.add("v2-sidebar-app");
+    try {
+      var collapseKey =
+        shell === "admin"
+          ? "arbishield.adminSidebarCollapsed"
+          : "arbishield.sidebarCollapsed";
+      if (localStorage.getItem(collapseKey) === "1") {
+        body.classList.add("v2-sidebar-collapsed");
+      }
+    } catch (e) {}
 
-    sidebar.innerHTML =
-      (shell === "app"
-        ? '<div class="v2-sidebar-brand-row">' +
-          '<a class="v2-sidebar-brand" href="' +
-          brandHref +
-          '">' +
-          '<img class="mark-img" src="/brand/icon-64.png" width="40" height="40" alt="" decoding="async" />' +
-          "<div><strong>Arbi<span>Shield</span></strong><small>" +
-          esc(brandSub) +
-          "</small></div></a>" +
-          '<button type="button" class="v2-collapse-btn" id="v2CollapseBtn" aria-label="Recolher menu" title="Recolher menu">' +
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 6 8 12l6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
-          "</button></div>"
-        : '<a class="v2-sidebar-brand" href="' +
-          brandHref +
-          '">' +
-          '<img class="mark-img" src="/brand/icon-64.png" width="36" height="36" alt="" decoding="async" />' +
-          "<div><strong>ArbiShield</strong><small>" +
-          esc(brandSub) +
-          "</small></div></a>") +
-      '<div class="v2-sidebar-scroll">' +
-      renderSections(sections, active, {
-        withIcons: shell === "app",
-        hideDots: shell === "app",
-      }) +
-      "</div>" +
-      (shell === "app"
+    var brandRowHtml =
+      '<div class="v2-sidebar-brand-row">' +
+      '<a class="v2-sidebar-brand" href="' +
+      brandHref +
+      '">' +
+      '<img class="mark-img" src="/brand/icon-64.png" width="40" height="40" alt="" decoding="async" />' +
+      "<div><strong>Arbi<span>Shield</span></strong><small>" +
+      esc(brandSub) +
+      "</small></div></a>" +
+      '<button type="button" class="v2-collapse-btn" id="v2CollapseBtn" aria-label="Recolher menu" title="Recolher menu">' +
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 6 8 12l6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+      "</button></div>";
+
+    var footHtml =
+      shell === "app"
         ? '<div class="v2-sidebar-foot v2-app-foot">' +
           '<a class="v2-app-user" href="/app-perfil.html">' +
           '<div class="v2-avatar-btn sm" id="v2SideAvatar">U</div>' +
@@ -374,17 +365,37 @@
           '<span class="lbl">Sair</span>' +
           '<span class="nav-ico out" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M10 7V5.5A1.5 1.5 0 0 1 11.5 4H18a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6.5A1.5 1.5 0 0 1 10 18.5V17M4 12h10m0 0-3-3m3 3-3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>' +
           "</a></div>"
-        : '<div class="v2-sidebar-foot">' +
-          '<a class="v2-nav-link" href="#" id="v2LogoutLink">Sair</a>' +
-          "</div>");
+        : '<div class="v2-sidebar-foot v2-app-foot">' +
+          '<div class="v2-app-user" style="cursor:default">' +
+          '<div class="v2-avatar-btn sm" id="v2SideAvatar">AD</div>' +
+          '<div class="v2-app-user-meta"><strong id="v2SideName">Admin</strong>' +
+          "<small>Painel · v2</small></div></div>" +
+          '<a class="v2-nav-link v2-logout" href="#" id="v2LogoutLink">' +
+          '<span class="lbl">Sair</span>' +
+          '<span class="nav-ico out" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M10 7V5.5A1.5 1.5 0 0 1 11.5 4H18a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6.5A1.5 1.5 0 0 1 10 18.5V17M4 12h10m0 0-3-3m3 3-3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>' +
+          "</a></div>";
+
+    sidebar.innerHTML =
+      brandRowHtml +
+      '<div class="v2-sidebar-scroll">' +
+      renderSections(sections, active, {
+        withIcons: true,
+        hideDots: true,
+      }) +
+      "</div>" +
+      footHtml;
 
     var collapseBtn = document.getElementById("v2CollapseBtn");
     if (collapseBtn) {
       collapseBtn.addEventListener("click", function () {
         body.classList.toggle("v2-sidebar-collapsed");
         try {
+          var key =
+            shell === "admin"
+              ? "arbishield.adminSidebarCollapsed"
+              : "arbishield.sidebarCollapsed";
           localStorage.setItem(
-            "arbishield.sidebarCollapsed",
+            key,
             body.classList.contains("v2-sidebar-collapsed") ? "1" : "0"
           );
         } catch (e2) {}

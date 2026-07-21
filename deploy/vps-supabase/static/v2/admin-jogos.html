@@ -6,8 +6,8 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta name="arbishield-vps-page" content="jogos" />
   <title>Gestão de Jogos — ArbiShield v2</title>
-  <link rel="stylesheet" href="/v2.css" />
-  <script src="/v2-shell.js" defer></script>
+  <link rel="stylesheet" href="/v2.css?v=ui-cards-23" />
+  <script src="/v2-shell.js?v=ui-cards-23" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -115,12 +115,17 @@
       width: 100%;
     }
     .panel {
-      border: 1px solid var(--border); border-radius: 16px;
-      background: var(--panel); overflow: hidden;
+      border: 0; border-radius: 20px;
+      background: transparent; overflow: visible;
       width: 100%;
       max-width: none;
       margin: 0;
       padding: 0;
+    }
+    .panel.platform-list, #prelivePanel.panel {
+      border: 1px solid rgba(255,255,255,0.06);
+      background: rgba(7, 26, 22, 0.35);
+      overflow: hidden;
     }
     .panel-head {
       padding: 14px 18px; border-bottom: 1px solid var(--border);
@@ -145,27 +150,45 @@
       border: 0; background: none; color: var(--lime); cursor: pointer;
       font: inherit; padding: 0;
     }
-    .list { display: flex; flex-direction: column; width: 100%; }
+    .list {
+      display: flex; flex-direction: column; gap: 12px; width: 100%;
+      padding: 12px 14px 16px; box-sizing: border-box;
+    }
     .row {
       display: flex; align-items: center; justify-content: space-between;
-      gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border);
-      cursor: pointer; transition: background 0.15s;
+      gap: 14px; padding: 18px 20px;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      background: linear-gradient(180deg, rgba(14, 40, 34, 0.96), rgba(6, 22, 18, 0.96));
+      box-shadow:
+        0 14px 34px rgba(0, 0, 0, 0.5),
+        0 2px 0 rgba(201, 242, 35, 0.05),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      cursor: pointer;
+      transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
       width: 100%;
+      box-sizing: border-box;
     }
-    .row:last-child { border-bottom: 0; }
-    .row:hover { background: rgba(201,242,35,0.04); }
-    .row .teams { font-weight: 800; font-size: 14px; flex: 1; min-width: 0; }
+    .row:hover {
+      transform: translateY(-1px);
+      border-color: rgba(201,242,35,0.28);
+      box-shadow:
+        0 18px 40px rgba(0, 0, 0, 0.55),
+        0 0 0 1px rgba(201, 242, 35, 0.08),
+        0 0 24px rgba(201, 242, 35, 0.08);
+    }
+    .row .teams { font-weight: 800; font-size: 17px; flex: 1; min-width: 0; line-height: 1.25; }
     .row .meta {
-      color: var(--muted); font-size: 10px; font-weight: 700;
-      letter-spacing: 0.06em; text-transform: uppercase; margin-top: 4px;
+      color: rgba(255,255,255,0.5); font-size: 12px; font-weight: 700;
+      letter-spacing: 0.04em; text-transform: uppercase; margin-top: 6px; line-height: 1.35;
     }
     .row .time { text-align: right; white-space: nowrap; flex-shrink: 0; }
     .row .time .kick {
-      font-size: 10px; color: var(--lime); font-weight: 800;
+      font-size: 11px; color: var(--lime); font-weight: 800;
       letter-spacing: 0.08em; text-transform: uppercase;
     }
     .row .time .when {
-      font-size: 11px; color: var(--muted); margin-top: 4px;
+      font-size: 13px; color: rgba(255,255,255,0.55); margin-top: 6px; font-weight: 700;
     }
     .market-row { cursor: default; flex-direction: column; align-items: stretch; }
     .market-row:hover { background: transparent; }
@@ -182,12 +205,14 @@
     .runner {
       display: flex; align-items: center; justify-content: space-between;
       gap: 10px;
-      padding: 12px 14px; border-radius: 12px;
-      border: 1px solid var(--border); background: rgba(255,255,255,0.02);
+      padding: 14px 16px; border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: linear-gradient(180deg, rgba(14, 40, 34, 0.9), rgba(6, 22, 18, 0.9));
+      box-shadow: 0 10px 24px rgba(0,0,0,0.35);
       min-width: 0;
     }
-    .runner .name { font-size: 11px; font-weight: 700; flex: 1; min-width: 0; }
-    .runner .odd { color: var(--lime); font-weight: 800; font-size: 14px; flex-shrink: 0; }
+    .runner .name { font-size: 13px; font-weight: 700; flex: 1; min-width: 0; }
+    .runner .odd { color: var(--lime); font-weight: 800; font-size: 16px; flex-shrink: 0; }
     .runner .odd.muted { color: var(--muted); font-weight: 700; font-size: 12px; }
     .runner.is-dry { opacity: 0.55; }
     .odds-toolbar {
@@ -276,32 +301,34 @@
       color: #000; background: var(--lime); border-color: transparent;
     }
     .row .entries {
-      margin-top: 6px; font-size: 11px; color: var(--muted);
+      margin-top: 8px; font-size: 12px; color: rgba(255,255,255,0.45); font-weight: 700;
     }
     .row-main {
-      display: flex; gap: 16px; align-items: flex-start; justify-content: space-between;
+      display: flex; gap: 18px; align-items: flex-start; justify-content: space-between;
       width: 100%;
     }
     .row-body { min-width: 0; flex: 1; }
     .adm-liq {
-      flex: 0 0 148px; text-align: right; padding-top: 2px;
+      flex: 0 0 168px; text-align: right; padding-top: 2px;
     }
     .adm-liq strong {
-      display: block; font-size: 13px; font-weight: 800;
+      display: block; font-size: 16px; font-weight: 800;
       font-variant-numeric: tabular-nums; color: #fff;
     }
     .adm-liq .adm-liq-used {
-      margin-top: 3px; font-size: 10px; font-weight: 700;
-      letter-spacing: 0.04em; color: var(--muted);
+      margin-top: 4px; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.04em; color: rgba(255,255,255,0.5);
     }
     .adm-liq .adm-liq-used b { color: #e5e7eb; font-weight: 800; }
     .adm-liq-bar {
-      margin-top: 6px; height: 4px; border-radius: 999px;
+      margin-top: 8px; height: 6px; border-radius: 999px;
       background: rgba(255, 255, 255, 0.08); overflow: hidden;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.35);
     }
     .adm-liq-bar i {
       display: block; height: 100%; border-radius: inherit;
       background: linear-gradient(90deg, rgba(198, 255, 0, 0.35), #c6ff00);
+      box-shadow: 0 0 10px rgba(198, 255, 0, 0.35);
     }
     .adm-liq-bar i.low { background: linear-gradient(90deg, #ef4444, #f87171); }
     .adm-liq-bar i.mid { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
@@ -1122,7 +1149,7 @@
                 bucket === "draft"
                   ? '<button class="btn btn-primary btn-sm" type="button" data-publish="' +
                     m.id +
-                    '" style="margin-top:8px">Publicar</button>'
+                    '" style="margin-top:10px;box-shadow:0 8px 18px rgba(0,0,0,0.35)">Publicar</button>'
                   : "";
               var canSettle =
                 bucket === "live" ||
@@ -1132,23 +1159,23 @@
                 canSettle && bucket !== "closed" && bucket !== "deleted"
                   ? '<button class="btn btn-primary btn-sm" type="button" data-settle="' +
                     m.id +
-                    '" style="margin-top:8px">Encerrar partida</button>'
+                    '" style="margin-top:10px;box-shadow:0 8px 18px rgba(0,0,0,0.35)">Encerrar partida</button>'
                   : bucket === "closed"
                     ? '<button class="btn btn-ghost btn-sm" type="button" data-settle="' +
                       m.id +
-                      '" style="margin-top:8px">Reparar crédito carteira</button>'
+                      '" style="margin-top:10px;box-shadow:0 8px 18px rgba(0,0,0,0.28)">Reparar crédito carteira</button>'
                     : "";
               var editBtn =
                 bucket !== "closed" && bucket !== "deleted"
                   ? '<button class="btn btn-ghost btn-sm" type="button" data-edit="' +
                     m.id +
-                    '" style="margin-top:8px;margin-left:6px">Editar</button>'
+                    '" style="margin-top:10px;margin-left:6px;box-shadow:0 8px 18px rgba(0,0,0,0.28)">Editar</button>'
                   : "";
               var cancelBtn =
                 bucket !== "closed" && bucket !== "deleted"
                   ? '<button class="btn btn-ghost btn-sm" type="button" data-cancel="' +
                     m.id +
-                    '" style="margin-top:8px;margin-left:6px;color:#f87171;border-color:rgba(248,113,113,0.35)">Cancelar</button>'
+                    '" style="margin-top:10px;margin-left:6px;color:#f87171;border-color:rgba(248,113,113,0.35);box-shadow:0 8px 18px rgba(0,0,0,0.28)">Cancelar</button>'
                   : "";
               var liq = liqStats(m);
               var openN = Number(m._openProtections || 0);
