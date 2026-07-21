@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <title>Minhas Proteções — ArbiShield</title>
+  <title>Gestão de Proteções — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css" />
@@ -213,8 +213,8 @@
 <body data-shell="app" data-active="protecoes">
   <div class="page-head term-head">
     <div>
-      <h1>Minhas <span>Proteções</span></h1>
-      <p class="sub">Histórico de ancoragens</p>
+      <h1>Gestão de <span>Proteções</span></h1>
+      <p class="sub">Acompanhe suas operações, resultados e solicitações de reembolso</p>
     </div>
     <div class="term-head-actions">
       <a class="term-ghost-btn" href="/app-proteger.html"><span aria-hidden="true">+</span> Proteger Aposta</a>
@@ -256,6 +256,7 @@
     (function () {
       var STATUS = {
         active: { label: "Proteção Ativa", tone: "blue" },
+        review_odd: { label: "Proteção Ativa", tone: "blue" },
         pending_refund: { label: "ArbiShield Atingida", tone: "lime" },
         won_platform: { label: "Solicite seu Reembolso", tone: "lime" },
         lost_platform: { label: "Exchange", tone: "green" },
@@ -265,8 +266,12 @@
         refund_requested: { label: "Aguardando Reembolso", tone: "amber" },
         refunded: { label: "Reembolso Recebido", tone: "green" },
         balance_released: { label: "Saldo Liberado", tone: "blue" },
-        cancelled: { label: "Cancelada", tone: "red" },
+        pix_approved: { label: "PIX Aprovado", tone: "green" },
+        pix_sent: { label: "PIX Enviado", tone: "green" },
+        cancelled: { label: "Operação Cancelada", tone: "red" },
         concluded: { label: "Protocolo Finalizado", tone: "slate" },
+        approved: { label: "PIX Aprovado", tone: "green" },
+        paid: { label: "Protocolo Finalizado", tone: "slate" },
       };
 
       var FILTERS = [
@@ -314,7 +319,8 @@
       }
 
       function isActive(st) {
-        return String(st || "").toLowerCase() === "active";
+        var s = String(st || "").toLowerCase();
+        return s === "active" || s === "review_odd";
       }
       function isCancelled(st) {
         return String(st || "").toLowerCase() === "cancelled";
@@ -322,35 +328,35 @@
       function isRefund(st) {
         var s = String(st || "").toLowerCase();
         return (
-          s.indexOf("refund") >= 0 ||
-          s === "pending_refund" ||
-          s === "won_platform" ||
+          s === "refunded" ||
+          s === "refund_requested" ||
           s === "pix_approved" ||
-          s === "pix_sent"
+          s === "pix_sent" ||
+          s === "balance_released" ||
+          s === "pending_refund" ||
+          s === "approved" ||
+          s === "paid" ||
+          s === "won_platform" ||
+          s.indexOf("refund") >= 0
         );
       }
       function isSettled(st) {
         var s = String(st || "").toLowerCase();
-        return (
-          !isActive(s) &&
-          !isCancelled(s) &&
-          !isRefund(s) &&
-          (s.indexOf("settled") >= 0 ||
-            s.indexOf("exchange") >= 0 ||
-            s.indexOf("lost_") >= 0 ||
-            s.indexOf("won_") >= 0 ||
-            s === "concluded" ||
-            s === "balance_released")
-        );
+        return !isActive(s) && !isCancelled(s) && !isRefund(s);
+      }
+
+      function matchOf(row) {
+        return row.match || row.matches || {};
       }
 
       function matchLabel(row) {
-        var m = row.match || {};
+        var m = matchOf(row);
         var home = m.home_team || row.home_team || "";
         var away = m.away_team || row.away_team || "";
-        var score = row.final_score || m.final_score || "";
+        var score = m.final_score || row.final_score || "";
+        if (score) score = String(score).replace(/-/g, " - ");
         if (home && away) {
-          return home + " × " + away + (score ? " " + score : "");
+          return home + " x " + away + (score ? " " + score : "");
         }
         if (row.match_name) return row.match_name;
         return "Partida";
@@ -361,21 +367,20 @@
         if (side !== "LAY" && side !== "BACK") {
           side = row._kind === "BACK" ? "BACK" : "LAY";
         }
+        var meta = row.metadata && typeof row.metadata === "object" ? row.metadata : {};
         var market =
+          row.market_label ||
           row.market_name ||
-          row.market_category ||
-          (row.metadata && (row.metadata.market_name || row.metadata.market_category)) ||
+          row.market ||
+          meta.market_name ||
+          meta.market_label ||
+          meta.market ||
           "Mercado";
         var odd = row.odd != null ? Number(row.odd).toFixed(2) : "—";
-        var league =
-          (row.match && row.match.league) ||
-          row.league ||
-          (row.metadata && row.metadata.league) ||
-          "";
-        var parts = [side, "Mercado", "Odd " + odd];
+        var league = matchOf(row).league || row.league || meta.league || "";
+        var parts = [side + " • " + market, "ODD " + odd];
         if (league) parts.push(league);
-        else if (market && String(market).toLowerCase() !== "mercado") parts.push(market);
-        return parts.join(" · ");
+        return parts.join(" • ");
       }
 
       function amountOf(row) {
@@ -505,13 +510,23 @@
 
       function normalizeRow(r, kind) {
         var meta = r.metadata && typeof r.metadata === "object" ? r.metadata : {};
+        var match = r.match || r.matches || null;
         return Object.assign({}, r, {
           _kind: kind,
           market_type:
             meta.market_type ||
-            (kind === "BACK" ? "BACK" : "LAY"),
-          market_name: meta.market_name || r.market_category || null,
-          match: r.match || null,
+            (String(r.side || "").toUpperCase() === "BACK" || kind === "BACK"
+              ? "BACK"
+              : "LAY"),
+          market_label:
+            meta.market_name ||
+            meta.market_label ||
+            meta.market ||
+            r.market_label ||
+            r.market ||
+            "Mercado",
+          match: match,
+          matches: match,
         });
       }
 
@@ -524,14 +539,50 @@
           var slice = uniq.slice(i, i + chunk);
           var res = await supa
             .from("matches")
-            .select("id,home_team,away_team,league,final_score,metadata")
+            .select("id,home_team,away_team,league,final_score,starts_at")
             .in("id", slice);
-          if (res.error) continue;
+          if (res.error) {
+            var res2 = await supa
+              .from("matches")
+              .select("id,home_team,away_team,league")
+              .in("id", slice);
+            if (res2.error) continue;
+            (res2.data || []).forEach(function (m) {
+              map[m.id] = m;
+            });
+            continue;
+          }
           (res.data || []).forEach(function (m) {
             map[m.id] = m;
           });
         }
         return map;
+      }
+
+      async function fetchTable(supa, table, userId, withJoin) {
+        var join =
+          "id,user_id,match_id,side,odd,status,amount_cents,responsibility_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents,exchange_fee_cents,created_at,settled_at,refunded_at,refund_requested_at,settled_outcome,metadata,match:matches(home_team,away_team,league,final_score,starts_at)";
+        var plain =
+          "id,user_id,match_id,side,odd,status,amount_cents,responsibility_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents,created_at,settled_at,metadata";
+        var minimal =
+          "id,user_id,match_id,side,odd,status,amount_cents,platform_deduction_cents,locked_deduction_cents,created_at,settled_at";
+        var attempts = withJoin ? [join, plain, minimal] : [plain, minimal];
+        var lastErr = null;
+        for (var i = 0; i < attempts.length; i++) {
+          var res = await supa
+            .from(table)
+            .select(attempts[i])
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false })
+            .limit(500);
+          if (!res.error) return res.data || [];
+          lastErr = res.error;
+          var msg = String((res.error && res.error.message) || "");
+          if (msg.indexOf("does not exist") < 0 && msg.indexOf("Could not find") < 0) {
+            break;
+          }
+        }
+        throw lastErr || new Error("Falha ao carregar " + table);
       }
 
       async function load() {
@@ -545,44 +596,18 @@
           var user = await ArbiV2.requireUser(supa);
           if (!user) return;
 
-          var selectJoin =
-            "id,user_id,match_id,side,odd,status,amount_cents,responsibility_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents,created_at,settled_at,market_category,metadata,match:matches(home_team,away_team,league,final_score)";
-          var selectPlain =
-            "id,user_id,match_id,side,odd,status,amount_cents,responsibility_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents,created_at,settled_at,market_category,metadata";
-
-          var layRes = await supa
-            .from("protections")
-            .select(selectJoin)
-            .eq("user_id", user.id)
-            .order("created_at", { ascending: false })
-            .limit(500);
-          var lays = [];
-          if (layRes.error) {
-            var layPlain = await supa
-              .from("protections")
-              .select(selectPlain)
-              .eq("user_id", user.id)
-              .order("created_at", { ascending: false })
-              .limit(500);
-            if (layPlain.error) throw layPlain.error;
-            lays = layPlain.data || [];
-          } else {
-            lays = layRes.data || [];
+          var lays = await fetchTable(supa, "protections", user.id, true);
+          var backs = [];
+          try {
+            backs = await fetchTable(supa, "back_protections", user.id, true);
+          } catch (backErr) {
+            backs = [];
           }
-
-          var backRes = await supa
-            .from("back_protections")
-            .select(selectPlain)
-            .eq("user_id", user.id)
-            .order("created_at", { ascending: false })
-            .limit(500);
-          if (backRes.error) throw backRes.error;
-          var backs = backRes.data || [];
 
           var needIds = []
             .concat(lays, backs)
             .filter(function (r) {
-              return r.match_id && !r.match;
+              return r.match_id && !(r.match || r.matches);
             })
             .map(function (r) {
               return r.match_id;
@@ -595,6 +620,7 @@
                 var row = normalizeRow(r, "LAY");
                 if (!row.match && row.match_id && matchMap[row.match_id]) {
                   row.match = matchMap[row.match_id];
+                  row.matches = row.match;
                 }
                 return row;
               }),
@@ -602,6 +628,7 @@
                 var row = normalizeRow(r, "BACK");
                 if (!row.match && row.match_id && matchMap[row.match_id]) {
                   row.match = matchMap[row.match_id];
+                  row.matches = row.match;
                 }
                 return row;
               })
