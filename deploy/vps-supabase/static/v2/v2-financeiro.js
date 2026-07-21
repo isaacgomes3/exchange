@@ -675,8 +675,11 @@
 
   function computeMetrics() {
     var p = state.profile || {};
+    // Saldo Real (carteira) = real + reutilizável — sem demo
     var real =
       Number(p.balance_cents || 0) + Number(p.reusable_balance_cents || 0);
+    // Chip do header "Apostador" = mesma fórmula do shell/legado (inclui demo)
+    var apostadorHeader = real + Number(p.demo_balance_cents || 0);
     var provider =
       Number(p.investor_balance_cents || 0) +
       Number(p.demo_balance_provider_cents || 0);
@@ -691,6 +694,7 @@
     if (!locked) locked = activeLocked;
     var aff = affAvailable(state.commissions, state.withdrawals);
     state.realBalance = real;
+    state.apostadorHeader = apostadorHeader;
     state.providerBalance = provider;
     state.affBalance = aff;
     state.locked = locked;
@@ -765,8 +769,16 @@
     setText("metPL", money(state.metrics.profit));
     setText("metFee", "1,50%");
     setText("metYield", state.metrics.yield + "%");
+    // Não sobrescrever o chip com "Saldo Real" (sem demo) — isso fazia o
+    // header mudar ao atualizar /app-carteira.html vs /app.html
     var hdr = document.getElementById("v2BalApostador");
-    if (hdr) hdr.textContent = money(state.realBalance);
+    if (hdr) hdr.textContent = money(state.apostadorHeader);
+    var hdrProv = document.getElementById("v2BalProvedor");
+    if (hdrProv) hdrProv.textContent = money(state.providerBalance);
+    var hdrDesafio = document.getElementById("v2BalDesafio");
+    if (hdrDesafio) hdrDesafio.textContent = money(state.desafio);
+    var hdrAff = document.getElementById("v2BalAfiliado");
+    if (hdrAff) hdrAff.textContent = money(state.affBalance);
   }
 
   function valueCell(row) {
@@ -1320,7 +1332,7 @@
     var profileRes = await supa
       .from("profiles")
       .select(
-        "balance_cents,reusable_balance_cents,locked_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents"
+        "balance_cents,reusable_balance_cents,demo_balance_cents,locked_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents"
       )
       .eq("id", userId)
       .maybeSingle();
