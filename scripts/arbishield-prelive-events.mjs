@@ -1207,6 +1207,63 @@ async function createProtection(body, userToken) {
     body: patch,
   });
 
+  // Trigger de integridade exige wallet_transactions (débito) ANTES do INSERT
+  // da proteção — UUID pré-gerado liga ledger ↔ proteção.
+  const protectionId = randomUUID();
+  let walletTxId = null;
+
+  const restoreProfile = async () => {
+    await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        balance_cents: profile.balance_cents,
+        reusable_balance_cents: profile.reusable_balance_cents,
+        demo_balance_cents: profile.demo_balance_cents,
+        investor_balance_cents: profile.investor_balance_cents,
+        locked_balance_cents: profile.locked_balance_cents,
+        updated_at: new Date().toISOString(),
+      },
+    }).catch(() => {});
+  };
+
+  const deleteWalletTx = async () => {
+    if (!walletTxId) return;
+    await sb(
+      `/rest/v1/wallet_transactions?id=eq.${encodeURIComponent(walletTxId)}`,
+      { method: "DELETE", token: SERVICE_KEY }
+    ).catch(() => {});
+  };
+
+  try {
+    const walletInserted = await sb("/rest/v1/wallet_transactions", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        user_id: userId,
+        type: "protection_lock",
+        // Débito no ledger (centavos negativos) — mesmo padrão de transferências
+        amount_cents: -amountCents,
+        balance_before_cents: balanceBefore,
+        balance_after_cents: balanceAfter,
+        ref: protectionId,
+        metadata: {
+          protection_id: protectionId,
+          match_id: matchId,
+          market_type: marketType,
+          balance_type: balanceType,
+        },
+      },
+    });
+    walletTxId = Array.isArray(walletInserted)
+      ? walletInserted[0]?.id
+      : walletInserted?.id;
+    if (!walletTxId) throw new Error("Falha ao registrar débito no saldo");
+  } catch (err) {
+    await restoreProfile();
+    throw err;
+  }
+
   const meta = {
     ...(body.metadata && typeof body.metadata === "object" ? body.metadata : {}),
     market_id: market?.id || marketId || null,
@@ -1216,14 +1273,14 @@ async function createProtection(body, userToken) {
     source: "v2_create_protection",
   };
 
-  let protectionId = "";
   try {
     if (marketType === "BACK") {
       const c = calcBack(amountCents, odd);
-      const inserted = await sb("/rest/v1/back_protections", {
+      await sb("/rest/v1/back_protections", {
         method: "POST",
         token: SERVICE_KEY,
         body: {
+          id: protectionId,
           user_id: userId,
           match_id: matchId,
           odd: c.odd,
@@ -1241,13 +1298,13 @@ async function createProtection(body, userToken) {
           },
         },
       });
-      protectionId = Array.isArray(inserted) ? inserted[0]?.id : inserted?.id;
     } else {
       const c = calcLay(amountCents, odd);
-      const inserted = await sb("/rest/v1/protections", {
+      await sb("/rest/v1/protections", {
         method: "POST",
         token: SERVICE_KEY,
         body: {
+          id: protectionId,
           user_id: userId,
           match_id: matchId,
           side,
@@ -1269,22 +1326,10 @@ async function createProtection(body, userToken) {
           },
         },
       });
-      protectionId = Array.isArray(inserted) ? inserted[0]?.id : inserted?.id;
     }
-    if (!protectionId) throw new Error("Falha ao gravar proteção");
   } catch (err) {
-    await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
-      method: "PATCH",
-      token: SERVICE_KEY,
-      body: {
-        balance_cents: profile.balance_cents,
-        reusable_balance_cents: profile.reusable_balance_cents,
-        demo_balance_cents: profile.demo_balance_cents,
-        investor_balance_cents: profile.investor_balance_cents,
-        locked_balance_cents: profile.locked_balance_cents,
-        updated_at: new Date().toISOString(),
-      },
-    }).catch(() => {});
+    await deleteWalletTx();
+    await restoreProfile();
     throw err;
   }
 
@@ -1298,36 +1343,20 @@ async function createProtection(body, userToken) {
     }
   }
 
-  await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: {
-      markets,
-      used_protection_cents: usedMatch + amountCents,
-      updated_at: new Date().toISOString(),
-    },
-  });
-
-  await sb("/rest/v1/wallet_transactions", {
-    method: "POST",
-    token: SERVICE_KEY,
-    body: {
-      user_id: userId,
-      type: "protection_lock",
-      amount_cents: amountCents,
-      balance_before_cents: balanceBefore,
-      balance_after_cents: balanceAfter,
-      ref: protectionId,
-      metadata: {
-        protection_id: protectionId,
-        match_id: matchId,
-        market_type: marketType,
-        balance_type: balanceType,
+  try {
+    await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        markets,
+        used_protection_cents: usedMatch + amountCents,
+        updated_at: new Date().toISOString(),
       },
-    },
-  }).catch((e) => {
-    console.warn("[createProtection] wallet_transactions:", e.message || e);
-  });
+    });
+  } catch (err) {
+    // Proteção + ledger já gravados; falha no match não deve orfanar saldo.
+    console.warn("[createProtection] match update:", err.message || err);
+  }
 
   return {
     ok: true,

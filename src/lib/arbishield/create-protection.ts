@@ -228,6 +228,58 @@ export async function createProtection(
 
   if (debitErr) throw new Error(debitErr.message);
 
+  // Trigger de integridade exige wallet_transactions (débito) ANTES do INSERT
+  // da proteção — UUID pré-gerado liga ledger ↔ proteção.
+  const protectionId = crypto.randomUUID();
+  let walletTxId: string | null = null;
+
+  const restoreProfile = async () => {
+    await admin
+      .from("profiles")
+      .update({
+        balance_cents: profile.balance_cents,
+        reusable_balance_cents: profile.reusable_balance_cents,
+        demo_balance_cents: profile.demo_balance_cents,
+        investor_balance_cents: profile.investor_balance_cents,
+        locked_balance_cents: profile.locked_balance_cents,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", input.userId);
+  };
+
+  const deleteWalletTx = async () => {
+    if (!walletTxId) return;
+    await admin.from("wallet_transactions").delete().eq("id", walletTxId);
+  };
+
+  {
+    const { data: walletRow, error: walletErr } = await admin
+      .from("wallet_transactions")
+      .insert({
+        user_id: input.userId,
+        type: "protection_lock",
+        amount_cents: -amountCents,
+        balance_before_cents: balanceBefore,
+        balance_after_cents: balanceAfter,
+        ref: protectionId,
+        metadata: {
+          protection_id: protectionId,
+          match_id: input.matchId,
+          market_type: marketType,
+          balance_type: balanceType,
+        },
+      })
+      .select("id")
+      .single();
+    if (walletErr || !walletRow?.id) {
+      await restoreProfile();
+      throw new Error(
+        walletErr?.message || "Falha ao registrar débito no saldo"
+      );
+    }
+    walletTxId = walletRow.id as string;
+  }
+
   const meta = {
     ...(input.metadata || {}),
     market_id: market?.id || input.marketId || null,
@@ -237,11 +289,11 @@ export async function createProtection(
     source: "v2_create_protection",
   };
 
-  let protectionId = "";
   try {
     if (marketType === "BACK") {
       const c = calcBack(amountCents, odd);
       const row = {
+        id: protectionId,
         user_id: input.userId,
         match_id: input.matchId,
         odd: c.odd,
@@ -258,16 +310,12 @@ export async function createProtection(
           balance_type: balanceType,
         },
       };
-      const { data: inserted, error } = await admin
-        .from("back_protections")
-        .insert(row)
-        .select("id")
-        .single();
+      const { error } = await admin.from("back_protections").insert(row);
       if (error) throw new Error(error.message);
-      protectionId = inserted.id;
     } else {
       const c = calcLay(amountCents, odd);
       const row = {
+        id: protectionId,
         user_id: input.userId,
         match_id: input.matchId,
         side: input.side || "home",
@@ -288,27 +336,12 @@ export async function createProtection(
           balance_type: balanceType,
         },
       };
-      const { data: inserted, error } = await admin
-        .from("protections")
-        .insert(row)
-        .select("id")
-        .single();
+      const { error } = await admin.from("protections").insert(row);
       if (error) throw new Error(error.message);
-      protectionId = inserted.id;
     }
   } catch (err) {
-    // rollback saldo
-    await admin
-      .from("profiles")
-      .update({
-        balance_cents: profile.balance_cents,
-        reusable_balance_cents: profile.reusable_balance_cents,
-        demo_balance_cents: profile.demo_balance_cents,
-        investor_balance_cents: profile.investor_balance_cents,
-        locked_balance_cents: profile.locked_balance_cents,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", input.userId);
+    await deleteWalletTx();
+    await restoreProfile();
     throw err;
   }
 
@@ -324,7 +357,7 @@ export async function createProtection(
     }
   }
 
-  await admin
+  const { error: matchErr } = await admin
     .from("matches")
     .update({
       markets,
@@ -332,21 +365,9 @@ export async function createProtection(
       updated_at: new Date().toISOString(),
     })
     .eq("id", input.matchId);
-
-  await admin.from("wallet_transactions").insert({
-    user_id: input.userId,
-    type: "protection_lock",
-    amount_cents: amountCents,
-    balance_before_cents: balanceBefore,
-    balance_after_cents: balanceAfter,
-    ref: protectionId,
-    metadata: {
-      protection_id: protectionId,
-      match_id: input.matchId,
-      market_type: marketType,
-      balance_type: balanceType,
-    },
-  });
+  if (matchErr) {
+    console.warn("[createProtection] match update:", matchErr.message);
+  }
 
   return {
     ok: true,
