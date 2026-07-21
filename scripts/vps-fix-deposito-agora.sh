@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# FIX DEPÓSITO AGORA — cria bucket via Docker (sem .env) + UI + shim
+# FIX DEPÓSITO AGORA — bucket + RLS admin UPDATE + UI + shim (rejeitar/aprovar)
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/6eeff8fa1c5dd16eb16667449a9a553da7facd14/scripts/vps-fix-deposito-agora.sh")
-#   # ou após push:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-deposito-comprovante-723d/scripts/vps-fix-deposito-agora.sh?v=2")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-deposito-comprovante-723d/scripts/vps-fix-deposito-agora.sh?v=3")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/fix-deposito-comprovante-723d}"
@@ -24,12 +22,42 @@ need systemctl
 mkdir -p "$WEB" "$SHIM_DIR" "$SCRIPTS_DIR"
 
 SQL_TMP="$(mktemp)"
-trap 'rm -f "$SQL_TMP"' EXIT
+SQL_TMP2="$(mktemp)"
+trap 'rm -f "$SQL_TMP" "$SQL_TMP2"' EXIT
 
-log "1/4 — SQL: criar buckets deposit-proofs + bet-proofs (Docker, sem .env)"
+apply_sql() {
+  local file="$1"
+  local label="$2"
+  local applied=0
+  [[ -s "$file" ]] || { warn "$label: arquivo vazio"; return 1; }
+  if command -v docker >/dev/null 2>&1; then
+    for c in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -Ei 'db|postgres|supabase' || true); do
+      log "SQL ($label) via docker exec $c"
+      if docker exec -i "$c" psql -U postgres -d postgres < "$file" 2>/tmp/dep-sql.err; then
+        applied=1
+        echo "  ok $c"
+        break
+      else
+        warn "falhou $c: $(head -c 160 /tmp/dep-sql.err 2>/dev/null || true)"
+      fi
+    done
+    if [[ "$applied" -eq 0 && -d "$COMPOSE_DIR" ]]; then
+      if (cd "$COMPOSE_DIR" && docker compose ps --status running 2>/dev/null | grep -qE '\bdb\b'); then
+        log "SQL ($label) via docker compose db"
+        if (cd "$COMPOSE_DIR" && docker compose exec -T db psql -U postgres -d postgres < "$file"); then
+          applied=1
+          echo "  ok compose db"
+        fi
+      fi
+    fi
+  fi
+  [[ "$applied" -eq 1 ]] || warn "SQL ($label) não aplicado — docker ps e: docker exec -i <db> psql -U postgres -d postgres < arquivo"
+  return 0
+}
+
+log "1/5 — SQL: buckets deposit-proofs + bet-proofs (Docker, sem .env)"
 curl -fsSL "$RAW/supabase/migrations/20260721_deposit_proofs_storage.sql" -o "$SQL_TMP"
-[[ -s "$SQL_TMP" ]] || die "não baixou migration SQL"
-# fallback mínimo se migration falhar no download parcial
+[[ -s "$SQL_TMP" ]] || die "não baixou migration SQL storage"
 if ! grep -q 'deposit-proofs' "$SQL_TMP"; then
   cat >"$SQL_TMP" <<'SQL'
 insert into storage.buckets (id, name, public, file_size_limit)
@@ -38,52 +66,49 @@ values ('deposit-proofs','deposit-proofs', false, 10485760),
 on conflict (id) do nothing;
 SQL
 fi
+apply_sql "$SQL_TMP" "storage"
 
-applied=0
-if command -v docker >/dev/null 2>&1; then
-  # nomes comuns
-  for c in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -Ei 'db|postgres|supabase' || true); do
-    log "SQL via docker exec $c"
-    if docker exec -i "$c" psql -U postgres -d postgres < "$SQL_TMP" 2>/tmp/dep-sql.err; then
-      applied=1
-      echo "  ok $c"
-      break
-    else
-      warn "falhou $c: $(head -c 120 /tmp/dep-sql.err 2>/dev/null || true)"
-    fi
-  done
-  if [[ "$applied" -eq 0 && -d "$COMPOSE_DIR" ]]; then
-    if (cd "$COMPOSE_DIR" && docker compose ps --status running 2>/dev/null | grep -qE '\bdb\b'); then
-      log "SQL via docker compose -f $COMPOSE_DIR db"
-      if (cd "$COMPOSE_DIR" && docker compose exec -T db psql -U postgres -d postgres < "$SQL_TMP"); then
-        applied=1
-        echo "  ok compose db"
-      fi
-    fi
-  fi
+log "1b/5 — SQL: RLS admin UPDATE em manual_deposits (rejeitar/aprovar)"
+curl -fsSL "$RAW/supabase/migrations/20260721_manual_deposits_admin_update.sql" -o "$SQL_TMP2" || true
+if [[ ! -s "$SQL_TMP2" ]] || ! grep -q 'Admins can update all deposits' "$SQL_TMP2"; then
+  cat >"$SQL_TMP2" <<'SQL'
+drop policy if exists "Admins can update all deposits" on public.manual_deposits;
+create policy "Admins can update all deposits"
+  on public.manual_deposits for update to authenticated
+  using (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.is_super_admin is true)
+    or exists (select 1 from public.user_roles ur where ur.user_id = auth.uid() and ur.role in ('admin','master_admin'))
+  )
+  with check (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.is_super_admin is true)
+    or exists (select 1 from public.user_roles ur where ur.user_id = auth.uid() and ur.role in ('admin','master_admin'))
+  );
+SQL
 fi
-[[ "$applied" -eq 1 ]] || warn "SQL não aplicado automaticamente — rode: docker ps  e depois docker exec -i <db> psql -U postgres -d postgres < migration"
+apply_sql "$SQL_TMP2" "admin-rls"
 
-log "2/4 — UI (comprovante + ADM Confirmar e Creditar)"
+log "2/5 — UI (comprovante + ADM Confirmar e Creditar / Rejeitar)"
 for f in v2-deposit.js admin-manual-deposits.html v2-shell.js; do
   curl -fsSL "$RAW/deploy/vps-supabase/static/v2/$f" -o "$WEB/$f"
   chmod 0644 "$WEB/$f"
   cp -f "$WEB/$f" "$WEB_ROOT/$f" 2>/dev/null || true
-  # cache bust copy with query not needed for static files
   echo "  ok $f ($(wc -c < "$WEB/$f") bytes)"
 done
 grep -q 'deposit-proofs' "$WEB/v2-deposit.js" || die "v2-deposit.js sem deposit-proofs"
 grep -q 'uploadProofViaServer\|a8c4e21f' "$WEB/v2-deposit.js" || die "v2-deposit.js SEM fallback servidor — baixou arquivo antigo?"
 grep -q 'Comprovante enviado' "$WEB/v2-deposit.js" || die "v2-deposit sem texto Comprovante enviado"
 grep -q 'Confirmar e Creditar' "$WEB/admin-manual-deposits.html" || die "admin ainda antigo"
+grep -q 'rejectViaSupabase\|97fbb202' "$WEB/admin-manual-deposits.html" || die "admin SEM rejeitar (arquivo antigo?)"
 grep -q 'proofUrl\|c1d2e3f4' "$WEB/admin-manual-deposits.html" || echo "  AVISO: admin sem proofUrl (ok se cache)"
 
-log "3/4 — shim :3101"
+log "3/5 — shim :3101"
 curl -fsSL "$RAW/scripts/arbishield-serverfn-shim.mjs" -o "$SHIM_DIR/arbishield-serverfn-shim.mjs"
 chmod 0644 "$SHIM_DIR/arbishield-serverfn-shim.mjs"
 cp -f "$SHIM_DIR/arbishield-serverfn-shim.mjs" "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs" 2>/dev/null || true
 grep -q 'ensureStorageBuckets\|uploadDepositProof\|DEPOSIT_APPROVE\|DEPOSIT_PROOF_URL' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || \
   die "shim sem handlers de depósito"
+grep -q 'patchManualDepositSafe\|DEPOSIT_REJECT' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || \
+  die "shim SEM patchManualDepositSafe/reject — baixou arquivo antigo?"
 
 # path real do systemd
 for u in arbishield-serverfn-shim.service; do
@@ -101,8 +126,16 @@ systemctl restart arbishield-serverfn-shim.service 2>/dev/null || warn "não rei
 sleep 2
 curl -sS "http://127.0.0.1:3101/health" 2>/dev/null | head -c 300 || true
 echo
+# sanity: reject handler presente (sem JWT = Acesso negado, não 404)
+rej="$(curl -sS -o /tmp/dep-rej.txt -w '%{http_code}' -X POST "http://127.0.0.1:3101/_serverFn/97fbb202a39627b7eeade54ac383dd1197c5a76c5f392f3046ee5875fef4da50" \
+  -H 'Content-Type: application/json' -H 'x-arbishield-plain: 1' \
+  -d '{"data":{"id":"00000000-0000-0000-0000-000000000000","reason":"test"}}' 2>/dev/null || echo 000)"
+echo "  reject probe HTTP $rej body=$(head -c 120 /tmp/dep-rej.txt 2>/dev/null || true)"
+if echo "$(cat /tmp/dep-rej.txt 2>/dev/null || true)" | grep -qiE 'matchId|not found|Cannot POST|404'; then
+  warn "reject handler parece ausente no shim em execução"
+fi
 
-log "4/4 — sanity Storage via Kong :8000 (se existir service role no unit)"
+log "4/5 — sanity Storage via Kong :8000 (se existir service role no unit)"
 # tenta extrair SERVICE_ROLE do EnvironmentFile do unit
 SK=""
 for ef in $(systemctl cat arbishield-serverfn-shim.service 2>/dev/null | sed -n 's/^EnvironmentFile=-*//p'); do
@@ -140,10 +173,11 @@ done
 
 echo
 echo "=========================================="
-echo " OK — rode estes checks:"
-echo "  grep -c uploadProofViaServer $WEB/v2-deposit.js   # deve ser >= 1"
-echo "  grep -c 'Confirmar e Creditar' $WEB/admin-manual-deposits.html"
-echo " Depois no navegador: Ctrl+Shift+R (hard refresh)"
-echo "  https://arbishield.app/  → Depósito → enviar comprovante"
+echo " OK — checks:"
+echo "  grep -c uploadProofViaServer $WEB/v2-deposit.js"
+echo "  grep -c rejectViaSupabase $WEB/admin-manual-deposits.html"
+echo "  grep -c patchManualDepositSafe $SHIM_DIR/arbishield-serverfn-shim.mjs"
+echo " Depois: Ctrl+Shift+R em"
 echo "  https://arbishield.app/admin-manual-deposits.html"
+echo "  → Rejeitar deve pedir motivo e mudar status"
 echo "=========================================="

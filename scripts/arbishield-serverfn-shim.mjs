@@ -2046,6 +2046,39 @@ async function loadManualDeposit(id) {
   return row;
 }
 
+/** PATCH resiliente: se coluna não existir / schema antigo, tenta campos essenciais */
+async function patchManualDepositSafe(id, body) {
+  if (!SERVICE_KEY) throw new Error("SERVICE_ROLE_KEY ausente no shim — não dá para rejeitar/aprovar");
+  try {
+    await sb(`/rest/v1/manual_deposits?id=eq.${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body,
+    });
+    return;
+  } catch (e) {
+    console.warn("[deposit] patch full falhou, tentando slim:", e instanceof Error ? e.message : e);
+  }
+  const slim = { status: body.status };
+  if (body.admin_notes != null) slim.admin_notes = body.admin_notes;
+  if (body.proof_url != null) slim.proof_url = body.proof_url;
+  try {
+    await sb(`/rest/v1/manual_deposits?id=eq.${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: slim,
+    });
+  } catch (e2) {
+    console.warn("[deposit] patch slim falhou, só status:", e2 instanceof Error ? e2.message : e2);
+    // último recurso: só status
+    await sb(`/rest/v1/manual_deposits?id=eq.${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: { status: body.status },
+    });
+  }
+}
+
 async function approveManualDeposit(token, body) {
   if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
   const adminId = requireUserId(token);
@@ -2078,11 +2111,22 @@ async function approveManualDeposit(token, body) {
   } else {
     patch.balance_cents = n(p.balance_cents) + amount;
   }
-  await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: patch,
-  });
+  try {
+    await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: patch,
+    });
+  } catch (e) {
+    // sem updated_at
+    const slim = { ...patch };
+    delete slim.updated_at;
+    await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: slim,
+    });
+  }
 
   try {
     await sb("/rest/v1/wallet_transactions", {
@@ -2103,16 +2147,12 @@ async function approveManualDeposit(token, body) {
     console.warn("[deposit] wallet_transactions:", e.message || e);
   }
 
-  await sb(`/rest/v1/manual_deposits?id=eq.${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: {
-      status: "APPROVED",
-      reviewed_at: new Date().toISOString(),
-      reviewed_by: adminId,
-      updated_at: new Date().toISOString(),
-      admin_notes: row.admin_notes || "Aprovado e creditado",
-    },
+  await patchManualDepositSafe(id, {
+    status: "APPROVED",
+    reviewed_at: new Date().toISOString(),
+    reviewed_by: adminId,
+    updated_at: new Date().toISOString(),
+    admin_notes: row.admin_notes || "Aprovado e creditado",
   });
 
   return {
@@ -2134,16 +2174,12 @@ async function markManualDepositCredited(token, body) {
   if (st === "APPROVED") return { ok: true, alreadyApproved: true, id };
   if (st === "REJECTED") throw new Error("Depósito já rejeitado");
 
-  await sb(`/rest/v1/manual_deposits?id=eq.${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: {
-      status: "APPROVED",
-      reviewed_at: new Date().toISOString(),
-      reviewed_by: adminId,
-      updated_at: new Date().toISOString(),
-      admin_notes: "Já creditado (sem alterar saldo)",
-    },
+  await patchManualDepositSafe(id, {
+    status: "APPROVED",
+    reviewed_at: new Date().toISOString(),
+    reviewed_by: adminId,
+    updated_at: new Date().toISOString(),
+    admin_notes: "Já creditado (sem alterar saldo)",
   });
   return { ok: true, id, status: "APPROVED", creditedCents: 0, markedOnly: true };
 }
@@ -2159,18 +2195,15 @@ async function rejectManualDeposit(token, body) {
   if (st === "REJECTED") return { ok: true, alreadyRejected: true, id };
   if (st === "APPROVED") throw new Error("Depósito já aprovado");
 
-  await sb(`/rest/v1/manual_deposits?id=eq.${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: {
-      status: "REJECTED",
-      reviewed_at: new Date().toISOString(),
-      reviewed_by: adminId,
-      updated_at: new Date().toISOString(),
-      admin_notes: reason || "Rejeitado",
-    },
+  // aceita PENDING / PROCESSING / AWAITING_PROOF (e quaisquer outros não-aprovados)
+  await patchManualDepositSafe(id, {
+    status: "REJECTED",
+    reviewed_at: new Date().toISOString(),
+    reviewed_by: adminId,
+    updated_at: new Date().toISOString(),
+    admin_notes: reason || "Rejeitado",
   });
-  return { ok: true, id, status: "REJECTED", reason };
+  return { ok: true, id, status: "REJECTED", reason: reason || "Rejeitado" };
 }
 
 /** Garante buckets usados pelo app (service role). */

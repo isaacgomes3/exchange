@@ -326,7 +326,9 @@
 
       async function callFn(kind, payload) {
         var t = await token();
+        if (!t) throw new Error("Sessão expirada");
         var fnId = FN[kind];
+        if (!fnId) throw new Error("Ação inválida: " + kind);
         var res = await fetch("/_serverFn/" + fnId, {
           method: "POST",
           headers: {
@@ -340,10 +342,27 @@
         var data = {};
         try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 180) }; }
         // TSR wrap
-        if (data && data.result != null) data = data.result;
-        if (data && data.error) throw new Error(typeof data.error === "string" ? data.error : JSON.stringify(data.error));
-        if (!res.ok) throw new Error(data.error || data.raw || ("HTTP " + res.status));
+        if (data && data.result != null && data.error == null) data = data.result;
+        var errMsg =
+          (typeof data.error === "string" && data.error) ||
+          (data.error && data.error.message) ||
+          data.message ||
+          data.raw ||
+          null;
+        if (data && data.ok === true) return data;
+        if (errMsg) throw new Error(errMsg);
+        if (!res.ok) throw new Error("HTTP " + res.status + (text ? ": " + text.slice(0, 120) : ""));
         return data;
+      }
+
+      async function rejectViaSupabase(r, reason) {
+        var patch = { status: "REJECTED", admin_notes: reason || "Rejeitado" };
+        var up = await supa.from("manual_deposits").update(patch).eq("id", r.id).select("id,status");
+        if (up.error) throw up.error;
+        if (!up.data || !up.data.length) {
+          throw new Error("Update sem efeito (RLS). Use o shim/service role.");
+        }
+        return { ok: true, id: r.id, status: "REJECTED", via: "supabase" };
       }
 
       async function act(kind, r) {
@@ -360,7 +379,23 @@
           } else {
             var reason = window.prompt("Motivo da rejeição:", "Comprovante inválido");
             if (reason === null) return;
-            await callFn("reject", { id: r.id, reason: reason });
+            reason = String(reason || "").trim() || "Comprovante inválido";
+            try {
+              await callFn("reject", { id: r.id, reason: reason });
+            } catch (e1) {
+              console.warn("[deposit reject] serverFn", e1);
+              try {
+                // fallback direto no Supabase (precisa policy admin UPDATE)
+                await rejectViaSupabase(r, reason);
+              } catch (e2) {
+                throw new Error(
+                  "Rejeitar falhou. serverFn: " +
+                    ((e1 && e1.message) || e1) +
+                    " | supabase: " +
+                    ((e2 && e2.message) || e2)
+                );
+              }
+            }
             showOk("Depósito rejeitado.");
           }
           await load();
