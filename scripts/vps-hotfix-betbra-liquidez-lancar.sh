@@ -60,5 +60,6 @@ done
 systemctl restart arbishield-prelive-events.service 2>/dev/null || echo "AVISO: não reiniciou prelive"
 
 echo "OK — Ctrl+Shift+R em https://arbishield.app/admin-jogos.html"
-echo "1) Lançar BetBra: informar Liquidez real (R$) antes de confirmar"
-echo "2) Lista ADM: barra + disponível + 'usado X de Y' (como no cliente)"
+echo "1) Liquidez: campo acima de 'Próximos jogos (BetBra)'"
+echo "2) 'Só seleções com odd' vem desmarcado"
+echo "3) Lista ADM: barra + disponível + 'usado X de Y'"
