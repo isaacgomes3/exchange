@@ -2,7 +2,7 @@
 # FIX DEPÓSITO AGORA — cria bucket via Docker (sem .env) + UI + shim
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/804dbe96e02ae36f2a1291e1c5db6c38b467c84b/scripts/vps-fix-deposito-agora.sh")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/6eeff8fa1c5dd16eb16667449a9a553da7facd14/scripts/vps-fix-deposito-agora.sh")
 #   # ou após push:
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-deposito-comprovante-723d/scripts/vps-fix-deposito-agora.sh?v=1")
 set -euo pipefail
