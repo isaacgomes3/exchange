@@ -2,7 +2,7 @@
 # Hotfix: Contestação de Aposta completa (cliente + ADM + shim)
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/contestacao-aposta-completa-723d/scripts/vps-hotfix-contestacao-aposta.sh?v=1")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/contestacao-aposta-completa-723d/scripts/vps-hotfix-contestacao-aposta.sh?v=2")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/contestacao-aposta-completa-723d}"

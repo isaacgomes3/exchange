@@ -189,7 +189,7 @@
       async function load() {
         showErr("");
         var [lay, back] = await Promise.all([
-          supa.from("protections").select("id,status,amount_cents,responsibility_cents,odd,match_id,created_at,metadata,user_profit_cents,market_category").eq("user_id", user.id).order("created_at", { ascending: false }).limit(150),
+          supa.from("protections").select("id,status,amount_cents,responsibility_cents,odd,match_id,created_at,metadata,user_profit_cents").eq("user_id", user.id).order("created_at", { ascending: false }).limit(150),
           supa.from("back_protections").select("id,status,amount_cents,odd,match_id,created_at,metadata,user_profit_cents").eq("user_id", user.id).order("created_at", { ascending: false }).limit(150),
         ]);
         if (lay.error) throw lay.error;
