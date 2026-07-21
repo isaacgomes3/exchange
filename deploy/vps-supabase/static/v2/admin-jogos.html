@@ -1253,32 +1253,58 @@
           var openByMatch = {};
           try {
             var openProt = await rest(
-              "protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,responsibility_cents,user_profit_cents&limit=2000",
+              "protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,responsibility_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents&limit=2000",
               auth.token
             );
             (openProt || []).forEach(function (p) {
               if (!p.match_id) return;
-              if (!openByMatch[p.match_id]) openByMatch[p.match_id] = { count: 0, cents: 0, refund: 0 };
+              if (!openByMatch[p.match_id]) {
+                openByMatch[p.match_id] = {
+                  count: 0,
+                  cents: 0,
+                  refund: 0,
+                  margin: 0,
+                };
+              }
               var amt = Number(p.responsibility_cents || p.amount_cents || 0);
               var profit = Number(p.user_profit_cents || 0);
+              var margin = Number(
+                p.platform_deduction_cents != null
+                  ? p.platform_deduction_cents
+                  : p.locked_deduction_cents || 0
+              );
               openByMatch[p.match_id].count += 1;
               openByMatch[p.match_id].cents += amt;
               openByMatch[p.match_id].refund += amt + Math.max(0, profit);
+              openByMatch[p.match_id].margin += Math.max(0, margin);
             });
           } catch (e1) {}
           try {
             var openBack = await rest(
-              "back_protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,user_profit_cents&limit=1000",
+              "back_protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents&limit=1000",
               auth.token
             );
             (openBack || []).forEach(function (p) {
               if (!p.match_id) return;
-              if (!openByMatch[p.match_id]) openByMatch[p.match_id] = { count: 0, cents: 0, refund: 0 };
+              if (!openByMatch[p.match_id]) {
+                openByMatch[p.match_id] = {
+                  count: 0,
+                  cents: 0,
+                  refund: 0,
+                  margin: 0,
+                };
+              }
               var amt = Number(p.amount_cents || 0);
               var profit = Number(p.user_profit_cents || 0);
+              var margin = Number(
+                p.platform_deduction_cents != null
+                  ? p.platform_deduction_cents
+                  : p.locked_deduction_cents || 0
+              );
               openByMatch[p.match_id].count += 1;
               openByMatch[p.match_id].cents += amt;
               openByMatch[p.match_id].refund += amt + Math.max(0, profit);
+              openByMatch[p.match_id].margin += Math.max(0, margin);
             });
           } catch (e2) {}
 
@@ -1290,6 +1316,7 @@
               m._openProtections = op.count;
               m._openStakeCents = op.cents;
               m._openRefundCents = op.refund;
+              m._openMarginCents = op.margin;
               if (!(Number(m.used_protection_cents) > 0)) {
                 m.used_protection_cents = op.cents;
               }
@@ -1312,6 +1339,7 @@
               m._openProtections = op ? op.count : 0;
               m._openStakeCents = op ? op.cents : 0;
               m._openRefundCents = op ? op.refund : 0;
+              m._openMarginCents = op ? op.margin : 0;
               if (!(Number(m.used_protection_cents) > 0) && op) {
                 m.used_protection_cents = op.cents;
               }
@@ -1594,6 +1622,8 @@
         settleMatchId = matchId;
         var stake = Number(m._openStakeCents || m.used_protection_cents || 0);
         var refund = Number(m._openRefundCents || stake);
+        var margin = Number(m._openMarginCents || 0);
+        var profit = Math.max(0, refund - stake);
         var openN = Number(m._openProtections || 0);
         $("settleSummary").textContent =
           (m.home_team || "?") +
@@ -1605,11 +1635,24 @@
           money(stake);
         if ($("settleRefundHint")) {
           $("settleRefundHint").textContent =
-            "Reembolso estimado: " + money(refund) + " (stake + lucro usuário)";
+            "A reembolsar: " +
+            money(refund) +
+            "  ·  stake " +
+            money(stake) +
+            " + lucro " +
+            money(profit);
         }
         if ($("settleDeductHint")) {
           $("settleDeductHint").textContent =
-            "Dedução estimada: " + money(stake) + " (stake fica na plataforma)";
+            margin > 0
+              ? "Dedução / margem ArbiShield: " + money(margin)
+              : "Dedução / margem ArbiShield: — (sem platform_deduction nesta proteção)";
+        }
+        if ($("settleStakeKeepHint")) {
+          $("settleStakeKeepHint").textContent =
+            "Stake do usuário (" +
+            money(stake) +
+            ") já foi debitado na entrada e permanece na plataforma — não é a “dedução”.";
         }
         $("settleHome").value = "";
         $("settleAway").value = "";
