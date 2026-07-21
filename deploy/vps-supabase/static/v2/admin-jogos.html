@@ -1705,7 +1705,11 @@
         var errMsg =
           (b.data && (b.data.error || b.data.message)) ||
           (a.data && (a.data.error || a.data.message)) ||
-          "Falha ao liquidar — API não liquidou proteções. Rode o hotfix v5 na VPS.";
+          "Falha ao liquidar — API não liquidou proteções. Rode o hotfix na VPS.";
+        if (/odd\s*inv[aá]lida/i.test(String(errMsg))) {
+          errMsg =
+            "Servidor ainda sem liquidação (versão antiga). Rode na VPS: vps-hotfix-encerrar-odd-invalida.sh";
+        }
         throw new Error(errMsg);
       }
 

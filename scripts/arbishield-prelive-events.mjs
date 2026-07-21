@@ -311,6 +311,19 @@ async function sb(path, { token, method = "GET", body } = {}) {
 }
 
 async function createMatchFromMarket(body, token) {
+  // Guarda: liquidação nunca deve cair neste fluxo (evita "Odd inválida" no Encerrar)
+  if (
+    body?.mode === "settle" ||
+    body?.action === "settle" ||
+    (body?.matchId && body?.outcome && !body?.odd && !body?.marketId)
+  ) {
+    throw Object.assign(
+      new Error(
+        "Pedido de liquidação recebido no endpoint de criar jogo. Atualize o serviço prelive (hotfix Encerrar)."
+      ),
+      { status: 400 }
+    );
+  }
   const odd = Number(body.odd);
   if (!Number.isFinite(odd) || odd <= 1) throw new Error("Odd inválida");
 
@@ -1374,7 +1387,18 @@ async function handleApi(req, res) {
     try {
       const body = await parseBody(req);
       const token = bearerFromReq(req);
-      if (body.mode === "settle" || body.action === "settle") {
+      const looksLikeSettle =
+        body.mode === "settle" ||
+        body.action === "settle" ||
+        Boolean(
+          body.matchId &&
+            body.outcome &&
+            (body.finalScore ||
+              body.final_score ||
+              body.homeScore != null ||
+              body.awayScore != null)
+        );
+      if (looksLikeSettle) {
         const result = await settleMatchFromBody(body, token);
         return sendJson(res, 200, result);
       }
