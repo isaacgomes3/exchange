@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Redirecionando…</title>
+  <script>
+    (function () {
+      var id = new URLSearchParams(location.search).get("id") || "";
+      var admin = {
+        "monitoring-protections": "/admin-monitoring-protections.html",
+        transactions: "/admin-transactions.html",
+        saques: "/admin-saques.html",
+        "manual-deposits": "/admin-manual-deposits.html",
+        refunds: "/admin-refunds.html",
+        treasury: "/admin-treasury.html",
+        "partners-distribution": "/admin-partners-distribution.html",
+        expenses: "/admin-expenses.html",
+        partners: "/admin-partners.html",
+        affiliates: "/admin-affiliates.html",
+        contestations: "/admin-contestations.html",
+        approvals: "/admin-approvals.html",
+        proofs: "/admin-proofs.html",
+        investigation: "/admin-investigation.html",
+        risk: "/admin-risk.html",
+        blacklist: "/admin-blacklist.html",
+        geo: "/admin-geo.html",
+        "signup-attempts": "/admin-signup-attempts.html",
+        whatsapp: "/admin-whatsapp.html",
+        "communication-lab": "/admin-communication-lab.html",
+        banners: "/admin-banners.html",
+        onboarding: "/admin-onboarding.html",
+        academia: "/admin-academia.html",
+        support: "/admin-support.html",
+        "support-ai": "/admin-support-ai.html",
+        settings: "/admin-settings.html",
+        "betting-houses": "/admin-betting-houses.html",
+        permissoes: "/admin-permissoes.html",
+        "marketing-team": "/admin-marketing-team.html",
+        logs: "/admin-logs.html",
+        "settlements-audit": "/admin-settlements-audit.html",
+        "technical-audit": "/admin-technical-audit.html",
+        performance: "/admin-performance.html",
+        siem: "/admin-siem.html",
+        monitoring: "/admin-monitoring.html",
+        "desafio-sugestoes": "/admin-desafio-sugestoes.html",
+      };
+      var app = {
+        proteger: "/app-proteger.html",
+        protecoes: "/app-protecoes.html",
+        desafio: "/app-desafio.html",
+        carteira: "/app-carteira.html",
+        suporte: "/app-suporte.html",
+        afiliados: "/app-afiliados.html",
+        partners: "/app-partners.html",
+        "baixar-app": "/app-baixar-app.html",
+        perfil: "/app-perfil.html",
+        config: "/app-config.html",
+      };
+      location.replace(admin[id] || app[id] || "/admin.html");
+    })();
+  </script>
+</head>
+<body></body>
+</html>
