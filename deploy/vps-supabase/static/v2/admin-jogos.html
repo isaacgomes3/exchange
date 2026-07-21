@@ -1538,11 +1538,6 @@
               '" placeholder="Controla a entrada" />' +
               '<p class="hint" style="margin:4px 0 0">Controla a entrada (não exibida ao usuário)</p></div>' +
               "</div>" +
-              '<div class="field"><label>Liquidez exibida (R$) — opcional</label>' +
-              '<input data-f="display_brl" value="' +
-              (m.display_brl != null ? m.display_brl : "") +
-              '" placeholder="Ex.: 25.000,00 (deixe em branco para usar a real)" />' +
-              '<p class="hint" style="margin:4px 0 0">O que o usuário vê. Diminui proporcional ao consumo real.</p></div>' +
               "</div>"
             );
           })
@@ -1598,7 +1593,6 @@
             external_id: get("external_id"),
             odd: get("odd"),
             liquidity_brl: get("liquidity_brl"),
-            display_brl: get("display_brl"),
           };
         });
       }
@@ -1637,7 +1631,6 @@
             external_id: "",
             odd: "2.00",
             liquidity_brl: "2000",
-            display_brl: "",
           },
         ];
         renderManualMarkets();
@@ -1679,21 +1672,19 @@
               external_id: "",
               odd: "2.00",
               liquidity_brl: "2000",
-              display_brl: "",
             },
           ];
         }
         var markets = manualMarkets.map(function (m) {
           var odd = Number(String(m.odd).replace(",", "."));
           var liqBrl = parseMoneyToNumber(m.liquidity_brl);
-          var dispBrl = parseMoneyToNumber(m.display_brl);
           return {
             name: m.name || "Lay Casa",
             market_type: m.market_type || inferMarketType(m.name) || "LAY",
             external_id: m.external_id || null,
             odd: odd,
             liquidity_brl: liqBrl != null ? liqBrl : 2000,
-            display_liquidity: dispBrl != null ? Math.round(dispBrl * 100) : null,
+            display_liquidity: null,
           };
         });
         var published = manualIsPublished();
@@ -2000,7 +1991,6 @@
             external_id: "",
             odd: "2.00",
             liquidity_brl: "2000",
-            display_brl: "",
           });
           renderManualMarkets();
         });
