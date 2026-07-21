@@ -442,7 +442,8 @@
         <span class="hint" id="platformMeta">—</span>
       </div>
       <p class="hint" style="margin:0 0 12px">
-        Filtros iguais ao site antigo. Em <strong style="color:var(--amber)">Pendente</strong> e <strong style="color:#fca5a5">Ao vivo</strong> use <strong style="color:var(--lime)">Encerrar partida</strong> para liquidar.
+        Em Agendados use <strong style="color:var(--lime)">Editar</strong> (horário/liquidez) ou <strong style="color:#f87171">Cancelar</strong>.
+        Em <strong style="color:var(--amber)">Pendente</strong> e <strong style="color:#fca5a5">Ao vivo</strong> use <strong style="color:var(--lime)">Encerrar partida</strong>.
       </p>
       <div class="platform-filters" id="platformFilters">
         <button type="button" class="chip is-on" data-pf="upcoming">Agendados</button>
@@ -521,17 +522,38 @@
     </div>
   </div>
 
-  <div class="modal-backdrop" id="scheduleModal">
-    <div class="modal" style="width:min(420px,100%)">
-      <h3>Alterar <span style="color:var(--lime)">horário</span></h3>
-      <p id="scheduleSummary" class="hint">Defina a data e o horário de início do jogo (como no sistema antigo).</p>
+  <div class="modal-backdrop" id="editMatchModal">
+    <div class="modal" style="width:min(440px,100%)">
+      <h3>Editar <span style="color:var(--lime)">jogo</span></h3>
+      <p id="editMatchSummary" class="hint">Altere horário, liquidez ou publicação.</p>
       <div class="field" style="margin-top:12px">
-        <label for="scheduleStarts">Data e horário</label>
-        <input id="scheduleStarts" type="datetime-local" required />
+        <label for="editMatchStarts">Data e horário</label>
+        <input id="editMatchStarts" type="datetime-local" required />
       </div>
+      <div class="field">
+        <label for="editMatchLiq">Liquidez real (R$)</label>
+        <input id="editMatchLiq" type="text" inputmode="decimal" placeholder="Ex.: 2500" autocomplete="off" />
+        <p class="hint" id="editMatchLiqHint" style="margin:6px 0 0">Não pode ser menor que o já utilizado.</p>
+      </div>
+      <label class="publish-opt" style="display:flex;gap:10px;align-items:flex-start;margin:0 0 16px;font-size:12px;line-height:1.4;cursor:pointer">
+        <input type="checkbox" id="editMatchPublish" style="margin-top:2px;accent-color:var(--lime)" />
+        <span><strong>Publicado</strong> — visível em Proteger Aposta</span>
+      </label>
       <div class="modal-actions">
-        <button class="btn btn-ghost btn-sm" id="btnCancelSchedule" type="button">Cancelar</button>
-        <button class="btn btn-primary btn-sm" id="btnConfirmSchedule" type="button">Salvar horário</button>
+        <button class="btn btn-ghost btn-sm" id="btnCancelEditMatch" type="button">Fechar</button>
+        <button class="btn btn-primary btn-sm" id="btnConfirmEditMatch" type="button">Salvar alterações</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="cancelMatchModal">
+    <div class="modal" style="width:min(420px,100%)">
+      <h3>Cancelar <span style="color:#f87171">jogo</span></h3>
+      <p id="cancelMatchSummary" class="hint">O jogo sai da lista do cliente e vai para Excluídos.</p>
+      <p class="hint" id="cancelMatchWarn" style="color:#fbbf24;margin:10px 0 0"></p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="btnCloseCancelMatch" type="button">Voltar</button>
+        <button class="btn btn-sm" id="btnConfirmCancelMatch" type="button" style="background:rgba(248,113,113,0.2);color:#f87171;border:1px solid rgba(248,113,113,0.45)">Confirmar cancelamento</button>
       </div>
     </div>
   </div>
@@ -1116,11 +1138,17 @@
                       m.id +
                       '" style="margin-top:8px">Reparar crédito carteira</button>'
                     : "";
-              var scheduleBtn =
+              var editBtn =
                 bucket !== "closed" && bucket !== "deleted"
-                  ? '<button class="btn btn-ghost btn-sm" type="button" data-schedule="' +
+                  ? '<button class="btn btn-ghost btn-sm" type="button" data-edit="' +
                     m.id +
-                    '" style="margin-top:8px;margin-left:6px">Alterar horário</button>'
+                    '" style="margin-top:8px;margin-left:6px">Editar</button>'
+                  : "";
+              var cancelBtn =
+                bucket !== "closed" && bucket !== "deleted"
+                  ? '<button class="btn btn-ghost btn-sm" type="button" data-cancel="' +
+                    m.id +
+                    '" style="margin-top:8px;margin-left:6px;color:#f87171;border-color:rgba(248,113,113,0.35)">Cancelar</button>'
                   : "";
               var liq = liqStats(m);
               var openN = Number(m._openProtections || 0);
@@ -1151,7 +1179,8 @@
                 "</div>" +
                 publishBtn +
                 settleBtn +
-                scheduleBtn +
+                editBtn +
+                cancelBtn +
                 "</div>" +
                 '<div class="adm-liq" title="Disponível / utilizado / total">' +
                 "<strong>" +
@@ -1189,9 +1218,14 @@
             openSettleModal(btn.getAttribute("data-settle"));
           });
         });
-        $("platformContent").querySelectorAll("button[data-schedule]").forEach(function (btn) {
+        $("platformContent").querySelectorAll("button[data-edit]").forEach(function (btn) {
           btn.addEventListener("click", function () {
-            openScheduleModal(btn.getAttribute("data-schedule"));
+            openEditMatchModal(btn.getAttribute("data-edit"));
+          });
+        });
+        $("platformContent").querySelectorAll("button[data-cancel]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            openCancelMatchModal(btn.getAttribute("data-cancel"));
           });
         });
       }
@@ -1973,32 +2007,118 @@
       }
 
       var settleMatchId = null;
-      var scheduleMatchId = null;
+      var editMatchId = null;
+      var cancelMatchId = null;
 
-      function openScheduleModal(matchId) {
-        var m = platformMatches.find(function (x) { return String(x.id) === String(matchId); });
+      function applyLiquidityToMarkets(markets, newTotalCents, usedFloorCents) {
+        var list = Array.isArray(markets)
+          ? markets.map(function (m) {
+              return Object.assign({}, m);
+            })
+          : [];
+        var floor = Math.max(0, Number(usedFloorCents || 0));
+        if (!(newTotalCents >= floor)) {
+          throw new Error(
+            "Liquidez não pode ser menor que o já utilizado (" + money(floor) + ")."
+          );
+        }
+        if (!list.length) {
+          return { markets: list, max: newTotalCents };
+        }
+        var oldSum = list.reduce(function (s, m) {
+          return s + Math.max(0, Number(m.liquidity || m.liquidity_cents || 0));
+        }, 0);
+        if (oldSum <= 0 || list.length === 1) {
+          list[0].liquidity = newTotalCents;
+        } else {
+          var assigned = 0;
+          for (var i = 0; i < list.length; i++) {
+            if (i === list.length - 1) {
+              list[i].liquidity = Math.max(0, newTotalCents - assigned);
+            } else {
+              var share = Math.floor(
+                (newTotalCents * Math.max(0, Number(list[i].liquidity || 0))) / oldSum
+              );
+              list[i].liquidity = share;
+              assigned += share;
+            }
+          }
+        }
+        list.forEach(function (m) {
+          var u = Number(
+            m.used_liquidity != null
+              ? m.used_liquidity
+              : m.used_cents != null
+                ? m.used_cents
+                : 0
+          );
+          if (u > Number(m.liquidity || 0)) m.liquidity = u;
+        });
+        var max = list.reduce(function (s, m) {
+          return s + Number(m.liquidity || 0);
+        }, 0);
+        return { markets: list, max: max };
+      }
+
+      async function patchMatch(matchId, body) {
+        try {
+          await rest("matches?id=eq." + encodeURIComponent(matchId), auth.token, {
+            method: "PATCH",
+            body: Object.assign({ updated_at: new Date().toISOString() }, body),
+          });
+        } catch (err) {
+          await rest("matches?id=eq." + encodeURIComponent(matchId), auth.token, {
+            method: "PATCH",
+            body: body,
+          });
+        }
+      }
+
+      function openEditMatchModal(matchId) {
+        var m = platformMatches.find(function (x) {
+          return String(x.id) === String(matchId);
+        });
         if (!m) return;
         if (!auth) {
           alert("Faça login admin.");
           return;
         }
-        scheduleMatchId = matchId;
-        $("scheduleSummary").textContent =
+        editMatchId = matchId;
+        var liq = liqStats(m);
+        $("editMatchSummary").textContent =
           (m.home_team || "?") +
           " vs " +
           (m.away_team || "?") +
-          " · horário atual: " +
-          (m.starts_at ? fmtDate(m.starts_at) : "—");
-        $("scheduleStarts").value = toDatetimeLocal(m.starts_at);
-        $("scheduleModal").classList.add("show");
+          " · usado " +
+          money(liq.used) +
+          " de " +
+          money(liq.max);
+        $("editMatchStarts").value = toDatetimeLocal(m.starts_at);
+        $("editMatchLiq").value = String(
+          (liq.max / 100).toLocaleString("pt-BR", {
+            minimumFractionDigits: liq.max % 100 ? 2 : 0,
+            maximumFractionDigits: 2,
+          })
+        );
+        $("editMatchLiqHint").textContent =
+          "Utilizado: " + money(liq.used) + ". Mínimo ao salvar = utilizado.";
+        if ($("editMatchPublish")) $("editMatchPublish").checked = !!m.is_published;
+        $("editMatchModal").classList.add("show");
       }
 
-      async function confirmSchedule() {
-        if (!scheduleMatchId || !auth) {
+      async function confirmEditMatch() {
+        if (!editMatchId || !auth) {
           alert("Faça login admin.");
           return;
         }
-        var local = String($("scheduleStarts").value || "").trim();
+        var m = platformMatches.find(function (x) {
+          return String(x.id) === String(editMatchId);
+        });
+        if (!m) {
+          alert("Jogo não encontrado.");
+          return;
+        }
+        var local = String($("editMatchStarts").value || "").trim();
         if (!local) {
           alert("Informe data e horário.");
           return;
@@ -2008,44 +2128,128 @@
           alert("Horário inválido.");
           return;
         }
-        $("btnConfirmSchedule").disabled = true;
-        $("btnConfirmSchedule").textContent = "Salvando…";
+        var liqBrl = parseMoneyToNumber($("editMatchLiq").value);
+        if (liqBrl == null || !(liqBrl > 0)) {
+          alert("Informe a liquidez real (R$). Ex.: 2500");
+          return;
+        }
+        var liquidityCents = Math.round(liqBrl * 100);
+        if (!(liquidityCents >= 100)) {
+          alert("Liquidez mínima: R$ 1,00");
+          return;
+        }
+        var stats = liqStats(m);
+        var applied;
         try {
-          try {
-            await rest(
-              "matches?id=eq." + encodeURIComponent(scheduleMatchId),
-              auth.token,
-              {
-                method: "PATCH",
-                body: {
-                  starts_at: iso,
-                  updated_at: new Date().toISOString(),
-                },
-              }
-            );
-          } catch (err) {
-            await rest(
-              "matches?id=eq." + encodeURIComponent(scheduleMatchId),
-              auth.token,
-              {
-                method: "PATCH",
-                body: { starts_at: iso },
-              }
-            );
-          }
-          var row = platformMatches.find(function (m) {
-            return String(m.id) === String(scheduleMatchId);
+          applied = applyLiquidityToMarkets(m.markets, liquidityCents, stats.used);
+        } catch (eLiq) {
+          alert(eLiq.message || "Liquidez inválida");
+          return;
+        }
+        var published = !!($("editMatchPublish") && $("editMatchPublish").checked);
+        $("btnConfirmEditMatch").disabled = true;
+        $("btnConfirmEditMatch").textContent = "Salvando…";
+        try {
+          await patchMatch(editMatchId, {
+            starts_at: iso,
+            is_published: published,
+            markets: applied.markets,
+            max_protection_cents: applied.max,
           });
-          if (row) row.starts_at = iso;
-          alert("Horário atualizado: " + fmtDate(iso));
-          $("scheduleModal").classList.remove("show");
-          scheduleMatchId = null;
+          m.starts_at = iso;
+          m.is_published = published;
+          m.markets = applied.markets;
+          m.max_protection_cents = applied.max;
+          alert("Jogo atualizado.");
+          $("editMatchModal").classList.remove("show");
+          editMatchId = null;
           renderPlatformList();
+          renderStats();
         } catch (err) {
-          alert(err.message || "Erro ao alterar horário");
+          alert(err.message || "Erro ao editar jogo");
         } finally {
-          $("btnConfirmSchedule").disabled = false;
-          $("btnConfirmSchedule").textContent = "Salvar horário";
+          $("btnConfirmEditMatch").disabled = false;
+          $("btnConfirmEditMatch").textContent = "Salvar alterações";
+        }
+      }
+
+      function openCancelMatchModal(matchId) {
+        var m = platformMatches.find(function (x) {
+          return String(x.id) === String(matchId);
+        });
+        if (!m) return;
+        if (!auth) {
+          alert("Faça login admin.");
+          return;
+        }
+        cancelMatchId = matchId;
+        var liq = liqStats(m);
+        var openN = Number(m._openProtections || 0);
+        $("cancelMatchSummary").textContent =
+          (m.home_team || "?") +
+          " vs " +
+          (m.away_team || "?") +
+          " · " +
+          (m.starts_at ? fmtDate(m.starts_at) : "sem horário");
+        var warn = "";
+        if (openN > 0) {
+          warn =
+            "Há " +
+            openN +
+            " proteção(ões) aberta(s). Cancele/encierre as proteções antes de cancelar o jogo.";
+        } else if (liq.used > 0) {
+          warn =
+            "Atenção: já há " +
+            money(liq.used) +
+            " utilizado neste jogo. O cancelamento só remove o evento da lista (Excluídos).";
+        } else {
+          warn = "Esta ação não pode ser desfeita pela lista Agendados.";
+        }
+        $("cancelMatchWarn").textContent = warn;
+        var btn = $("btnConfirmCancelMatch");
+        if (btn) {
+          btn.disabled = openN > 0;
+          btn.style.opacity = openN > 0 ? "0.45" : "1";
+        }
+        $("cancelMatchModal").classList.add("show");
+      }
+
+      async function confirmCancelMatch() {
+        if (!cancelMatchId || !auth) {
+          alert("Faça login admin.");
+          return;
+        }
+        var m = platformMatches.find(function (x) {
+          return String(x.id) === String(cancelMatchId);
+        });
+        if (!m) {
+          alert("Jogo não encontrado.");
+          return;
+        }
+        if (Number(m._openProtections || 0) > 0) {
+          alert("Há proteções abertas. Resolva-as antes de cancelar o jogo.");
+          return;
+        }
+        $("btnConfirmCancelMatch").disabled = true;
+        $("btnConfirmCancelMatch").textContent = "Cancelando…";
+        try {
+          var nowIso = new Date().toISOString();
+          await patchMatch(cancelMatchId, {
+            deleted_at: nowIso,
+            is_published: false,
+          });
+          m.deleted_at = nowIso;
+          m.is_published = false;
+          alert("Jogo cancelado. Veja na aba Excluídos.");
+          $("cancelMatchModal").classList.remove("show");
+          cancelMatchId = null;
+          renderPlatformList();
+          renderStats();
+        } catch (err) {
+          alert(err.message || "Erro ao cancelar jogo");
+        } finally {
+          $("btnConfirmCancelMatch").disabled = false;
+          $("btnConfirmCancelMatch").textContent = "Confirmar cancelamento";
         }
       }
 
@@ -2276,20 +2480,37 @@
             if (e.target === $("settleModal")) $("settleModal").classList.remove("show");
           });
         }
-        if ($("btnCancelSchedule")) {
-          $("btnCancelSchedule").addEventListener("click", function () {
-            $("scheduleModal").classList.remove("show");
-            scheduleMatchId = null;
+        if ($("btnCancelEditMatch")) {
+          $("btnCancelEditMatch").addEventListener("click", function () {
+            $("editMatchModal").classList.remove("show");
+            editMatchId = null;
           });
         }
-        if ($("btnConfirmSchedule")) {
-          $("btnConfirmSchedule").addEventListener("click", confirmSchedule);
+        if ($("btnConfirmEditMatch")) {
+          $("btnConfirmEditMatch").addEventListener("click", confirmEditMatch);
         }
-        if ($("scheduleModal")) {
-          $("scheduleModal").addEventListener("click", function (e) {
-            if (e.target === $("scheduleModal")) {
-              $("scheduleModal").classList.remove("show");
-              scheduleMatchId = null;
+        if ($("editMatchModal")) {
+          $("editMatchModal").addEventListener("click", function (e) {
+            if (e.target === $("editMatchModal")) {
+              $("editMatchModal").classList.remove("show");
+              editMatchId = null;
+            }
+          });
+        }
+        if ($("btnCloseCancelMatch")) {
+          $("btnCloseCancelMatch").addEventListener("click", function () {
+            $("cancelMatchModal").classList.remove("show");
+            cancelMatchId = null;
+          });
+        }
+        if ($("btnConfirmCancelMatch")) {
+          $("btnConfirmCancelMatch").addEventListener("click", confirmCancelMatch);
+        }
+        if ($("cancelMatchModal")) {
+          $("cancelMatchModal").addEventListener("click", function (e) {
+            if (e.target === $("cancelMatchModal")) {
+              $("cancelMatchModal").classList.remove("show");
+              cancelMatchId = null;
             }
           });
         }
