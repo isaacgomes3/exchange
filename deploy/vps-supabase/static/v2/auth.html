@@ -38,7 +38,7 @@
       </a>
       <div>
         <h1>Proteção <span>inteligente</span></h1>
-        <p>Entre ou crie sua conta. Indicações via link de afiliado são vinculadas no cadastro.</p>
+        <p>Entre com a mesma conta do arbishield.app. Sessão compartilhada com o app e o admin.</p>
       </div>
       <p class="meta" style="margin:0">Sistema novo · isolado do SPA</p>
     </section>
@@ -230,11 +230,41 @@
           }
           location.replace("/app.html");
         } catch (ex) {
-          err.textContent = ex.message || "Falha na autenticação";
+          err.textContent = mapAuthError(ex, mode);
           err.classList.add("show");
           btnSubmit.disabled = false;
         }
       });
+
+      function mapAuthError(ex, currentMode) {
+        var raw = String((ex && ex.message) || ex || "");
+        var code = String((ex && (ex.code || ex.error_code)) || "").toLowerCase();
+        var low = raw.toLowerCase();
+        if (
+          low.indexOf("invalid login credentials") >= 0 ||
+          code === "invalid_credentials"
+        ) {
+          return (
+            "Credenciais inválidas. Use o mesmo e-mail/senha do site antigo " +
+            "(Auth compartilhado). Se a senha estiver correta, o e-mail pode " +
+            "estar sem confirmação — peça ao admin para confirmar a conta ou " +
+            "redefinir a senha."
+          );
+        }
+        if (low.indexOf("user already registered") >= 0 || code === "user_already_exists") {
+          return "Este e-mail já está cadastrado. Use a aba Entrar com a senha atual.";
+        }
+        if (low.indexOf("email not confirmed") >= 0 || code === "email_not_confirmed") {
+          return (
+            "E-mail ainda não confirmado. Com o SMTP da VPS, a confirmação automática " +
+            "pode falhar — peça ao admin para confirmar sua conta."
+          );
+        }
+        if (currentMode === "signup" && (low.indexOf("rate") >= 0 || code.indexOf("rate") >= 0)) {
+          return "Muitas tentativas. Aguarde um minuto e tente de novo.";
+        }
+        return raw || "Falha na autenticação";
+      }
     })();
   </script>
 </body>

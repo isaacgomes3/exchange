@@ -234,8 +234,15 @@
           .then(function (out) {
             if (!out.res.ok) {
               var msg = out.data.error_description || out.data.msg || out.data.error || "Falha no login";
+              var code = String(out.data.error_code || out.data.code || "").toLowerCase();
               if (/banned/i.test(msg)) msg = "Esta conta está bloqueada. Contate o suporte.";
-              else if (/invalid/i.test(msg)) msg = "E-mail ou senha inválidos.";
+              else if (/invalid login credentials|invalid_credentials/i.test(msg) || code === "invalid_credentials") {
+                msg =
+                  "Credenciais inválidas. Legado e novo usam a mesma conta. " +
+                  "Se a senha estiver correta, o e-mail pode estar sem confirmação — peça ao admin.";
+              } else if (/invalid/i.test(msg)) {
+                msg = "E-mail ou senha inválidos.";
+              }
               throw new Error(msg);
             }
             var data = out.data;
