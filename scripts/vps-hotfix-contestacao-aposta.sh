@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Hotfix: Contestação de Aposta completa (cliente + ADM + shim)
+# Hotfix: Contestação via /api/arbishield/protections (rota nginx que JÁ funciona → :3098)
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/contestacao-aposta-completa-723d/scripts/vps-hotfix-contestacao-aposta.sh?v=4")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/contestacao-aposta-completa-723d/scripts/vps-hotfix-contestacao-aposta.sh?v=5")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/contestacao-aposta-completa-723d}"
@@ -10,18 +10,31 @@ RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${BRANCH}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
 SHIM_DIR="${ARBISHIELD_SHIM_DIR:-/opt/arbishield}"
+SCRIPTS_DIR="${ARBISHIELD_SCRIPTS_DIR:-/opt/arbishield}"
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null || die "$1 não encontrado"; }
 need curl
-mkdir -p "$WEB" "$SHIM_DIR"
+mkdir -p "$WEB" "$SHIM_DIR" "$SCRIPTS_DIR"
 
-log "Shim :3101 (contestação submit/list/approve/reject + plain JSON)"
+log "Prelive :3098 (contest_submit/list/approve/reject em /api/arbishield/protections)"
+curl -fsSL "$RAW/scripts/arbishield-prelive-events.mjs" -o "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
+chmod 0755 "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
+grep -q 'contest_submit\|contestSubmit\|contestList' "$SCRIPTS_DIR/arbishield-prelive-events.mjs" || \
+  die "prelive sem handlers de contestação"
+if systemctl is-active --quiet arbishield-prelive-events.service 2>/dev/null; then
+  systemctl restart arbishield-prelive-events.service
+  echo "  prelive reiniciado"
+else
+  echo "AVISO: arbishield-prelive-events inativo" >&2
+fi
+
+log "Shim :3101 (fallback + patch sem updated_at)"
 curl -fsSL "$RAW/scripts/arbishield-serverfn-shim.mjs" -o "$SHIM_DIR/arbishield-serverfn-shim.mjs"
 chmod 0644 "$SHIM_DIR/arbishield-serverfn-shim.mjs"
-grep -q 'CONTESTATION_SUBMIT\|submitContestation\|x-arbishield-plain' \
-  "$SHIM_DIR/arbishield-serverfn-shim.mjs" || die "shim sem handlers de contestação"
+grep -q 'patchProtectionSafe\|CONTESTATION_SUBMIT' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || \
+  die "shim sem contestação"
 systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 sleep 1
 
@@ -32,39 +45,23 @@ for f in app-protecoes.html admin-contestations.html v2-shell.js; do
   cp -f "$WEB/$f" "$WEB_ROOT/$f" 2>/dev/null || true
   echo "  ok $f"
 done
+grep -q 'contest_submit\|action: "contest_submit"' "$WEB/app-protecoes.html" || die "cliente sem contest_submit"
+grep -q 'contest_list\|action: "contest_list"' "$WEB/admin-contestations.html" || die "admin sem contest_list"
 
-grep -q 'Contestar proteção\|Em Contestação\|_serverFn/' "$WEB/app-protecoes.html" || die "app-protecoes sem fallback serverFn"
-grep -q 'Contestações de Apostas\|_serverFn/' "$WEB/admin-contestations.html" || die "admin-contestations incompleto"
-grep -q 'Contestações de Apostas\|pending-count' "$WEB/v2-shell.js" || die "v2-shell sem badge de contestações"
-
-# nginx: forçar location prefix para /api/arbishield/contestations → :3101
+# nginx contestations (opcional; primary usa /protections)
 NGINX_CONF=""
 for c in /etc/nginx/sites-enabled/arbishield.app \
          /etc/nginx/conf.d/arbishield.app.conf \
-         /etc/nginx/sites-available/arbishield.app \
-         /opt/arbishield/deploy/vps-supabase/nginx-arbishield.app.conf; do
+         /etc/nginx/sites-available/arbishield.app; do
   if [[ -f "$c" ]]; then NGINX_CONF="$c"; break; fi
 done
-
-if [[ -n "$NGINX_CONF" ]]; then
-  log "Nginx: $NGINX_CONF"
+if [[ -n "$NGINX_CONF" ]] && ! grep -q 'location ^~ /api/arbishield/contestations' "$NGINX_CONF"; then
+  log "Inserir location contestations no nginx (opcional)"
   python3 - <<'PY' "$NGINX_CONF"
 import sys
 path = sys.argv[1]
 text = open(path).read()
-changed = False
-
-# 1) Estender regex antiga se existir
-old = "affiliate-withdraw|protection-close|protection-cancel|match-settle)"
-new = "affiliate-withdraw|protection-close|protection-cancel|match-settle|contestations|contestations/submit|contestations/approve|contestations/reject|contestations/pending-count)"
-if old in text and "contestations/submit" not in text:
-    text = text.replace(old, new, 1)
-    changed = True
-    print("regex api/arbishield ampliada")
-
-# 2) Sempre garantir location ^~ /api/arbishield/contestations
 block = """
-    # Contestacoes → shim :3101
     location ^~ /api/arbishield/contestations {
         proxy_pass http://127.0.0.1:3101;
         proxy_http_version 1.1;
@@ -74,48 +71,27 @@ block = """
         proxy_read_timeout 120s;
     }
 """
-if "location ^~ /api/arbishield/contestations" not in text and "location /api/arbishield/contestations" not in text:
+if "location ^~ /api/arbishield/contestations" not in text:
     anchor = "location ^~ /_serverFn/"
     if anchor in text:
         text = text.replace(anchor, block + "\n    " + anchor, 1)
-        changed = True
-        print("location ^~ /api/arbishield/contestations inserida")
-    else:
-        # fallback: antes do fechamento do server
-        idx = text.rfind("}")
-        if idx > 0:
-            text = text[:idx] + block + "\n" + text[idx:]
-            changed = True
-            print("location contestations inserida no fim do server")
-
-if changed:
-    open(path, "w").write(text)
-    print("nginx atualizado")
-else:
-    print("nginx já contém rotas de contestação")
+        open(path, "w").write(text)
+        print("nginx patched")
 PY
-  if nginx -t >/dev/null 2>&1; then
-    systemctl reload nginx 2>/dev/null || true
-    log "nginx reload ok"
-  else
-    echo "AVISO: nginx -t falhou — confira $NGINX_CONF" >&2
-  fi
-else
-  echo "AVISO: nginx conf não encontrada; cliente usará fallback /_serverFn/" >&2
+  nginx -t >/dev/null 2>&1 && systemctl reload nginx 2>/dev/null || true
 fi
 
-# Sanity check local
-log "Sanity check shim"
-if curl -fsS -o /dev/null -w "%{http_code}" -X POST "http://127.0.0.1:3101/_serverFn/2a6aef91a48eaa19a2fd107fe580b1c6edf54fd10f1962c1d5d3e40f5c38d120" \
-  -H "Content-Type: application/json" -H "x-arbishield-plain: 1" -d '{}' | grep -qE '200|400'; then
-  echo "  shim responde em :3101"
-else
-  echo "AVISO: shim :3101 sem resposta esperada" >&2
-fi
+log "Sanity :3098 contest_list sem token → 401"
+code="$(curl -sS -o /tmp/contest-sanity.json -w '%{http_code}' -X POST \
+  http://127.0.0.1:3098/api/arbishield/protections \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"contest_list"}' || true)"
+echo "  HTTP $code $(head -c 120 /tmp/contest-sanity.json 2>/dev/null || true)"
+echo "$code" | grep -qE '401|403|200' || echo "AVISO: prelive não respondeu contest_list" >&2
 
 echo
-echo "OK — Contestação de Aposta (v4)"
-echo "  Cliente: https://arbishield.app/app-protecoes.html"
-echo "  Admin:   https://arbishield.app/admin-contestations.html"
-echo "  Admin lista direto de protections status=review_odd (igual legado)"
-echo "  Ctrl+F5 nas páginas"
+echo "OK — Contestação v5 (via /api/arbishield/protections → :3098)"
+echo "  1) Ctrl+F5 em /app-protecoes.html"
+echo "  2) Contestar de novo (grava status review_odd)"
+echo "  3) Ctrl+F5 em /admin-contestations.html → Atualizar"
+echo "  Contestações antigas que falharam no envio NÃO aparecem — precisa reenviar."

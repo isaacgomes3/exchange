@@ -1793,6 +1793,27 @@ async function partnerMonthlyStats(token) {
   return { monthPct, totalPaid, count: list.length };
 }
 
+async function patchProtectionSafe(table, protectionId, body) {
+  // VPS: protections pode não ter updated_at — tenta com e sem.
+  const withTs = { ...body, updated_at: new Date().toISOString() };
+  const withoutTs = { ...body };
+  delete withoutTs.updated_at;
+  let lastErr = null;
+  for (const payload of [withoutTs, withTs]) {
+    try {
+      await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(protectionId)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: payload,
+      });
+      return;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error("Falha ao atualizar proteção");
+}
+
 async function loadProtectionRow(protectionId, marketType) {
   const isBack = String(marketType || "").toUpperCase() === "BACK";
   const table = isBack ? "back_protections" : "protections";
@@ -2360,11 +2381,7 @@ async function submitContestation(token, body) {
     patch.metadata = prevMeta;
   }
 
-  await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(protectionId)}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: patch,
-  });
+  await patchProtectionSafe(table, protectionId, patch);
 
   await upsertOddContestationRow({
     user_id: userId,
@@ -2512,11 +2529,7 @@ async function approveContestation(token, body) {
     };
   }
 
-  await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(protectionId)}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: patch,
-  });
+  await patchProtectionSafe(table, protectionId, patch);
 
   await patchOddContestationForProtection(protectionId, {
     status: "approved",
@@ -2610,11 +2623,7 @@ async function rejectContestation(token, body) {
     patch.metadata = prevMeta;
   }
 
-  await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(protectionId)}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: patch,
-  });
+  await patchProtectionSafe(table, protectionId, patch);
 
   await patchOddContestationForProtection(protectionId, {
     status: "rejected",

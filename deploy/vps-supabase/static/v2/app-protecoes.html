@@ -328,8 +328,21 @@
           try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 180) }; }
           return data;
         }
-        // 1) REST (quando nginx já aponta para o shim)
-        var res = await fetch("/api/arbishield/contestations/submit", {
+
+        // 1) Rota que JÁ funciona no nginx da VPS → prelive :3098
+        var res = await fetch("/api/arbishield/protections", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify(Object.assign({ action: "contest_submit" }, payload)),
+        });
+        var data = await readBody(res);
+        if (res.ok && data && data.ok === true) return data;
+
+        // 2) REST dedicado (se nginx já tiver location de contestations)
+        var resB = await fetch("/api/arbishield/contestations/submit", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -337,34 +350,27 @@
           },
           body: JSON.stringify(payload),
         });
-        var data = await readBody(res);
-        if (res.ok && data && data.ok === true) return data;
-        var restErr = data.error || data.msg || ("HTTP " + res.status);
-        // 2) Fallback: /_serverFn já está proxyado no nginx da VPS
-        if (res.status === 405 || res.status === 404 || res.status === 502 || /html|not allowed/i.test(String(data.raw || "")) || data.ok !== true) {
-          var res2 = await fetch("/_serverFn/" + FN_SUBMIT, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Accept: "application/json",
-              "x-arbishield-plain": "1",
-              "x-tsr-serverFn": "true",
-              Authorization: "Bearer " + token,
-            },
-            body: JSON.stringify({ data: payload }),
-          });
-          var data2 = await readBody(res2);
-          if (!res2.ok || data2.error) {
-            throw new Error(data2.error || data2.msg || restErr || "Erro ao enviar contestação");
-          }
-          if (data2.ok !== true) {
-            throw new Error(
-              "Servidor ainda sem handler de contestação. Rode o hotfix v4 na VPS e tente de novo."
-            );
-          }
-          return data2;
-        }
-        throw new Error(restErr || "Erro ao enviar contestação");
+        var dataB = await readBody(resB);
+        if (resB.ok && dataB && dataB.ok === true) return dataB;
+
+        // 3) Fallback /_serverFn
+        var res2 = await fetch("/_serverFn/" + FN_SUBMIT, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-arbishield-plain": "1",
+            "x-tsr-serverFn": "true",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify({ data: payload }),
+        });
+        var data2 = await readBody(res2);
+        if (res2.ok && data2 && data2.ok === true) return data2;
+
+        throw new Error(
+          data.error || dataB.error || data2.error ||
+          "Erro ao enviar contestação. Rode o hotfix v5 na VPS (prelive :3098)."
+        );
       }
 
       document.getElementById("btnSend").addEventListener("click", async function () {

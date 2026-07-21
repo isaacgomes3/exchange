@@ -1592,6 +1592,427 @@ async function createProtection(body, userToken) {
   };
 }
 
+const CONTESTATION_LOCK_MS = 5 * 60 * 1000;
+
+async function patchProtectionNoUpdatedAt(table, protectionId, body) {
+  const payload = { ...body };
+  delete payload.updated_at;
+  await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(protectionId)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: payload,
+  });
+}
+
+async function loadProtectionForContest(protectionId, category) {
+  const isBack = String(category || "").toUpperCase() === "BACK";
+  const table = isBack ? "back_protections" : "protections";
+  const rows = await sb(
+    `/rest/v1/${table}?select=*&id=eq.${encodeURIComponent(protectionId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row) {
+    const err = new Error("Proteção não encontrada");
+    err.status = 404;
+    throw err;
+  }
+  return { table, row, isBack };
+}
+
+function contestMetaFromRow(row, isBack) {
+  if (isBack) {
+    const calc =
+      (row.calculations && typeof row.calculations === "object"
+        ? row.calculations
+        : null) ||
+      (row.metadata && row.metadata.calculations) ||
+      {};
+    return (
+      (calc && calc.contestation) ||
+      (row.metadata && row.metadata.contestation) ||
+      {}
+    );
+  }
+  return (row.metadata && row.metadata.contestation) || {};
+}
+
+async function contestSubmit(body, token) {
+  const payload = decodeJwtPayload(token);
+  const userId = payload?.sub ? String(payload.sub) : null;
+  if (!userId) {
+    const err = new Error("Não autorizado");
+    err.status = 401;
+    throw err;
+  }
+  if (!SERVICE_KEY) throw new Error("SERVICE_ROLE_KEY ausente no .env da VPS");
+
+  const protectionId = String(body.protectionId || body.id || "").trim();
+  const category = String(
+    body.category || body.marketType || body.market_category || "LAY"
+  ).toUpperCase();
+  const contestTypeRaw = String(body.contestType || body.type || "odd_adjustment").toLowerCase();
+  const contestType =
+    contestTypeRaw === "cancellation" ||
+    contestTypeRaw === "cancel" ||
+    contestTypeRaw === "cancelamento"
+      ? "cancellation"
+      : "odd_adjustment";
+  if (!protectionId) {
+    const err = new Error("protectionId obrigatório");
+    err.status = 400;
+    throw err;
+  }
+
+  const { table, row, isBack } = await loadProtectionForContest(
+    protectionId,
+    category
+  );
+  if (String(row.user_id) !== String(userId)) {
+    const err = new Error("Proteção não pertence a este usuário");
+    err.status = 403;
+    throw err;
+  }
+  const st = String(row.status || "").toLowerCase();
+  if (st === "review_odd") return { ok: true, alreadyExists: true };
+  if (st !== "active" && st !== "pending") {
+    const err = new Error("Só é possível contestar proteções ativas");
+    err.status = 400;
+    throw err;
+  }
+
+  if (row.match_id) {
+    const matches = await sb(
+      `/rest/v1/matches?select=id,starts_at&id=eq.${encodeURIComponent(row.match_id)}&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    const match = Array.isArray(matches) ? matches[0] : null;
+    if (match?.starts_at) {
+      const t = new Date(match.starts_at).getTime();
+      if (!Number.isNaN(t) && Date.now() > t - CONTESTATION_LOCK_MS) {
+        const err = new Error(
+          "Contestação bloqueada: faltam menos de 5 minutos para o início da partida (ou o jogo já começou)."
+        );
+        err.status = 400;
+        throw err;
+      }
+    }
+  }
+
+  const originalOdd = Number(row.odd);
+  let requestedOdd = null;
+  const proofUrl = String(body.proofUrl || body.betProofUrl || body.proof_url || "").trim();
+  const reason = String(body.reason || body.note || "").trim();
+  if (contestType === "odd_adjustment") {
+    requestedOdd = Number(String(body.newOdd ?? body.requestedOdd ?? "").replace(",", "."));
+    if (!(requestedOdd > 1)) {
+      const err = new Error("Informe uma odd válida (> 1)");
+      err.status = 400;
+      throw err;
+    }
+    if (!proofUrl) {
+      const err = new Error("Anexe o print do comprovante da casa de aposta");
+      err.status = 400;
+      throw err;
+    }
+  } else if (reason.length < 5) {
+    const err = new Error("Informe o motivo do cancelamento (mín. 5 caracteres)");
+    err.status = 400;
+    throw err;
+  }
+
+  const contestation = {
+    type: contestType,
+    original_odd: originalOdd,
+    requested_odd: requestedOdd,
+    proof_url: proofUrl || null,
+    reason: reason || null,
+    requested_at: new Date().toISOString(),
+    requested_by: userId,
+  };
+
+  const prevMeta =
+    row.metadata && typeof row.metadata === "object" ? { ...row.metadata } : {};
+  prevMeta.contestation = contestation;
+  const patch = { status: "review_odd", metadata: prevMeta };
+  if (isBack) {
+    const prevCalc =
+      row.calculations && typeof row.calculations === "object"
+        ? { ...row.calculations }
+        : {};
+    prevCalc.contestation = contestation;
+    patch.calculations = prevCalc;
+    prevMeta.calculations = prevCalc;
+    patch.metadata = prevMeta;
+  }
+
+  await patchProtectionNoUpdatedAt(table, protectionId, patch);
+
+  try {
+    await sb("/rest/v1/odd_contestations", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        user_id: userId,
+        protection_id: protectionId,
+        status: "pending",
+        contest_type: contestType,
+        original_odd: originalOdd,
+        requested_odd: requestedOdd,
+        proof_url: proofUrl || null,
+        reason: reason || null,
+        created_at: new Date().toISOString(),
+      },
+    });
+  } catch (e) {
+    console.warn("[prelive] odd_contestations insert:", e.message || e);
+  }
+
+  return {
+    ok: true,
+    alreadyExists: false,
+    status: "review_odd",
+    contestType,
+    label: "Em Contestação (Pendente)",
+  };
+}
+
+async function contestList(token) {
+  await requireAdminToken(token);
+  if (!SERVICE_KEY) throw new Error("SERVICE_ROLE_KEY ausente no .env da VPS");
+
+  async function load(table, category) {
+    const rows = await sb(
+      `/rest/v1/${table}?select=*&status=eq.review_odd&order=created_at.desc&limit=300`,
+      { token: SERVICE_KEY }
+    ).catch(() => []);
+    return (Array.isArray(rows) ? rows : []).map((r) => ({
+      ...r,
+      market_category: category,
+    }));
+  }
+
+  const list = [...(await load("protections", "LAY")), ...(await load("back_protections", "BACK"))].sort(
+    (a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))
+  );
+
+  const userIds = [...new Set(list.map((r) => r.user_id).filter(Boolean))];
+  const matchIds = [...new Set(list.map((r) => r.match_id).filter(Boolean))];
+  const [profiles, matches] = await Promise.all([
+    userIds.length
+      ? sb(
+          `/rest/v1/profiles?select=id,full_name&id=in.(${userIds.map(encodeURIComponent).join(",")})`,
+          { token: SERVICE_KEY }
+        ).catch(() => [])
+      : [],
+    matchIds.length
+      ? sb(
+          `/rest/v1/matches?select=id,home_team,away_team,league,starts_at&id=in.(${matchIds.map(encodeURIComponent).join(",")})`,
+          { token: SERVICE_KEY }
+        ).catch(() => [])
+      : [],
+  ]);
+  const profileMap = new Map((Array.isArray(profiles) ? profiles : []).map((p) => [p.id, p]));
+  const matchMap = new Map((Array.isArray(matches) ? matches : []).map((m) => [m.id, m]));
+
+  return list.map((r) => {
+    const isBack = r.market_category === "BACK";
+    const meta = contestMetaFromRow(r, isBack);
+    const type = meta.type === "cancellation" ? "cancellation" : "odd_adjustment";
+    return {
+      ...r,
+      profiles: profileMap.get(r.user_id) || { full_name: "Usuário" },
+      matches: matchMap.get(r.match_id) || null,
+      contestation: {
+        type,
+        requested_odd: meta.requested_odd ?? null,
+        original_odd: meta.original_odd ?? Number(r.odd),
+        proof_url: meta.proof_url ?? null,
+        reason: meta.reason ?? null,
+        requested_at: meta.requested_at ?? r.created_at,
+      },
+    };
+  });
+}
+
+async function contestApprove(body, token) {
+  const adminId = await requireAdminToken(token);
+  const protectionId = String(body.protectionId || body.id || "").trim();
+  const category = String(
+    body.category || body.marketType || body.market_category || "LAY"
+  ).toUpperCase();
+  if (!protectionId) throw new Error("protectionId obrigatório");
+
+  const { table, row, isBack } = await loadProtectionForContest(protectionId, category);
+  if (String(row.status || "").toLowerCase() !== "review_odd") {
+    throw new Error("Esta proteção não está em contestação");
+  }
+  const meta = contestMetaFromRow(row, isBack);
+  const contestType = meta.type === "cancellation" ? "cancellation" : "odd_adjustment";
+
+  if (contestType === "cancellation") {
+    // estorno simples: devolve amount para balance + libera locked
+    const amount = n(row.responsibility_cents || row.amount_cents);
+    if (row.user_id && amount > 0) {
+      const prof = await sb(
+        `/rest/v1/profiles?select=balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+        { token: SERVICE_KEY }
+      );
+      const p = Array.isArray(prof) ? prof[0] : null;
+      if (p) {
+        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: {
+            balance_cents: n(p.balance_cents) + amount,
+            locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
+            updated_at: new Date().toISOString(),
+          },
+        });
+      }
+    }
+    await patchProtectionNoUpdatedAt(table, protectionId, {
+      status: "cancelled",
+      settled_at: new Date().toISOString(),
+      result: "cancelled_refund",
+    });
+    try {
+      await sb(
+        `/rest/v1/odd_contestations?protection_id=eq.${encodeURIComponent(protectionId)}&status=eq.pending`,
+        {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: {
+            status: "approved",
+            resolved_at: new Date().toISOString(),
+            resolved_by: adminId,
+          },
+        }
+      );
+    } catch {
+      /* */
+    }
+    return { ok: true, action: "cancellation", protectionId, status: "cancelled" };
+  }
+
+  const approvedOdd = Number(
+    String(body.approvedOdd ?? meta.requested_odd ?? "").replace(",", ".")
+  );
+  if (!(approvedOdd > 1)) throw new Error("Odd aprovada inválida");
+  const amount = n(row.responsibility_cents || row.amount_cents);
+  const prevMeta =
+    row.metadata && typeof row.metadata === "object" ? { ...row.metadata } : {};
+  prevMeta.contestation = {
+    ...meta,
+    approved_odd: approvedOdd,
+    approved_at: new Date().toISOString(),
+    approved_by: adminId,
+    contestation_approved: true,
+  };
+
+  let patch;
+  if (isBack) {
+    const c = calcBack(amount, approvedOdd);
+    patch = {
+      status: "active",
+      odd: approvedOdd,
+      amount_cents: c.coverageCents,
+      user_profit_cents: c.userProfitCents,
+      platform_deduction_cents: c.arbiShieldDeductionCents,
+      metadata: prevMeta,
+      calculations: { ...(row.calculations || {}), ...c, contestation: prevMeta.contestation },
+    };
+  } else {
+    const c = calcLay(amount, approvedOdd);
+    patch = {
+      status: "active",
+      odd: approvedOdd,
+      amount_cents: c.responsibilityCents,
+      responsibility_cents: c.responsibilityCents,
+      user_profit_cents: c.userProfitCents,
+      platform_deduction_cents: c.arbiShieldDeductionCents,
+      platform_profit_cents: c.arbiShieldDeductionCents,
+      locked_deduction_cents: c(c.lockedDeductionCents),
+      exchange_fee_cents: c.exchangeFeeCents,
+      exchange_profit_net_cents: c.exchangeProfitNetCents,
+      metadata: prevMeta,
+    };
+  }
+  await patchProtectionNoUpdatedAt(table, protectionId, patch);
+  try {
+    await sb(
+      `/rest/v1/odd_contestations?protection_id=eq.${encodeURIComponent(protectionId)}&status=eq.pending`,
+      {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          status: "approved",
+          approved_odd: approvedOdd,
+          resolved_at: new Date().toISOString(),
+          resolved_by: adminId,
+        },
+      }
+    );
+  } catch {
+    /* */
+  }
+  return { ok: true, action: "odd_adjustment", protectionId, approvedOdd, status: "active" };
+}
+
+async function contestReject(body, token) {
+  const adminId = await requireAdminToken(token);
+  const protectionId = String(body.protectionId || body.id || "").trim();
+  const category = String(
+    body.category || body.marketType || body.market_category || "LAY"
+  ).toUpperCase();
+  const reason = String(
+    body.reason || body.note || "Odd validada como correta pelo sistema."
+  ).trim();
+  if (!protectionId) throw new Error("protectionId obrigatório");
+
+  const { table, row, isBack } = await loadProtectionForContest(protectionId, category);
+  if (String(row.status || "").toLowerCase() !== "review_odd") {
+    throw new Error("Esta proteção não está em contestação");
+  }
+  const meta = contestMetaFromRow(row, isBack);
+  const prevMeta =
+    row.metadata && typeof row.metadata === "object" ? { ...row.metadata } : {};
+  prevMeta.contestation = {
+    ...meta,
+    rejected_at: new Date().toISOString(),
+    rejected_by: adminId,
+    reject_reason: reason,
+  };
+  const patch = { status: "active", metadata: prevMeta };
+  if (isBack) {
+    const prevCalc =
+      row.calculations && typeof row.calculations === "object"
+        ? { ...row.calculations }
+        : {};
+    prevCalc.contestation = prevMeta.contestation;
+    patch.calculations = prevCalc;
+  }
+  await patchProtectionNoUpdatedAt(table, protectionId, patch);
+  try {
+    await sb(
+      `/rest/v1/odd_contestations?protection_id=eq.${encodeURIComponent(protectionId)}&status=eq.pending`,
+      {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          status: "rejected",
+          resolved_at: new Date().toISOString(),
+          resolved_by: adminId,
+          reject_reason: reason,
+        },
+      }
+    );
+  } catch {
+    /* */
+  }
+  return { ok: true, protectionId, status: "active", rejected: true };
+}
+
 async function handleApi(req, res) {
   if (req.method === "OPTIONS") return sendJson(res, 204, {});
 
@@ -1704,6 +2125,39 @@ async function handleApi(req, res) {
       const token = bearerFromReq(req);
       if (!token) {
         return sendJson(res, 401, { ok: false, error: "Não autorizado" });
+      }
+      const action = String(body.action || body.mode || "").toLowerCase();
+      if (
+        action === "contest_submit" ||
+        action === "contestation_submit" ||
+        action === "submit_contestation"
+      ) {
+        const result = await contestSubmit(body, token);
+        return sendJson(res, 200, result);
+      }
+      if (
+        action === "contest_list" ||
+        action === "contestation_list" ||
+        action === "list_contestations"
+      ) {
+        const rows = await contestList(token);
+        return sendJson(res, 200, rows);
+      }
+      if (
+        action === "contest_approve" ||
+        action === "contestation_approve" ||
+        action === "approve_contestation"
+      ) {
+        const result = await contestApprove(body, token);
+        return sendJson(res, 200, result);
+      }
+      if (
+        action === "contest_reject" ||
+        action === "contestation_reject" ||
+        action === "reject_contestation"
+      ) {
+        const result = await contestReject(body, token);
+        return sendJson(res, 200, result);
       }
       const result = await createProtection(body, token);
       return sendJson(res, 200, result);

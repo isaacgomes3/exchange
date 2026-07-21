@@ -212,10 +212,22 @@
           try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 160) }; }
           return { res: res, data: data };
         }
-        var out = await tryFetch("/api/arbishield/contestations", {
+        // 1) prelive :3098 via /api/arbishield/protections (já proxyado no nginx)
+        var out = await tryFetch("/api/arbishield/protections", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + t,
+          },
+          body: JSON.stringify({ action: "contest_list" }),
+        });
+        if (out.res.ok && Array.isArray(out.data)) return out.data;
+
+        out = await tryFetch("/api/arbishield/contestations", {
           headers: { Authorization: "Bearer " + t },
         });
         if (out.res.ok && Array.isArray(out.data)) return out.data;
+
         out = await tryFetch("/_serverFn/" + FN.list, {
           method: "POST",
           headers: {
@@ -231,12 +243,27 @@
 
       async function callAction(kind, payload) {
         var t = await token();
+        // 1) prelive :3098
+        var action = kind === "approve" ? "contest_approve" : "contest_reject";
+        var res = await fetch("/api/arbishield/protections", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + t,
+          },
+          body: JSON.stringify(Object.assign({ action: action }, payload)),
+        });
+        var text = await res.text();
+        var data = {};
+        try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 160) }; }
+        if (res.ok && data.ok) return data;
+
         var path =
           kind === "approve"
             ? "/api/arbishield/contestations/approve"
             : "/api/arbishield/contestations/reject";
         var fnId = kind === "approve" ? FN.approve : FN.reject;
-        var res = await fetch(path, {
+        var resB = await fetch(path, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -244,32 +271,27 @@
           },
           body: JSON.stringify(payload),
         });
-        var text = await res.text();
-        var data = {};
-        try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 160) }; }
-        if (res.ok && data.ok) return data;
-        if (res.status === 405 || res.status === 404 || res.status === 502 || data.raw) {
-          var res2 = await fetch("/_serverFn/" + fnId, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-arbishield-plain": "1",
-              Authorization: "Bearer " + t,
-            },
-            body: JSON.stringify({ data: payload }),
-          });
-          var text2 = await res2.text();
-          var data2 = {};
-          try { data2 = text2 ? JSON.parse(text2) : {}; } catch (e2) { data2 = {}; }
-          if (!res2.ok || data2.error || data2.ok === false) {
-            throw new Error(data2.error || data.error || ("Falha ao " + kind));
-          }
-          if (data2.ok !== true && data2.rejected !== true && !data2.protectionId) {
-            throw new Error("Shim não processou a ação. Rode o hotfix v4 do contestação.");
-          }
-          return data2;
-        }
-        throw new Error(data.error || ("HTTP " + res.status));
+        var textB = await resB.text();
+        var dataB = {};
+        try { dataB = textB ? JSON.parse(textB) : {}; } catch (e2) { dataB = {}; }
+        if (resB.ok && dataB.ok) return dataB;
+
+        var res2 = await fetch("/_serverFn/" + fnId, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-arbishield-plain": "1",
+            Authorization: "Bearer " + t,
+          },
+          body: JSON.stringify({ data: payload }),
+        });
+        var text2 = await res2.text();
+        var data2 = {};
+        try { data2 = text2 ? JSON.parse(text2) : {}; } catch (e3) { data2 = {}; }
+        if (res2.ok && (data2.ok === true || data2.rejected === true)) return data2;
+        throw new Error(
+          data.error || dataB.error || data2.error || ("Falha ao " + kind + ". Rode hotfix v5.")
+        );
       }
 
       function contestType(r) {
@@ -358,18 +380,16 @@
 
       async function load() {
         showErr("");
-        // 1) Direto no banco (igual legado ae) — não depende do nginx/API
-        var direct = await loadFromSupabase();
-        // 2) API/shim como complemento (service role vê tudo mesmo com RLS restritiva)
+        // Prefere API com service role (vê todas as contestações mesmo com RLS)
         var apiRows = null;
         try { apiRows = await loadFromApi(); } catch (e) { apiRows = null; }
-
-        if (Array.isArray(apiRows) && apiRows.length) {
+        if (Array.isArray(apiRows)) {
           rows = apiRows.map(function (r) {
             return normalizeRow(r, r.market_category || "LAY");
           });
         } else {
-          rows = direct;
+          // Fallback direto (pode ficar vazio se RLS esconder proteções de outros users)
+          rows = await loadFromSupabase();
         }
         render();
       }
