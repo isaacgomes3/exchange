@@ -99,6 +99,11 @@ const FN = {
     "fbc95c35a41b7d1f4cbff94481e4cc717dd5380d319f9c14ff638a68fe355a1c",
   AFFILIATE_WITHDRAW:
     "fe464d9378f5852cb8f2f20c8e6b6ee390d83b070e7008ed29ccfbf7ac320d89",
+  /** Monitor proteções — cancelar/estornar + encerrar sem estorno (SPA) */
+  PROTECTION_CANCEL_REFUND:
+    "7389baaef3c2b584c409c59fc824e6b8438e2b36b31962f19de0f1815c6e443a",
+  PROTECTION_CLOSE_NO_REFUND:
+    "85ba18adcbc268610fb2ac76551978abee821260d93161e23aca41bd5d531e21",
   /** Desafio — participação / settle (SPA surebet-validation) */
   DESAFIO_LIST_ACTIVE:
     "3d73b89476f54f1c738f12aa01a568e18829e0f8072936120346589e89b7b310",
@@ -467,7 +472,9 @@ function extractServerFnData(rawBody) {
       d.winningSide != null ||
       d.percentage != null ||
       d.side != null ||
-      d.amountCents != null
+      d.amountCents != null ||
+      d.protectionId != null ||
+      d.reason != null
     ) {
       return d;
     }
@@ -500,6 +507,10 @@ function extractServerFnData(rawBody) {
     "description",
     "homeScore",
     "awayScore",
+    "protectionId",
+    "marketType",
+    "market_category",
+    "reason",
   ]) {
     if (parsed[k] !== undefined) out[k] = parsed[k];
   }
@@ -1642,6 +1653,215 @@ async function partnerMonthlyStats(token) {
   return { monthPct, totalPaid, count: list.length };
 }
 
+async function loadProtectionRow(protectionId, marketType) {
+  const isBack = String(marketType || "").toUpperCase() === "BACK";
+  const table = isBack ? "back_protections" : "protections";
+  const rows = await sb(
+    `/rest/v1/${table}?select=*&id=eq.${encodeURIComponent(protectionId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row) throw new Error("Proteção não encontrada");
+  return { table, row, isBack };
+}
+
+async function restoreMatchLiquidity(matchId, amountCents, marketId) {
+  if (!matchId || !(amountCents > 0)) return;
+  try {
+    const matches = await sb(
+      `/rest/v1/matches?select=id,used_protection_cents,markets&id=eq.${encodeURIComponent(matchId)}&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    const match = Array.isArray(matches) ? matches[0] : null;
+    if (!match) return;
+    const used = Math.max(0, n(match.used_protection_cents) - amountCents);
+    let markets = Array.isArray(match.markets) ? [...match.markets] : [];
+    if (marketId && markets.length) {
+      markets = markets.map((m) => {
+        if (String(m?.id) !== String(marketId)) return m;
+        return {
+          ...m,
+          used_liquidity: Math.max(0, n(m.used_liquidity) - amountCents),
+        };
+      });
+    }
+    await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        used_protection_cents: used,
+        markets,
+        updated_at: new Date().toISOString(),
+      },
+    });
+  } catch {
+    /* liquidez best-effort */
+  }
+}
+
+async function closeProtectionNoRefund(token, body) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const protectionId = String(body?.protectionId || body?.id || "").trim();
+  const marketType = String(body?.marketType || body?.market_category || "LAY");
+  const reason = String(body?.reason || "").trim();
+  if (!protectionId) throw new Error("protectionId obrigatório");
+  if (!reason) throw new Error("Motivo é obrigatório para encerrar sem estornar.");
+
+  const { table, row } = await loadProtectionRow(protectionId, marketType);
+  const st = String(row.status || "").toLowerCase();
+  if (st === "cancelled" || st === "settled" || st === "closed") {
+    throw new Error("Proteção já finalizada");
+  }
+  const amount = n(row.responsibility_cents || row.amount_cents);
+  const adminId = requireUserId(token);
+
+  await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(protectionId)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: {
+      status: "settled",
+      settled_at: new Date().toISOString(),
+      result: "closed_no_refund",
+      metadata: {
+        ...(row.metadata && typeof row.metadata === "object" ? row.metadata : {}),
+        close_reason: reason,
+        closed_by: adminId,
+        closed_at: new Date().toISOString(),
+      },
+      updated_at: new Date().toISOString(),
+    },
+  });
+
+  if (row.user_id) {
+    try {
+      const prof = await sb(
+        `/rest/v1/profiles?select=locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+        { token: SERVICE_KEY }
+      );
+      const p = Array.isArray(prof) ? prof[0] : null;
+      if (p) {
+        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: {
+            locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
+            updated_at: new Date().toISOString(),
+          },
+        });
+      }
+    } catch {
+      /* */
+    }
+  }
+
+  const marketId =
+    row.market_id ||
+    (row.metadata && (row.metadata.market_id || row.metadata.marketId)) ||
+    null;
+  await restoreMatchLiquidity(row.match_id, amount, marketId);
+
+  try {
+    await sb("/rest/v1/admin_audit_logs", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        admin_id: adminId,
+        action: "protection_close_no_refund",
+        entity_type: table,
+        entity_id: protectionId,
+        details: { reason, amount_cents: amount, marketType },
+      },
+    });
+  } catch {
+    /* */
+  }
+
+  return { ok: true, protectionId, status: "settled" };
+}
+
+async function cancelProtectionRefund(token, body) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const protectionId = String(body?.protectionId || body?.id || "").trim();
+  const marketType = String(body?.marketType || body?.market_category || "LAY");
+  if (!protectionId) throw new Error("protectionId obrigatório");
+
+  const { table, row } = await loadProtectionRow(protectionId, marketType);
+  const st = String(row.status || "").toLowerCase();
+  if (st === "cancelled") throw new Error("Proteção já cancelada");
+  if (st === "settled" || st === "closed") {
+    throw new Error("Proteção já encerrada — use estorno manual se necessário");
+  }
+  const amount = n(row.responsibility_cents || row.amount_cents);
+  const adminId = requireUserId(token);
+
+  if (row.user_id && amount > 0) {
+    const prof = await sb(
+      `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    const p = Array.isArray(prof) ? prof[0] : null;
+    if (!p) throw new Error("Perfil do usuário não encontrado");
+    await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        balance_cents: n(p.balance_cents) + amount,
+        locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
+        updated_at: new Date().toISOString(),
+      },
+    });
+    try {
+      await sb("/rest/v1/wallet_transactions", {
+        method: "POST",
+        token: SERVICE_KEY,
+        body: {
+          user_id: row.user_id,
+          type: "protection_refund",
+          amount_cents: amount,
+          meta: { protection_id: protectionId, marketType },
+        },
+      });
+    } catch {
+      /* */
+    }
+  }
+
+  await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(protectionId)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: {
+      status: "cancelled",
+      settled_at: new Date().toISOString(),
+      result: "cancelled_refund",
+      updated_at: new Date().toISOString(),
+    },
+  });
+
+  const marketId =
+    row.market_id ||
+    (row.metadata && (row.metadata.market_id || row.metadata.marketId)) ||
+    null;
+  await restoreMatchLiquidity(row.match_id, amount, marketId);
+
+  try {
+    await sb("/rest/v1/admin_audit_logs", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        admin_id: adminId,
+        action: "protection_cancel_refund",
+        entity_type: table,
+        entity_id: protectionId,
+        details: { amount_cents: amount, marketType },
+      },
+    });
+  } catch {
+    /* */
+  }
+
+  return { ok: true, protectionId, status: "cancelled", refundedCents: amount };
+}
+
 async function getUserDashboardCritical(token) {
   const userId = requireUserId(token);
   const [profileBundle, metrics] = await Promise.all([
@@ -2164,6 +2384,36 @@ async function handleServerFn(req, res, id, rawBody = "") {
     }
   }
 
+  if (id === FN.PROTECTION_CLOSE_NO_REFUND && req.method === "POST") {
+    try {
+      return sendTsrOk(
+        res,
+        await closeProtectionNoRefund(token, extractServerFnData(rawBody))
+      );
+    } catch (err) {
+      console.error("[serverfn-shim] PROTECTION_CLOSE_NO_REFUND error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.PROTECTION_CANCEL_REFUND && req.method === "POST") {
+    try {
+      return sendTsrOk(
+        res,
+        await cancelProtectionRefund(token, extractServerFnData(rawBody))
+      );
+    } catch (err) {
+      console.error("[serverfn-shim] PROTECTION_CANCEL_REFUND error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
   if (id === FN.BANNERS_REORDER && req.method === "POST") {
     try {
       const params = extractServerFnData(rawBody);
@@ -2497,6 +2747,50 @@ const server = createServer(async (req, res) => {
         res,
         200,
         await distributePartnerYield(token, body.data || body)
+      );
+    } catch (err) {
+      return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/protection-close" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      return sendJson(
+        res,
+        200,
+        await closeProtectionNoRefund(token, body.data || body)
+      );
+    } catch (err) {
+      return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/protection-cancel" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      return sendJson(
+        res,
+        200,
+        await cancelProtectionRefund(token, body.data || body)
       );
     } catch (err) {
       return sendJson(res, 400, {
