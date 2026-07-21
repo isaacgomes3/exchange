@@ -2,11 +2,13 @@
 # FIX DEPÓSITO AGORA — bucket + RLS admin UPDATE + UI + shim (rejeitar/aprovar)
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-deposito-comprovante-723d/scripts/vps-fix-deposito-agora.sh?v=3")
+#   curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-deposito-comprovante-723d/scripts/vps-fix-deposito-agora.sh?v=4" -o /tmp/fix-dep.sh
+#   bash /tmp/fix-dep.sh
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/fix-deposito-comprovante-723d}"
-RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${BRANCH}"
+REF="${ARBISHIELD_REF:-$BRANCH}"
+RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
 SHIM_DIR="${ARBISHIELD_SHIM_DIR:-/opt/arbishield}"
@@ -98,17 +100,21 @@ grep -q 'deposit-proofs' "$WEB/v2-deposit.js" || die "v2-deposit.js sem deposit-
 grep -q 'uploadProofViaServer\|a8c4e21f' "$WEB/v2-deposit.js" || die "v2-deposit.js SEM fallback servidor — baixou arquivo antigo?"
 grep -q 'Comprovante enviado' "$WEB/v2-deposit.js" || die "v2-deposit sem texto Comprovante enviado"
 grep -q 'Confirmar e Creditar' "$WEB/admin-manual-deposits.html" || die "admin ainda antigo"
-grep -q 'rejectViaSupabase\|97fbb202' "$WEB/admin-manual-deposits.html" || die "admin SEM rejeitar (arquivo antigo?)"
-grep -q 'proofUrl\|c1d2e3f4' "$WEB/admin-manual-deposits.html" || echo "  AVISO: admin sem proofUrl (ok se cache)"
+grep -q 'rejectViaSupabase' "$WEB/admin-manual-deposits.html" || die "admin SEM rejeitar (arquivo antigo?)"
+grep -q '97fbb202' "$WEB/admin-manual-deposits.html" || die "admin SEM hash reject"
+grep -q 'toPublicProofUrl' "$WEB/admin-manual-deposits.html" || die "admin SEM rewrite URL pública (comprovante quebrado)"
+grep -q 'proofUrl' "$WEB/admin-manual-deposits.html" || echo "  AVISO: admin sem proofUrl"
+grep -q 'c1d2e3f4' "$WEB/admin-manual-deposits.html" || echo "  AVISO: admin sem hash proofUrl"
 
 log "3/5 — shim :3101"
 curl -fsSL "$RAW/scripts/arbishield-serverfn-shim.mjs" -o "$SHIM_DIR/arbishield-serverfn-shim.mjs"
 chmod 0644 "$SHIM_DIR/arbishield-serverfn-shim.mjs"
 cp -f "$SHIM_DIR/arbishield-serverfn-shim.mjs" "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs" 2>/dev/null || true
-grep -q 'ensureStorageBuckets\|uploadDepositProof\|DEPOSIT_APPROVE\|DEPOSIT_PROOF_URL' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || \
-  die "shim sem handlers de depósito"
-grep -q 'patchManualDepositSafe\|DEPOSIT_REJECT' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || \
-  die "shim SEM patchManualDepositSafe/reject — baixou arquivo antigo?"
+grep -q 'ensureStorageBuckets' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || die "shim sem ensureStorageBuckets"
+grep -q 'uploadDepositProof' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || die "shim sem uploadDepositProof"
+grep -q 'toPublicStorageUrl' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || die "shim SEM toPublicStorageUrl (URL 127.0.0.1)"
+grep -q 'patchManualDepositSafe' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || die "shim SEM patchManualDepositSafe"
+grep -q 'DEPOSIT_REJECT' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || die "shim SEM DEPOSIT_REJECT"
 
 # path real do systemd
 for u in arbishield-serverfn-shim.service; do
@@ -179,5 +185,6 @@ echo "  grep -c rejectViaSupabase $WEB/admin-manual-deposits.html"
 echo "  grep -c patchManualDepositSafe $SHIM_DIR/arbishield-serverfn-shim.mjs"
 echo " Depois: Ctrl+Shift+R em"
 echo "  https://arbishield.app/admin-manual-deposits.html"
+echo "  → Ver comprovante deve abrir a imagem (não 127.0.0.1)"
 echo "  → Rejeitar deve pedir motivo e mudar status"
 echo "=========================================="

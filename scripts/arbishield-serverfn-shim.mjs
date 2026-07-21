@@ -52,6 +52,81 @@ const SERVICE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY;
 const ANON_KEY = process.env.ANON_KEY || process.env.SUPABASE_ANON_KEY;
 
+function isInternalStorageHost(hostname) {
+  const h = String(hostname || "").toLowerCase();
+  return (
+    h === "localhost" ||
+    h === "127.0.0.1" ||
+    h === "0.0.0.0" ||
+    h === "::1" ||
+    h.endsWith(".local") ||
+    /^10\./.test(h) ||
+    /^192\.168\./.test(h) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(h)
+  );
+}
+
+/** Origem pública (nginx) — nunca 127.0.0.1 (browser do ADM não alcança) */
+function resolvePublicSiteUrl() {
+  const candidates = [
+    process.env.ARBISHIELD_PUBLIC_URL,
+    process.env.SITE_URL,
+    process.env.SUPABASE_PUBLIC_URL,
+    "https://arbishield.app",
+  ];
+  for (const c of candidates) {
+    if (!c) continue;
+    const base = String(c).replace(/\/$/, "");
+    try {
+      if (!isInternalStorageHost(new URL(base).hostname)) return base;
+    } catch {
+      /* next */
+    }
+  }
+  return "https://arbishield.app";
+}
+const PUBLIC_SITE_URL = resolvePublicSiteUrl();
+
+/** Reescreve URL de storage interna (Kong :8000) para o domínio público do site. */
+function toPublicStorageUrl(url) {
+  if (!url) return url;
+  const s = String(url).trim();
+  if (!s) return s;
+  if (s.startsWith("/storage/")) return `${PUBLIC_SITE_URL}${s}`;
+  try {
+    const u = new URL(s);
+    if (isInternalStorageHost(u.hostname)) {
+      return `${PUBLIC_SITE_URL}${u.pathname}${u.search}`;
+    }
+    // Kong interno com host = SUPABASE_URL
+    if (SUPABASE_URL && s.startsWith(SUPABASE_URL) && isInternalStorageHost(new URL(SUPABASE_URL).hostname)) {
+      return `${PUBLIC_SITE_URL}${u.pathname}${u.search}`;
+    }
+  } catch {
+    /* keep */
+  }
+  return s;
+}
+
+function extractDepositProofPath(pathOrUrl) {
+  let p = String(pathOrUrl || "").trim();
+  if (!p) return "";
+  if (/^data:/i.test(p)) return p;
+  if (!/^https?:\/\//i.test(p) && !p.startsWith("/")) {
+    return p.replace(/^deposit-proofs\//, "");
+  }
+  try {
+    const u = new URL(p, PUBLIC_SITE_URL);
+    const m = u.pathname.match(
+      /\/storage\/v1\/object\/(?:sign|public|authenticated)\/deposit-proofs\/(.+)$/
+    );
+    if (m) return decodeURIComponent(m[1]);
+  } catch {
+    /* */
+  }
+  return p.replace(/^deposit-proofs\//, "");
+}
+
 /** Hashes usados pelo frontend estático na VPS */
 const FN = {
   LIST_DESAFIOS:
@@ -2388,6 +2463,7 @@ async function uploadDepositProof(token, body) {
     } else if (sj?.data?.signedUrl) {
       signedUrl = sj.data.signedUrl;
     }
+    signedUrl = signedUrl ? toPublicStorageUrl(signedUrl) : null;
   } catch {
     /* */
   }
@@ -2396,7 +2472,7 @@ async function uploadDepositProof(token, body) {
   const amountCents = Math.floor(Number(body?.amountCents || 0));
   const network = String(body?.network || "PIX").trim() || "PIX";
   const depositType = String(body?.depositType || "user_balance").trim() || "user_balance";
-  // Guarda path (legado) e, se possível, URL assinada em admin_notes/meta
+  // Guarda path do objeto; URL assinada (pública) só como cache opcional
   const proofStore = objectPath;
 
   if (depositId) {
@@ -2438,27 +2514,41 @@ async function uploadDepositProof(token, body) {
   };
 }
 
-/** ADM: URL assinada do comprovante (service role) */
+/** ADM: URL assinada do comprovante (service role) — sempre com host público */
 async function getDepositProofSignedUrl(token, body) {
   if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
   if (!SERVICE_KEY) throw new Error("SERVICE_ROLE_KEY ausente");
   const id = String(body?.id || body?.depositId || "").trim();
   const pathIn = String(body?.path || body?.proof_url || "").trim();
   let path = pathIn;
-  if (id && !path) {
+  let notesUrl = null;
+  if (id) {
     const row = await loadManualDeposit(id);
-    path = String(row.proof_url || "").trim();
-    // fallback notes
-    if (!path && row.admin_notes && String(row.admin_notes).startsWith("proof_signed:")) {
-      return { ok: true, url: String(row.admin_notes).slice("proof_signed:".length) };
+    if (!path) path = String(row.proof_url || "").trim();
+    if (row.admin_notes && String(row.admin_notes).startsWith("proof_signed:")) {
+      notesUrl = String(row.admin_notes).slice("proof_signed:".length);
+    }
+  }
+  if (!path && notesUrl) {
+    // tenta extrair path da URL antiga (mesmo se for 127.0.0.1)
+    path = extractDepositProofPath(notesUrl);
+    if (/^https?:\/\//i.test(path) || path.startsWith("data:")) {
+      return { ok: true, url: toPublicStorageUrl(path) };
     }
   }
   if (!path) throw new Error("Comprovante não encontrado");
-  if (/^https?:\/\//i.test(path) || path.startsWith("data:")) {
+  if (path.startsWith("data:")) {
     return { ok: true, url: path };
   }
-  // remove bucket prefix se veio completo
-  path = path.replace(/^deposit-proofs\//, "");
+  if (/^https?:\/\//i.test(path)) {
+    const extracted = extractDepositProofPath(path);
+    if (extracted && extracted !== path && !/^https?:\/\//i.test(extracted)) {
+      path = extracted;
+    } else {
+      return { ok: true, url: toPublicStorageUrl(path) };
+    }
+  }
+  path = extractDepositProofPath(path);
   const signed = await fetch(
     `${SUPABASE_URL}/storage/v1/object/sign/deposit-proofs/${path}`,
     {
@@ -2477,7 +2567,7 @@ async function getDepositProofSignedUrl(token, body) {
   if (!String(url).startsWith("http")) {
     url = `${SUPABASE_URL}/storage/v1${url}`;
   }
-  return { ok: true, url, path };
+  return { ok: true, url: toPublicStorageUrl(url), path };
 }
 
 /** Contestações — janela: até 5 min antes do kickoff */

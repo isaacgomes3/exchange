@@ -270,6 +270,88 @@
         });
       }
 
+      function isInternalHost(hostname) {
+        var h = String(hostname || "").toLowerCase();
+        return (
+          h === "localhost" ||
+          h === "127.0.0.1" ||
+          h === "0.0.0.0" ||
+          h === "::1" ||
+          /\.local$/.test(h) ||
+          /^10\./.test(h) ||
+          /^192\.168\./.test(h) ||
+          /^172\.(1[6-9]|2\d|3[0-1])\./.test(h)
+        );
+      }
+
+      /** URL assinada com 127.0.0.1:8000 não abre no browser — reescreve para o site. */
+      function toPublicProofUrl(url) {
+        if (!url) return url;
+        var s = String(url).trim();
+        if (!s || s.indexOf("data:") === 0) return s;
+        if (s.indexOf("/storage/") === 0) return location.origin + s;
+        try {
+          var u = new URL(s, location.origin);
+          if (isInternalHost(u.hostname)) {
+            return location.origin + u.pathname + u.search;
+          }
+        } catch (e) { /* keep */ }
+        return s;
+      }
+
+      function isUsableProofUrl(url) {
+        if (!url) return false;
+        var s = String(url);
+        if (s.indexOf("data:") === 0) return true;
+        try {
+          var u = new URL(s, location.origin);
+          if (isInternalHost(u.hostname)) return false;
+          return u.protocol === "http:" || u.protocol === "https:";
+        } catch (e) {
+          return false;
+        }
+      }
+
+      function extractProofPath(pathOrUrl) {
+        var p = String(pathOrUrl || "").trim();
+        if (!p) return "";
+        if (p.indexOf("data:") === 0) return p;
+        if (!/^https?:\/\//i.test(p) && p.charAt(0) !== "/") {
+          return p.replace(/^deposit-proofs\//, "");
+        }
+        try {
+          var u = new URL(p, location.origin);
+          var m = u.pathname.match(/\/storage\/v1\/object\/(?:sign|public|authenticated)\/deposit-proofs\/(.+)$/);
+          if (m) return decodeURIComponent(m[1]);
+        } catch (e) { /* */ }
+        return p.replace(/^deposit-proofs\//, "");
+      }
+
+      function showProofMedia(path, url) {
+        var media = document.getElementById("drawerMedia");
+        url = toPublicProofUrl(url);
+        if (/\.pdf($|\?)/i.test(path) || /\.pdf($|\?)/i.test(url)) {
+          media.innerHTML = '<embed src="' + url + '" type="application/pdf" />';
+        } else {
+          media.innerHTML =
+            '<img src="' + url + '" alt="Comprovante" />' +
+            '<p class="muted" id="proofImgHint" style="display:none;margin-top:8px"></p>';
+          var img = media.querySelector("img");
+          if (img) {
+            img.onerror = function () {
+              var hint = document.getElementById("proofImgHint");
+              if (hint) {
+                hint.style.display = "block";
+                hint.textContent =
+                  "Falha ao abrir a imagem. URL: " +
+                  String(url).slice(0, 120) +
+                  " — rode vps-fix-deposito-agora.sh se persistir.";
+              }
+            };
+          }
+        }
+      }
+
       async function openProof(r) {
         if (!r || !r.proof_url) return;
         document.getElementById("drawerMeta").textContent =
@@ -278,45 +360,58 @@
         media.innerHTML = "<p class=\"muted\">Carregando…</p>";
         drawer.classList.add("show");
         try {
-          var path = String(r.proof_url);
+          var raw = String(r.proof_url);
+          var path = extractProofPath(raw);
           var url = null;
-          // 1) se já for URL absoluta / data
-          if (/^https?:\/\//i.test(path) || path.indexOf("data:") === 0) {
-            url = path;
+
+          // 1) data: inline
+          if (raw.indexOf("data:") === 0) {
+            url = raw;
           }
-          // 2) admin_notes com proof_signed
-          if (!url && r.admin_notes && String(r.admin_notes).indexOf("proof_signed:") === 0) {
-            url = String(r.admin_notes).slice("proof_signed:".length);
-          }
-          // 3) serverFn service role
+
+          // 2) sempre preferir serverFn (service role + host público)
           if (!url) {
-            var t = await token();
-            var res = await fetch("/_serverFn/" + FN.proofUrl, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "x-arbishield-plain": "1",
-                Authorization: "Bearer " + t,
-              },
-              body: JSON.stringify({ data: { id: r.id, path: path } }),
-            });
-            var text = await res.text();
-            var data = {};
-            try { data = text ? JSON.parse(text) : {}; } catch (e) { data = {}; }
-            if (data && data.result != null) data = data.result;
-            if (data && data.url) url = data.url;
+            try {
+              var t = await token();
+              var res = await fetch("/_serverFn/" + FN.proofUrl, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-arbishield-plain": "1",
+                  Authorization: "Bearer " + t,
+                },
+                body: JSON.stringify({ data: { id: r.id, path: path || raw } }),
+              });
+              var text = await res.text();
+              var data = {};
+              try { data = text ? JSON.parse(text) : {}; } catch (e) { data = {}; }
+              if (data && data.result != null) data = data.result;
+              if (data && data.url) url = toPublicProofUrl(data.url);
+            } catch (eSrv) { /* fallback */ }
           }
-          // 4) supabase client signed url
-          if (!url) {
-            var signed = await supa.storage.from("deposit-proofs").createSignedUrl(path.replace(/^deposit-proofs\//, ""), 3600);
-            if (signed.error || !signed.data || !signed.data.signedUrl) throw signed.error || new Error("Falha ao assinar URL");
-            url = signed.data.signedUrl;
+
+          // 3) client signed url (mesmo origin via nginx)
+          if (!isUsableProofUrl(url) && path && path.indexOf("data:") !== 0) {
+            var signed = await supa.storage
+              .from("deposit-proofs")
+              .createSignedUrl(path.replace(/^deposit-proofs\//, ""), 3600);
+            if (!signed.error && signed.data && signed.data.signedUrl) {
+              url = toPublicProofUrl(signed.data.signedUrl);
+            }
           }
-          if (/\.pdf($|\?)/i.test(path)) {
-            media.innerHTML = '<embed src="' + url + '" type="application/pdf" />';
-          } else {
-            media.innerHTML = '<img src="' + url + '" alt="Comprovante" />';
+
+          // 4) cache admin_notes / URL absoluta — só se utilizável no browser
+          if (!isUsableProofUrl(url) && r.admin_notes && String(r.admin_notes).indexOf("proof_signed:") === 0) {
+            url = toPublicProofUrl(String(r.admin_notes).slice("proof_signed:".length));
           }
+          if (!isUsableProofUrl(url) && /^https?:\/\//i.test(raw)) {
+            url = toPublicProofUrl(raw);
+          }
+
+          if (!isUsableProofUrl(url)) {
+            throw new Error("Não foi possível gerar URL pública do comprovante");
+          }
+          showProofMedia(path || raw, url);
         } catch (ex) {
           media.innerHTML = '<p class="muted">Não foi possível carregar o comprovante. ' +
             ((ex && ex.message) || "") +
