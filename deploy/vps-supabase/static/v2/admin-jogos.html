@@ -453,12 +453,12 @@
         <div id="settleOutcomeBox" style="display:grid;gap:10px;margin-top:8px">
           <button type="button" class="btn btn-ghost" id="btnOutcomeArbi" data-outcome="arbishield" style="justify-content:flex-start;text-align:left;padding:14px 16px;border-color:rgba(201,242,35,0.45)">
             <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU ARBISHIELD</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção válida · devolver só o stake/responsabilidade</span>
-            <span id="settleRefundHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">A reembolsar: —</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Cobertura · devolve stake ao saldo reutilizável (Apostador)</span>
+            <span id="settleRefundHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">A creditar: —</span>
           </button>
           <button type="button" class="btn btn-ghost" id="btnOutcomeExch" data-outcome="exchange" style="justify-content:flex-start;text-align:left;padding:14px 16px">
             <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU CASA EXTERNA (EXCHANGE)</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção perde · sem reembolso ao usuário</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Cliente venceu na casa · devolve stake − taxa ao saldo real</span>
             <span id="settleDeductHint" style="display:block;margin-top:8px;color:var(--amber);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Dedução / margem ArbiShield: —</span>
             <span id="settleStakeKeepHint" style="display:block;margin-top:4px;color:var(--muted);font-size:11px;font-weight:600;text-transform:none;letter-spacing:0"></span>
           </button>
@@ -1130,7 +1130,11 @@
                   ? '<button class="btn btn-primary btn-sm" type="button" data-settle="' +
                     m.id +
                     '" style="margin-top:8px">Encerrar partida</button>'
-                  : "";
+                  : bucket === "done"
+                    ? '<button class="btn btn-ghost btn-sm" type="button" data-settle="' +
+                      m.id +
+                      '" style="margin-top:8px">Reparar crédito carteira</button>'
+                    : "";
               var used = Number(m.used_protection_cents || 0);
               var openN = Number(m._openProtections || 0);
               return (
@@ -1650,19 +1654,17 @@
           money(stake);
         if ($("settleRefundHint")) {
           $("settleRefundHint").textContent =
-            "A reembolsar: " + money(refund) + "  ·  só stake/responsabilidade";
+            "A creditar (reutilizável): " + money(refund) + "  ·  stake/responsabilidade";
         }
         if ($("settleDeductHint")) {
           $("settleDeductHint").textContent =
             margin > 0
-              ? "Dedução / margem ArbiShield: " + money(margin)
-              : "Dedução / margem ArbiShield: — (sem platform_deduction nesta proteção)";
+              ? "Taxa ArbiShield: " + money(margin) + "  ·  devolve ao cliente: " + money(Math.max(0, stake - margin))
+              : "Taxa ArbiShield: —  ·  devolve ao cliente: " + money(stake);
         }
         if ($("settleStakeKeepHint")) {
           $("settleStakeKeepHint").textContent =
-            "Stake do usuário (" +
-            money(stake) +
-            ") já foi debitado na entrada e permanece na plataforma — não é a “dedução”.";
+            "Na Exchange a taxa fica na plataforma; o restante volta ao saldo Apostador.";
         }
         $("settleHome").value = "";
         $("settleAway").value = "";
@@ -1764,10 +1766,12 @@
           alert(
             "Partida encerrada · " +
               Number(data.settledCount || 0) +
-              " proteção(ões) · " +
+              " proteção(ões) · crédito " +
+              money(data.refundedCents || 0) +
+              (data.repaired ? " (reparo de crédito)" : "") +
               (outcome === "arbishield"
-                ? "reembolso " + money(data.refundedCents || 0)
-                : "sem reembolso (casa externa)")
+                ? " → saldo reutilizável (Apostador)"
+                : " → saldo real (stake − taxa)")
           );
           $("settleModal").classList.remove("show");
           platformLoaded = false;

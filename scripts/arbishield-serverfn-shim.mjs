@@ -1877,53 +1877,123 @@ function isOpenProtectionStatus(st) {
   return openProtectionStatuses().includes(String(st || "").toLowerCase());
 }
 
+function settlementDeductionCents(row) {
+  const raw =
+    row.platform_deduction_cents != null
+      ? row.platform_deduction_cents
+      : row.locked_deduction_cents;
+  return Math.max(0, n(raw));
+}
+
+function settlementCreditCents(row, outcome) {
+  const amount = n(row.responsibility_cents || row.amount_cents);
+  if (amount <= 0) return 0;
+  const wonArbi = String(outcome).toLowerCase() === "arbishield";
+  if (wonArbi) return amount;
+  const fee = Math.min(settlementDeductionCents(row), amount);
+  return Math.max(0, amount - fee);
+}
+
+function settlementStatusForOutcome(outcome) {
+  return String(outcome).toLowerCase() === "arbishield"
+    ? "lost_exchange"
+    : "won_exchange";
+}
+
+async function protectionAlreadyCredited(protectionId) {
+  if (!protectionId) return false;
+  try {
+    const rows = await sb(
+      `/rest/v1/wallet_transactions?ref=eq.${encodeURIComponent(protectionId)}&type=in.(protection_settlement,protection_release,protection_refund)&select=id&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    return Array.isArray(rows) && rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function creditWalletForSettlement(row, outcome, now) {
+  const amount = n(row.responsibility_cents || row.amount_cents);
+  const credit = settlementCreditCents(row, outcome);
+  const wonArbi = String(outcome).toLowerCase() === "arbishield";
+  if (!row.user_id || amount <= 0) {
+    return { refunded: 0, credited: 0, skipped: true };
+  }
+  if (await protectionAlreadyCredited(row.id)) {
+    return { refunded: 0, credited: 0, alreadyCredited: true };
+  }
+
+  const prof = await sb(
+    `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const p = Array.isArray(prof) ? prof[0] : null;
+  if (!p) throw new Error(`Perfil ${row.user_id} não encontrado para crédito`);
+
+  const locked = Math.max(0, n(p.locked_balance_cents) - amount);
+  const patch = { locked_balance_cents: locked };
+  if (wonArbi) {
+    patch.reusable_balance_cents = n(p.reusable_balance_cents) + credit;
+  } else {
+    patch.balance_cents = n(p.balance_cents) + credit;
+  }
+
+  let creditedOk = false;
+  let lastErr = null;
+  for (const body of [{ ...patch, updated_at: now }, patch]) {
+    try {
+      await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body,
+      });
+      creditedOk = true;
+      break;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  if (!creditedOk) {
+    throw lastErr || new Error("Falha ao creditar carteira do cliente");
+  }
+
+  try {
+    await sb("/rest/v1/wallet_transactions", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        user_id: row.user_id,
+        type: "protection_settlement",
+        amount_cents: credit,
+        ref: row.id,
+        metadata: {
+          protection_id: row.id,
+          match_id: row.match_id || null,
+          outcome: String(outcome).toLowerCase(),
+          stake_cents: amount,
+          fee_cents: wonArbi ? 0 : settlementDeductionCents(row),
+          bucket: wonArbi ? "reusable_balance_cents" : "balance_cents",
+          fix: "settle-credito-carteira-v1",
+        },
+      },
+    });
+  } catch {
+    /* */
+  }
+
+  return { refunded: credit, credited: credit };
+}
+
 async function applyProtectionSettlement(row, table, outcome) {
   const amount = n(row.responsibility_cents || row.amount_cents);
   const wonArbi = String(outcome).toLowerCase() === "arbishield";
-  const status = wonArbi ? "won_platform" : "won_exchange";
+  const status = settlementStatusForOutcome(outcome);
   const now = new Date().toISOString();
 
-  if (row.user_id && amount > 0) {
-    try {
-      const prof = await sb(
-        `/rest/v1/profiles?select=balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
-        { token: SERVICE_KEY }
-      );
-      const p = Array.isArray(prof) ? prof[0] : null;
-      if (p) {
-        const locked = Math.max(0, n(p.locked_balance_cents) - amount);
-        // arbishield: devolve só stake/responsabilidade (sem lucro);
-        // exchange: stake fica na plataforma
-        const balance = wonArbi
-          ? n(p.balance_cents) + amount
-          : n(p.balance_cents);
-        const profileBodies = [
-          {
-            balance_cents: balance,
-            locked_balance_cents: locked,
-            updated_at: now,
-          },
-          { balance_cents: balance, locked_balance_cents: locked },
-        ];
-        for (const body of profileBodies) {
-          try {
-            await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
-              method: "PATCH",
-              token: SERVICE_KEY,
-              body,
-            });
-            break;
-          } catch {
-            /* tenta sem updated_at */
-          }
-        }
-      }
-    } catch {
-      /* saldo best-effort */
-    }
-  }
+  const creditResult = await creditWalletForSettlement(row, outcome, now);
+  const refunded = creditResult.refunded || 0;
 
-  // Schema VPS: protections pode não ter updated_at
   const attempts = [
     {
       status,
@@ -1931,11 +2001,29 @@ async function applyProtectionSettlement(row, table, outcome) {
       settled_outcome: String(outcome).toLowerCase(),
       result: status,
     },
+    {
+      status,
+      settled_at: now,
+      settled_outcome: String(outcome).toLowerCase(),
+    },
     { status, settled_at: now, result: status },
     { status, settled_at: now },
-    { status: "settled", settled_at: now },
-    { status },
   ];
+  if (wonArbi) {
+    attempts.push(
+      {
+        status: "won_platform",
+        settled_at: now,
+        settled_outcome: String(outcome).toLowerCase(),
+        result: "lost_exchange",
+      },
+      {
+        status: "won_platform",
+        settled_at: now,
+        settled_outcome: String(outcome).toLowerCase(),
+      }
+    );
+  }
   let lastErr = null;
   for (const body of attempts) {
     try {
@@ -1944,12 +2032,23 @@ async function applyProtectionSettlement(row, table, outcome) {
         token: SERVICE_KEY,
         body,
       });
-      return { id: row.id, status, amount };
+      return {
+        id: row.id,
+        status: body.status,
+        amount,
+        refunded,
+        alreadyCredited: !!creditResult.alreadyCredited,
+      };
     } catch (err) {
       lastErr = err;
     }
   }
-  throw lastErr || new Error(`Falha ao liquidar proteção ${row.id}`);
+  throw (
+    lastErr ||
+    new Error(
+      `Falha ao liquidar proteção ${row.id} (crédito ${refunded}¢ já pode ter sido lançado)`
+    )
+  );
 }
 
 async function settleMatch(token, body) {
@@ -2031,7 +2130,7 @@ async function settleMatch(token, body) {
     ).catch(() => []),
   ]);
 
-  const all = [
+  let all = [
     ...(Array.isArray(lays) ? lays : []).map((r) => ({
       ...r,
       _table: "protections",
@@ -2042,9 +2141,41 @@ async function settleMatch(token, body) {
     })),
   ].filter((r) => isOpenProtectionStatus(r.status));
 
+  let repaired = false;
+  if (all.length === 0 && !marketId) {
+    async function loadSettled(table) {
+      try {
+        const rows = await sb(
+          `/rest/v1/${table}?match_id=eq.${encodeURIComponent(matchId)}&status=in.(won_exchange,won_platform,lost_exchange,lost_platform,settled)&select=*&limit=2000`,
+          { token: SERVICE_KEY }
+        );
+        return Array.isArray(rows) ? rows : [];
+      } catch {
+        return [];
+      }
+    }
+    const [sl, sbk] = await Promise.all([
+      loadSettled("protections"),
+      loadSettled("back_protections"),
+    ]);
+    const candidates = [
+      ...sl.map((r) => ({ ...r, _table: "protections" })),
+      ...sbk.map((r) => ({ ...r, _table: "back_protections" })),
+    ];
+    const needing = [];
+    for (const row of candidates) {
+      if (!(await protectionAlreadyCredited(row.id))) needing.push(row);
+    }
+    if (needing.length) {
+      all = needing;
+      repaired = true;
+    }
+  }
+
   // Liquidar proteções ANTES do PATCH na partida (trigger legado bloqueia
   // encerramento enquanto houver LAY/BACK ativos).
   let settledCount = 0;
+  let refundedCents = 0;
   for (const row of all) {
     const rowMarket =
       row.market_id ||
@@ -2059,11 +2190,12 @@ async function settleMatch(token, body) {
       if (o) rowOutcome = String(o).toLowerCase();
     }
     if (!rowOutcome) continue;
-    await applyProtectionSettlement(row, row._table, rowOutcome);
+    const r = await applyProtectionSettlement(row, row._table, rowOutcome);
     settledCount += 1;
+    refundedCents += r.refunded || 0;
   }
 
-  if (!marketId) {
+  if (!marketId && !repaired) {
     const stillLay = await sb(
       `/rest/v1/protections?match_id=eq.${encodeURIComponent(matchId)}&status=in.(${statusFilter})&select=id&limit=50`,
       { token: SERVICE_KEY }
@@ -2123,7 +2255,9 @@ async function settleMatch(token, body) {
           marketId: marketId || null,
           outcomes: outcomesMap || null,
           settledCount,
-          fix: "encerrar-protecoes-primeiro-v2",
+          refundedCents,
+          repaired,
+          fix: "settle-credito-carteira-v1",
         },
       },
     });
@@ -2137,7 +2271,9 @@ async function settleMatch(token, body) {
     outcome: outcome || null,
     finalScore: finalScore || null,
     settledCount,
-    fix: "encerrar-protecoes-primeiro-v2",
+    refundedCents,
+    repaired,
+    fix: "settle-credito-carteira-v1",
   };
 }
 

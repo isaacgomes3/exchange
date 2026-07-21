@@ -884,59 +884,155 @@ async function countOpenProtections(matchId) {
   return { lay, back, total: open.length, rows: open };
 }
 
-async function settleOneProtectionRow(row, outcome, now) {
-  const wonArbi = outcome === "arbishield";
-  const status = wonArbi ? "won_platform" : "won_exchange";
-  const amount = nCents(row.responsibility_cents || row.amount_cents);
-  let refunded = 0;
+function settlementDeductionCents(row) {
+  const raw =
+    row.platform_deduction_cents != null
+      ? row.platform_deduction_cents
+      : row.locked_deduction_cents;
+  return Math.max(0, nCents(raw));
+}
 
-  if (row.user_id && amount > 0) {
-    try {
-      const prof = await sb(
-        `/rest/v1/profiles?select=balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
-        { token: SERVICE_KEY }
-      );
-      const p = Array.isArray(prof) ? prof[0] : null;
-      if (p) {
-        const locked = Math.max(0, nCents(p.locked_balance_cents) - amount);
-        const balance = wonArbi
-          ? nCents(p.balance_cents) + amount
-          : nCents(p.balance_cents);
-        const profileBodies = [
-          {
-            balance_cents: balance,
-            locked_balance_cents: locked,
-            updated_at: now,
-          },
-          { balance_cents: balance, locked_balance_cents: locked },
-        ];
-        for (const body of profileBodies) {
-          try {
-            await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
-              method: "PATCH",
-              token: SERVICE_KEY,
-              body,
-            });
-            break;
-          } catch {
-            /* tenta sem updated_at */
-          }
-        }
-        if (wonArbi) refunded = amount;
-      }
-    } catch {
-      /* saldo best-effort */
-    }
+function settlementCreditCents(row, outcome) {
+  const amount = nCents(row.responsibility_cents || row.amount_cents);
+  if (amount <= 0) return 0;
+  const wonArbi = String(outcome).toLowerCase() === "arbishield";
+  // Legado:
+  // - ArbiShield: devolve stake inteiro (cobertura)
+  // - Exchange: devolve stake − taxa/dedução da plataforma
+  if (wonArbi) return amount;
+  const fee = Math.min(settlementDeductionCents(row), amount);
+  return Math.max(0, amount - fee);
+}
+
+function settlementStatusForOutcome(outcome) {
+  // lost_exchange = cobertura ArbiShield (UI: "ArbiShield", capital reutilizável)
+  // won_exchange = bateu na casa externa (UI: "Exchange")
+  return String(outcome).toLowerCase() === "arbishield"
+    ? "lost_exchange"
+    : "won_exchange";
+}
+
+async function protectionAlreadyCredited(protectionId) {
+  if (!protectionId) return false;
+  try {
+    const rows = await sb(
+      `/rest/v1/wallet_transactions?ref=eq.${encodeURIComponent(protectionId)}&type=in.(protection_settlement,protection_release,protection_refund)&select=id&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    return Array.isArray(rows) && rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function creditWalletForSettlement(row, outcome, now) {
+  const amount = nCents(row.responsibility_cents || row.amount_cents);
+  const credit = settlementCreditCents(row, outcome);
+  const wonArbi = String(outcome).toLowerCase() === "arbishield";
+  if (!row.user_id || amount <= 0) {
+    return { refunded: 0, credited: 0, skipped: true };
+  }
+  if (await protectionAlreadyCredited(row.id)) {
+    return { refunded: 0, credited: 0, alreadyCredited: true };
   }
 
+  const prof = await sb(
+    `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const p = Array.isArray(prof) ? prof[0] : null;
+  if (!p) throw new Error(`Perfil ${row.user_id} não encontrado para crédito`);
+
+  const locked = Math.max(0, nCents(p.locked_balance_cents) - amount);
+  const patch = {
+    locked_balance_cents: locked,
+  };
+  if (wonArbi) {
+    // Legado: cobertura → saldo reutilizável (aparece em Apostador)
+    patch.reusable_balance_cents = nCents(p.reusable_balance_cents) + credit;
+  } else {
+    // Exchange: capital (− taxa) → saldo real
+    patch.balance_cents = nCents(p.balance_cents) + credit;
+  }
+
+  let creditedOk = false;
+  let lastErr = null;
+  for (const body of [{ ...patch, updated_at: now }, patch]) {
+    try {
+      await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body,
+      });
+      creditedOk = true;
+      break;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  if (!creditedOk) {
+    throw lastErr || new Error("Falha ao creditar carteira do cliente");
+  }
+
+  try {
+    await sb("/rest/v1/wallet_transactions", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        user_id: row.user_id,
+        type: "protection_settlement",
+        amount_cents: credit,
+        ref: row.id,
+        metadata: {
+          protection_id: row.id,
+          match_id: row.match_id || null,
+          outcome: String(outcome).toLowerCase(),
+          stake_cents: amount,
+          fee_cents: wonArbi ? 0 : settlementDeductionCents(row),
+          bucket: wonArbi ? "reusable_balance_cents" : "balance_cents",
+          fix: "settle-credito-carteira-v1",
+        },
+      },
+    });
+  } catch (e) {
+    console.warn(
+      "[settle] wallet_transactions:",
+      e instanceof Error ? e.message : e
+    );
+  }
+
+  return { refunded: credit, credited: credit };
+}
+
+async function settleOneProtectionRow(row, outcome, now) {
+  const wonArbi = String(outcome).toLowerCase() === "arbishield";
+  const status = settlementStatusForOutcome(outcome);
+  const amount = nCents(row.responsibility_cents || row.amount_cents);
+
+  // Crédito OBRIGATÓRIO antes de marcar a proteção (não engolir erro de saldo)
+  const creditResult = await creditWalletForSettlement(row, outcome, now);
+  const refunded = creditResult.refunded || 0;
+
   // Schema VPS: protections NÃO tem updated_at — nunca incluir no PATCH.
+  // NÃO usar fallback status:"settled" (UI cliente mostra como EXCHANGE).
   const attempts = [
     { status, settled_at: now, settled_outcome: outcome, result: status },
+    { status, settled_at: now, settled_outcome: outcome },
     { status, settled_at: now, result: status },
     { status, settled_at: now },
-    { status: "settled", settled_at: now },
-    { status },
   ];
+  if (wonArbi) {
+    // fallback se lost_exchange não existir no enum do banco
+    attempts.push(
+      {
+        status: "won_platform",
+        settled_at: now,
+        settled_outcome: outcome,
+        result: "lost_exchange",
+      },
+      { status: "won_platform", settled_at: now, settled_outcome: outcome }
+    );
+  }
   let lastErr = null;
   for (const body of attempts) {
     try {
@@ -945,12 +1041,51 @@ async function settleOneProtectionRow(row, outcome, now) {
         token: SERVICE_KEY,
         body,
       });
-      return { ok: true, refunded };
+      return {
+        ok: true,
+        refunded,
+        credited: refunded,
+        status: body.status,
+        amount,
+        alreadyCredited: !!creditResult.alreadyCredited,
+      };
     } catch (err) {
       lastErr = err;
     }
   }
-  throw lastErr || new Error(`Falha ao liquidar proteção ${row.id}`);
+  throw (
+    lastErr ||
+    new Error(
+      `Falha ao liquidar proteção ${row.id} (crédito ${refunded}¢ já pode ter sido lançado)`
+    )
+  );
+}
+
+async function fetchProtectionsNeedingCredit(matchId) {
+  async function load(table) {
+    try {
+      const rows = await sb(
+        `/rest/v1/${table}?match_id=eq.${encodeURIComponent(matchId)}&status=in.(won_exchange,won_platform,lost_exchange,lost_platform,settled)&select=*&limit=2000`,
+        { token: SERVICE_KEY }
+      );
+      return Array.isArray(rows) ? rows : [];
+    } catch {
+      return [];
+    }
+  }
+  const [lays, backs] = await Promise.all([
+    load("protections"),
+    load("back_protections"),
+  ]);
+  const all = [
+    ...lays.map((r) => ({ ...r, _table: "protections" })),
+    ...backs.map((r) => ({ ...r, _table: "back_protections" })),
+  ];
+  const out = [];
+  for (const row of all) {
+    if (!(await protectionAlreadyCredited(row.id))) out.push(row);
+  }
+  return out;
 }
 
 async function settleMatchFromBody(body, token) {
@@ -984,7 +1119,16 @@ async function settleMatchFromBody(body, token) {
   // IMPORTANTE: liquidar proteções ANTES de marcar a partida.
   // Trigger legado no Postgres bloqueia UPDATE matches → settled enquanto
   // houver LAY/BACK ativos ("Encerramento bloqueado: existem N proteções…").
-  const open = await fetchOpenProtectionsForMatch(matchId);
+  let open = await fetchOpenProtectionsForMatch(matchId);
+  let repaired = false;
+  if (open.length === 0) {
+    // Partida já encerrada sem crédito na carteira (bug anterior) — reprocessa
+    const needing = await fetchProtectionsNeedingCredit(matchId);
+    if (needing.length) {
+      open = needing;
+      repaired = true;
+    }
+  }
   let settledCount = 0;
   let refundedCents = 0;
   const settleErrors = [];
@@ -1001,17 +1145,28 @@ async function settleMatchFromBody(body, token) {
     }
   }
 
-  const still = await countOpenProtections(matchId);
-  if (still.total > 0) {
-    const detail = settleErrors.length
-      ? ` Detalhes: ${settleErrors.slice(0, 3).join(" | ")}`
-      : "";
+  if (!repaired) {
+    const still = await countOpenProtections(matchId);
+    if (still.total > 0) {
+      const detail = settleErrors.length
+        ? ` Detalhes: ${settleErrors.slice(0, 3).join(" | ")}`
+        : "";
+      throw Object.assign(
+        new Error(
+          `Não foi possível liquidar todas as proteções (${still.lay} LAY / ${still.back} BACK ainda abertas).${detail}`
+        ),
+        { status: 409 }
+      );
+    }
+  } else if (settleErrors.length) {
     throw Object.assign(
       new Error(
-        `Não foi possível liquidar todas as proteções (${still.lay} LAY / ${still.back} BACK ainda abertas).${detail}`
+        `Falha ao reparar crédito na carteira: ${settleErrors.slice(0, 3).join(" | ")}`
       ),
       { status: 409 }
     );
+  } else if (settledCount === 0 && settleErrors.length === 0 && open.length === 0) {
+    // sem abertas e sem reparo — ainda assim marca placar se pedido
   }
 
   // Só agora marca a partida (evita o trigger de proteções ativas)
@@ -1065,7 +1220,8 @@ async function settleMatchFromBody(body, token) {
           finalScore,
           settledCount,
           refundedCents,
-          fix: "encerrar-protecoes-primeiro-v2",
+          repaired,
+          fix: "settle-credito-carteira-v1",
         },
       },
     });
@@ -1080,7 +1236,8 @@ async function settleMatchFromBody(body, token) {
     finalScore: String(finalScore),
     settledCount,
     refundedCents,
-    fix: "encerrar-protecoes-primeiro-v2",
+    repaired,
+    fix: "settle-credito-carteira-v1",
   };
 }
 
@@ -1444,7 +1601,7 @@ async function handleApi(req, res) {
     return sendJson(res, 200, {
       ok: true,
       service: "prelive-events",
-      fix: "encerrar-protecoes-primeiro-v2",
+      fix: "settle-credito-carteira-v1",
     });
   }
 
