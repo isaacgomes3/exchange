@@ -1207,10 +1207,11 @@ async function createProtection(body, userToken) {
     body: patch,
   });
 
-  // Trigger de integridade exige wallet_transactions (débito) ANTES do INSERT
-  // da proteção — UUID pré-gerado liga ledger ↔ proteção.
+  // Trigger de integridade exige wallet_transactions (débito/reserva) ANTES
+  // do INSERT da proteção. LAY usa anchor_lock; BACK usa protection_lock.
   const protectionId = randomUUID();
   let walletTxId = null;
+  const FIX_TAG = "integridade-debito-v2";
 
   const restoreProfile = async () => {
     await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
@@ -1233,36 +1234,51 @@ async function createProtection(body, userToken) {
       `/rest/v1/wallet_transactions?id=eq.${encodeURIComponent(walletTxId)}`,
       { method: "DELETE", token: SERVICE_KEY }
     ).catch(() => {});
+    walletTxId = null;
   };
 
-  try {
+  const primaryLockType =
+    marketType === "BACK" ? "protection_lock" : "anchor_lock";
+  const altLockType =
+    marketType === "BACK" ? "anchor_lock" : "protection_lock";
+  // Tentativas: tipo correto ±valor, depois tipo alternativo ±valor
+  const walletAttempts = [
+    { type: primaryLockType, amount_cents: -amountCents },
+    { type: primaryLockType, amount_cents: amountCents },
+    { type: altLockType, amount_cents: -amountCents },
+    { type: altLockType, amount_cents: amountCents },
+  ];
+
+  const ledgerMeta = {
+    protection_id: protectionId,
+    match_id: matchId,
+    market_type: marketType,
+    balance_type: balanceType,
+    fix: FIX_TAG,
+  };
+
+  const insertWalletDebit = async (attempt) => {
     const walletInserted = await sb("/rest/v1/wallet_transactions", {
       method: "POST",
       token: SERVICE_KEY,
       body: {
         user_id: userId,
-        type: "protection_lock",
-        // Débito no ledger (centavos negativos) — mesmo padrão de transferências
-        amount_cents: -amountCents,
+        type: attempt.type,
+        amount_cents: attempt.amount_cents,
         balance_before_cents: balanceBefore,
         balance_after_cents: balanceAfter,
         ref: protectionId,
-        metadata: {
-          protection_id: protectionId,
-          match_id: matchId,
-          market_type: marketType,
-          balance_type: balanceType,
-        },
+        // Algumas migrations usam meta; outras metadata
+        meta: ledgerMeta,
+        metadata: ledgerMeta,
       },
     });
-    walletTxId = Array.isArray(walletInserted)
+    const id = Array.isArray(walletInserted)
       ? walletInserted[0]?.id
       : walletInserted?.id;
-    if (!walletTxId) throw new Error("Falha ao registrar débito no saldo");
-  } catch (err) {
-    await restoreProfile();
-    throw err;
-  }
+    if (!id) throw new Error("Falha ao registrar débito no saldo");
+    return id;
+  };
 
   const meta = {
     ...(body.metadata && typeof body.metadata === "object" ? body.metadata : {}),
@@ -1271,9 +1287,10 @@ async function createProtection(body, userToken) {
     market_type: marketType,
     market_odd: market?.odd ?? odd,
     source: "v2_create_protection",
+    fix: FIX_TAG,
   };
 
-  try {
+  const insertProtectionRow = async () => {
     if (marketType === "BACK") {
       const c = calcBack(amountCents, odd);
       await sb("/rest/v1/back_protections", {
@@ -1327,10 +1344,72 @@ async function createProtection(body, userToken) {
         },
       });
     }
-  } catch (err) {
+  };
+
+  const isIntegrityErr = (err) =>
+    /integridade|registro de d[eé]bito|sem registro/i.test(
+      String(err?.message || err || "")
+    );
+
+  let lastErr = null;
+  let created = false;
+  for (const attempt of walletAttempts) {
+    try {
+      await deleteWalletTx();
+      walletTxId = await insertWalletDebit(attempt);
+      await insertProtectionRow();
+      created = true;
+      console.log(
+        `[createProtection] ${FIX_TAG} ok type=${attempt.type} amount=${attempt.amount_cents}`
+      );
+      break;
+    } catch (err) {
+      lastErr = err;
+      // Coluna meta/metadata inexistente: tenta sem o campo extra na próxima
+      const msg = String(err?.message || err || "");
+      if (/meta|metadata|column/i.test(msg) && !isIntegrityErr(err)) {
+        try {
+          await deleteWalletTx();
+          const slim = await sb("/rest/v1/wallet_transactions", {
+            method: "POST",
+            token: SERVICE_KEY,
+            body: {
+              user_id: userId,
+              type: attempt.type,
+              amount_cents: attempt.amount_cents,
+              balance_before_cents: balanceBefore,
+              balance_after_cents: balanceAfter,
+              ref: protectionId,
+              metadata: ledgerMeta,
+            },
+          });
+          walletTxId = Array.isArray(slim) ? slim[0]?.id : slim?.id;
+          if (walletTxId) {
+            await insertProtectionRow();
+            created = true;
+            break;
+          }
+        } catch (err2) {
+          lastErr = err2;
+        }
+      }
+      if (!isIntegrityErr(err) && !/meta|metadata|column/i.test(msg)) {
+        // Erro não relacionado a integridade (ex.: constraint) — aborta
+        await deleteWalletTx();
+        await restoreProfile();
+        throw err;
+      }
+      console.warn(
+        `[createProtection] ${FIX_TAG} tentativa falhou type=${attempt.type} amount=${attempt.amount_cents}:`,
+        msg.slice(0, 160)
+      );
+    }
+  }
+
+  if (!created) {
     await deleteWalletTx();
     await restoreProfile();
-    throw err;
+    throw lastErr || new Error("Falha ao gravar proteção");
   }
 
   if (market) {
@@ -1373,7 +1452,11 @@ async function handleApi(req, res) {
   const url = new URL(req.url, "http://127.0.0.1");
 
   if (url.pathname === "/health") {
-    return sendJson(res, 200, { ok: true, service: "prelive-events" });
+    return sendJson(res, 200, {
+      ok: true,
+      service: "prelive-events",
+      protectionIntegrityFix: "integridade-debito-v2",
+    });
   }
 
   if (url.pathname === "/api/arbishield/desafios" && req.method === "GET") {

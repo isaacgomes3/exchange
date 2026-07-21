@@ -228,10 +228,11 @@ export async function createProtection(
 
   if (debitErr) throw new Error(debitErr.message);
 
-  // Trigger de integridade exige wallet_transactions (débito) ANTES do INSERT
-  // da proteção — UUID pré-gerado liga ledger ↔ proteção.
+  // Trigger de integridade: ledger ANTES do INSERT.
+  // LAY → anchor_lock; BACK → protection_lock (com fallbacks de sinal/tipo).
   const protectionId = crypto.randomUUID();
   let walletTxId: string | null = null;
+  const FIX_TAG = "integridade-debito-v2";
 
   const restoreProfile = async () => {
     await admin
@@ -250,35 +251,62 @@ export async function createProtection(
   const deleteWalletTx = async () => {
     if (!walletTxId) return;
     await admin.from("wallet_transactions").delete().eq("id", walletTxId);
+    walletTxId = null;
   };
 
-  {
-    const { data: walletRow, error: walletErr } = await admin
+  const primaryLockType =
+    marketType === "BACK" ? "protection_lock" : "anchor_lock";
+  const altLockType =
+    marketType === "BACK" ? "anchor_lock" : "protection_lock";
+  const walletAttempts = [
+    { type: primaryLockType, amount_cents: -amountCents },
+    { type: primaryLockType, amount_cents: amountCents },
+    { type: altLockType, amount_cents: -amountCents },
+    { type: altLockType, amount_cents: amountCents },
+  ];
+
+  const ledgerMeta = {
+    protection_id: protectionId,
+    match_id: input.matchId,
+    market_type: marketType,
+    balance_type: balanceType,
+    fix: FIX_TAG,
+  };
+
+  const insertWalletDebit = async (attempt: {
+    type: string;
+    amount_cents: number;
+  }) => {
+    const payload: Record<string, unknown> = {
+      user_id: input.userId,
+      type: attempt.type,
+      amount_cents: attempt.amount_cents,
+      balance_before_cents: balanceBefore,
+      balance_after_cents: balanceAfter,
+      ref: protectionId,
+      metadata: ledgerMeta,
+      meta: ledgerMeta,
+    };
+    let { data: walletRow, error: walletErr } = await admin
       .from("wallet_transactions")
-      .insert({
-        user_id: input.userId,
-        type: "protection_lock",
-        amount_cents: -amountCents,
-        balance_before_cents: balanceBefore,
-        balance_after_cents: balanceAfter,
-        ref: protectionId,
-        metadata: {
-          protection_id: protectionId,
-          match_id: input.matchId,
-          market_type: marketType,
-          balance_type: balanceType,
-        },
-      })
+      .insert(payload)
       .select("id")
       .single();
+    if (walletErr && /meta|column/i.test(walletErr.message || "")) {
+      delete payload.meta;
+      ({ data: walletRow, error: walletErr } = await admin
+        .from("wallet_transactions")
+        .insert(payload)
+        .select("id")
+        .single());
+    }
     if (walletErr || !walletRow?.id) {
-      await restoreProfile();
       throw new Error(
         walletErr?.message || "Falha ao registrar débito no saldo"
       );
     }
-    walletTxId = walletRow.id as string;
-  }
+    return walletRow.id as string;
+  };
 
   const meta = {
     ...(input.metadata || {}),
@@ -287,9 +315,10 @@ export async function createProtection(
     market_type: marketType,
     market_odd: market?.odd ?? odd,
     source: "v2_create_protection",
+    fix: FIX_TAG,
   };
 
-  try {
+  const insertProtectionRow = async () => {
     if (marketType === "BACK") {
       const c = calcBack(amountCents, odd);
       const row = {
@@ -339,10 +368,39 @@ export async function createProtection(
       const { error } = await admin.from("protections").insert(row);
       if (error) throw new Error(error.message);
     }
-  } catch (err) {
+  };
+
+  const isIntegrityErr = (err: unknown) =>
+    /integridade|registro de d[eé]bito|sem registro/i.test(
+      String(err instanceof Error ? err.message : err || "")
+    );
+
+  let lastErr: unknown = null;
+  let created = false;
+  for (const attempt of walletAttempts) {
+    try {
+      await deleteWalletTx();
+      walletTxId = await insertWalletDebit(attempt);
+      await insertProtectionRow();
+      created = true;
+      break;
+    } catch (err) {
+      lastErr = err;
+      const msg = String(err instanceof Error ? err.message : err || "");
+      if (!isIntegrityErr(err) && !/meta|metadata|column|type|check|violat/i.test(msg)) {
+        await deleteWalletTx();
+        await restoreProfile();
+        throw err;
+      }
+    }
+  }
+
+  if (!created) {
     await deleteWalletTx();
     await restoreProfile();
-    throw err;
+    throw lastErr instanceof Error
+      ? lastErr
+      : new Error("Falha ao gravar proteção");
   }
 
   if (market) {
