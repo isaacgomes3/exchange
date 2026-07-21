@@ -1701,7 +1701,7 @@ async function refundAndCancelProtection(table, row, audit = {}) {
           user_id: userId,
           type: "protection_refund",
           amount_cents: amount,
-          meta: {
+          metadata: {
             protection_id: protectionId,
             auto_cancel: true,
             ...(audit || {}),
