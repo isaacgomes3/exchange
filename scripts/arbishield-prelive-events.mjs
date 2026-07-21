@@ -2116,23 +2116,23 @@ async function contestList(token) {
     ...(await load("back_protections", "BACK")),
   ];
 
-  // Cancelamentos pendentes (legado errado) → estorna automaticamente, não aparecem no ADM
+  // NÃO estornar no list — listagem nunca deve alterar saldo (bug F5 / overcredit).
+  // Cancelamentos em review_odd ficam ocultos do ADM; heal separado via script VPS.
+  let skippedCancel = 0;
   const oddOnly = [];
   for (const r of raw) {
     const isBack = r.market_category === "BACK";
     const meta = contestMetaFromRow(r, isBack);
     if (meta.type === "cancellation") {
-      try {
-        await refundAndCancelProtection(r._table || (isBack ? "back_protections" : "protections"), r, {
-          reason: meta.reason || "Cancelamento automático (fila ADM)",
-          cancelled_by: "system_auto",
-        });
-      } catch (e) {
-        console.warn("[prelive] auto-cancel pending:", e.message || e);
-      }
+      skippedCancel += 1;
       continue;
     }
     oddOnly.push(r);
+  }
+  if (skippedCancel > 0) {
+    console.warn(
+      `[prelive] contest_list: ${skippedCancel} cancelamento(s) em review_odd ignorados (sem auto-estorno na listagem)`
+    );
   }
 
   const list = oddOnly.sort((a, b) =>
