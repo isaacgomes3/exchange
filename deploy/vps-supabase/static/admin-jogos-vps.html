@@ -311,7 +311,8 @@
       </div>
       <div class="actions">
         <a class="btn btn-ghost" href="/v2/admin.html">← Hub v2</a>
-        <button class="btn btn-primary" id="btnAddMatch" type="button">+ Adicionar jogo</button>
+        <button class="btn btn-primary" id="btnAddMatch" type="button">+ Lançar jogo (BetBra)</button>
+        <button class="btn btn-ghost" id="btnManualMatch" type="button">Lançar manual</button>
         <button class="btn btn-ghost" id="btnRefresh" type="button">Atualizar</button>
       </div>
     </header>
@@ -376,8 +377,8 @@
 
   <div class="drawer-backdrop" id="manualDrawer">
     <div class="drawer">
-      <h3>Lançar novo <span>evento</span></h3>
-      <p class="hint">Mesmos campos do SPA · inserção manual no cockpit</p>
+      <h3>Lançar evento <span>manual</span></h3>
+      <p class="hint">Só para jogos que não estão na BetBra. Fluxo normal = botão “Lançar jogo (BetBra)”. Isto não cria Desafio.</p>
 
       <div class="toggle-row">
         <div>
@@ -1298,6 +1299,18 @@
         else if (!selectedEvent) renderPreliveList();
       }
 
+      /** Fluxo normal de cadastro: catálogo BetBra (não drawer manual / não desafio). */
+      function openNormalLaunch() {
+        closeManualDrawer();
+        selectedEvent = null;
+        setView("prelive");
+        if (!preliveEvents.length) loadPrelive();
+        else renderPreliveList();
+        try {
+          $("prelivePanel").scrollIntoView({ behavior: "smooth", block: "start" });
+        } catch (e) {}
+      }
+
       async function boot() {
         showAppShell();
 
@@ -1344,7 +1357,10 @@
         bindSwitch("manPublish");
         bindSwitch("manScoreSync");
         bindSwitch("manLive");
-        $("btnAddMatch").addEventListener("click", openManualDrawer);
+        $("btnAddMatch").addEventListener("click", openNormalLaunch);
+        if ($("btnManualMatch")) {
+          $("btnManualMatch").addEventListener("click", openManualDrawer);
+        }
         $("btnCancelManual").addEventListener("click", closeManualDrawer);
         $("btnSaveManual").addEventListener("click", saveManualMatch);
         $("btnAddMarket").addEventListener("click", function () {
