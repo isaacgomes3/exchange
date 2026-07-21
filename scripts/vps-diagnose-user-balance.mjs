@@ -3,6 +3,8 @@
  * Diagnóstico de saldo de um usuário (VPS, com SERVICE_ROLE).
  *
  *   EMAIL=carloskku4@gmail.com node scripts/vps-diagnose-user-balance.mjs
+ *   # Detecta estornos duplicados (bug F5 / contest_list) e opcionalmente corrige:
+ *   FIX_OVERCREDIT=1 EMAIL=carloskku4@gmail.com node scripts/vps-diagnose-user-balance.mjs
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -10,6 +12,8 @@ import path from "node:path";
 const EMAIL = String(process.env.EMAIL || "carloskku4@gmail.com")
   .trim()
   .toLowerCase();
+const FIX_OVERCREDIT =
+  process.env.FIX_OVERCREDIT === "1" || process.env.FIX_OVERCREDIT === "true";
 
 function loadEnvFile(file) {
   if (!fs.existsSync(file)) return;
@@ -239,43 +243,142 @@ async function main() {
   console.log(`  soma APPROVED (amostra 20): ${money(approvedSum)}`);
 
   // wallet_transactions — schema usa metadata (não meta)
-  console.log("\n==> Últimas 30 wallet_transactions");
+  console.log("\n==> wallet_transactions (até 200, foco em estornos)");
+  let allTx = [];
   try {
-    const txs = await sbTry([
-      `/rest/v1/wallet_transactions?select=id,type,amount_cents,metadata,ref,created_at&user_id=eq.${encodeURIComponent(id)}&order=created_at.desc&limit=30`,
-      `/rest/v1/wallet_transactions?select=id,type,amount_cents,ref,created_at&user_id=eq.${encodeURIComponent(id)}&order=created_at.desc&limit=30`,
-      `/rest/v1/wallet_transactions?select=id,type,amount_cents,created_at&user_id=eq.${encodeURIComponent(id)}&order=created_at.desc&limit=30`,
+    allTx = await sbTry([
+      `/rest/v1/wallet_transactions?select=id,type,amount_cents,metadata,ref,created_at&user_id=eq.${encodeURIComponent(id)}&order=created_at.desc&limit=200`,
+      `/rest/v1/wallet_transactions?select=id,type,amount_cents,ref,created_at&user_id=eq.${encodeURIComponent(id)}&order=created_at.desc&limit=200`,
+      `/rest/v1/wallet_transactions?select=id,type,amount_cents,created_at&user_id=eq.${encodeURIComponent(id)}&order=created_at.desc&limit=200`,
     ]);
-    for (const t of Array.isArray(txs) ? txs : []) {
-      const extra = t.metadata != null ? JSON.stringify(t.metadata).slice(0, 70) : t.ref || "";
+    if (!Array.isArray(allTx)) allTx = [];
+    for (const t of allTx.slice(0, 30)) {
+      const extra =
+        t.metadata != null
+          ? JSON.stringify(t.metadata).slice(0, 70)
+          : t.ref || "";
       console.log(
         `  ${t.created_at}  ${String(t.type || "").padEnd(22)} ${money(t.amount_cents)}  ${extra}`
       );
     }
+    if (allTx.length > 30) console.log(`  … +${allTx.length - 30} mais`);
   } catch (e) {
     console.log("  falhou:", e.message || e);
   }
 
-  console.log("\n==> unified_wallet_transactions (se existir)");
-  try {
-    const utx = await sb(
-      `/rest/v1/unified_wallet_transactions?select=*&user_id=eq.${encodeURIComponent(id)}&order=created_at.desc&limit=15`
+  // Detecta overcredit: vários protection_refund para a mesma proteção
+  console.log("\n==> Auditoria estornos duplicados (bug F5 / contest_list)");
+  const refunds = allTx.filter(
+    (t) => String(t.type || "").toLowerCase() === "protection_refund"
+  );
+  const byProt = new Map();
+  for (const t of refunds) {
+    const pid =
+      (t.ref && String(t.ref)) ||
+      (t.metadata && String(t.metadata.protection_id || "")) ||
+      "";
+    const key = pid || `orphan:${t.id}`;
+    if (!byProt.has(key)) byProt.set(key, []);
+    byProt.get(key).push(t);
+  }
+  let overcredit = 0;
+  const offenders = [];
+  for (const [pid, list] of byProt) {
+    if (list.length <= 1) continue;
+    const sum = list.reduce((a, t) => a + n(t.amount_cents), 0);
+    // 1 estorno legítimo = maior amount (stake); resto é excesso
+    const once = Math.max(...list.map((t) => n(t.amount_cents)));
+    const excess = Math.max(0, sum - once);
+    if (excess <= 0) continue;
+    overcredit += excess;
+    offenders.push({ pid, count: list.length, sum, once, excess });
+    console.log(
+      `  ⚠ proteção ${pid}: ${list.length}x refund · soma ${money(sum)} · legítimo ~${money(once)} · EXCESSO ${money(excess)}`
     );
-    for (const t of Array.isArray(utx) ? utx : []) {
-      console.log(
-        `  ${t.created_at || t.ts}  ${String(t.type || t.category || "").padEnd(18)} ${money(t.amount_cents || t.value_cents)}`
-      );
-    }
-    if (!Array.isArray(utx) || !utx.length) console.log("  (vazio)");
-  } catch (e) {
-    console.log("  indisponível:", String(e.message || e).slice(0, 120));
+  }
+  if (!offenders.length) {
+    console.log("  nenhum estorno duplicado detectado na amostra");
+  } else {
+    console.log(`  TOTAL OVERCREDIT: ${money(overcredit)}`);
+    console.log(
+      `  Saldo atual Apostador: ${money(apostador)} → saldo corrigido sugerido: ${money(Math.max(0, apostador - overcredit))}`
+    );
   }
 
-  console.log("\n==> Hipóteses se o usuário ainda vê número diferente no refresh");
-  console.log("  1) Comparando chip Apostador com card Saldo Total (inclui locked/aff)");
-  console.log("  2) Comparando Apostador com Desafio (chips separados)");
-  console.log("  3) Cache do navegador — pedir Ctrl+Shift+R após hotfix do header");
-  console.log("  4) Página antiga / legado vs /app.html");
+  if (FIX_OVERCREDIT && overcredit > 0) {
+    const nextBal = Math.max(0, n(p.balance_cents) - overcredit);
+    console.log(
+      `\n==> FIX_OVERCREDIT=1 — debitando ${money(overcredit)} de balance_cents (${money(p.balance_cents)} → ${money(nextBal)})`
+    );
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(id)}`,
+      {
+        method: "PATCH",
+        headers: {
+          apikey: SERVICE_KEY,
+          Authorization: `Bearer ${SERVICE_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify({
+          balance_cents: nextBal,
+          updated_at: new Date().toISOString(),
+        }),
+      }
+    );
+    const text = await res.text();
+    if (!res.ok) {
+      // retry sem updated_at
+      const res2 = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(id)}`,
+        {
+          method: "PATCH",
+          headers: {
+            apikey: SERVICE_KEY,
+            Authorization: `Bearer ${SERVICE_KEY}`,
+            "Content-Type": "application/json",
+            Prefer: "return=representation",
+          },
+          body: JSON.stringify({ balance_cents: nextBal }),
+        }
+      );
+      const text2 = await res2.text();
+      if (!res2.ok) throw new Error(`FIX falhou: ${text2.slice(0, 200)}`);
+      console.log("  OK (sem updated_at)");
+    } else {
+      console.log("  OK");
+    }
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/wallet_transactions`, {
+        method: "POST",
+        headers: {
+          apikey: SERVICE_KEY,
+          Authorization: `Bearer ${SERVICE_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify({
+          user_id: id,
+          type: "balance_correction",
+          amount_cents: -overcredit,
+          metadata: {
+            reason: "clawback_duplicate_protection_refund_f5",
+            offenders,
+            email: EMAIL,
+          },
+        }),
+      });
+    } catch {
+      /* */
+    }
+  } else if (overcredit > 0) {
+    console.log(
+      "\n  Para corrigir o saldo inflado na VPS:\n  FIX_OVERCREDIT=1 EMAIL=" +
+        EMAIL +
+        " node scripts/vps-diagnose-user-balance.mjs"
+    );
+  }
+
   console.log("\nOK");
 }
 

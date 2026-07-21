@@ -1671,46 +1671,108 @@ async function restoreMatchLiquidity(matchId, amountCents, marketId) {
   }
 }
 
-/** Estorno integral + status cancelled (service role). */
+/** Já existe lançamento de estorno/liquidação para esta proteção? */
+async function protectionRefundAlreadyDone(protectionId) {
+  if (!protectionId) return false;
+  try {
+    const byRef = await sb(
+      `/rest/v1/wallet_transactions?ref=eq.${encodeURIComponent(protectionId)}&type=in.(protection_refund,protection_settlement,protection_release)&select=id&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    if (Array.isArray(byRef) && byRef.length) return true;
+  } catch {
+    /* */
+  }
+  try {
+    // fallback: metadata.protection_id (lançamentos antigos sem ref)
+    const rows = await sb(
+      `/rest/v1/wallet_transactions?type=eq.protection_refund&select=id,metadata&order=created_at.desc&limit=200`,
+      { token: SERVICE_KEY }
+    );
+    return (Array.isArray(rows) ? rows : []).some(
+      (t) =>
+        t?.metadata &&
+        String(t.metadata.protection_id || "") === String(protectionId)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Claim atômico: só 1 processo marca cancelled.
+ * Evita F5 / contest_list creditar o mesmo estorno várias vezes.
+ */
+async function claimProtectionCancelled(table, protectionId, metadata) {
+  const body = {
+    status: "cancelled",
+    settled_at: new Date().toISOString(),
+    result: "cancelled_refund",
+  };
+  if (metadata != null) body.metadata = metadata;
+  try {
+    const claimed = await sb(
+      `/rest/v1/${table}?id=eq.${encodeURIComponent(protectionId)}&status=in.(active,pending,review_odd)`,
+      { method: "PATCH", token: SERVICE_KEY, body }
+    );
+    return Array.isArray(claimed) && claimed.length > 0;
+  } catch (e) {
+    // schema sem result/metadata → tenta só status
+    try {
+      const claimed = await sb(
+        `/rest/v1/${table}?id=eq.${encodeURIComponent(protectionId)}&status=in.(active,pending,review_odd)`,
+        {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: {
+            status: "cancelled",
+            settled_at: new Date().toISOString(),
+          },
+        }
+      );
+      return Array.isArray(claimed) && claimed.length > 0;
+    } catch (e2) {
+      console.warn("[prelive] claim cancel failed:", e2.message || e2);
+      return false;
+    }
+  }
+}
+
+/** Estorno integral + status cancelled (service role) — IDEMPOTENTE. */
 async function refundAndCancelProtection(table, row, audit = {}) {
   const protectionId = row.id;
   const amount = n(row.responsibility_cents || row.amount_cents);
   const userId = row.user_id ? String(row.user_id) : null;
-  if (userId && amount > 0) {
-    const prof = await sb(
-      `/rest/v1/profiles?select=balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`,
-      { token: SERVICE_KEY }
-    );
-    const p = Array.isArray(prof) ? prof[0] : null;
-    if (p) {
-      await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
-        method: "PATCH",
-        token: SERVICE_KEY,
-        body: {
-          balance_cents: n(p.balance_cents) + amount,
-          locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
-          updated_at: new Date().toISOString(),
-        },
-      });
-    }
+  const st = String(row.status || "").toLowerCase();
+
+  if (st === "cancelled") {
+    return {
+      ok: true,
+      alreadyCancelled: true,
+      action: "cancellation",
+      auto: true,
+      protectionId,
+      status: "cancelled",
+      refundedCents: 0,
+    };
+  }
+
+  if (await protectionRefundAlreadyDone(protectionId)) {
+    // Já creditou antes — só garante status cancelled, NÃO credita de novo
     try {
-      await sb("/rest/v1/wallet_transactions", {
-        method: "POST",
-        token: SERVICE_KEY,
-        body: {
-          user_id: userId,
-          type: "protection_refund",
-          amount_cents: amount,
-          metadata: {
-            protection_id: protectionId,
-            auto_cancel: true,
-            ...(audit || {}),
-          },
-        },
-      });
-    } catch (e) {
-      console.warn("[prelive] wallet_transactions refund:", e.message || e);
+      await claimProtectionCancelled(table, protectionId, null);
+    } catch {
+      /* */
     }
+    return {
+      ok: true,
+      alreadyRefunded: true,
+      action: "cancellation",
+      auto: true,
+      protectionId,
+      status: "cancelled",
+      refundedCents: 0,
+    };
   }
 
   const prevMeta =
@@ -1731,12 +1793,69 @@ async function refundAndCancelProtection(table, row, audit = {}) {
     };
   }
 
-  await patchProtectionNoUpdatedAt(table, protectionId, {
-    status: "cancelled",
-    settled_at: new Date().toISOString(),
-    result: "cancelled_refund",
-    metadata: prevMeta,
-  });
+  // 1) Claim ANTES do crédito — 2º F5 não passa
+  const claimed = await claimProtectionCancelled(table, protectionId, prevMeta);
+  if (!claimed) {
+    return {
+      ok: true,
+      alreadyCancelled: true,
+      action: "cancellation",
+      auto: true,
+      protectionId,
+      status: "cancelled",
+      refundedCents: 0,
+    };
+  }
+
+  // 2) Credita só quem ganhou o claim
+  if (userId && amount > 0) {
+    const prof = await sb(
+      `/rest/v1/profiles?select=balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    const p = Array.isArray(prof) ? prof[0] : null;
+    if (p) {
+      const patchFull = {
+        balance_cents: n(p.balance_cents) + amount,
+        locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
+        updated_at: new Date().toISOString(),
+      };
+      try {
+        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: patchFull,
+        });
+      } catch {
+        const slim = { ...patchFull };
+        delete slim.updated_at;
+        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: slim,
+        });
+      }
+    }
+    try {
+      await sb("/rest/v1/wallet_transactions", {
+        method: "POST",
+        token: SERVICE_KEY,
+        body: {
+          user_id: userId,
+          type: "protection_refund",
+          amount_cents: amount,
+          ref: protectionId,
+          metadata: {
+            protection_id: protectionId,
+            auto_cancel: true,
+            ...(audit || {}),
+          },
+        },
+      });
+    } catch (e) {
+      console.warn("[prelive] wallet_transactions refund:", e.message || e);
+    }
+  }
 
   const marketId =
     row.market_id ||

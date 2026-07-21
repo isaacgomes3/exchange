@@ -1960,12 +1960,30 @@ async function cancelProtectionRefund(token, body) {
 
   const { table, row } = await loadProtectionRow(protectionId, marketType);
   const st = String(row.status || "").toLowerCase();
-  if (st === "cancelled") throw new Error("Proteção já cancelada");
+  if (st === "cancelled") {
+    return { ok: true, alreadyCancelled: true, protectionId, refundedCents: 0 };
+  }
   if (st === "settled" || st === "closed") {
     throw new Error("Proteção já encerrada — use estorno manual se necessário");
   }
   const amount = n(row.responsibility_cents || row.amount_cents);
   const adminId = requireUserId(token);
+
+  if (await protectionAlreadyCredited(protectionId)) {
+    await claimProtectionCancelled(table, protectionId, {});
+    return {
+      ok: true,
+      alreadyRefunded: true,
+      protectionId,
+      status: "cancelled",
+      refundedCents: 0,
+    };
+  }
+
+  const claimed = await claimProtectionCancelled(table, protectionId, {});
+  if (!claimed) {
+    return { ok: true, alreadyCancelled: true, protectionId, refundedCents: 0 };
+  }
 
   if (row.user_id && amount > 0) {
     const prof = await sb(
@@ -1974,15 +1992,26 @@ async function cancelProtectionRefund(token, body) {
     );
     const p = Array.isArray(prof) ? prof[0] : null;
     if (!p) throw new Error("Perfil do usuário não encontrado");
-    await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
-      method: "PATCH",
-      token: SERVICE_KEY,
-      body: {
-        balance_cents: n(p.balance_cents) + amount,
-        locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
-        updated_at: new Date().toISOString(),
-      },
-    });
+    try {
+      await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          balance_cents: n(p.balance_cents) + amount,
+          locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
+          updated_at: new Date().toISOString(),
+        },
+      });
+    } catch {
+      await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          balance_cents: n(p.balance_cents) + amount,
+          locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
+        },
+      });
+    }
     try {
       await sb("/rest/v1/wallet_transactions", {
         method: "POST",
@@ -1991,6 +2020,7 @@ async function cancelProtectionRefund(token, body) {
           user_id: row.user_id,
           type: "protection_refund",
           amount_cents: amount,
+          ref: protectionId,
           metadata: { protection_id: protectionId, marketType },
         },
       });
@@ -1998,17 +2028,6 @@ async function cancelProtectionRefund(token, body) {
       /* */
     }
   }
-
-  await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(protectionId)}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: {
-      status: "cancelled",
-      settled_at: new Date().toISOString(),
-      result: "cancelled_refund",
-      updated_at: new Date().toISOString(),
-    },
-  });
 
   const marketId =
     row.market_id ||
@@ -2789,38 +2808,21 @@ async function submitContestation(token, body) {
         "Cancelamento bloqueado: faltam menos de 5 minutos para o início da partida (ou o jogo já começou)."
       );
     }
-    // cancelProtectionRefund exige admin — estorno inline com ownership já validado
     const amount = n(row.responsibility_cents || row.amount_cents);
-    if (row.user_id && amount > 0) {
-      const prof = await sb(
-        `/rest/v1/profiles?select=balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
-        { token: SERVICE_KEY }
-      );
-      const p = Array.isArray(prof) ? prof[0] : null;
-      if (!p) throw new Error("Perfil do usuário não encontrado");
-      await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
-        method: "PATCH",
-        token: SERVICE_KEY,
-        body: {
-          balance_cents: n(p.balance_cents) + amount,
-          locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
-          updated_at: new Date().toISOString(),
-        },
-      });
-      try {
-        await sb("/rest/v1/wallet_transactions", {
-          method: "POST",
-          token: SERVICE_KEY,
-          body: {
-            user_id: row.user_id,
-            type: "protection_refund",
-            amount_cents: amount,
-            metadata: { protection_id: protectionId, auto_cancel: true },
-          },
-        });
-      } catch {
-        /* */
-      }
+    if (st === "cancelled") {
+      return { ok: true, alreadyCancelled: true, status: "cancelled", protectionId };
+    }
+    if (await protectionAlreadyCredited(protectionId)) {
+      await claimProtectionCancelled(table, protectionId, {});
+      return {
+        ok: true,
+        alreadyRefunded: true,
+        action: "cancellation",
+        auto: true,
+        protectionId,
+        status: "cancelled",
+        refundedCents: 0,
+      };
     }
     const prevMeta =
       row.metadata && typeof row.metadata === "object" ? { ...row.metadata } : {};
@@ -2830,13 +2832,64 @@ async function submitContestation(token, body) {
       cancelled_by: userId,
       auto: true,
     };
-    await patchProtectionSafe(table, protectionId, {
-      status: "cancelled",
-      settled_at: new Date().toISOString(),
-      result: "cancelled_refund",
+    // Claim ANTES do crédito — impede F5 / race re-creditar
+    const claimed = await claimProtectionCancelled(table, protectionId, {
       metadata: prevMeta,
-      updated_at: new Date().toISOString(),
     });
+    if (!claimed) {
+      return {
+        ok: true,
+        alreadyCancelled: true,
+        action: "cancellation",
+        auto: true,
+        protectionId,
+        status: "cancelled",
+        refundedCents: 0,
+      };
+    }
+    if (row.user_id && amount > 0) {
+      const prof = await sb(
+        `/rest/v1/profiles?select=balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+        { token: SERVICE_KEY }
+      );
+      const p = Array.isArray(prof) ? prof[0] : null;
+      if (!p) throw new Error("Perfil do usuário não encontrado");
+      try {
+        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: {
+            balance_cents: n(p.balance_cents) + amount,
+            locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
+            updated_at: new Date().toISOString(),
+          },
+        });
+      } catch {
+        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: {
+            balance_cents: n(p.balance_cents) + amount,
+            locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
+          },
+        });
+      }
+      try {
+        await sb("/rest/v1/wallet_transactions", {
+          method: "POST",
+          token: SERVICE_KEY,
+          body: {
+            user_id: row.user_id,
+            type: "protection_refund",
+            amount_cents: amount,
+            ref: protectionId,
+            metadata: { protection_id: protectionId, auto_cancel: true },
+          },
+        });
+      } catch {
+        /* */
+      }
+    }
     const marketId =
       row.market_id ||
       (row.metadata && (row.metadata.market_id || row.metadata.marketId)) ||
@@ -3229,9 +3282,57 @@ async function protectionAlreadyCredited(protectionId) {
       `/rest/v1/wallet_transactions?ref=eq.${encodeURIComponent(protectionId)}&type=in.(protection_settlement,protection_release,protection_refund)&select=id&limit=1`,
       { token: SERVICE_KEY }
     );
-    return Array.isArray(rows) && rows.length > 0;
+    if (Array.isArray(rows) && rows.length > 0) return true;
+  } catch {
+    /* */
+  }
+  try {
+    const rows = await sb(
+      `/rest/v1/wallet_transactions?type=eq.protection_refund&select=id,metadata&order=created_at.desc&limit=200`,
+      { token: SERVICE_KEY }
+    );
+    return (Array.isArray(rows) ? rows : []).some(
+      (t) =>
+        t?.metadata &&
+        String(t.metadata.protection_id || "") === String(protectionId)
+    );
   } catch {
     return false;
+  }
+}
+
+/** Claim atômico cancelled — impede re-crédito em F5 / listagens. */
+async function claimProtectionCancelled(table, protectionId, extraBody = {}) {
+  const body = {
+    status: "cancelled",
+    settled_at: new Date().toISOString(),
+    result: "cancelled_refund",
+    ...extraBody,
+  };
+  delete body.updated_at;
+  try {
+    const claimed = await sb(
+      `/rest/v1/${table}?id=eq.${encodeURIComponent(protectionId)}&status=in.(active,pending,review_odd)`,
+      { method: "PATCH", token: SERVICE_KEY, body }
+    );
+    return Array.isArray(claimed) && claimed.length > 0;
+  } catch {
+    try {
+      const claimed = await sb(
+        `/rest/v1/${table}?id=eq.${encodeURIComponent(protectionId)}&status=in.(active,pending,review_odd)`,
+        {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: {
+            status: "cancelled",
+            settled_at: new Date().toISOString(),
+          },
+        }
+      );
+      return Array.isArray(claimed) && claimed.length > 0;
+    } catch {
+      return false;
+    }
   }
 }
 
