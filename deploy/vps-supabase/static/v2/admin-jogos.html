@@ -1708,7 +1708,11 @@
           "Falha ao liquidar — API não liquidou proteções. Rode o hotfix na VPS.";
         if (/odd\s*inv[aá]lida/i.test(String(errMsg))) {
           errMsg =
-            "Servidor ainda sem liquidação (versão antiga). Rode na VPS: vps-hotfix-encerrar-odd-invalida.sh";
+            "Servidor ainda sem liquidação (versão antiga). Rode na VPS: vps-hotfix-encerrar-protecoes-primeiro.sh";
+        }
+        if (/bloqueado|ativas|liquidação oficial|liquidacao oficial/i.test(String(errMsg))) {
+          errMsg =
+            "Banco bloqueou o encerramento com proteção ainda ativa. Atualize o serviço (hotfix encerrar-protecoes-primeiro) e tente de novo — a liquidação deve fechar as proteções antes da partida.";
         }
         throw new Error(errMsg);
       }

@@ -820,6 +820,133 @@ async function requireAdminToken(token) {
   return userId;
 }
 
+function isTerminalProtectionStatus(st) {
+  const s = String(st || "").toLowerCase();
+  return (
+    !s ||
+    s === "cancelled" ||
+    s === "settled" ||
+    s === "closed" ||
+    s === "won_platform" ||
+    s === "won_exchange" ||
+    s === "lost_platform" ||
+    s === "lost_exchange" ||
+    s === "refunded" ||
+    s === "refund_requested" ||
+    s === "pending_refund" ||
+    s === "balance_released" ||
+    s === "pix_approved" ||
+    s === "pix_sent" ||
+    s === "concluded" ||
+    s === "paid" ||
+    s === "approved"
+  );
+}
+
+async function fetchOpenProtectionsForMatch(matchId) {
+  const openFilter = "active,pending,review_odd";
+  async function load(table) {
+    try {
+      const rows = await sb(
+        `/rest/v1/${table}?match_id=eq.${encodeURIComponent(matchId)}&status=in.(${openFilter})&select=*&limit=2000`,
+        { token: SERVICE_KEY }
+      );
+      return Array.isArray(rows) ? rows : [];
+    } catch {
+      // fallback sem filtro (alguns schemas/status divergem)
+      try {
+        const rows = await sb(
+          `/rest/v1/${table}?match_id=eq.${encodeURIComponent(matchId)}&select=id,user_id,status,amount_cents,responsibility_cents,metadata&limit=2000`,
+          { token: SERVICE_KEY }
+        );
+        return (Array.isArray(rows) ? rows : []).filter(
+          (r) => !isTerminalProtectionStatus(r.status)
+        );
+      } catch {
+        return [];
+      }
+    }
+  }
+  const [lays, backs] = await Promise.all([
+    load("protections"),
+    load("back_protections"),
+  ]);
+  return [
+    ...lays.map((r) => ({ ...r, _table: "protections" })),
+    ...backs.map((r) => ({ ...r, _table: "back_protections" })),
+  ].filter((r) => !isTerminalProtectionStatus(r.status));
+}
+
+async function countOpenProtections(matchId) {
+  const open = await fetchOpenProtectionsForMatch(matchId);
+  const lay = open.filter((r) => r._table === "protections").length;
+  const back = open.filter((r) => r._table === "back_protections").length;
+  return { lay, back, total: open.length, rows: open };
+}
+
+async function settleOneProtectionRow(row, outcome, now) {
+  const wonArbi = outcome === "arbishield";
+  const status = wonArbi ? "won_platform" : "won_exchange";
+  const amount = nCents(row.responsibility_cents || row.amount_cents);
+  let refunded = 0;
+
+  if (row.user_id && amount > 0) {
+    try {
+      const prof = await sb(
+        `/rest/v1/profiles?select=balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+        { token: SERVICE_KEY }
+      );
+      const p = Array.isArray(prof) ? prof[0] : null;
+      if (p) {
+        const locked = Math.max(0, nCents(p.locked_balance_cents) - amount);
+        const balance = wonArbi
+          ? nCents(p.balance_cents) + amount
+          : nCents(p.balance_cents);
+        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: {
+            balance_cents: balance,
+            locked_balance_cents: locked,
+            updated_at: now,
+          },
+        });
+        if (wonArbi) refunded = amount;
+      }
+    } catch {
+      /* saldo best-effort */
+    }
+  }
+
+  const attempts = [
+    {
+      status,
+      settled_at: now,
+      updated_at: now,
+      settled_outcome: outcome,
+      result: status,
+    },
+    { status, settled_at: now, updated_at: now, result: status },
+    { status, settled_at: now, updated_at: now },
+    // fallback se enum não aceitar won_*
+    { status: "settled", settled_at: now, updated_at: now },
+  ];
+  let lastErr = null;
+  for (const body of attempts) {
+    try {
+      await sb(`/rest/v1/${row._table}?id=eq.${encodeURIComponent(row.id)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body,
+      });
+      return { ok: true, refunded };
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error(`Falha ao liquidar proteção ${row.id}`);
+}
+
 async function settleMatchFromBody(body, token) {
   const adminId = await requireAdminToken(token);
   const matchId = String(body?.matchId || body?.id || "").trim();
@@ -848,7 +975,40 @@ async function settleMatchFromBody(body, token) {
   let markets = Array.isArray(match.markets) ? [...match.markets] : [];
   markets = markets.map((m) => ({ ...m, settled_outcome: outcome }));
 
-  // PATCH partida (sem status_v2 se a coluna não existir)
+  // IMPORTANTE: liquidar proteções ANTES de marcar a partida.
+  // Trigger legado no Postgres bloqueia UPDATE matches → settled enquanto
+  // houver LAY/BACK ativos ("Encerramento bloqueado: existem N proteções…").
+  const open = await fetchOpenProtectionsForMatch(matchId);
+  let settledCount = 0;
+  let refundedCents = 0;
+  const settleErrors = [];
+
+  for (const row of open) {
+    try {
+      const r = await settleOneProtectionRow(row, outcome, now);
+      settledCount += 1;
+      refundedCents += r.refunded || 0;
+    } catch (err) {
+      settleErrors.push(
+        `${row._table}/${row.id}: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  const still = await countOpenProtections(matchId);
+  if (still.total > 0) {
+    const detail = settleErrors.length
+      ? ` Detalhes: ${settleErrors.slice(0, 3).join(" | ")}`
+      : "";
+    throw Object.assign(
+      new Error(
+        `Não foi possível liquidar todas as proteções (${still.lay} LAY / ${still.back} BACK ainda abertas).${detail}`
+      ),
+      { status: 409 }
+    );
+  }
+
+  // Só agora marca a partida (evita o trigger de proteções ativas)
   const basePatch = {
     final_score: String(finalScore),
     settled_at: now,
@@ -862,96 +1022,27 @@ async function settleMatchFromBody(body, token) {
       token: SERVICE_KEY,
       body: { ...basePatch, status_v2: "settled" },
     });
-  } catch {
-    await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
-      method: "PATCH",
-      token: SERVICE_KEY,
-      body: basePatch,
-    });
-  }
-
-  const openFilter = "active,pending,review_odd";
-  const [lays, backs] = await Promise.all([
-    sb(
-      `/rest/v1/protections?match_id=eq.${encodeURIComponent(matchId)}&status=in.(${openFilter})&select=*&limit=2000`,
-      { token: SERVICE_KEY }
-    ).catch(() => []),
-    sb(
-      `/rest/v1/back_protections?match_id=eq.${encodeURIComponent(matchId)}&status=in.(${openFilter})&select=*&limit=2000`,
-      { token: SERVICE_KEY }
-    ).catch(() => []),
-  ]);
-
-  const all = [
-    ...(Array.isArray(lays) ? lays : []).map((r) => ({
-      ...r,
-      _table: "protections",
-    })),
-    ...(Array.isArray(backs) ? backs : []).map((r) => ({
-      ...r,
-      _table: "back_protections",
-    })),
-  ];
-
-  let settledCount = 0;
-  let refundedCents = 0;
-  const wonArbi = outcome === "arbishield";
-  const status = wonArbi ? "won_platform" : "won_exchange";
-
-  for (const row of all) {
-    const amount = nCents(row.responsibility_cents || row.amount_cents);
-    if (row.user_id && amount > 0) {
-      try {
-        const prof = await sb(
-          `/rest/v1/profiles?select=balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
-          { token: SERVICE_KEY }
-        );
-        const p = Array.isArray(prof) ? prof[0] : null;
-        if (p) {
-          const locked = Math.max(0, nCents(p.locked_balance_cents) - amount);
-          const balance = wonArbi
-            ? nCents(p.balance_cents) + amount
-            : nCents(p.balance_cents);
-          await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
-            method: "PATCH",
-            token: SERVICE_KEY,
-            body: {
-              balance_cents: balance,
-              locked_balance_cents: locked,
-              updated_at: now,
-            },
-          });
-          if (wonArbi) refundedCents += amount;
-        }
-      } catch {
-        /* saldo best-effort */
-      }
-    }
-
-    const protBody = {
-      status,
-      settled_at: now,
-      updated_at: now,
-    };
-    // campos opcionais — tenta com settled_outcome; se falhar, só status
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     try {
-      await sb(`/rest/v1/${row._table}?id=eq.${encodeURIComponent(row.id)}`, {
+      await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
         method: "PATCH",
         token: SERVICE_KEY,
-        body: {
-          ...protBody,
-          settled_outcome: outcome,
-          result: status,
-        },
+        body: basePatch,
       });
-    } catch {
-      await sb(`/rest/v1/${row._table}?id=eq.${encodeURIComponent(row.id)}`, {
-        method: "PATCH",
-        token: SERVICE_KEY,
-        body: protBody,
-      });
+    } catch (err2) {
+      const msg2 = err2 instanceof Error ? err2.message : String(err2);
+      if (/bloqueado|ativas|liquidação oficial|liquidacao oficial/i.test(msg2 + msg)) {
+        const again = await countOpenProtections(matchId);
+        throw Object.assign(
+          new Error(
+            `Encerramento ainda bloqueado pelo banco (${again.lay} LAY / ${again.back} BACK). Proteções liquidadas nesta rodada: ${settledCount}.`
+          ),
+          { status: 409 }
+        );
+      }
+      throw err2;
     }
-    settledCount += 1;
   }
 
   try {
@@ -963,7 +1054,13 @@ async function settleMatchFromBody(body, token) {
         action: "ADMIN_ACTION_SETTLE",
         entity_type: "matches",
         entity_id: matchId,
-        details: { outcome, finalScore, settledCount, refundedCents },
+        details: {
+          outcome,
+          finalScore,
+          settledCount,
+          refundedCents,
+          fix: "encerrar-protecoes-primeiro-v1",
+        },
       },
     });
   } catch {
@@ -977,6 +1074,7 @@ async function settleMatchFromBody(body, token) {
     finalScore: String(finalScore),
     settledCount,
     refundedCents,
+    fix: "encerrar-protecoes-primeiro-v1",
   };
 }
 
@@ -1337,7 +1435,11 @@ async function handleApi(req, res) {
   const url = new URL(req.url, "http://127.0.0.1");
 
   if (url.pathname === "/health") {
-    return sendJson(res, 200, { ok: true, service: "prelive-events" });
+    return sendJson(res, 200, {
+      ok: true,
+      service: "prelive-events",
+      fix: "encerrar-protecoes-primeiro-v1",
+    });
   }
 
   if (url.pathname === "/api/arbishield/desafios" && req.method === "GET") {

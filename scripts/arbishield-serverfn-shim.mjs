@@ -1999,30 +1999,6 @@ async function settleMatch(token, body) {
   }
 
   const now = new Date().toISOString();
-  const patchMatch = {
-    markets,
-    updated_at: now,
-  };
-  if (!marketId) {
-    if (finalScore) patchMatch.final_score = String(finalScore);
-    patchMatch.settled_at = now;
-    patchMatch.status = "settled";
-  }
-
-  try {
-    await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
-      method: "PATCH",
-      token: SERVICE_KEY,
-      body: { ...patchMatch, status_v2: "settled" },
-    });
-  } catch {
-    await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
-      method: "PATCH",
-      token: SERVICE_KEY,
-      body: patchMatch,
-    });
-  }
-
   const statusFilter = openProtectionStatuses()
     .map(encodeURIComponent)
     .join(",");
@@ -2048,6 +2024,8 @@ async function settleMatch(token, body) {
     })),
   ].filter((r) => isOpenProtectionStatus(r.status));
 
+  // Liquidar proteções ANTES do PATCH na partida (trigger legado bloqueia
+  // encerramento enquanto houver LAY/BACK ativos).
   let settledCount = 0;
   for (const row of all) {
     const rowMarket =
@@ -2065,6 +2043,48 @@ async function settleMatch(token, body) {
     if (!rowOutcome) continue;
     await applyProtectionSettlement(row, row._table, rowOutcome);
     settledCount += 1;
+  }
+
+  if (!marketId) {
+    const stillLay = await sb(
+      `/rest/v1/protections?match_id=eq.${encodeURIComponent(matchId)}&status=in.(${statusFilter})&select=id&limit=50`,
+      { token: SERVICE_KEY }
+    ).catch(() => []);
+    const stillBack = await sb(
+      `/rest/v1/back_protections?match_id=eq.${encodeURIComponent(matchId)}&status=in.(${statusFilter})&select=id&limit=50`,
+      { token: SERVICE_KEY }
+    ).catch(() => []);
+    const layN = Array.isArray(stillLay) ? stillLay.length : 0;
+    const backN = Array.isArray(stillBack) ? stillBack.length : 0;
+    if (layN + backN > 0) {
+      throw new Error(
+        `Não foi possível liquidar todas as proteções (${layN} LAY / ${backN} BACK ainda abertas).`
+      );
+    }
+  }
+
+  const patchMatch = {
+    markets,
+    updated_at: now,
+  };
+  if (!marketId) {
+    if (finalScore) patchMatch.final_score = String(finalScore);
+    patchMatch.settled_at = now;
+    patchMatch.status = "settled";
+  }
+
+  try {
+    await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: { ...patchMatch, status_v2: "settled" },
+    });
+  } catch {
+    await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: patchMatch,
+    });
   }
 
   const adminId = requireUserId(token);
@@ -2085,6 +2105,7 @@ async function settleMatch(token, body) {
           marketId: marketId || null,
           outcomes: outcomesMap || null,
           settledCount,
+          fix: "encerrar-protecoes-primeiro-v1",
         },
       },
     });
@@ -2098,6 +2119,7 @@ async function settleMatch(token, body) {
     outcome: outcome || null,
     finalScore: finalScore || null,
     settledCount,
+    fix: "encerrar-protecoes-primeiro-v1",
   };
 }
 
