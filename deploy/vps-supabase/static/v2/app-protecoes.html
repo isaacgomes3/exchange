@@ -208,6 +208,227 @@
       .mp-row { display: grid; gap: 10px; }
       .mp-action { text-align: left; }
     }
+    .mp-drawer-bg {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      background: rgba(0, 0, 0, 0.55);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    .mp-drawer-bg.open { opacity: 1; pointer-events: auto; }
+    .mp-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      z-index: 81;
+      width: min(420px, 100vw);
+      height: 100vh;
+      background: #0a1211;
+      border-left: 1px solid rgba(255, 255, 255, 0.06);
+      transform: translateX(100%);
+      transition: transform 0.22s ease;
+      display: flex;
+      flex-direction: column;
+    }
+    .mp-drawer.open { transform: translateX(0); }
+    .mp-drawer-head {
+      padding: 20px 22px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .mp-drawer-head .proto {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 9px;
+      font-weight: 900;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: #c8f31d;
+    }
+    .mp-drawer-head .proto i {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #c8f31d;
+      display: inline-block;
+      animation: mp-pulse 1.4s ease infinite;
+    }
+    @keyframes mp-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+    .mp-drawer-head h2 {
+      margin: 10px 0 6px;
+      font-size: 17px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: -0.02em;
+      color: #fff;
+      line-height: 1.2;
+    }
+    .mp-drawer-head .pid {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.4);
+      font-family: ui-monospace, monospace;
+    }
+    .mp-drawer-close {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.04);
+      color: rgba(255, 255, 255, 0.7);
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+    }
+    .mp-drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 22px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .mp-card {
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(7, 20, 19, 0.9);
+      padding: 14px;
+    }
+    .mp-card.status { display: flex; gap: 12px; align-items: flex-start; }
+    .mp-card.status .dot {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 900;
+      flex-shrink: 0;
+    }
+    .mp-card.status .lbl {
+      font-size: 12px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .mp-card.status .desc {
+      margin-top: 4px;
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.45);
+      line-height: 1.45;
+      white-space: pre-line;
+    }
+    .mp-grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .mp-kv {
+      padding: 12px;
+      border-radius: 8px;
+      background: #071413;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .mp-kv span {
+      display: block;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.4);
+    }
+    .mp-kv b {
+      display: block;
+      margin-top: 4px;
+      font-size: 12px;
+      font-weight: 800;
+      color: #fff;
+      font-family: ui-monospace, monospace;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .mp-sec-title {
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.4);
+      margin-bottom: 8px;
+    }
+    .mp-tl { display: flex; flex-direction: column; gap: 10px; }
+    .mp-tl-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: rgba(255, 255, 255, 0.35);
+    }
+    .mp-tl-item.done { color: #fff; }
+    .mp-tl-item i {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.12);
+      flex-shrink: 0;
+    }
+    .mp-tl-item.done i { background: #c8f31d; }
+    .mp-mkt-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .mp-mkt-badge {
+      display: inline-flex;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 9px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .mp-mkt-badge.lay { background: rgba(96, 165, 250, 0.15); color: #93c5fd; }
+    .mp-mkt-badge.back { background: rgba(198, 255, 0, 0.18); color: #c6ff00; }
+    .mp-mkt-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+    .mp-mkt-actions button {
+      height: 40px;
+      border-radius: 8px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .mp-mkt-actions .ghost {
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.03);
+      color: #fff;
+    }
+    .mp-mkt-actions .primary {
+      border: 0;
+      background: #c6ff00;
+      color: #06110f;
+    }
+    .mp-mkt-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .mp-hint {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.4);
+      line-height: 1.45;
+      margin-top: 8px;
+    }
   </style>
 </head>
 <body data-shell="app" data-active="protecoes">
@@ -252,26 +473,106 @@
     <div id="list"><div class="mp-empty">Carregando…</div></div>
   </div>
 
+  <div class="mp-drawer-bg" id="drawerBg" hidden></div>
+  <aside class="mp-drawer" id="drawer" aria-hidden="true" role="dialog" aria-label="Protocolo de Auditoria">
+    <button type="button" class="mp-drawer-close" id="drawerClose" aria-label="Fechar">×</button>
+    <div class="mp-drawer-head" id="drawerHead"></div>
+    <div class="mp-drawer-body" id="drawerBody"></div>
+  </aside>
+
   <script>
     (function () {
       var STATUS = {
-        active: { label: "Proteção Ativa", tone: "blue" },
-        review_odd: { label: "Proteção Ativa", tone: "blue" },
-        pending_refund: { label: "ArbiShield Atingida", tone: "lime" },
-        won_platform: { label: "Solicite seu Reembolso", tone: "lime" },
-        lost_platform: { label: "Exchange", tone: "green" },
-        settled: { label: "Exchange", tone: "green" },
-        won_exchange: { label: "Exchange", tone: "green" },
-        lost_exchange: { label: "ArbiShield", tone: "lime" },
-        refund_requested: { label: "Aguardando Reembolso", tone: "amber" },
-        refunded: { label: "Reembolso Recebido", tone: "green" },
-        balance_released: { label: "Saldo Liberado", tone: "blue" },
-        pix_approved: { label: "PIX Aprovado", tone: "green" },
-        pix_sent: { label: "PIX Enviado", tone: "green" },
-        cancelled: { label: "Operação Cancelada", tone: "red" },
-        concluded: { label: "Protocolo Finalizado", tone: "slate" },
-        approved: { label: "PIX Aprovado", tone: "green" },
-        paid: { label: "Protocolo Finalizado", tone: "slate" },
+        active: {
+          label: "Proteção Ativa",
+          tone: "blue",
+          detail: "Aguardando o resultado do evento.",
+        },
+        review_odd: {
+          label: "Proteção Ativa",
+          tone: "blue",
+          detail: "Aguardando o resultado do evento.",
+        },
+        pending_refund: {
+          label: "ArbiShield Atingida",
+          tone: "lime",
+          detail: "Aguardando sua escolha de reembolso (Pix ou Saldo).",
+        },
+        won_platform: {
+          label: "Solicite seu Reembolso",
+          tone: "lime",
+          detail:
+            "Você tem um reembolso disponível. Envie o comprovante de perda na casa de aposta para receber.",
+        },
+        lost_platform: {
+          label: "Exchange",
+          tone: "green",
+          detail:
+            "Você venceu na casa externa. Seu capital protegido foi devolvido ao saldo real.",
+        },
+        settled: {
+          label: "Exchange",
+          tone: "green",
+          detail:
+            "Você venceu na casa externa. Seu capital protegido foi devolvido ao saldo real.",
+        },
+        won_exchange: {
+          label: "Exchange",
+          tone: "green",
+          detail: "Sucesso na exchange. Dedução aplicada sobre o capital.",
+        },
+        lost_exchange: {
+          label: "ArbiShield",
+          tone: "lime",
+          detail:
+            "Perda na exchange. Cobertura ArbiShield ativada — capital liberado como Reutilizável.",
+        },
+        refund_requested: {
+          label: "Aguardando Reembolso",
+          tone: "amber",
+          detail:
+            "Comprovante recebido. Estamos processando seu reembolso — você será notificado em breve.",
+        },
+        refunded: {
+          label: "Reembolso Recebido",
+          tone: "green",
+          detail: "Reembolso concluído com sucesso conforme a modalidade escolhida.",
+        },
+        balance_released: {
+          label: "Saldo Liberado",
+          tone: "blue",
+          detail: "Seu saldo real foi liberado com sucesso.",
+        },
+        pix_approved: {
+          label: "PIX Aprovado",
+          tone: "green",
+          detail: "Seu reembolso PIX foi aprovado e está sendo processado.",
+        },
+        pix_sent: {
+          label: "PIX Enviado",
+          tone: "green",
+          detail: "Seu reembolso PIX foi enviado com sucesso.",
+        },
+        cancelled: {
+          label: "Operação Cancelada",
+          tone: "red",
+          detail: "Esta operação foi cancelada.",
+        },
+        concluded: {
+          label: "Protocolo Finalizado",
+          tone: "slate",
+          detail: "Protocolo de reembolso finalizado conforme a modalidade escolhida.",
+        },
+        approved: {
+          label: "PIX Aprovado",
+          tone: "green",
+          detail: "Seu reembolso PIX foi aprovado e está sendo processado.",
+        },
+        paid: {
+          label: "Protocolo Finalizado",
+          tone: "slate",
+          detail: "Ciclo de reembolso concluído com sucesso.",
+        },
       };
 
       var FILTERS = [
@@ -287,6 +588,7 @@
         filter: "all",
         q: "",
         loading: false,
+        detailId: null,
       };
 
       function money(cents) {
@@ -349,6 +651,79 @@
         return row.match || row.matches || {};
       }
 
+      function calcMeta(row) {
+        var meta = row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+        var calc = meta.calculations && typeof meta.calculations === "object" ? meta.calculations : {};
+        var display =
+          calc.display_metadata && typeof calc.display_metadata === "object"
+            ? calc.display_metadata
+            : {};
+        return { meta: meta, display: display };
+      }
+
+      function resolveMarket(row) {
+        var m = matchOf(row);
+        var pack = calcMeta(row);
+        var meta = pack.meta;
+        var display = pack.display;
+        var matchMeta = m.metadata && typeof m.metadata === "object" ? m.metadata : {};
+        var markets = Array.isArray(m.markets) ? m.markets : [];
+        var marketId = meta.market_id || display.market_id || row.market_id || null;
+        var found = marketId
+          ? markets.find(function (x) {
+              return String(x.id) === String(marketId);
+            })
+          : null;
+        var side = String(row.side || "").toLowerCase();
+        var name =
+          meta.market_name ||
+          display.market_name ||
+          (found && found.name) ||
+          row.market_label ||
+          row.market ||
+          meta.market_label ||
+          (side === "home"
+            ? "LAY " + (m.home_team || "Mandante")
+            : side === "away"
+              ? "LAY " + (m.away_team || "Visitante")
+              : null) ||
+          "Mercado";
+        var typeRaw =
+          meta.market_type ||
+          display.market_type ||
+          (found && found.market_type) ||
+          row.market_type ||
+          row._kind ||
+          "LAY";
+        var type = String(typeRaw).toUpperCase() === "BACK" ? "BACK" : "LAY";
+        var odd =
+          meta.market_odd != null
+            ? meta.market_odd
+            : display.market_odd != null
+              ? display.market_odd
+              : found && found.odd != null
+                ? found.odd
+                : row.odd;
+        var link =
+          meta.external_bet_link ||
+          display.external_bet_link ||
+          (found && (found.external_id || found.external_bet_link)) ||
+          matchMeta.external_bet_link ||
+          null;
+        var house =
+          meta.external_bet_name ||
+          display.external_bet_name ||
+          matchMeta.external_bet_name ||
+          "Casa Externa";
+        return {
+          name: name,
+          type: type,
+          odd: odd,
+          link: link,
+          house: house,
+        };
+      }
+
       function matchLabel(row) {
         var m = matchOf(row);
         var home = m.home_team || row.home_team || "";
@@ -363,22 +738,10 @@
       }
 
       function marketLine(row) {
-        var side = String(row.market_type || row.side_type || "").toUpperCase();
-        if (side !== "LAY" && side !== "BACK") {
-          side = row._kind === "BACK" ? "BACK" : "LAY";
-        }
-        var meta = row.metadata && typeof row.metadata === "object" ? row.metadata : {};
-        var market =
-          row.market_label ||
-          row.market_name ||
-          row.market ||
-          meta.market_name ||
-          meta.market_label ||
-          meta.market ||
-          "Mercado";
-        var odd = row.odd != null ? Number(row.odd).toFixed(2) : "—";
-        var league = matchOf(row).league || row.league || meta.league || "";
-        var parts = [side + " • " + market, "ODD " + odd];
+        var info = resolveMarket(row);
+        var odd = info.odd != null ? Number(info.odd).toFixed(2) : "—";
+        var league = matchOf(row).league || row.league || "";
+        var parts = [info.type + " • " + info.name, "ODD " + odd];
         if (league) parts.push(league);
         return parts.join(" • ");
       }
@@ -501,33 +864,255 @@
               '<div class="mp-date">' +
               esc(when) +
               "</div>" +
-              '<div class="mp-action"><a href="/app-proteger.html">Detalhes →</a></div>' +
+              '<div class="mp-action"><button type="button" data-detail="' +
+              esc(r.id) +
+              '">Detalhes →</button></div>' +
               "</article>"
             );
           })
           .join("");
+        host.querySelectorAll("[data-detail]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            openDetail(btn.getAttribute("data-detail"));
+          });
+        });
+      }
+
+      function bucketOf(row) {
+        var st = String(row.status || "").toLowerCase();
+        if (isCancelled(st)) return "cancelled";
+        if (isActive(st)) return "active";
+        if (isRefund(st)) return "refund";
+        return "settled";
+      }
+
+      function closeDetail() {
+        state.detailId = null;
+        var bg = document.getElementById("drawerBg");
+        var dr = document.getElementById("drawer");
+        bg.classList.remove("open");
+        dr.classList.remove("open");
+        dr.setAttribute("aria-hidden", "true");
+        setTimeout(function () {
+          if (!state.detailId) bg.hidden = true;
+        }, 220);
+      }
+
+      function openDetail(id) {
+        var row = state.rows.find(function (r) {
+          return String(r.id) === String(id);
+        });
+        if (!row) return;
+        state.detailId = id;
+        renderDetail(row);
+        var bg = document.getElementById("drawerBg");
+        var dr = document.getElementById("drawer");
+        bg.hidden = false;
+        requestAnimationFrame(function () {
+          bg.classList.add("open");
+          dr.classList.add("open");
+          dr.setAttribute("aria-hidden", "false");
+        });
+      }
+
+      function renderDetail(row) {
+        var st = statusMeta(row.status);
+        var info = resolveMarket(row);
+        var m = matchOf(row);
+        var idShort = String(row.id || "").slice(0, 16).toUpperCase();
+        var proto = String(row.id || "").slice(-8).toUpperCase();
+        var oddStr =
+          row.odd_contestation &&
+          row.odd_contestation.status === "approved" &&
+          row.odd_contestation.approved_odd != null
+            ? Number(row.odd_contestation.original_odd != null ? row.odd_contestation.original_odd : row.odd).toFixed(2) +
+              " → " +
+              Number(row.odd_contestation.approved_odd).toFixed(2)
+            : Number(info.odd || row.odd || 0).toFixed(2);
+        var when = row.created_at
+          ? new Date(row.created_at).toLocaleString("pt-BR")
+          : "—";
+        var bucket = bucketOf(row);
+        var timeline = [
+          { label: "Proteção criada", done: true },
+          { label: "Jogo publicado", done: true },
+          { label: "Proteção confirmada", done: !isCancelled(row.status) },
+          { label: "Resultado registrado", done: !!m.final_score },
+          { label: "Liquidação processada", done: bucket !== "active" },
+          {
+            label: "Concluído",
+            done:
+              String(row.status).toLowerCase() === "concluded" ||
+              String(row.status).toLowerCase() === "paid" ||
+              String(row.status).toLowerCase() === "pix_sent",
+          },
+        ];
+
+        document.getElementById("drawerHead").innerHTML =
+          '<div class="proto"><i></i><span>Protocolo de Auditoria</span></div>' +
+          "<h2>" +
+          esc(matchLabel(row)) +
+          "</h2>" +
+          '<p class="pid">ID: #' +
+          esc(idShort) +
+          "</p>";
+
+        var html = "";
+        html +=
+          '<div class="mp-card status" style="border-color:inherit" >' +
+          '<div class="dot mp-status ' +
+          st.tone +
+          '">' +
+          (st.tone === "lime" ? "A" : st.tone === "green" ? "E" : "•") +
+          "</div>" +
+          "<div><p class=\"lbl mp-status " +
+          st.tone +
+          '" style="padding:0;border:0;background:transparent">' +
+          esc(st.label) +
+          '</p><p class="desc">' +
+          esc(st.detail || "") +
+          "</p></div></div>";
+
+        var hasLink = !!info.link;
+        html +=
+          '<div class="mp-card">' +
+          '<div class="mp-mkt-head">' +
+          "<div>" +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+          '<span class="mp-mkt-badge ' +
+          (info.type === "BACK" ? "back" : "lay") +
+          '">' +
+          esc(info.type) +
+          "</span>" +
+          '<span style="font-size:9px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.4)">Mercado Recomendado</span>' +
+          "</div>" +
+          '<h4 style="margin:0;font-size:15px;font-weight:900;text-transform:uppercase;color:#fff;line-height:1.25">' +
+          esc(info.name) +
+          "</h4>" +
+          '<p style="margin:6px 0 0;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.4)">Odd Alvo: <span style="color:#c6ff00;font-family:ui-monospace,monospace">' +
+          esc(Number(info.odd || 0).toFixed(2)) +
+          "</span></p>" +
+          "</div>" +
+          '<div style="padding:8px 10px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08)">' +
+          '<p style="margin:0;font-size:8px;font-weight:900;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.35)">Apostar em</p>' +
+          '<p style="margin:2px 0 0;font-size:11px;font-weight:900;text-transform:uppercase;color:#fff">' +
+          esc(info.house) +
+          "</p></div></div>" +
+          '<p class="mp-hint">Use este link para abrir o mercado exato na casa externa e replicar a aposta. Sua proteção ArbiShield só é ativada quando o evento for liquidado.</p>' +
+          '<div class="mp-mkt-actions">' +
+          '<button type="button" class="ghost" id="btnCopyLink"' +
+          (hasLink ? "" : " disabled") +
+          ">Copiar Link</button>" +
+          '<button type="button" class="primary" id="btnOpenHouse"' +
+          (hasLink ? "" : " disabled") +
+          ">Abrir na Casa</button>" +
+          "</div>" +
+          (hasLink
+            ? ""
+            : '<p class="mp-hint">Link não cadastrado pelo admin</p>') +
+          "</div>";
+
+        html +=
+          '<div class="mp-grid2">' +
+          [
+            { label: "Mercado", value: info.type },
+            { label: "Odd", value: oddStr },
+            { label: "Valor Protegido", value: money(amountOf(row)) },
+            { label: "Dedução", value: money(feeOf(row)) },
+            { label: "Data", value: when },
+            { label: "Protocolo", value: proto },
+          ]
+            .map(function (kv) {
+              return (
+                '<div class="mp-kv"><span>' +
+                esc(kv.label) +
+                "</span><b>" +
+                esc(kv.value) +
+                "</b></div>"
+              );
+            })
+            .join("") +
+          "</div>";
+
+        html +=
+          '<div><p class="mp-sec-title">Linha do tempo</p><div class="mp-card mp-tl">' +
+          timeline
+            .map(function (t) {
+              return (
+                '<div class="mp-tl-item' +
+                (t.done ? " done" : "") +
+                '"><i></i><span>' +
+                esc(t.label) +
+                "</span></div>"
+              );
+            })
+            .join("") +
+          "</div></div>";
+
+        if (bucket === "refund") {
+          html +=
+            '<div><p class="mp-sec-title">Detalhes do reembolso</p><div class="mp-card">' +
+            '<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:8px"><span style="color:rgba(255,255,255,0.45)">Valor</span><b style="font-family:ui-monospace,monospace">' +
+            esc(
+              money(
+                Number(
+                  row.refund_amount_cents != null
+                    ? row.refund_amount_cents
+                    : row.amount_cents || 0
+                )
+              )
+            ) +
+            "</b></div>" +
+            '<div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:rgba(255,255,255,0.45)">Status</span><b style="color:#2997ff;text-transform:uppercase">' +
+            esc(row.status || "—") +
+            "</b></div>" +
+            (row.admin_note
+              ? '<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.05)"><p style="margin:0 0 4px;font-size:10px;color:rgba(255,255,255,0.45)">Observação</p><p style="margin:0;font-size:11px;color:#fff">' +
+                esc(row.admin_note) +
+                "</p></div>"
+              : "") +
+            "</div></div>";
+        }
+
+        if (row.bet_proof_url) {
+          html +=
+            '<div><p class="mp-sec-title">Comprovante</p><a href="' +
+            esc(row.bet_proof_url) +
+            '" target="_blank" rel="noopener noreferrer" class="mp-card" style="display:block;padding:0;overflow:hidden"><img src="' +
+            esc(row.bet_proof_url) +
+            '" alt="Comprovante" style="width:100%;max-height:260px;object-fit:cover;display:block" /></a></div>';
+        }
+
+        document.getElementById("drawerBody").innerHTML = html;
+
+        var copyBtn = document.getElementById("btnCopyLink");
+        var openBtn = document.getElementById("btnOpenHouse");
+        if (copyBtn && hasLink) {
+          copyBtn.addEventListener("click", function () {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(info.link).catch(function () {});
+            }
+          });
+        }
+        if (openBtn && hasLink) {
+          openBtn.addEventListener("click", function () {
+            window.open(info.link, "_blank", "noopener,noreferrer");
+          });
+        }
       }
 
       function normalizeRow(r, kind) {
         var meta = r.metadata && typeof r.metadata === "object" ? r.metadata : {};
         var match = r.match || r.matches || null;
-        return Object.assign({}, r, {
+        var row = Object.assign({}, r, {
           _kind: kind,
-          market_type:
-            meta.market_type ||
-            (String(r.side || "").toUpperCase() === "BACK" || kind === "BACK"
-              ? "BACK"
-              : "LAY"),
-          market_label:
-            meta.market_name ||
-            meta.market_label ||
-            meta.market ||
-            r.market_label ||
-            r.market ||
-            "Mercado",
           match: match,
           matches: match,
         });
+        var info = resolveMarket(row);
+        row.market_type = info.type;
+        row.market_label = info.name;
+        return row;
       }
 
       async function fetchMatchMap(supa, ids) {
@@ -535,24 +1120,24 @@
         if (!uniq.length) return {};
         var map = {};
         var chunk = 80;
+        var selects = [
+          "id,home_team,away_team,league,final_score,starts_at,markets,metadata,betting_house_id",
+          "id,home_team,away_team,league,final_score,starts_at,metadata",
+          "id,home_team,away_team,league,final_score,starts_at",
+          "id,home_team,away_team,league",
+        ];
         for (var i = 0; i < uniq.length; i += chunk) {
           var slice = uniq.slice(i, i + chunk);
-          var res = await supa
-            .from("matches")
-            .select("id,home_team,away_team,league,final_score,starts_at")
-            .in("id", slice);
-          if (res.error) {
-            var res2 = await supa
-              .from("matches")
-              .select("id,home_team,away_team,league")
-              .in("id", slice);
-            if (res2.error) continue;
-            (res2.data || []).forEach(function (m) {
-              map[m.id] = m;
-            });
-            continue;
+          var got = null;
+          for (var s = 0; s < selects.length; s++) {
+            var res = await supa.from("matches").select(selects[s]).in("id", slice);
+            if (!res.error) {
+              got = res.data || [];
+              break;
+            }
           }
-          (res.data || []).forEach(function (m) {
+          if (!got) continue;
+          got.forEach(function (m) {
             map[m.id] = m;
           });
         }
@@ -561,11 +1146,11 @@
 
       async function fetchTable(supa, table, userId, withJoin) {
         var join =
-          "id,user_id,match_id,side,odd,status,amount_cents,responsibility_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents,exchange_fee_cents,created_at,settled_at,refunded_at,refund_requested_at,settled_outcome,metadata,match:matches(home_team,away_team,league,final_score,starts_at)";
+          "id,user_id,match_id,side,odd,status,amount_cents,responsibility_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents,exchange_fee_cents,created_at,settled_at,refunded_at,refund_requested_at,settled_outcome,metadata,bet_proof_url,refund_amount_cents,admin_note,match:matches(home_team,away_team,league,final_score,starts_at,markets,metadata,betting_house_id)";
         var plain =
-          "id,user_id,match_id,side,odd,status,amount_cents,responsibility_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents,created_at,settled_at,metadata";
+          "id,user_id,match_id,side,odd,status,amount_cents,responsibility_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents,created_at,settled_at,metadata,bet_proof_url,refund_amount_cents";
         var minimal =
-          "id,user_id,match_id,side,odd,status,amount_cents,platform_deduction_cents,locked_deduction_cents,created_at,settled_at";
+          "id,user_id,match_id,side,odd,status,amount_cents,platform_deduction_cents,locked_deduction_cents,created_at,settled_at,metadata";
         var attempts = withJoin ? [join, plain, minimal] : [plain, minimal];
         var lastErr = null;
         for (var i = 0; i < attempts.length; i++) {
@@ -621,6 +1206,9 @@
                 if (!row.match && row.match_id && matchMap[row.match_id]) {
                   row.match = matchMap[row.match_id];
                   row.matches = row.match;
+                  var info = resolveMarket(row);
+                  row.market_type = info.type;
+                  row.market_label = info.name;
                 }
                 return row;
               }),
@@ -629,6 +1217,9 @@
                 if (!row.match && row.match_id && matchMap[row.match_id]) {
                   row.match = matchMap[row.match_id];
                   row.matches = row.match;
+                  var info = resolveMarket(row);
+                  row.market_type = info.type;
+                  row.market_label = info.name;
                 }
                 return row;
               })
@@ -636,6 +1227,18 @@
             .sort(function (a, b) {
               return new Date(b.created_at || 0) - new Date(a.created_at || 0);
             });
+
+          // Re-resolve market names after match join/fallback
+          state.rows = state.rows.map(function (row) {
+            if (row.match_id && matchMap[row.match_id] && !row.match) {
+              row.match = matchMap[row.match_id];
+              row.matches = row.match;
+            }
+            var info = resolveMarket(row);
+            row.market_type = info.type;
+            row.market_label = info.name;
+            return row;
+          });
 
           renderKpis();
           renderTabs();
@@ -654,6 +1257,11 @@
       document.getElementById("q").addEventListener("input", function (e) {
         state.q = e.target.value || "";
         renderList();
+      });
+      document.getElementById("drawerClose").addEventListener("click", closeDetail);
+      document.getElementById("drawerBg").addEventListener("click", closeDetail);
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && state.detailId) closeDetail();
       });
 
       load();
