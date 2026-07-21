@@ -541,9 +541,9 @@
         if (btn) btn.classList.add("spin");
         showErr("");
         try {
-          var sess = await ArbiV2.requireSession();
-          var user = sess.user;
-          var supa = ArbiV2.supabase;
+          var supa = ArbiV2.client();
+          var user = await ArbiV2.requireUser(supa);
+          if (!user) return;
 
           var selectJoin =
             "id,user_id,match_id,side,odd,status,amount_cents,responsibility_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents,created_at,settled_at,market_category,metadata,match:matches(home_team,away_team,league,final_score)";
