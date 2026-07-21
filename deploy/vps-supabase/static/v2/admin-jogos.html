@@ -278,6 +278,37 @@
     .row .entries {
       margin-top: 6px; font-size: 11px; color: var(--muted);
     }
+    .row-main {
+      display: flex; gap: 16px; align-items: flex-start; justify-content: space-between;
+      width: 100%;
+    }
+    .row-body { min-width: 0; flex: 1; }
+    .adm-liq {
+      flex: 0 0 148px; text-align: right; padding-top: 2px;
+    }
+    .adm-liq strong {
+      display: block; font-size: 13px; font-weight: 800;
+      font-variant-numeric: tabular-nums; color: #fff;
+    }
+    .adm-liq .adm-liq-used {
+      margin-top: 3px; font-size: 10px; font-weight: 700;
+      letter-spacing: 0.04em; color: var(--muted);
+    }
+    .adm-liq .adm-liq-used b { color: #e5e7eb; font-weight: 800; }
+    .adm-liq-bar {
+      margin-top: 6px; height: 4px; border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08); overflow: hidden;
+    }
+    .adm-liq-bar i {
+      display: block; height: 100%; border-radius: inherit;
+      background: linear-gradient(90deg, rgba(198, 255, 0, 0.35), #c6ff00);
+    }
+    .adm-liq-bar i.low { background: linear-gradient(90deg, #ef4444, #f87171); }
+    .adm-liq-bar i.mid { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+    @media (max-width: 720px) {
+      .row-main { flex-direction: column; }
+      .adm-liq { flex-basis: auto; width: 100%; text-align: left; }
+    }
     .v2-nav {
       display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px;
     }
@@ -656,6 +687,48 @@
       function money(cents) {
         if (cents == null) return "—";
         return (Number(cents) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      }
+
+      /** Liquidez como no cliente (Proteger): disponível + barra; ADM também vê utilizado. */
+      function liqStats(m) {
+        var markets = Array.isArray(m.markets) ? m.markets : [];
+        var max = 0;
+        var used = 0;
+        if (markets.length) {
+          markets.forEach(function (mk) {
+            if (!mk) return;
+            var liq = Number(
+              mk.liquidity != null
+                ? mk.liquidity
+                : mk.liquidity_cents != null
+                  ? mk.liquidity_cents
+                  : 0
+            );
+            var u = Number(
+              mk.used_liquidity != null
+                ? mk.used_liquidity
+                : mk.used_cents != null
+                  ? mk.used_cents
+                  : mk.used_protection_cents != null
+                    ? mk.used_protection_cents
+                    : 0
+            );
+            if (liq > 0) {
+              max += liq;
+              used += Math.max(0, u);
+            }
+          });
+        }
+        if (!(max > 0)) {
+          max = Number(m.max_protection_cents || 0);
+          used = Number(m.used_protection_cents || 0);
+        }
+        var openStake = Number(m._openStakeCents || 0);
+        if (openStake > used) used = openStake;
+        if (used > max && max > 0) used = max;
+        var left = Math.max(0, max - used);
+        var pctLeft = max > 0 ? Math.min(100, Math.round((left / max) * 100)) : 0;
+        return { max: max, used: used, left: left, pctLeft: pctLeft };
       }
 
       function fmtDate(iso) {
@@ -1045,15 +1118,19 @@
                     m.id +
                     '" style="margin-top:8px;margin-left:6px">Alterar horário</button>'
                   : "";
-              var used = Number(m.used_protection_cents || 0);
+              var liq = liqStats(m);
               var openN = Number(m._openProtections || 0);
               var score =
                 m.final_score
                   ? ' · placar ' + String(m.final_score).replace(/-/g, " - ")
                   : "";
+              var barClass =
+                liq.pctLeft < 20 ? "low" : liq.pctLeft < 50 ? "mid" : "";
               return (
                 '<div class="row" style="cursor:default">' +
-                "<div><div class=\"teams\">" +
+                '<div class="row-main">' +
+                '<div class="row-body">' +
+                "<div class=\"teams\">" +
                 m.home_team +
                 " vs " +
                 m.away_team +
@@ -1065,14 +1142,28 @@
                 "</div>" +
                 '<div class="entries">' +
                 markets.length +
-                " entrada(s) · liquidez " +
-                money(m.max_protection_cents) +
-                (used > 0 ? " · protegido " + money(used) : "") +
+                " entrada(s)" +
                 (openN > 0 ? " · " + openN + " proteção(ões) aberta(s)" : "") +
                 "</div>" +
                 publishBtn +
                 settleBtn +
                 scheduleBtn +
+                "</div>" +
+                '<div class="adm-liq" title="Disponível / utilizado / total">' +
+                "<strong>" +
+                money(liq.left) +
+                "</strong>" +
+                '<div class="adm-liq-used">usado <b>' +
+                money(liq.used) +
+                "</b> de " +
+                money(liq.max) +
+                "</div>" +
+                '<div class="adm-liq-bar"><i class="' +
+                barClass +
+                '" style="width:' +
+                liq.pctLeft +
+                '%"></i></div>' +
+                "</div>" +
                 "</div>" +
                 '<div class="time">' +
                 badge +

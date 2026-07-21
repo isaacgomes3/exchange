@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Campo de liquidez no lançamento BetBra (admin-jogos) + prelive aceita liquidityCents/brl.
+# Liquidez no lançamento BetBra + barra/valor utilizado na lista ADM (igual cliente).
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/betbra-liquidez-antes-lancar-723d/scripts/vps-hotfix-betbra-liquidez-lancar.sh?v=1")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/betbra-liquidez-antes-lancar-723d/scripts/vps-hotfix-betbra-liquidez-lancar.sh?v=2")
 set -euo pipefail
 BRANCH="${ARBISHIELD_BRANCH:-cursor/betbra-liquidez-antes-lancar-723d}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${BRANCH}"
@@ -18,6 +18,7 @@ chmod 0644 "$WEB/admin-jogos.html"
 cp -f "$WEB/admin-jogos.html" "$WEB_ROOT/admin-jogos.html" 2>/dev/null || true
 grep -q 'createLiquidityBrl' "$WEB/admin-jogos.html" || { echo "ERRO: sem campo liquidez"; exit 1; }
 grep -q 'liquidityCents' "$WEB/admin-jogos.html" || { echo "ERRO: sem liquidityCents no payload"; exit 1; }
+grep -q 'adm-liq-bar\|liqStats' "$WEB/admin-jogos.html" || { echo "ERRO: sem barra de liquidez na lista ADM"; exit 1; }
 
 echo "==> prelive createMatchFromMarket"
 curl -fsSL "$RAW/scripts/arbishield-prelive-events.mjs" -o "$SHIM_DIR/arbishield-prelive-events.mjs"
@@ -37,4 +38,5 @@ done
 systemctl restart arbishield-prelive-events.service 2>/dev/null || echo "AVISO: não reiniciou prelive"
 
 echo "OK — Ctrl+Shift+R em https://arbishield.app/admin-jogos.html"
-echo "Fluxo: Lançar jogo (BetBra) → seleção → informar Liquidez real (R$) → Confirmar"
+echo "1) Lançar BetBra: informar Liquidez real (R$) antes de confirmar"
+echo "2) Lista ADM: barra + disponível + 'usado X de Y' (como no cliente)"
