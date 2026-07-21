@@ -18,6 +18,8 @@ type CreateMatchBody = {
   odd: number;
   betbraLink: string;
   liquidityCents?: number;
+  liquidity_brl?: number;
+  liquidityBrl?: number;
   isPublished?: boolean;
   __retried?: boolean;
   adminId?: string;
@@ -46,7 +48,18 @@ async function createMatchFromMarket(body: CreateMatchBody) {
   }
 
   const admin = adminClient();
-  const liquidityCents = Number(body.liquidityCents ?? 200_000);
+  let liquidityCents = Number(body.liquidityCents);
+  if (!Number.isFinite(liquidityCents) || liquidityCents <= 0) {
+    const brl = Number(body.liquidity_brl ?? body.liquidityBrl);
+    if (Number.isFinite(brl) && brl > 0) {
+      liquidityCents = Math.round(brl * 100);
+    } else {
+      liquidityCents = 200_000;
+    }
+  }
+  if (!(liquidityCents >= 100)) {
+    throw new Error("Informe a liquidez (mín. R$ 1,00) antes de lançar");
+  }
   const marketLabel = body.runnerName
     ? `${body.marketName} · ${body.runnerName}`
     : body.marketName;

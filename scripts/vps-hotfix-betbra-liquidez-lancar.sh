@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Campo de liquidez no lançamento BetBra (admin-jogos) + prelive aceita liquidityCents/brl.
+#
+# Na VPS (root):
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/betbra-liquidez-antes-lancar-723d/scripts/vps-hotfix-betbra-liquidez-lancar.sh?v=1")
+set -euo pipefail
+BRANCH="${ARBISHIELD_BRANCH:-cursor/betbra-liquidez-antes-lancar-723d}"
+RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${BRANCH}"
+WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
+WEB="$WEB_ROOT/v2"
+SHIM_DIR="${ARBISHIELD_SHIM_DIR:-/opt/arbishield}"
+SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
+mkdir -p "$WEB" "$SHIM_DIR" "$SCRIPTS_DIR"
+
+echo "==> UI admin-jogos.html"
+curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-jogos.html" -o "$WEB/admin-jogos.html"
+chmod 0644 "$WEB/admin-jogos.html"
+cp -f "$WEB/admin-jogos.html" "$WEB_ROOT/admin-jogos.html" 2>/dev/null || true
+grep -q 'createLiquidityBrl' "$WEB/admin-jogos.html" || { echo "ERRO: sem campo liquidez"; exit 1; }
+grep -q 'liquidityCents' "$WEB/admin-jogos.html" || { echo "ERRO: sem liquidityCents no payload"; exit 1; }
+
+echo "==> prelive createMatchFromMarket"
+curl -fsSL "$RAW/scripts/arbishield-prelive-events.mjs" -o "$SHIM_DIR/arbishield-prelive-events.mjs"
+chmod 0644 "$SHIM_DIR/arbishield-prelive-events.mjs"
+cp -f "$SHIM_DIR/arbishield-prelive-events.mjs" "$SCRIPTS_DIR/arbishield-prelive-events.mjs" 2>/dev/null || true
+grep -q 'liquidity_brl' "$SHIM_DIR/arbishield-prelive-events.mjs" || echo "AVISO: prelive sem liquidity_brl"
+
+for u in arbishield-prelive-events.service; do
+  if systemctl cat "$u" >/dev/null 2>&1; then
+    exec="$(systemctl show -p ExecStart --value "$u" 2>/dev/null | head -1 || true)"
+    if [[ "$exec" =~ (/[^[:space:]]+arbishield-prelive-events\.mjs) ]]; then
+      cp -f "$SHIM_DIR/arbishield-prelive-events.mjs" "${BASH_REMATCH[1]}"
+      echo "  wrote ${BASH_REMATCH[1]}"
+    fi
+  fi
+done
+systemctl restart arbishield-prelive-events.service 2>/dev/null || echo "AVISO: não reiniciou prelive"
+
+echo "OK — Ctrl+Shift+R em https://arbishield.app/admin-jogos.html"
+echo "Fluxo: Lançar jogo (BetBra) → seleção → informar Liquidez real (R$) → Confirmar"

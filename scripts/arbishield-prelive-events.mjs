@@ -335,7 +335,21 @@ async function createMatchFromMarket(body, token) {
     throw err;
   }
 
-  const liquidityCents = Number(body.liquidityCents ?? 200_000);
+  // Liquidez: cents direto, ou R$ via liquidity_brl (UI BetBra / manual)
+  let liquidityCents = Number(body.liquidityCents);
+  if (!Number.isFinite(liquidityCents) || liquidityCents <= 0) {
+    const brl = Number(body.liquidity_brl ?? body.liquidityBrl);
+    if (Number.isFinite(brl) && brl > 0) {
+      liquidityCents = Math.round(brl * 100);
+    } else {
+      liquidityCents = 200_000; // fallback R$ 2.000
+    }
+  }
+  if (!(liquidityCents >= 100)) {
+    const err = new Error("Informe a liquidez (mín. R$ 1,00) antes de lançar");
+    err.status = 400;
+    throw err;
+  }
   const marketLabel = body.runnerName
     ? `${body.marketName} · ${body.runnerName}`
     : body.marketName;

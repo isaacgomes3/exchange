@@ -500,8 +500,13 @@
   <div class="modal-backdrop" id="createModal">
     <div class="modal">
       <h3>Lançar evento na plataforma</h3>
-      <p>O mercado selecionado da BetBra será incluído na ArbiShield. Marque publicar para o cliente ver em Proteger Aposta.</p>
+      <p>O mercado selecionado da BetBra será incluído na ArbiShield. Defina a liquidez antes de publicar para o cliente.</p>
       <div class="grid" id="createSummary"></div>
+      <div class="field" style="margin:0 0 14px">
+        <label for="createLiquidityBrl">Liquidez real (R$) — obrigatório antes de lançar</label>
+        <input id="createLiquidityBrl" type="text" inputmode="decimal" value="2000" placeholder="Ex.: 2000 ou 2.500,00" autocomplete="off" />
+        <p class="hint" style="margin:6px 0 0">Controla quanto o cliente pode entrar neste mercado. Padrão R$ 2.000.</p>
+      </div>
       <label class="publish-opt" style="display:flex;gap:10px;align-items:flex-start;margin:0 0 16px;font-size:12px;line-height:1.4;cursor:pointer">
         <input type="checkbox" id="publishNow" checked style="margin-top:2px;accent-color:var(--lime)" />
         <span><strong>Publicar agora</strong> — aparece na conta do cliente (Proteger Aposta). Desmarque só se quiser deixar em rascunho.</span>
@@ -1259,6 +1264,16 @@
         ].map(function (row) {
           return "<div><span>" + row[0] + "</span><span>" + row[1] + "</span></div>";
         }).join("");
+        var liqInput = $("createLiquidityBrl");
+        if (liqInput) {
+          if (!liqInput.value) liqInput.value = "2000";
+          setTimeout(function () {
+            try {
+              liqInput.focus();
+              liqInput.select();
+            } catch (e) {}
+          }, 30);
+        }
         $("createModal").classList.add("show");
         $("btnConfirmCreate").onclick = function () {
           confirmCreate(link);
@@ -1274,6 +1289,17 @@
         var ev = selectedEvent;
         var market = selectedMarket;
         var runner = selectedRunner;
+        var liqBrl = parseMoneyToNumber($("createLiquidityBrl") && $("createLiquidityBrl").value);
+        if (liqBrl == null || !(liqBrl > 0)) {
+          alert("Informe a liquidez real (R$) antes de lançar. Ex.: 2000");
+          if ($("createLiquidityBrl")) $("createLiquidityBrl").focus();
+          return;
+        }
+        var liquidityCents = Math.round(liqBrl * 100);
+        if (!(liquidityCents >= 100)) {
+          alert("Liquidez mínima: R$ 1,00");
+          return;
+        }
         $("btnConfirmCreate").disabled = true;
         $("btnConfirmCreate").textContent = "Criando…";
         var publishNow = !($("publishNow") && !$("publishNow").checked);
@@ -1292,6 +1318,8 @@
             odd: runner.odd,
             betbraLink: betbraLink,
             isPublished: publishNow,
+            liquidityCents: liquidityCents,
+            liquidity_brl: liqBrl,
           });
           $("createModal").classList.remove("show");
           var msg =
