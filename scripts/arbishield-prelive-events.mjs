@@ -1427,6 +1427,25 @@ async function handleApi(req, res) {
     }
   }
 
+  // Alias usado se o nginx ainda não tiver location = /protections
+  if (url.pathname === "/api/arbishield/create-protection" && req.method === "POST") {
+    try {
+      const body = await parseBody(req);
+      const token = bearerFromReq(req);
+      if (!token) {
+        return sendJson(res, 401, { ok: false, error: "Não autorizado" });
+      }
+      const result = await createProtection(body, token);
+      return sendJson(res, 200, result);
+    } catch (err) {
+      const status = err.status || 500;
+      return sendJson(res, status, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   return sendJson(res, 404, { ok: false, error: "not_found" });
 }
 

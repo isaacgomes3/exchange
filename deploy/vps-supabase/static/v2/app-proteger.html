@@ -281,24 +281,48 @@
           var sess = await supa.auth.getSession();
           var token = sess.data.session && sess.data.session.access_token;
           if (!token) throw new Error("Sessão expirada. Faça login novamente.");
+          var payload = {
+            matchId: state.selected.match.id,
+            marketId: state.selected.market.id,
+            amountCents: amountCents,
+            odd: odd,
+            balanceType: document.getElementById("balanceType").value,
+            marketType: state.selected.marketType,
+            side: "home",
+          };
+          var headers = {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          };
           var res = await fetch("/api/arbishield/protections", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: "Bearer " + token,
-            },
-            body: JSON.stringify({
-              matchId: state.selected.match.id,
-              marketId: state.selected.market.id,
-              amountCents: amountCents,
-              odd: odd,
-              balanceType: document.getElementById("balanceType").value,
-              marketType: state.selected.marketType,
-              side: "home",
-            }),
+            headers: headers,
+            body: JSON.stringify(payload),
           });
-          var data = await res.json().catch(function () { return {}; });
-          if (!res.ok || !data.ok) throw new Error((data && data.error) || "Falha ao processar proteção");
+          // Fallback se nginx ainda não proxiar /protections (405 HTML)
+          if (res.status === 404 || res.status === 405) {
+            res = await fetch("/api/arbishield/create-protection", {
+              method: "POST",
+              headers: headers,
+              body: JSON.stringify(payload),
+            });
+          }
+          var raw = await res.text();
+          var data = {};
+          try {
+            data = raw ? JSON.parse(raw) : {};
+          } catch (parseErr) {
+            throw new Error(
+              res.status === 405
+                ? "API de proteção indisponível (nginx). Peça ao admin para aplicar o hotfix de /protections."
+                : "Resposta inválida do servidor (HTTP " + res.status + ")."
+            );
+          }
+          if (!res.ok || !data.ok) {
+            throw new Error(
+              (data && data.error) || "Falha ao processar proteção (HTTP " + res.status + ")"
+            );
+          }
           closeDrawer();
           showOk("Proteção ativada · " + String(data.protectionId).slice(0, 8) + "…");
           await load();
