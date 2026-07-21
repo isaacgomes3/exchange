@@ -772,6 +772,201 @@ async function createDesafio(body, token) {
   return { ...desafio, desafio_steps: stepsOut.filter(Boolean) };
 }
 
+function nCents(v) {
+  const x = Number(v);
+  return Number.isFinite(x) ? x : 0;
+}
+
+async function requireAdminToken(token) {
+  const payload = decodeJwtPayload(token);
+  const userId = payload?.sub ? String(payload.sub) : null;
+  if (!userId) {
+    const err = new Error("Login admin necessário");
+    err.status = 401;
+    throw err;
+  }
+  if (!SERVICE_KEY) throw new Error("SERVICE_ROLE_KEY ausente no .env da VPS");
+  const profile = await sb(
+    `/rest/v1/profiles?select=is_super_admin&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  const p = Array.isArray(profile) ? profile[0] : null;
+  if (p?.is_super_admin) return userId;
+  const roles = await sb(
+    `/rest/v1/user_roles?select=role&user_id=eq.${encodeURIComponent(userId)}`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  const ok = (Array.isArray(roles) ? roles : []).some(
+    (r) => r.role === "admin" || r.role === "master_admin"
+  );
+  if (!ok) {
+    const err = new Error("Acesso negado");
+    err.status = 403;
+    throw err;
+  }
+  return userId;
+}
+
+async function settleMatchFromBody(body, token) {
+  const adminId = await requireAdminToken(token);
+  const matchId = String(body?.matchId || body?.id || "").trim();
+  if (!matchId) throw new Error("matchId obrigatório");
+  let outcome = String(body?.outcome || "").toLowerCase();
+  if (outcome !== "arbishield" && outcome !== "exchange") {
+    throw new Error("outcome inválido (use arbishield ou exchange)");
+  }
+  let finalScore = body?.finalScore || body?.final_score || null;
+  if (
+    !finalScore &&
+    (body?.homeScore != null || body?.awayScore != null)
+  ) {
+    finalScore = `${Number(body.homeScore || 0)}-${Number(body.awayScore || 0)}`;
+  }
+  if (!finalScore) throw new Error("placar obrigatório");
+
+  const rows = await sb(
+    `/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}&select=*&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const match = Array.isArray(rows) ? rows[0] : null;
+  if (!match) throw new Error("Partida não encontrada");
+
+  const now = new Date().toISOString();
+  let markets = Array.isArray(match.markets) ? [...match.markets] : [];
+  markets = markets.map((m) => ({ ...m, settled_outcome: outcome }));
+
+  // PATCH partida (sem status_v2 se a coluna não existir)
+  const basePatch = {
+    final_score: String(finalScore),
+    settled_at: now,
+    status: "settled",
+    markets,
+    updated_at: now,
+  };
+  try {
+    await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: { ...basePatch, status_v2: "settled" },
+    });
+  } catch {
+    await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: basePatch,
+    });
+  }
+
+  const openFilter = "active,pending,review_odd";
+  const [lays, backs] = await Promise.all([
+    sb(
+      `/rest/v1/protections?match_id=eq.${encodeURIComponent(matchId)}&status=in.(${openFilter})&select=*&limit=2000`,
+      { token: SERVICE_KEY }
+    ).catch(() => []),
+    sb(
+      `/rest/v1/back_protections?match_id=eq.${encodeURIComponent(matchId)}&status=in.(${openFilter})&select=*&limit=2000`,
+      { token: SERVICE_KEY }
+    ).catch(() => []),
+  ]);
+
+  const all = [
+    ...(Array.isArray(lays) ? lays : []).map((r) => ({
+      ...r,
+      _table: "protections",
+    })),
+    ...(Array.isArray(backs) ? backs : []).map((r) => ({
+      ...r,
+      _table: "back_protections",
+    })),
+  ];
+
+  let settledCount = 0;
+  let refundedCents = 0;
+  const wonArbi = outcome === "arbishield";
+  const status = wonArbi ? "won_platform" : "won_exchange";
+
+  for (const row of all) {
+    const amount = nCents(row.responsibility_cents || row.amount_cents);
+    if (row.user_id && amount > 0) {
+      try {
+        const prof = await sb(
+          `/rest/v1/profiles?select=balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+          { token: SERVICE_KEY }
+        );
+        const p = Array.isArray(prof) ? prof[0] : null;
+        if (p) {
+          const locked = Math.max(0, nCents(p.locked_balance_cents) - amount);
+          const balance = wonArbi
+            ? nCents(p.balance_cents) + amount
+            : nCents(p.balance_cents);
+          await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+            method: "PATCH",
+            token: SERVICE_KEY,
+            body: {
+              balance_cents: balance,
+              locked_balance_cents: locked,
+              updated_at: now,
+            },
+          });
+          if (wonArbi) refundedCents += amount;
+        }
+      } catch {
+        /* saldo best-effort */
+      }
+    }
+
+    const protBody = {
+      status,
+      settled_at: now,
+      updated_at: now,
+    };
+    // campos opcionais — tenta com settled_outcome; se falhar, só status
+    try {
+      await sb(`/rest/v1/${row._table}?id=eq.${encodeURIComponent(row.id)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          ...protBody,
+          settled_outcome: outcome,
+          result: status,
+        },
+      });
+    } catch {
+      await sb(`/rest/v1/${row._table}?id=eq.${encodeURIComponent(row.id)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: protBody,
+      });
+    }
+    settledCount += 1;
+  }
+
+  try {
+    await sb("/rest/v1/admin_audit_logs", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        admin_id: adminId,
+        action: "ADMIN_ACTION_SETTLE",
+        entity_type: "matches",
+        entity_id: matchId,
+        details: { outcome, finalScore, settledCount, refundedCents },
+      },
+    });
+  } catch {
+    /* */
+  }
+
+  return {
+    ok: true,
+    matchId,
+    outcome,
+    finalScore: String(finalScore),
+    settledCount,
+    refundedCents,
+  };
+}
+
 function decodeJwtPayload(token) {
   try {
     const parts = String(token || "").split(".");
@@ -1179,6 +1374,10 @@ async function handleApi(req, res) {
     try {
       const body = await parseBody(req);
       const token = bearerFromReq(req);
+      if (body.mode === "settle" || body.action === "settle") {
+        const result = await settleMatchFromBody(body, token);
+        return sendJson(res, 200, result);
+      }
       const manual =
         body.mode === "manual" ||
         Array.isArray(body.markets) ||
@@ -1190,6 +1389,20 @@ async function handleApi(req, res) {
     } catch (err) {
       const status = err.status === 409 ? 409 : err.status || 500;
       return sendJson(res, status, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/match-settle" && req.method === "POST") {
+    try {
+      const body = await parseBody(req);
+      const token = bearerFromReq(req);
+      const result = await settleMatchFromBody(body.data || body, token);
+      return sendJson(res, 200, result);
+    } catch (err) {
+      return sendJson(res, err.status || 400, {
         ok: false,
         error: err instanceof Error ? err.message : String(err),
       });

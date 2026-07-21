@@ -1655,47 +1655,41 @@
       }
 
       async function postSettle(payload) {
-        // 1) REST v2
-        var res = await fetch("/api/arbishield/match-settle", {
-          method: "POST",
-          headers: {
-            Authorization: "Bearer " + auth.token,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
-        var data = await res.json().catch(function () { return {}; });
-        if (res.ok && !data.error) return data;
-
-        // 2) Fallback SPA hash (mesmo shim :3101)
-        var sf = await fetch(
-          "/_serverFn/c18778cffbba4cac38b3df54b2a50b3179a999b1c9908c2adbddd929ada5932f",
-          {
+        async function call(url, body) {
+          var res = await fetch(url, {
             method: "POST",
             headers: {
               Authorization: "Bearer " + auth.token,
               "Content-Type": "application/json",
-              "x-tsr-serverFn": "1",
             },
-            body: JSON.stringify({ data: payload }),
-          }
-        );
-        var sfData = await sf.json().catch(function () { return {}; });
-        if (sf.ok && sfData && (sfData.ok || sfData.settledCount != null || sfData.matchId)) {
-          return sfData;
-        }
-        // TSR encoded success sometimes wraps differently — treat HTTP 200 without error string as ok if shim updated
-        if (sf.ok && sfData && sfData.t && !String(JSON.stringify(sfData)).includes("Error")) {
-          return { ok: true, settledCount: 0, via: "serverFn" };
+            body: JSON.stringify(body),
+          });
+          var data = await res.json().catch(function () { return {}; });
+          return { res: res, data: data };
         }
 
+        function isRealOk(data) {
+          if (!data || data.error || data.ok === false) return false;
+          // exige evidência real de liquidação
+          return (
+            data.ok === true ||
+            (data.settledCount != null && Number(data.settledCount) >= 0 && data.matchId) ||
+            (data.matchId && data.outcome)
+          );
+        }
+
+        // 1) match-settle (shim) — pode estar sem nginx
+        var a = await call("/api/arbishield/match-settle", payload);
+        if (a.res.ok && isRealOk(a.data)) return a.data;
+
+        // 2) matches?mode=settle — já roteado para :3098 em produção
+        var b = await call("/api/arbishield/matches", Object.assign({ mode: "settle" }, payload));
+        if (b.res.ok && isRealOk(b.data)) return b.data;
+
         var errMsg =
-          data.error ||
-          data.message ||
-          (res.status === 404
-            ? "API match-settle não encontrada (Not found). Rode o hotfix na VPS."
-            : null) ||
-          "Falha ao liquidar";
+          (b.data && (b.data.error || b.data.message)) ||
+          (a.data && (a.data.error || a.data.message)) ||
+          "Falha ao liquidar — API não liquidou proteções. Rode o hotfix v5 na VPS.";
         throw new Error(errMsg);
       }
 
@@ -1722,11 +1716,34 @@
             awayScore: Number(away),
             winner: "home",
           });
+          if (!(Number(data.settledCount) >= 0) || !data.matchId) {
+            throw new Error("Liquidação sem confirmação do servidor.");
+          }
+          // Confere se ainda há proteção ativa neste jogo
+          try {
+            var still = await rest(
+              "protections?match_id=eq." +
+                encodeURIComponent(settleMatchId) +
+                "&status=in.(active,pending,review_odd)&select=id&limit=5",
+              auth.token
+            );
+            if (still && still.length) {
+              throw new Error(
+                "Partida marcada, mas ainda há " +
+                  still.length +
+                  " proteção(ões) ATIVA(s). Tente de novo ou rode o hotfix."
+              );
+            }
+          } catch (verifyErr) {
+            if (/ainda há/.test(verifyErr.message || "")) throw verifyErr;
+          }
           alert(
             "Partida encerrada · " +
-              (data.settledCount != null ? data.settledCount : "?") +
+              Number(data.settledCount || 0) +
               " proteção(ões) · " +
-              (outcome === "arbishield" ? "reembolso ArbiShield" : "dedução Exchange")
+              (outcome === "arbishield"
+                ? "reembolso " + money(data.refundedCents || 0)
+                : "sem reembolso (casa externa)")
           );
           $("settleModal").classList.remove("show");
           platformLoaded = false;

@@ -1912,17 +1912,24 @@ async function applyProtectionSettlement(row, table, outcome) {
     }
   }
 
-  await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(row.id)}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: {
-      status,
-      settled_at: now,
-      settled_outcome: String(outcome).toLowerCase(),
-      result: status,
-      updated_at: now,
-    },
-  });
+  const protBody = { status, settled_at: now, updated_at: now };
+  try {
+    await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(row.id)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        ...protBody,
+        settled_outcome: String(outcome).toLowerCase(),
+        result: status,
+      },
+    });
+  } catch {
+    await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(row.id)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: protBody,
+    });
+  }
 
   return { id: row.id, status, amount };
 }
@@ -1996,23 +2003,25 @@ async function settleMatch(token, body) {
     markets,
     updated_at: now,
   };
-  // liquidação completa da partida (não só um mercado)
   if (!marketId) {
     if (finalScore) patchMatch.final_score = String(finalScore);
     patchMatch.settled_at = now;
     patchMatch.status = "settled";
-    try {
-      patchMatch.status_v2 = "settled";
-    } catch {
-      /* */
-    }
   }
 
-  await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: patchMatch,
-  });
+  try {
+    await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: { ...patchMatch, status_v2: "settled" },
+    });
+  } catch {
+    await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: patchMatch,
+    });
+  }
 
   const statusFilter = openProtectionStatuses()
     .map(encodeURIComponent)
