@@ -459,6 +459,11 @@
     </section>
 
     <section class="panel" id="prelivePanel" hidden>
+      <div class="field prelive-liq" style="margin:0 16px 14px;max-width:360px">
+        <label for="preliveLiquidityBrl">Liquidez real (R$) — usada ao lançar cada seleção BetBra</label>
+        <input id="preliveLiquidityBrl" type="text" inputmode="decimal" value="2000" placeholder="Ex.: 2000 ou 2.500,00" autocomplete="off" />
+        <p class="hint" style="margin:6px 0 0">Defina antes de escolher o jogo. Padrão R$ 2.000.</p>
+      </div>
       <div class="panel-head">
         <div>
           <h2>Próximos jogos (BetBra) — só cadastro</h2>
@@ -470,7 +475,7 @@
       </div>
       <div class="odds-toolbar" id="oddsToolbar" hidden>
         <label>
-          <input type="checkbox" id="onlyWithOdds" checked />
+          <input type="checkbox" id="onlyWithOdds" />
           Só seleções com odd
         </label>
         <span id="oddsCoverage">—</span>
@@ -531,13 +536,9 @@
   <div class="modal-backdrop" id="createModal">
     <div class="modal">
       <h3>Lançar evento na plataforma</h3>
-      <p>O mercado selecionado da BetBra será incluído na ArbiShield. Defina a liquidez antes de publicar para o cliente.</p>
+      <p>O mercado selecionado da BetBra será incluído na ArbiShield com a liquidez definida acima da lista.</p>
       <div class="grid" id="createSummary"></div>
-      <div class="field" style="margin:0 0 14px">
-        <label for="createLiquidityBrl">Liquidez real (R$) — obrigatório antes de lançar</label>
-        <input id="createLiquidityBrl" type="text" inputmode="decimal" value="2000" placeholder="Ex.: 2000 ou 2.500,00" autocomplete="off" />
-        <p class="hint" style="margin:6px 0 0">Controla quanto o cliente pode entrar neste mercado. Padrão R$ 2.000.</p>
-      </div>
+      <p class="hint" id="createLiqHint" style="margin:0 0 14px">Liquidez: —</p>
       <label class="publish-opt" style="display:flex;gap:10px;align-items:flex-start;margin:0 0 16px;font-size:12px;line-height:1.4;cursor:pointer">
         <input type="checkbox" id="publishNow" checked style="margin-top:2px;accent-color:var(--lime)" />
         <span><strong>Publicar agora</strong> — aparece na conta do cliente (Proteger Aposta). Desmarque só se quiser deixar em rascunho.</span>
@@ -1340,11 +1341,19 @@
         });
       }
 
+      function readPreliveLiquidityBrl() {
+        var el = $("preliveLiquidityBrl");
+        if (!el) return null;
+        if (!String(el.value || "").trim()) el.value = "2000";
+        return parseMoneyToNumber(el.value);
+      }
+
       function openCreateModal(market, runner) {
         selectedMarket = market;
         selectedRunner = runner;
         var ev = selectedEvent;
         var link = ev.betbraLink + "/market/" + market.marketId;
+        var liqBrl = readPreliveLiquidityBrl();
         $("createSummary").innerHTML = [
           ["Jogo", ev.homeTeam + " vs " + ev.awayTeam],
           ["Liga", ev.league || "—"],
@@ -1352,18 +1361,22 @@
           ["Mercado", market.name],
           ["Seleção", runner.name],
           ["Odd", runner.odd != null ? runner.odd.toFixed(2) : "—"],
+          [
+            "Liquidez",
+            liqBrl != null && liqBrl > 0
+              ? liqBrl.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+              : "não informada",
+          ],
         ].map(function (row) {
           return "<div><span>" + row[0] + "</span><span>" + row[1] + "</span></div>";
         }).join("");
-        var liqInput = $("createLiquidityBrl");
-        if (liqInput) {
-          if (!liqInput.value) liqInput.value = "2000";
-          setTimeout(function () {
-            try {
-              liqInput.focus();
-              liqInput.select();
-            } catch (e) {}
-          }, 30);
+        if ($("createLiqHint")) {
+          $("createLiqHint").textContent =
+            liqBrl != null && liqBrl > 0
+              ? "Liquidez que será lançada: " +
+                liqBrl.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) +
+                " (campo acima de Próximos jogos)"
+              : "Informe a liquidez no campo acima de Próximos jogos antes de confirmar.";
         }
         $("createModal").classList.add("show");
         $("btnConfirmCreate").onclick = function () {
@@ -1380,10 +1393,11 @@
         var ev = selectedEvent;
         var market = selectedMarket;
         var runner = selectedRunner;
-        var liqBrl = parseMoneyToNumber($("createLiquidityBrl") && $("createLiquidityBrl").value);
+        var liqBrl = readPreliveLiquidityBrl();
         if (liqBrl == null || !(liqBrl > 0)) {
-          alert("Informe a liquidez real (R$) antes de lançar. Ex.: 2000");
-          if ($("createLiquidityBrl")) $("createLiquidityBrl").focus();
+          alert("Informe a liquidez real (R$) no campo acima de Próximos jogos. Ex.: 2000");
+          $("createModal").classList.remove("show");
+          if ($("preliveLiquidityBrl")) $("preliveLiquidityBrl").focus();
           return;
         }
         var liquidityCents = Math.round(liqBrl * 100);

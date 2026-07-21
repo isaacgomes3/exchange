@@ -2,9 +2,10 @@
 # Liquidez no lançamento BetBra + barra/valor utilizado na lista ADM (igual cliente).
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/betbra-liquidez-antes-lancar-723d/scripts/vps-hotfix-betbra-liquidez-lancar.sh?v=3")
+#   curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/betbra-liquidez-antes-lancar-723d/scripts/vps-hotfix-betbra-liquidez-lancar.sh?v=4" -o /tmp/hotfix-liq.sh
+#   bash /tmp/hotfix-liq.sh
 #   # ou por SHA (evita cache):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/801510e3ee8d560c3889a283f4e5d5c0931a5590/scripts/vps-hotfix-betbra-liquidez-lancar.sh")
+#   curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-betbra-liquidez-lancar.sh" -o /tmp/hotfix-liq.sh && bash /tmp/hotfix-liq.sh
 set -euo pipefail
 BRANCH="${ARBISHIELD_BRANCH:-cursor/betbra-liquidez-antes-lancar-723d}"
 # ARBISHIELD_REF=sha|branch opcional; default = branch
@@ -29,12 +30,17 @@ for alt in "$WEB_ROOT/v2/admin-jogos.html" /var/www/html/v2/admin-jogos.html; do
 done
 bytes="$(wc -c < "$WEB/admin-jogos.html" | tr -d ' ')"
 echo "  bytes=$bytes"
-grep -q 'createLiquidityBrl' "$WEB/admin-jogos.html" || { echo "ERRO: sem campo liquidez"; exit 1; }
+grep -q 'preliveLiquidityBrl' "$WEB/admin-jogos.html" || { echo "ERRO: sem campo liquidez acima da lista"; exit 1; }
 grep -q 'liquidityCents' "$WEB/admin-jogos.html" || { echo "ERRO: sem liquidityCents no payload"; exit 1; }
 # greps separados (BusyBox/grep antigo quebra em \|)
 grep -q 'adm-liq-bar' "$WEB/admin-jogos.html" || { echo "ERRO: sem adm-liq-bar"; exit 1; }
 grep -q 'function liqStats' "$WEB/admin-jogos.html" || { echo "ERRO: sem liqStats"; exit 1; }
-echo "  ok createLiquidityBrl + barra ADM"
+# "Só seleções com odd" NÃO deve vir marcado
+if grep -q 'id="onlyWithOdds"[[:space:]]*checked' "$WEB/admin-jogos.html"; then
+  echo "ERRO: onlyWithOdds ainda vem marcado por padrão"
+  exit 1
+fi
+echo "  ok preliveLiquidityBrl + checkbox desmarcado + barra ADM"
 
 echo "==> prelive createMatchFromMarket"
 curl -fsSL "$RAW/scripts/arbishield-prelive-events.mjs" -o "$SHIM_DIR/arbishield-prelive-events.mjs"
