@@ -1897,41 +1897,59 @@ async function applyProtectionSettlement(row, table, outcome) {
         const balance = wonArbi
           ? n(p.balance_cents) + amount
           : n(p.balance_cents);
-        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
-          method: "PATCH",
-          token: SERVICE_KEY,
-          body: {
+        const profileBodies = [
+          {
             balance_cents: balance,
             locked_balance_cents: locked,
             updated_at: now,
           },
-        });
+          { balance_cents: balance, locked_balance_cents: locked },
+        ];
+        for (const body of profileBodies) {
+          try {
+            await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+              method: "PATCH",
+              token: SERVICE_KEY,
+              body,
+            });
+            break;
+          } catch {
+            /* tenta sem updated_at */
+          }
+        }
       }
     } catch {
       /* saldo best-effort */
     }
   }
 
-  const protBody = { status, settled_at: now, updated_at: now };
-  try {
-    await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(row.id)}`, {
-      method: "PATCH",
-      token: SERVICE_KEY,
-      body: {
-        ...protBody,
-        settled_outcome: String(outcome).toLowerCase(),
-        result: status,
-      },
-    });
-  } catch {
-    await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(row.id)}`, {
-      method: "PATCH",
-      token: SERVICE_KEY,
-      body: protBody,
-    });
+  // Schema VPS: protections pode não ter updated_at
+  const attempts = [
+    {
+      status,
+      settled_at: now,
+      settled_outcome: String(outcome).toLowerCase(),
+      result: status,
+    },
+    { status, settled_at: now, result: status },
+    { status, settled_at: now },
+    { status: "settled", settled_at: now },
+    { status },
+  ];
+  let lastErr = null;
+  for (const body of attempts) {
+    try {
+      await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(row.id)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body,
+      });
+      return { id: row.id, status, amount };
+    } catch (err) {
+      lastErr = err;
+    }
   }
-
-  return { id: row.id, status, amount };
+  throw lastErr || new Error(`Falha ao liquidar proteção ${row.id}`);
 }
 
 async function settleMatch(token, body) {
@@ -2105,7 +2123,7 @@ async function settleMatch(token, body) {
           marketId: marketId || null,
           outcomes: outcomesMap || null,
           settledCount,
-          fix: "encerrar-protecoes-primeiro-v1",
+          fix: "encerrar-protecoes-primeiro-v2",
         },
       },
     });
@@ -2119,7 +2137,7 @@ async function settleMatch(token, body) {
     outcome: outcome || null,
     finalScore: finalScore || null,
     settledCount,
-    fix: "encerrar-protecoes-primeiro-v1",
+    fix: "encerrar-protecoes-primeiro-v2",
   };
 }
 

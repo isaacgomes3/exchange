@@ -902,15 +902,26 @@ async function settleOneProtectionRow(row, outcome, now) {
         const balance = wonArbi
           ? nCents(p.balance_cents) + amount
           : nCents(p.balance_cents);
-        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
-          method: "PATCH",
-          token: SERVICE_KEY,
-          body: {
+        const profileBodies = [
+          {
             balance_cents: balance,
             locked_balance_cents: locked,
             updated_at: now,
           },
-        });
+          { balance_cents: balance, locked_balance_cents: locked },
+        ];
+        for (const body of profileBodies) {
+          try {
+            await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+              method: "PATCH",
+              token: SERVICE_KEY,
+              body,
+            });
+            break;
+          } catch {
+            /* tenta sem updated_at */
+          }
+        }
         if (wonArbi) refunded = amount;
       }
     } catch {
@@ -918,18 +929,13 @@ async function settleOneProtectionRow(row, outcome, now) {
     }
   }
 
+  // Schema VPS: protections NÃO tem updated_at — nunca incluir no PATCH.
   const attempts = [
-    {
-      status,
-      settled_at: now,
-      updated_at: now,
-      settled_outcome: outcome,
-      result: status,
-    },
-    { status, settled_at: now, updated_at: now, result: status },
-    { status, settled_at: now, updated_at: now },
-    // fallback se enum não aceitar won_*
-    { status: "settled", settled_at: now, updated_at: now },
+    { status, settled_at: now, settled_outcome: outcome, result: status },
+    { status, settled_at: now, result: status },
+    { status, settled_at: now },
+    { status: "settled", settled_at: now },
+    { status },
   ];
   let lastErr = null;
   for (const body of attempts) {
@@ -1059,7 +1065,7 @@ async function settleMatchFromBody(body, token) {
           finalScore,
           settledCount,
           refundedCents,
-          fix: "encerrar-protecoes-primeiro-v1",
+          fix: "encerrar-protecoes-primeiro-v2",
         },
       },
     });
@@ -1074,7 +1080,7 @@ async function settleMatchFromBody(body, token) {
     finalScore: String(finalScore),
     settledCount,
     refundedCents,
-    fix: "encerrar-protecoes-primeiro-v1",
+    fix: "encerrar-protecoes-primeiro-v2",
   };
 }
 
@@ -1438,7 +1444,7 @@ async function handleApi(req, res) {
     return sendJson(res, 200, {
       ok: true,
       service: "prelive-events",
-      fix: "encerrar-protecoes-primeiro-v1",
+      fix: "encerrar-protecoes-primeiro-v2",
     });
   }
 
