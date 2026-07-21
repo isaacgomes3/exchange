@@ -178,7 +178,7 @@
           <button type="button" class="google" id="googleBtn">Google</button>
           <button type="button" id="telegramBtn">Telegram</button>
         </div>
-        <div class="foot">Não possui conta? <a href="/auth?mode=signup">Criar conta</a></div>
+        <div class="foot">Não possui conta? <a href="/auth.html?mode=signup">Criar conta</a></div>
         <a class="back" href="/admin/login">Acesso admin</a>
         <a class="back" href="/recuperar">Site travou? Recuperar</a>
         <a class="back" href="/">Voltar</a>
@@ -188,9 +188,15 @@
 
   <script>
     (function () {
+      // Cadastro / indicação ?ref= → auth v2 completo (paridade legado)
+      var qs = new URLSearchParams(location.search);
+      if (qs.get("ref") || String(qs.get("mode") || "").toLowerCase() === "signup") {
+        location.replace("/auth.html" + location.search);
+        return;
+      }
       var ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzg0NDc5OTk4LCJleHAiOjE5NDIxNTk5OTh9.mxLqs20sCUNn58jWlsD0sznclCOr8rbksjTEAuQee3s";
       var STORAGE_KEY = "sb-arbishield-auth-token";
-      var params = new URLSearchParams(location.search);
+      var params = qs;
       var redirectTo = params.get("redirect") || "/app";
       if (!redirectTo.startsWith("/") || redirectTo.startsWith("//") || redirectTo === "/auth") redirectTo = "/app";
 

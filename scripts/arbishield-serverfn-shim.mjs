@@ -968,28 +968,120 @@ function randomReferralCode() {
 async function ensureAffiliateReferralCode(token) {
   const userId = requireUserId(token);
   const rows = await sb(
-    `/rest/v1/profiles?select=id,referral_code&id=eq.${userId}&limit=1`,
+    `/rest/v1/profiles?select=id,referral_code,is_affiliate&id=eq.${userId}&limit=1`,
     { token: SERVICE_KEY }
   );
   const p = Array.isArray(rows) ? rows[0] : null;
   if (!p) throw new Error("Perfil não encontrado");
   if (p.referral_code) {
-    return { ok: true, referral_code: p.referral_code, code: p.referral_code };
+    if (!p.is_affiliate) {
+      try {
+        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: { is_affiliate: true, updated_at: new Date().toISOString() },
+        });
+      } catch {
+        /* */
+      }
+    }
+    return {
+      ok: true,
+      referral_code: p.referral_code,
+      code: p.referral_code,
+      is_affiliate: true,
+    };
   }
   for (let attempt = 0; attempt < 6; attempt++) {
     const code = randomReferralCode();
     try {
-      await sb(`/rest/v1/profiles?id=eq.${userId}`, {
+      await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
         method: "PATCH",
         token: SERVICE_KEY,
-        body: { referral_code: code, updated_at: new Date().toISOString() },
+        body: {
+          referral_code: code,
+          is_affiliate: true,
+          updated_at: new Date().toISOString(),
+        },
       });
-      return { ok: true, referral_code: code, code };
+      try {
+        await sb("/rest/v1/affiliate_stats", {
+          method: "POST",
+          token: SERVICE_KEY,
+          body: {
+            profile_id: userId,
+            pending_cents: 0,
+            total_earned_cents: 0,
+          },
+        });
+      } catch {
+        /* stats pode já existir ou schema divergir */
+      }
+      return { ok: true, referral_code: code, code, is_affiliate: true };
     } catch {
       /* retry on unique collision */
     }
   }
   throw new Error("Não foi possível gerar o código de indicação");
+}
+
+/**
+ * Vincula referred_by a partir do código de afiliado (legado: /auth?ref=CODE).
+ * Só aplica se o usuário ainda não tiver referred_by.
+ */
+async function applyReferralCode(token, body) {
+  const userId = requireUserId(token);
+  const code = String(body?.code || body?.ref || body?.referral_code || "")
+    .trim()
+    .toUpperCase();
+  if (!code || code.length < 4) throw new Error("Código de indicação inválido");
+
+  const meRows = await sb(
+    `/rest/v1/profiles?select=id,referred_by,referral_code&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const me = Array.isArray(meRows) ? meRows[0] : null;
+  if (!me) throw new Error("Perfil não encontrado");
+  if (me.referred_by) {
+    return {
+      ok: true,
+      already: true,
+      referred_by: me.referred_by,
+      message: "Indicação já vinculada",
+    };
+  }
+  if (
+    me.referral_code &&
+    String(me.referral_code).toUpperCase() === code
+  ) {
+    throw new Error("Você não pode usar o próprio código");
+  }
+
+  const affRows = await sb(
+    `/rest/v1/profiles?select=id,referral_code,is_affiliate&referral_code=eq.${encodeURIComponent(code)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const aff = Array.isArray(affRows) ? affRows[0] : null;
+  if (!aff || !aff.id) throw new Error("Código de afiliado não encontrado");
+  if (String(aff.id) === String(userId)) {
+    throw new Error("Você não pode usar o próprio código");
+  }
+
+  await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: {
+      referred_by: aff.id,
+      updated_at: new Date().toISOString(),
+    },
+  });
+
+  return {
+    ok: true,
+    referred_by: aff.id,
+    referral_code: code,
+    fix: "afiliados-ref-cadastro-v1",
+  };
 }
 
 async function requestAffiliateWithdrawal(token, body) {
@@ -3072,6 +3164,25 @@ const server = createServer(async (req, res) => {
     try {
       const token = bearerFromReq(req);
       const data = await ensureAffiliateReferralCode(token);
+      return sendJson(res, 200, data);
+    } catch (err) {
+      return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/apply-referral" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      const data = await applyReferralCode(token, body.data || body);
       return sendJson(res, 200, data);
     } catch (err) {
       return sendJson(res, 400, {

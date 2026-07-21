@@ -154,8 +154,17 @@
       .reduce(function (a, w) {
         return a + Number(w.amount_cents || 0);
       }, 0);
-    if (state.stats && state.stats.pendingCents != null) {
-      return Math.max(0, Number(state.stats.pendingCents));
+    if (state.stats) {
+      var pending = Number(
+        state.stats.pending_cents != null
+          ? state.stats.pending_cents
+          : state.stats.pendingCents != null
+            ? state.stats.pendingCents
+            : state.stats.available_cents != null
+              ? state.stats.available_cents
+              : NaN
+      );
+      if (Number.isFinite(pending)) return Math.max(0, pending);
     }
     return Math.max(0, earned - out);
   }
@@ -209,7 +218,8 @@
   function referralUrl() {
     var code = state.referralCode;
     if (!code) return "";
-    return location.origin + "/auth.html?ref=" + encodeURIComponent(code);
+    // Legado: /auth?ref=CODE (nginx /auth → auth.html preservando query)
+    return location.origin + "/auth?ref=" + encodeURIComponent(code);
   }
   function openWd() {
     return (state.withdrawals || []).find(function (w) {
@@ -862,41 +872,11 @@
       });
       if (!res.ok) throw new Error(data.error || "Falha ao gerar link");
       state.referralCode = data.referral_code || data.code || "";
-      state.ok = "Link gerado com sucesso!";
-      if (!state.referralCode) {
-        // fallback local
-        var code =
-          Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 6);
-        code = code.toUpperCase();
-        var upd = await supa
-          .from("profiles")
-          .update({ referral_code: code })
-          .eq("id", user.id)
-          .select("referral_code")
-          .maybeSingle();
-        if (!upd.error && upd.data) state.referralCode = upd.data.referral_code;
-      }
+      if (!state.referralCode) throw new Error("API não retornou o código");
+      state.ok = "Código de indicação gerado!";
+      state.err = "";
     } catch (ex) {
-      // fallback direto no profiles
-      try {
-        var supa2 = ArbiV2.client();
-        var user2 = await ArbiV2.requireUser(supa2);
-        var code2 =
-          Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 6);
-        code2 = code2.toUpperCase();
-        var upd2 = await supa2
-          .from("profiles")
-          .update({ referral_code: code2 })
-          .eq("id", user2.id)
-          .select("referral_code")
-          .maybeSingle();
-        if (upd2.error) throw upd2.error;
-        state.referralCode = upd2.data.referral_code;
-        state.ok = "Link gerado!";
-        state.err = "";
-      } catch (ex2) {
-        state.err = (ex && ex.message) || (ex2 && ex2.message) || "Erro ao gerar link";
-      }
+      state.err = (ex && ex.message) || "Erro ao gerar link";
     } finally {
       state.busy = false;
       render();
@@ -905,8 +885,13 @@
 
   async function sendWithdraw() {
     if (state.busy) return;
-    var digits = String(state.withdrawAmount || "").replace(/\D/g, "");
-    var cents = Number(digits || 0);
+    // Legado: parseFloat(reais) * 100 → centavos
+    var raw = String(state.withdrawAmount || "").trim().replace(/\s/g, "");
+    var reais = Number(raw.replace(",", "."));
+    if (!Number.isFinite(reais) && raw.indexOf(",") >= 0) {
+      reais = Number(raw.replace(/\./g, "").replace(",", "."));
+    }
+    var cents = Math.round(reais * 100);
     var avail = availableCents();
     if (!cents || cents <= 0 || cents > avail) {
       state.err = "Valor inválido";
@@ -940,17 +925,7 @@
       var data = await res.json().catch(function () {
         return {};
       });
-      if (!res.ok) {
-        // fallback insert
-        var ins = await supa.from("withdrawals").insert({
-          user_id: user.id,
-          amount_cents: cents,
-          pix_key: String(state.withdrawPix).trim(),
-          status: "pending",
-          metadata: { origin: "AFFILIATE_WITHDRAWAL" },
-        });
-        if (ins.error) throw new Error(data.error || ins.error.message);
-      }
+      if (!res.ok) throw new Error(data.error || "Falha ao solicitar saque");
       state.ok = "Saque solicitado! Acompanhe o status no histórico.";
       state.withdrawOpen = false;
       await loadAll(supa, user.id);
