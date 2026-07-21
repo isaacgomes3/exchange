@@ -102,8 +102,14 @@ const FN = {
   /** Monitor proteções — cancelar/estornar + encerrar sem estorno (SPA) */
   PROTECTION_CANCEL_REFUND:
     "7389baaef3c2b584c409c59fc824e6b8438e2b36b31962f19de0f1815c6e443a",
+  /** Cliente — cancelar ancoragem (antes do kickoff) */
+  USER_CANCEL_PROTECTION:
+    "36a2084a8e4d517b2facc8ac7ab666d0dccb1d652ad3a97b787fd5c200ab1ff7",
   PROTECTION_CLOSE_NO_REFUND:
     "85ba18adcbc268610fb2ac76551978abee821260d93161e23aca41bd5d531e21",
+  /** Cliente — contestação de odd */
+  ODD_CONTESTATION:
+    "2a6aef91a48eaa19a2fd107fe580b1c6edf54fd10f1962c1d5d3e40f5c38d120",
   /** Admin Jogos — liquidar partida / mercado (SPA admin.matches) */
   MATCH_SETTLE_SINGLE:
     "c18778cffbba4cac38b3df54b2a50b3179a999b1c9908c2adbddd929ada5932f",
@@ -1787,19 +1793,48 @@ async function closeProtectionNoRefund(token, body) {
 }
 
 async function cancelProtectionRefund(token, body) {
-  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const callerId = requireUserId(token);
+  const isAdmin = await currentUserIsAdmin(token);
   const protectionId = String(body?.protectionId || body?.id || "").trim();
-  const marketType = String(body?.marketType || body?.market_category || "LAY");
+  const marketType = String(
+    body?.marketType || body?.market_category || body?.category || "LAY"
+  );
   if (!protectionId) throw new Error("protectionId obrigatório");
 
   const { table, row } = await loadProtectionRow(protectionId, marketType);
+  if (!isAdmin && String(row.user_id) !== String(callerId)) {
+    throw new Error("Acesso negado");
+  }
+
   const st = String(row.status || "").toLowerCase();
   if (st === "cancelled") throw new Error("Proteção já cancelada");
   if (st === "settled" || st === "closed") {
     throw new Error("Proteção já encerrada — use estorno manual se necessário");
   }
+  if (!isAdmin && st !== "active" && st !== "review_odd" && st !== "pending") {
+    throw new Error("Só é possível cancelar proteções ativas");
+  }
+
+  // Cliente: só antes do jogo começar
+  if (!isAdmin && row.match_id) {
+    try {
+      const matches = await sb(
+        `/rest/v1/matches?select=id,starts_at&id=eq.${encodeURIComponent(row.match_id)}&limit=1`,
+        { token: SERVICE_KEY }
+      );
+      const match = Array.isArray(matches) ? matches[0] : null;
+      if (match?.starts_at && new Date(match.starts_at).getTime() <= Date.now()) {
+        throw new Error("O jogo já iniciou. Não é possível cancelar.");
+      }
+    } catch (err) {
+      if (/já iniciou/i.test(err instanceof Error ? err.message : String(err))) {
+        throw err;
+      }
+    }
+  }
+
   const amount = n(row.responsibility_cents || row.amount_cents);
-  const adminId = requireUserId(token);
+  const adminId = isAdmin ? callerId : null;
 
   if (row.user_id && amount > 0) {
     const prof = await sb(
@@ -1825,7 +1860,11 @@ async function cancelProtectionRefund(token, body) {
           user_id: row.user_id,
           type: "protection_refund",
           amount_cents: amount,
-          meta: { protection_id: protectionId, marketType },
+          meta: {
+            protection_id: protectionId,
+            marketType,
+            cancelled_by: isAdmin ? "admin" : "user",
+          },
         },
       });
     } catch {
@@ -1855,18 +1894,109 @@ async function cancelProtectionRefund(token, body) {
       method: "POST",
       token: SERVICE_KEY,
       body: {
-        admin_id: adminId,
-        action: "protection_cancel_refund",
+        admin_id: adminId || callerId,
+        action: isAdmin ? "protection_cancel_refund" : "user_cancel_protection",
         entity_type: table,
         entity_id: protectionId,
-        details: { amount_cents: amount, marketType },
+        details: { amount_cents: amount, marketType, by: callerId },
       },
     });
   } catch {
     /* */
   }
 
-  return { ok: true, protectionId, status: "cancelled", refundedCents: amount };
+  return {
+    ok: true,
+    protectionId,
+    status: "cancelled",
+    refundedCents: amount,
+    message: "Ancoragem cancelada com sucesso!",
+  };
+}
+
+async function createOddContestation(token, body) {
+  const userId = requireUserId(token);
+  const protectionId = String(body?.protectionId || body?.id || "").trim();
+  const category = String(body?.category || body?.marketType || "LAY").toUpperCase();
+  const newOdd = Number(String(body?.newOdd || body?.requested_odd || "").replace(",", "."));
+  const proofUrl = String(body?.proofUrl || body?.proof_url || "").trim();
+  if (!protectionId) throw new Error("protectionId obrigatório");
+  if (!Number.isFinite(newOdd) || newOdd <= 1) {
+    throw new Error("Por favor, insira uma odd válida.");
+  }
+  if (!proofUrl) throw new Error("Comprovante obrigatório");
+
+  const { table, row } = await loadProtectionRow(protectionId, category);
+  if (String(row.user_id) !== String(userId)) throw new Error("Acesso negado");
+  const st = String(row.status || "").toLowerCase();
+  if (st !== "active" && st !== "review_odd") {
+    throw new Error("Só é possível contestar proteções ativas");
+  }
+  if (row.match_id) {
+    const matches = await sb(
+      `/rest/v1/matches?select=id,starts_at&id=eq.${encodeURIComponent(row.match_id)}&limit=1`,
+      { token: SERVICE_KEY }
+    ).catch(() => []);
+    const match = Array.isArray(matches) ? matches[0] : null;
+    if (match?.starts_at && new Date(match.starts_at).getTime() <= Date.now()) {
+      throw new Error("O jogo já iniciou. Contestação indisponível.");
+    }
+  }
+
+  const existing = await sb(
+    `/rest/v1/odd_contestations?protection_id=eq.${encodeURIComponent(protectionId)}&status=eq.pending&select=id&limit=1`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  if (Array.isArray(existing) && existing.length) {
+    return { ok: true, alreadyExists: true, id: existing[0].id };
+  }
+
+  const originalOdd = Number(row.odd) || newOdd;
+  const payload = {
+    protection_id: protectionId,
+    user_id: userId,
+    status: "pending",
+    requested_odd: newOdd,
+    original_odd: originalOdd,
+    proof_url: proofUrl,
+    market_category: category === "BACK" ? "BACK" : "LAY",
+    created_at: new Date().toISOString(),
+  };
+
+  let created;
+  try {
+    created = await sb("/rest/v1/odd_contestations", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: payload,
+    });
+  } catch (err) {
+    // schema sem market_category / proof_url
+    const slim = {
+      protection_id: protectionId,
+      user_id: userId,
+      status: "pending",
+      requested_odd: newOdd,
+      original_odd: originalOdd,
+      created_at: new Date().toISOString(),
+    };
+    try {
+      created = await sb("/rest/v1/odd_contestations", {
+        method: "POST",
+        token: SERVICE_KEY,
+        body: { ...slim, proof_url: proofUrl },
+      });
+    } catch {
+      created = await sb("/rest/v1/odd_contestations", {
+        method: "POST",
+        token: SERVICE_KEY,
+        body: slim,
+      });
+    }
+  }
+
+  const rowOut = Array.isArray(created) ? created[0] : created;
+  return { ok: true, alreadyExists: false, id: rowOut?.id || null };
 }
 
 function openProtectionStatuses() {
@@ -2653,6 +2783,36 @@ async function handleServerFn(req, res, id, rawBody = "") {
     }
   }
 
+  if (id === FN.USER_CANCEL_PROTECTION && req.method === "POST") {
+    try {
+      return sendTsrOk(
+        res,
+        await cancelProtectionRefund(token, extractServerFnData(rawBody))
+      );
+    } catch (err) {
+      console.error("[serverfn-shim] USER_CANCEL_PROTECTION error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
+  if (id === FN.ODD_CONTESTATION && req.method === "POST") {
+    try {
+      return sendTsrOk(
+        res,
+        await createOddContestation(token, extractServerFnData(rawBody))
+      );
+    } catch (err) {
+      console.error("[serverfn-shim] ODD_CONTESTATION error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
   if (
     (id === FN.MATCH_SETTLE_SINGLE ||
       id === FN.MATCH_SETTLE_MARKET ||
@@ -3050,6 +3210,28 @@ const server = createServer(async (req, res) => {
         res,
         200,
         await cancelProtectionRefund(token, body.data || body)
+      );
+    } catch (err) {
+      return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/odd-contestation" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      return sendJson(
+        res,
+        200,
+        await createOddContestation(token, body.data || body)
       );
     } catch (err) {
       return sendJson(res, 400, {

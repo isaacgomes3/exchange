@@ -429,6 +429,141 @@
       line-height: 1.45;
       margin-top: 8px;
     }
+    .mp-user-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .mp-user-actions button {
+      height: 40px;
+      border-radius: 8px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .mp-btn-cancel {
+      border: 1px solid rgba(248, 113, 113, 0.35);
+      background: rgba(248, 113, 113, 0.08);
+      color: #f87171;
+    }
+    .mp-btn-contest {
+      border: 1px solid rgba(192, 132, 252, 0.35);
+      background: rgba(192, 132, 252, 0.08);
+      color: #c084fc;
+    }
+    .mp-started-note {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.4);
+      line-height: 1.45;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .mp-modal-bg {
+      position: fixed;
+      inset: 0;
+      z-index: 90;
+      background: rgba(0, 0, 0, 0.65);
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+    }
+    .mp-modal-bg.open { display: flex; }
+    @media (min-width: 720px) {
+      .mp-modal-bg { align-items: center; }
+    }
+    .mp-modal {
+      width: min(420px, 100%);
+      max-height: 90vh;
+      overflow-y: auto;
+      background: #020d09;
+      border: 1px solid rgba(192, 132, 252, 0.25);
+      border-radius: 16px 16px 0 0;
+      padding: 22px;
+    }
+    @media (min-width: 720px) {
+      .mp-modal { border-radius: 16px; }
+    }
+    .mp-modal h3 {
+      margin: 0 0 6px;
+      font-size: 22px;
+      font-weight: 900;
+      text-transform: uppercase;
+      font-style: italic;
+      color: #fff;
+    }
+    .mp-modal h3 span { color: #c084fc; }
+    .mp-modal .sub {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.45);
+      line-height: 1.45;
+      margin-bottom: 18px;
+    }
+    .mp-modal label {
+      display: block;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.4);
+      margin-bottom: 6px;
+    }
+    .mp-modal input[type="text"],
+    .mp-modal input[type="number"] {
+      width: 100%;
+      height: 48px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.03);
+      color: #fff;
+      font-size: 18px;
+      font-weight: 900;
+      font-family: ui-monospace, monospace;
+      padding: 0 14px;
+      margin-bottom: 14px;
+      outline: none;
+    }
+    .mp-modal input[type="file"] {
+      width: 100%;
+      margin-bottom: 14px;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 12px;
+    }
+    .mp-modal-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .mp-modal-actions button {
+      height: 44px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .mp-modal-actions .ghost {
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: transparent;
+      color: #fff;
+    }
+    .mp-modal-actions .primary {
+      border: 0;
+      background: #c084fc;
+      color: #120816;
+    }
   </style>
 </head>
 <body data-shell="app" data-active="protecoes">
@@ -479,6 +614,21 @@
     <div class="mp-drawer-head" id="drawerHead"></div>
     <div class="mp-drawer-body" id="drawerBody"></div>
   </aside>
+
+  <div class="mp-modal-bg" id="contestModal" aria-hidden="true">
+    <div class="mp-modal" role="dialog" aria-label="Contestar Odd">
+      <h3>Contestar <span>Odd</span></h3>
+      <p class="sub">Se a odd na casa de aposta foi diferente da exibida na ArbiShield no momento da ancoragem, envie o comprovante para auditoria e recálculo do seu lucro.</p>
+      <label for="contestOdd">Odd real na casa externa</label>
+      <input id="contestOdd" type="text" inputmode="decimal" placeholder="Ex: 5.80" />
+      <label for="contestFile">Anexar print do comprovante</label>
+      <input id="contestFile" type="file" accept="image/*" />
+      <div class="mp-modal-actions">
+        <button type="button" class="ghost" id="contestCancel">Fechar</button>
+        <button type="button" class="primary" id="contestSend">Enviar</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     (function () {
@@ -589,6 +739,7 @@
         q: "",
         loading: false,
         detailId: null,
+        contestId: null,
       };
 
       function money(cents) {
@@ -1083,6 +1234,25 @@
             '" alt="Comprovante" style="width:100%;max-height:260px;object-fit:cover;display:block" /></a></div>';
         }
 
+        var stKey = String(row.status || "").toLowerCase();
+        var canAct = stKey === "active" || stKey === "review_odd";
+        var startsAt = m.starts_at || row.starts_at || null;
+        var started = startsAt ? new Date(startsAt).getTime() <= Date.now() : false;
+        if (canAct) {
+          html += '<div><p class="mp-sec-title">Ações</p>';
+          if (started) {
+            html +=
+              '<p class="mp-started-note">Jogo já iniciado. Cancelamento de ancoragem e contestação de odd indisponíveis para prevenir fraudes. Aguarde o encerramento oficial.</p>';
+          } else {
+            html +=
+              '<div class="mp-user-actions">' +
+              '<button type="button" class="mp-btn-contest" id="btnContest">Contestação de Odd</button>' +
+              '<button type="button" class="mp-btn-cancel" id="btnCancelAnchor">Cancelar Ancoragem</button>' +
+              "</div>";
+          }
+          html += "</div>";
+        }
+
         document.getElementById("drawerBody").innerHTML = html;
 
         var copyBtn = document.getElementById("btnCopyLink");
@@ -1098,6 +1268,175 @@
           openBtn.addEventListener("click", function () {
             window.open(info.link, "_blank", "noopener,noreferrer");
           });
+        }
+        var cancelBtn = document.getElementById("btnCancelAnchor");
+        if (cancelBtn) {
+          cancelBtn.addEventListener("click", function () {
+            cancelAnchor(row);
+          });
+        }
+        var contestBtn = document.getElementById("btnContest");
+        if (contestBtn) {
+          contestBtn.addEventListener("click", function () {
+            openContestModal(row);
+          });
+        }
+      }
+
+      async function authToken(supa) {
+        var sess = await supa.auth.getSession();
+        return (sess.data && sess.data.session && sess.data.session.access_token) || "";
+      }
+
+      async function cancelAnchor(row) {
+        if (
+          !window.confirm(
+            "Tem certeza que deseja cancelar esta ancoragem? O saldo será estornado imediatamente."
+          )
+        ) {
+          return;
+        }
+        var btn = document.getElementById("btnCancelAnchor");
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "Cancelando...";
+        }
+        try {
+          var supa = ArbiV2.client();
+          var token = await authToken(supa);
+          if (!token) throw new Error("Faça login novamente");
+          var category = resolveMarket(row).type || row._kind || "LAY";
+          var res = await fetch("/api/arbishield/protection-cancel", {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer " + token,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              protectionId: row.id,
+              category: category,
+              marketType: category,
+            }),
+          });
+          var data = await res.json().catch(function () {
+            return {};
+          });
+          if (!res.ok || data.ok === false) {
+            throw new Error(data.error || data.message || "Erro ao cancelar ancoragem");
+          }
+          alert(data.message || "Ancoragem cancelada com sucesso!");
+          closeDetail();
+          await load();
+        } catch (ex) {
+          alert(ex.message || "Erro ao cancelar ancoragem");
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Cancelar Ancoragem";
+          }
+        }
+      }
+
+      function openContestModal(row) {
+        state.contestId = row.id;
+        document.getElementById("contestOdd").value = String(row.odd != null ? row.odd : "");
+        document.getElementById("contestFile").value = "";
+        var modal = document.getElementById("contestModal");
+        modal.classList.add("open");
+        modal.setAttribute("aria-hidden", "false");
+      }
+
+      function closeContestModal() {
+        state.contestId = null;
+        var modal = document.getElementById("contestModal");
+        modal.classList.remove("open");
+        modal.setAttribute("aria-hidden", "true");
+      }
+
+      async function submitContest() {
+        var row = state.rows.find(function (r) {
+          return String(r.id) === String(state.contestId);
+        });
+        if (!row) return;
+        var oddRaw = String(document.getElementById("contestOdd").value || "").replace(",", ".");
+        var newOdd = parseFloat(oddRaw);
+        if (!Number.isFinite(newOdd) || newOdd <= 1) {
+          alert("Por favor, insira uma odd válida.");
+          return;
+        }
+        var fileInput = document.getElementById("contestFile");
+        var file = fileInput && fileInput.files && fileInput.files[0];
+        if (!file) {
+          alert("Por favor, anexe o print do comprovante da casa de aposta.");
+          return;
+        }
+        var sendBtn = document.getElementById("contestSend");
+        if (sendBtn) {
+          sendBtn.disabled = true;
+          sendBtn.textContent = "Enviando…";
+        }
+        try {
+          var supa = ArbiV2.client();
+          var token = await authToken(supa);
+          if (!token) throw new Error("Faça login novamente");
+          var ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+          var path =
+            "contestations/contestation-" +
+            row.id +
+            "-" +
+            Date.now() +
+            "-" +
+            Math.random().toString(36).slice(2) +
+            "." +
+            ext;
+          var up = await supa.storage.from("bet-proofs").upload(path, file, {
+            contentType: file.type || "image/jpeg",
+            upsert: false,
+          });
+          if (up.error) throw up.error;
+          var signed = await supa.storage.from("bet-proofs").createSignedUrl(path, 3600 * 24 * 365);
+          if (signed.error || !signed.data || !signed.data.signedUrl) {
+            throw signed.error || new Error("Falha ao gerar URL do comprovante");
+          }
+          var category = resolveMarket(row).type || row._kind || "LAY";
+          var res = await fetch("/api/arbishield/odd-contestation", {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer " + token,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              protectionId: row.id,
+              category: category,
+              newOdd: newOdd,
+              proofUrl: signed.data.signedUrl,
+            }),
+          });
+          var data = await res.json().catch(function () {
+            return {};
+          });
+          if (!res.ok || data.ok === false) {
+            throw new Error(data.error || data.message || "Erro ao enviar contestação");
+          }
+          if (data.alreadyExists) {
+            alert("Já existe uma contestação em análise para esta proteção.");
+          } else {
+            alert("Contestação enviada! Nossa equipe vai analisar e liberar em instantes.");
+          }
+          closeContestModal();
+          await load();
+          if (state.detailId) {
+            var updated = state.rows.find(function (r) {
+              return String(r.id) === String(state.detailId);
+            });
+            if (updated) renderDetail(updated);
+          }
+        } catch (ex) {
+          alert(ex.message || "Erro ao enviar contestação");
+        } finally {
+          if (sendBtn) {
+            sendBtn.disabled = false;
+            sendBtn.textContent = "Enviar";
+          }
         }
       }
 
@@ -1260,8 +1599,16 @@
       });
       document.getElementById("drawerClose").addEventListener("click", closeDetail);
       document.getElementById("drawerBg").addEventListener("click", closeDetail);
+      document.getElementById("contestCancel").addEventListener("click", closeContestModal);
+      document.getElementById("contestSend").addEventListener("click", submitContest);
+      document.getElementById("contestModal").addEventListener("click", function (e) {
+        if (e.target === document.getElementById("contestModal")) closeContestModal();
+      });
       document.addEventListener("keydown", function (e) {
-        if (e.key === "Escape" && state.detailId) closeDetail();
+        if (e.key === "Escape") {
+          if (state.contestId) closeContestModal();
+          else if (state.detailId) closeDetail();
+        }
       });
 
       load();
