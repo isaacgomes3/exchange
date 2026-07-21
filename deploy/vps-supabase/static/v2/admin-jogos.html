@@ -382,7 +382,7 @@
     <div class="toolbar">
       <div class="tabs" id="viewTabs">
         <button class="tab active" data-view="prelive" type="button">Próximos jogos</button>
-        <button class="tab" data-view="platform" type="button">Eventos ArbiShield</button>
+        <button class="tab" data-view="platform" type="button">Eventos ArbiShield (liquidar)</button>
       </div>
       <input class="search" id="search" type="search" placeholder="Buscar time ou liga…" />
     </div>
@@ -414,8 +414,12 @@
         <h2>Eventos cadastrados na plataforma</h2>
         <span class="hint" id="platformMeta">—</span>
       </div>
+      <p class="hint" style="margin:0 0 12px">
+        Jogos com proteção aberta no Monitor aparecem em <strong style="color:var(--lime)">A liquidar</strong> — mesmo depois de +3h do kickoff.
+      </p>
       <div class="platform-filters" id="platformFilters">
         <button type="button" class="chip is-on" data-pf="fila">Fila (atuais)</button>
+        <button type="button" class="chip" data-pf="settle">A liquidar</button>
         <button type="button" class="chip" data-pf="draft">Rascunhos</button>
         <button type="button" class="chip" data-pf="done">Finalizados</button>
         <button type="button" class="chip" data-pf="all">Todos</button>
@@ -424,6 +428,28 @@
         <div class="loading">Carregando eventos…</div>
       </div>
     </section>
+  </div>
+
+  <div class="modal-backdrop" id="settleModal">
+    <div class="modal">
+      <h3>Encerrar <span style="color:var(--lime)">partida</span></h3>
+      <p id="settleSummary" class="hint">Registre o placar e onde o jogo bateu (ArbiShield ou Exchange).</p>
+      <div class="grid" style="margin-top:12px">
+        <div class="field"><label>Placar casa</label><input id="settleHome" type="number" min="0" step="1" placeholder="0" /></div>
+        <div class="field"><label>Placar fora</label><input id="settleAway" type="number" min="0" step="1" placeholder="0" /></div>
+      </div>
+      <div class="field" style="margin-top:10px">
+        <label>Resultado / onde bateu</label>
+        <select id="settleOutcome">
+          <option value="arbishield">Bateu ArbiShield (zebra / proteção)</option>
+          <option value="exchange">Bateu Exchange (casa / favorito)</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="btnCancelSettle" type="button">Cancelar</button>
+        <button class="btn btn-primary btn-sm" id="btnConfirmSettle" type="button">Liquidar jogo</button>
+      </div>
+    </div>
   </div>
 
   <div class="modal-backdrop" id="createModal">
@@ -957,6 +983,16 @@
         }
       }
 
+      function matchNeedsSettle(m) {
+        if (!m) return false;
+        if (m.settled_at || m.final_score) return false;
+        var st = String(m.status || m.status_v2 || "").toLowerCase();
+        if (["settled", "finished", "closed", "cancelled", "finalizado"].indexOf(st) >= 0) {
+          return false;
+        }
+        return Number(m.used_protection_cents || 0) > 0 || Number(m._openProtections || 0) > 0;
+      }
+
       function matchBucket(m) {
         var st = String(m.status || m.status_v2 || "").toLowerCase();
         var finished =
@@ -964,9 +1000,14 @@
           !!m.settled_at ||
           ["settled", "finished", "closed", "cancelled", "finalizado"].indexOf(st) >= 0;
         if (finished) return "done";
+        // Com proteção aberta: permanece liquidável (não some da fila após 3h)
+        if (matchNeedsSettle(m)) {
+          var startLive = m.starts_at ? new Date(m.starts_at).getTime() : NaN;
+          if (Number.isFinite(startLive) && startLive <= Date.now()) return "settle";
+          return "settle";
+        }
         var start = m.starts_at ? new Date(m.starts_at).getTime() : NaN;
         if (Number.isFinite(start) && start <= Date.now() - 3 * 60 * 60 * 1000) {
-          // começou há +3h e sem settle marcado → trata como encerrado na fila
           return "done";
         }
         if (!m.is_published) return "draft";
@@ -975,14 +1016,13 @@
       }
 
       function sortPlatform(rows) {
-        var rank = { live: 0, open: 1, draft: 2, done: 3 };
+        var rank = { settle: 0, live: 1, open: 2, draft: 3, done: 4 };
         return rows.slice().sort(function (a, b) {
           var ba = matchBucket(a);
           var bb = matchBucket(b);
           if (rank[ba] !== rank[bb]) return rank[ba] - rank[bb];
           var ta = new Date(a.starts_at || 0).getTime();
           var tb = new Date(b.starts_at || 0).getTime();
-          // atuais/próximos: mais cedo primeiro; finalizados: mais recentes primeiro
           if (ba === "done" && bb === "done") return tb - ta;
           return ta - tb;
         });
@@ -993,16 +1033,24 @@
           platformMatches.filter(function (m) {
             if (!filterText(m)) return false;
             var bucket = matchBucket(m);
-            if (platformFilter === "fila") return bucket === "open" || bucket === "live";
+            if (platformFilter === "fila") {
+              return (
+                bucket === "open" ||
+                bucket === "live" ||
+                bucket === "settle"
+              );
+            }
+            if (platformFilter === "settle") return bucket === "settle";
             if (platformFilter === "draft") return bucket === "draft";
             if (platformFilter === "done") return bucket === "done";
             return true;
           })
         );
-        var counts = { fila: 0, draft: 0, done: 0, all: platformMatches.length };
+        var counts = { fila: 0, settle: 0, draft: 0, done: 0, all: platformMatches.length };
         platformMatches.forEach(function (m) {
           var b = matchBucket(m);
-          if (b === "open" || b === "live") counts.fila += 1;
+          if (b === "open" || b === "live" || b === "settle") counts.fila += 1;
+          if (b === "settle") counts.settle += 1;
           if (b === "draft") counts.draft += 1;
           if (b === "done") counts.done += 1;
         });
@@ -1010,6 +1058,8 @@
           filtered.length +
           " na vista · fila " +
           counts.fila +
+          " · a liquidar " +
+          counts.settle +
           " · rascunhos " +
           counts.draft +
           " · finalizados " +
@@ -1019,8 +1069,10 @@
           $("platformContent").innerHTML =
             '<div class="empty">' +
             (platformFilter === "fila"
-              ? "Nenhum jogo atual/próximo na fila. Rascunhos e finalizados estão nas outras abas."
-              : "Nenhum jogo encontrado nesta categoria") +
+              ? "Nenhum jogo atual/próximo na fila. Use a aba “A liquidar” para jogos com proteção ainda aberta."
+              : platformFilter === "settle"
+                ? "Nenhum jogo pendente de liquidação (com proteção aberta)."
+                : "Nenhum jogo encontrado nesta categoria") +
             "</div>";
           return;
         }
@@ -1030,13 +1082,15 @@
             .map(function (m) {
               var bucket = matchBucket(m);
               var badge =
-                bucket === "live"
-                  ? '<span class="badge live">Ao vivo</span>'
-                  : bucket === "done"
-                    ? '<span class="badge done">Finalizado</span>'
-                    : m.is_published
-                      ? '<span class="badge pub">Na fila</span>'
-                      : '<span class="badge draft">Rascunho</span>';
+                bucket === "settle"
+                  ? '<span class="badge live">A liquidar</span>'
+                  : bucket === "live"
+                    ? '<span class="badge live">Ao vivo</span>'
+                    : bucket === "done"
+                      ? '<span class="badge done">Finalizado</span>'
+                      : m.is_published
+                        ? '<span class="badge pub">Na fila</span>'
+                        : '<span class="badge draft">Rascunho</span>';
               var markets = Array.isArray(m.markets) ? m.markets : [];
               var names = markets
                 .map(function (x) { return x && x.name; })
@@ -1051,6 +1105,14 @@
                     m.id +
                     '" style="margin-top:8px">Publicar</button>'
                   : "";
+              var settleBtn =
+                bucket === "settle" || bucket === "live"
+                  ? '<button class="btn btn-primary btn-sm" type="button" data-settle="' +
+                    m.id +
+                    '" style="margin-top:8px">Encerrar partida</button>'
+                  : "";
+              var used = Number(m.used_protection_cents || 0);
+              var openN = Number(m._openProtections || 0);
               return (
                 '<div class="row" style="cursor:default">' +
                 "<div><div class=\"teams\">" +
@@ -1066,8 +1128,11 @@
                 markets.length +
                 " entrada(s) · liquidez " +
                 money(m.max_protection_cents) +
+                (used > 0 ? " · protegido " + money(used) : "") +
+                (openN > 0 ? " · " + openN + " proteção(ões) aberta(s)" : "") +
                 "</div>" +
                 publishBtn +
+                settleBtn +
                 "</div>" +
                 '<div class="time">' +
                 badge +
@@ -1082,6 +1147,11 @@
         $("platformContent").querySelectorAll("button[data-publish]").forEach(function (btn) {
           btn.addEventListener("click", function () {
             publishMatch(btn.getAttribute("data-publish"), btn);
+          });
+        });
+        $("platformContent").querySelectorAll("button[data-settle]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            openSettleModal(btn.getAttribute("data-settle"));
           });
         });
       }
@@ -1161,10 +1231,82 @@
         }
         try {
           platformMatches = await rest(
-            "matches?deleted_at=is.null&select=id,home_team,away_team,league,starts_at,is_published,status,status_v2,final_score,settled_at,max_protection_cents,used_protection_cents,markets&order=starts_at.asc&limit=200",
+            "matches?deleted_at=is.null&select=id,home_team,away_team,league,starts_at,is_published,status,status_v2,final_score,settled_at,max_protection_cents,used_protection_cents,markets&order=starts_at.desc&limit=500",
             auth.token
           );
+          // Marca jogos com proteção ainda aberta (LAY + BACK)
+          var openByMatch = {};
+          try {
+            var openProt = await rest(
+              "protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,responsibility_cents&limit=2000",
+              auth.token
+            );
+            (openProt || []).forEach(function (p) {
+              if (!p.match_id) return;
+              if (!openByMatch[p.match_id]) openByMatch[p.match_id] = { count: 0, cents: 0 };
+              openByMatch[p.match_id].count += 1;
+              openByMatch[p.match_id].cents += Number(
+                p.responsibility_cents || p.amount_cents || 0
+              );
+            });
+          } catch (e1) {}
+          try {
+            var openBack = await rest(
+              "back_protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents&limit=1000",
+              auth.token
+            );
+            (openBack || []).forEach(function (p) {
+              if (!p.match_id) return;
+              if (!openByMatch[p.match_id]) openByMatch[p.match_id] = { count: 0, cents: 0 };
+              openByMatch[p.match_id].count += 1;
+              openByMatch[p.match_id].cents += Number(p.amount_cents || 0);
+            });
+          } catch (e2) {}
+
+          var known = {};
+          platformMatches.forEach(function (m) {
+            known[m.id] = true;
+            var op = openByMatch[m.id];
+            if (op) {
+              m._openProtections = op.count;
+              if (!(Number(m.used_protection_cents) > 0)) {
+                m.used_protection_cents = op.cents;
+              }
+            }
+          });
+
+          // Inclui jogos que têm proteção aberta mas ficaram de fora do limit
+          var missingIds = Object.keys(openByMatch).filter(function (id) {
+            return !known[id];
+          });
+          if (missingIds.length) {
+            var extra = await rest(
+              "matches?id=in.(" +
+                missingIds.map(encodeURIComponent).join(",") +
+                ")&deleted_at=is.null&select=id,home_team,away_team,league,starts_at,is_published,status,status_v2,final_score,settled_at,max_protection_cents,used_protection_cents,markets",
+              auth.token
+            );
+            (extra || []).forEach(function (m) {
+              var op = openByMatch[m.id];
+              m._openProtections = op ? op.count : 0;
+              if (!(Number(m.used_protection_cents) > 0) && op) {
+                m.used_protection_cents = op.cents;
+              }
+              platformMatches.push(m);
+            });
+          }
+
           platformLoaded = true;
+          // Na 1ª carga: se há jogos a liquidar (os do Monitor), abre nessa aba
+          var settleN = platformMatches.filter(function (m) {
+            return matchBucket(m) === "settle";
+          }).length;
+          if (settleN > 0 && platformFilter === "fila" && !force) {
+            platformFilter = "settle";
+            document.querySelectorAll("#platformFilters .chip").forEach(function (c) {
+              c.classList.toggle("is-on", c.getAttribute("data-pf") === "settle");
+            });
+          }
           renderPlatformList();
         } catch (err) {
           platformLoaded = false;
@@ -1401,6 +1543,77 @@
         }
       }
 
+      var settleMatchId = null;
+
+      function openSettleModal(matchId) {
+        var m = platformMatches.find(function (x) { return String(x.id) === String(matchId); });
+        if (!m) return;
+        settleMatchId = matchId;
+        $("settleSummary").textContent =
+          (m.home_team || "?") +
+          " vs " +
+          (m.away_team || "?") +
+          " · protegido " +
+          money(m.used_protection_cents || 0) +
+          " · escolha placar e onde bateu.";
+        $("settleHome").value = "";
+        $("settleAway").value = "";
+        $("settleOutcome").value = "arbishield";
+        $("settleModal").classList.add("show");
+      }
+
+      async function confirmSettle() {
+        if (!settleMatchId || !auth) {
+          alert("Faça login admin.");
+          return;
+        }
+        var home = String($("settleHome").value || "0").trim() || "0";
+        var away = String($("settleAway").value || "0").trim() || "0";
+        var outcome = $("settleOutcome").value;
+        if (outcome !== "arbishield" && outcome !== "exchange") {
+          alert("Selecione o resultado.");
+          return;
+        }
+        $("btnConfirmSettle").disabled = true;
+        $("btnConfirmSettle").textContent = "Liquidando…";
+        try {
+          var res = await fetch("/api/arbishield/match-settle", {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer " + auth.token,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              matchId: settleMatchId,
+              outcome: outcome,
+              finalScore: home + "-" + away,
+              homeScore: Number(home),
+              awayScore: Number(away),
+            }),
+          });
+          var data = await res.json().catch(function () { return {}; });
+          if (!res.ok) throw new Error(data.error || "Falha ao liquidar");
+          alert(
+            "Partida encerrada · " +
+              (data.settledCount || 0) +
+              " proteção(ões) liquidada(s)."
+          );
+          $("settleModal").classList.remove("show");
+          platformLoaded = false;
+          await loadPlatformMatches({ force: true });
+          platformFilter = "done";
+          document.querySelectorAll("#platformFilters .chip").forEach(function (c) {
+            c.classList.toggle("is-on", c.getAttribute("data-pf") === "done");
+          });
+          renderPlatformList();
+        } catch (err) {
+          alert(err.message || "Erro ao encerrar partida");
+        } finally {
+          $("btnConfirmSettle").disabled = false;
+          $("btnConfirmSettle").textContent = "Liquidar jogo";
+        }
+      }
+
       async function boot() {
         showAppShell();
 
@@ -1432,6 +1645,19 @@
         $("createModal").addEventListener("click", function (e) {
           if (e.target === $("createModal")) $("createModal").classList.remove("show");
         });
+        if ($("btnCancelSettle")) {
+          $("btnCancelSettle").addEventListener("click", function () {
+            $("settleModal").classList.remove("show");
+          });
+        }
+        if ($("btnConfirmSettle")) {
+          $("btnConfirmSettle").addEventListener("click", confirmSettle);
+        }
+        if ($("settleModal")) {
+          $("settleModal").addEventListener("click", function (e) {
+            if (e.target === $("settleModal")) $("settleModal").classList.remove("show");
+          });
+        }
         if ($("onlyWithOdds")) {
           $("onlyWithOdds").addEventListener("change", function () {
             if (window.__preliveMarketsData) renderMarkets(window.__preliveMarketsData);

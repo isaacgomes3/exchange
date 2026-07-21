@@ -104,6 +104,13 @@ const FN = {
     "7389baaef3c2b584c409c59fc824e6b8438e2b36b31962f19de0f1815c6e443a",
   PROTECTION_CLOSE_NO_REFUND:
     "85ba18adcbc268610fb2ac76551978abee821260d93161e23aca41bd5d531e21",
+  /** Admin Jogos — liquidar partida / mercado (SPA admin.matches) */
+  MATCH_SETTLE_SINGLE:
+    "c18778cffbba4cac38b3df54b2a50b3179a999b1c9908c2adbddd929ada5932f",
+  MATCH_SETTLE_MARKET:
+    "21c595c85ce2650c9c69d344a653ac759200afa18939bed530bb7448f7f8ffe0",
+  MATCH_SETTLE_MULTI:
+    "b70f19e71ec3ab8c40e0717abe92ab2082c7eedd832da71ab87cea2f2d95e286",
   /** Desafio — participação / settle (SPA surebet-validation) */
   DESAFIO_LIST_ACTIVE:
     "3d73b89476f54f1c738f12aa01a568e18829e0f8072936120346589e89b7b310",
@@ -1862,6 +1869,229 @@ async function cancelProtectionRefund(token, body) {
   return { ok: true, protectionId, status: "cancelled", refundedCents: amount };
 }
 
+function openProtectionStatuses() {
+  return ["active", "pending", "review_odd"];
+}
+
+function isOpenProtectionStatus(st) {
+  return openProtectionStatuses().includes(String(st || "").toLowerCase());
+}
+
+async function applyProtectionSettlement(row, table, outcome) {
+  const amount = n(row.responsibility_cents || row.amount_cents);
+  const profit = n(row.user_profit_cents);
+  const wonArbi = String(outcome).toLowerCase() === "arbishield";
+  const status = wonArbi ? "won_platform" : "won_exchange";
+  const now = new Date().toISOString();
+
+  if (row.user_id && amount > 0) {
+    try {
+      const prof = await sb(
+        `/rest/v1/profiles?select=balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+        { token: SERVICE_KEY }
+      );
+      const p = Array.isArray(prof) ? prof[0] : null;
+      if (p) {
+        const locked = Math.max(0, n(p.locked_balance_cents) - amount);
+        // arbishield: devolve stake + lucro; exchange: stake fica na plataforma
+        const balance = wonArbi
+          ? n(p.balance_cents) + amount + Math.max(0, profit)
+          : n(p.balance_cents);
+        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: {
+            balance_cents: balance,
+            locked_balance_cents: locked,
+            updated_at: now,
+          },
+        });
+      }
+    } catch {
+      /* saldo best-effort */
+    }
+  }
+
+  await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(row.id)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: {
+      status,
+      settled_at: now,
+      settled_outcome: String(outcome).toLowerCase(),
+      result: status,
+      updated_at: now,
+    },
+  });
+
+  return { id: row.id, status, amount };
+}
+
+async function settleMatch(token, body) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const matchId = String(body?.matchId || body?.id || "").trim();
+  if (!matchId) throw new Error("matchId obrigatório");
+
+  const outcomesMap =
+    body?.outcomes && typeof body.outcomes === "object" && !Array.isArray(body.outcomes)
+      ? body.outcomes
+      : null;
+  const marketId = body?.marketId ? String(body.marketId) : null;
+  let outcome = String(body?.outcome || "").toLowerCase();
+  if (!outcome && outcomesMap) {
+    const vals = Object.values(outcomesMap).map((v) => String(v).toLowerCase());
+    outcome = vals[0] || "";
+  }
+  if (outcome && outcome !== "arbishield" && outcome !== "exchange") {
+    throw new Error("outcome inválido (use arbishield ou exchange)");
+  }
+
+  let finalScore = body?.finalScore || body?.final_score || null;
+  if (
+    !finalScore &&
+    (body?.homeScore != null ||
+      body?.awayScore != null ||
+      body?.final_score_home != null ||
+      body?.final_score_away != null)
+  ) {
+    finalScore = `${Number(body.homeScore ?? body.final_score_home ?? 0)}-${Number(
+      body.awayScore ?? body.final_score_away ?? 0
+    )}`;
+  }
+
+  const rows = await sb(
+    `/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}&select=*&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const match = Array.isArray(rows) ? rows[0] : null;
+  if (!match) throw new Error("Partida não encontrada");
+
+  let markets = Array.isArray(match.markets) ? [...match.markets] : [];
+  if (marketId && outcome) {
+    markets = markets.map((m) =>
+      String(m?.id) === String(marketId)
+        ? { ...m, settled_outcome: outcome }
+        : m
+    );
+  } else if (outcomesMap) {
+    markets = markets.map((m) => {
+      const key = String(m?.id);
+      const o = outcomesMap[key] ?? outcomesMap[m?.id];
+      return o ? { ...m, settled_outcome: String(o).toLowerCase() } : m;
+    });
+    if (!outcome) {
+      const first = markets.find((m) => m.settled_outcome);
+      outcome = String(first?.settled_outcome || "").toLowerCase();
+    }
+  } else if (outcome) {
+    markets = markets.map((m) => ({ ...m, settled_outcome: outcome }));
+  }
+
+  if (!outcome && !marketId && !outcomesMap) {
+    throw new Error("Informe outcome (arbishield/exchange)");
+  }
+
+  const now = new Date().toISOString();
+  const patchMatch = {
+    markets,
+    updated_at: now,
+  };
+  // liquidação completa da partida (não só um mercado)
+  if (!marketId) {
+    if (finalScore) patchMatch.final_score = String(finalScore);
+    patchMatch.settled_at = now;
+    patchMatch.status = "settled";
+    try {
+      patchMatch.status_v2 = "settled";
+    } catch {
+      /* */
+    }
+  }
+
+  await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: patchMatch,
+  });
+
+  const statusFilter = openProtectionStatuses()
+    .map(encodeURIComponent)
+    .join(",");
+  const [lays, backs] = await Promise.all([
+    sb(
+      `/rest/v1/protections?match_id=eq.${encodeURIComponent(matchId)}&status=in.(${statusFilter})&select=*&limit=2000`,
+      { token: SERVICE_KEY }
+    ).catch(() => []),
+    sb(
+      `/rest/v1/back_protections?match_id=eq.${encodeURIComponent(matchId)}&status=in.(${statusFilter})&select=*&limit=2000`,
+      { token: SERVICE_KEY }
+    ).catch(() => []),
+  ]);
+
+  const all = [
+    ...(Array.isArray(lays) ? lays : []).map((r) => ({
+      ...r,
+      _table: "protections",
+    })),
+    ...(Array.isArray(backs) ? backs : []).map((r) => ({
+      ...r,
+      _table: "back_protections",
+    })),
+  ].filter((r) => isOpenProtectionStatus(r.status));
+
+  let settledCount = 0;
+  for (const row of all) {
+    const rowMarket =
+      row.market_id ||
+      (row.metadata && (row.metadata.market_id || row.metadata.marketId)) ||
+      null;
+    let rowOutcome = outcome;
+    if (marketId) {
+      if (rowMarket && String(rowMarket) !== String(marketId)) continue;
+      rowOutcome = outcome;
+    } else if (outcomesMap && rowMarket) {
+      const o = outcomesMap[String(rowMarket)] ?? outcomesMap[rowMarket];
+      if (o) rowOutcome = String(o).toLowerCase();
+    }
+    if (!rowOutcome) continue;
+    await applyProtectionSettlement(row, row._table, rowOutcome);
+    settledCount += 1;
+  }
+
+  const adminId = requireUserId(token);
+  try {
+    await sb("/rest/v1/admin_audit_logs", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        admin_id: adminId,
+        action: marketId
+          ? "ADMIN_ACTION_SETTLE_MARKET"
+          : "ADMIN_ACTION_SETTLE",
+        entity_type: "matches",
+        entity_id: matchId,
+        details: {
+          outcome,
+          finalScore: finalScore || null,
+          marketId: marketId || null,
+          outcomes: outcomesMap || null,
+          settledCount,
+        },
+      },
+    });
+  } catch {
+    /* */
+  }
+
+  return {
+    ok: true,
+    matchId,
+    outcome: outcome || null,
+    finalScore: finalScore || null,
+    settledCount,
+  };
+}
+
 async function getUserDashboardCritical(token) {
   const userId = requireUserId(token);
   const [profileBundle, metrics] = await Promise.all([
@@ -2414,6 +2644,26 @@ async function handleServerFn(req, res, id, rawBody = "") {
     }
   }
 
+  if (
+    (id === FN.MATCH_SETTLE_SINGLE ||
+      id === FN.MATCH_SETTLE_MARKET ||
+      id === FN.MATCH_SETTLE_MULTI) &&
+    req.method === "POST"
+  ) {
+    try {
+      return sendTsrOk(
+        res,
+        await settleMatch(token, extractServerFnData(rawBody))
+      );
+    } catch (err) {
+      console.error("[serverfn-shim] MATCH_SETTLE error", err);
+      return sendTsrError(
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
   if (id === FN.BANNERS_REORDER && req.method === "POST") {
     try {
       const params = extractServerFnData(rawBody);
@@ -2792,6 +3042,24 @@ const server = createServer(async (req, res) => {
         200,
         await cancelProtectionRefund(token, body.data || body)
       );
+    } catch (err) {
+      return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/match-settle" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      return sendJson(res, 200, await settleMatch(token, body.data || body));
     } catch (err) {
       return sendJson(res, 400, {
         error: err instanceof Error ? err.message : String(err),
