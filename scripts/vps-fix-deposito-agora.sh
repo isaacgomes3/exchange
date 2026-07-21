@@ -4,7 +4,7 @@
 # Na VPS (root):
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/6eeff8fa1c5dd16eb16667449a9a553da7facd14/scripts/vps-fix-deposito-agora.sh")
 #   # ou após push:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-deposito-comprovante-723d/scripts/vps-fix-deposito-agora.sh?v=1")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-deposito-comprovante-723d/scripts/vps-fix-deposito-agora.sh?v=2")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/fix-deposito-comprovante-723d}"
@@ -74,13 +74,15 @@ for f in v2-deposit.js admin-manual-deposits.html v2-shell.js; do
 done
 grep -q 'deposit-proofs' "$WEB/v2-deposit.js" || die "v2-deposit.js sem deposit-proofs"
 grep -q 'uploadProofViaServer\|a8c4e21f' "$WEB/v2-deposit.js" || die "v2-deposit.js SEM fallback servidor — baixou arquivo antigo?"
+grep -q 'Comprovante enviado' "$WEB/v2-deposit.js" || die "v2-deposit sem texto Comprovante enviado"
 grep -q 'Confirmar e Creditar' "$WEB/admin-manual-deposits.html" || die "admin ainda antigo"
+grep -q 'proofUrl\|c1d2e3f4' "$WEB/admin-manual-deposits.html" || echo "  AVISO: admin sem proofUrl (ok se cache)"
 
 log "3/4 — shim :3101"
 curl -fsSL "$RAW/scripts/arbishield-serverfn-shim.mjs" -o "$SHIM_DIR/arbishield-serverfn-shim.mjs"
 chmod 0644 "$SHIM_DIR/arbishield-serverfn-shim.mjs"
 cp -f "$SHIM_DIR/arbishield-serverfn-shim.mjs" "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs" 2>/dev/null || true
-grep -q 'ensureStorageBuckets\|uploadDepositProof\|DEPOSIT_APPROVE' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || \
+grep -q 'ensureStorageBuckets\|uploadDepositProof\|DEPOSIT_APPROVE\|DEPOSIT_PROOF_URL' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || \
   die "shim sem handlers de depósito"
 
 # path real do systemd

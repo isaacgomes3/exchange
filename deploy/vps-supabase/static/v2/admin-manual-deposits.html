@@ -126,6 +126,7 @@
         approve: "81753fec5a4788d0cecf17daf4605047d90238c386a240b54855a19f0fbc53d2",
         credited: "1b3d8a890eea085aa1507094a9ce6e49ca532e35c3e17363c50b9dc1a253ddd5",
         reject: "97fbb202a39627b7eeade54ac383dd1197c5a76c5f392f3046ee5875fef4da50",
+        proofUrl: "c1d2e3f4a5b697887766554433221100ffeeddccbbaa99887766554433221100",
       };
 
       var rows = [];
@@ -278,10 +279,39 @@
         drawer.classList.add("show");
         try {
           var path = String(r.proof_url);
-          // path pode ser só o object path
-          var signed = await supa.storage.from("deposit-proofs").createSignedUrl(path, 3600);
-          if (signed.error || !signed.data || !signed.data.signedUrl) throw signed.error || new Error("Falha ao assinar URL");
-          var url = signed.data.signedUrl;
+          var url = null;
+          // 1) se já for URL absoluta / data
+          if (/^https?:\/\//i.test(path) || path.indexOf("data:") === 0) {
+            url = path;
+          }
+          // 2) admin_notes com proof_signed
+          if (!url && r.admin_notes && String(r.admin_notes).indexOf("proof_signed:") === 0) {
+            url = String(r.admin_notes).slice("proof_signed:".length);
+          }
+          // 3) serverFn service role
+          if (!url) {
+            var t = await token();
+            var res = await fetch("/_serverFn/" + FN.proofUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-arbishield-plain": "1",
+                Authorization: "Bearer " + t,
+              },
+              body: JSON.stringify({ data: { id: r.id, path: path } }),
+            });
+            var text = await res.text();
+            var data = {};
+            try { data = text ? JSON.parse(text) : {}; } catch (e) { data = {}; }
+            if (data && data.result != null) data = data.result;
+            if (data && data.url) url = data.url;
+          }
+          // 4) supabase client signed url
+          if (!url) {
+            var signed = await supa.storage.from("deposit-proofs").createSignedUrl(path.replace(/^deposit-proofs\//, ""), 3600);
+            if (signed.error || !signed.data || !signed.data.signedUrl) throw signed.error || new Error("Falha ao assinar URL");
+            url = signed.data.signedUrl;
+          }
           if (/\.pdf($|\?)/i.test(path)) {
             media.innerHTML = '<embed src="' + url + '" type="application/pdf" />';
           } else {
@@ -289,7 +319,8 @@
           }
         } catch (ex) {
           media.innerHTML = '<p class="muted">Não foi possível carregar o comprovante. ' +
-            ((ex && ex.message) || "") + "</p>";
+            ((ex && ex.message) || "") +
+            "<br>Se o bucket deposit-proofs ainda não existe, rode vps-fix-deposito-agora.sh na VPS.</p>";
         }
       }
 

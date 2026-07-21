@@ -165,9 +165,9 @@
       if (!uid) return;
       var res = await supa
         .from("manual_deposits")
-        .select("id, amount_cents, network, status, created_at")
+        .select("id, amount_cents, network, status, proof_url, created_at")
         .eq("user_id", uid)
-        .eq("status", "PENDING")
+        .in("status", ["PENDING", "PROCESSING", "AWAITING_PROOF"])
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -215,16 +215,27 @@
     if (state.ok) html += '<div class="dep-alert ok">' + esc(state.ok) + "</div>";
 
     if (state.pending && state.step === "destination") {
+      var hasProof = !!state.pending.proof_url;
+      var st = String(state.pending.status || "").toUpperCase();
       html +=
         '<div class="dep-pending">' +
-        "<h3>Depósito em análise</h3>" +
+        "<h3>" +
+        (hasProof ? "Comprovante enviado" : "Depósito em andamento") +
+        "</h3>" +
         "<p>" +
         money(state.pending.amount_cents) +
         " · " +
         esc(state.pending.network) +
         "</p>" +
-        '<span class="dep-badge">Em análise</span>' +
-        '<button type="button" class="dep-btn" data-act="close">Entendi</button></div>';
+        '<span class="dep-badge">' +
+        (hasProof || st === "PENDING" || st === "PROCESSING"
+          ? "Em análise · aguardando aprovação"
+          : "Aguardando comprovante") +
+        "</span>" +
+        (hasProof
+          ? ""
+          : '<button type="button" class="dep-btn" data-act="continue-proof">Enviar comprovante</button>') +
+        '<button type="button" class="dep-btn ghost" data-act="close">Fechar</button></div>';
       body.innerHTML = html;
       bind(body);
       return;
@@ -390,7 +401,14 @@
       btn.addEventListener("click", function () {
         var act = btn.getAttribute("data-act");
         if (act === "close") close();
-        else if (act === "to-amount") {
+        else if (act === "continue-proof") {
+          state.depositId = state.pending && state.pending.id;
+          state.amountCents = (state.pending && state.pending.amount_cents) || state.amountCents;
+          state.network = (state.pending && state.pending.network) || state.network || "PIX";
+          state.step = "proof";
+          state.err = "";
+          paint();
+        } else if (act === "to-amount") {
           state.step = "amount";
           paint();
         } else if (act === "back-dest") {
@@ -579,24 +597,23 @@
       var uid = sess.data && sess.data.user && sess.data.user.id;
       if (!uid) throw new Error("Sessão expirada. Faça login novamente.");
 
-      var ext = (state.file.name.split(".").pop() || "jpg").toLowerCase();
-      var path = uid + "/" + Math.random().toString(36).slice(2) + "." + ext;
-      var usedServer = false;
+      // Sempre tenta servidor primeiro (cria bucket + grava PENDING)
+      var serverUp = null;
       try {
+        serverUp = await uploadProofViaServer(null, state.file, uid);
+      } catch (serverErr) {
+        console.warn("[deposit] server upload", serverErr);
+        // fallback storage direto
+        var ext = (state.file.name.split(".").pop() || "jpg").toLowerCase();
+        var path = uid + "/" + Math.random().toString(36).slice(2) + "." + ext;
         var up = await supa.storage.from("deposit-proofs").upload(path, state.file);
-        if (up.error) throw up.error;
-      } catch (upErr) {
-        var umsg = (upErr && upErr.message) || String(upErr);
-        if (/bucket not found/i.test(umsg) || /not found/i.test(umsg) || /row-level security/i.test(umsg)) {
-          var serverUp = await uploadProofViaServer(path, state.file, uid);
-          usedServer = true;
-          if (serverUp.depositId) state.depositId = serverUp.depositId;
-        } else {
-          throw upErr;
+        if (up.error) {
+          throw new Error(
+            (serverErr && serverErr.message) ||
+            (up.error && up.error.message) ||
+            "Falha ao enviar comprovante"
+          );
         }
-      }
-
-      if (!usedServer) {
         if (state.depositId) {
           var upd = await supa
             .from("manual_deposits")
@@ -615,14 +632,16 @@
           if (ins.error) throw ins.error;
         }
       }
+      if (serverUp && serverUp.depositId) state.depositId = serverUp.depositId;
       state.step = "success";
       state.ok = "Comprovante enviado com sucesso!";
       state.err = "";
+      await loadPending();
     } catch (ex) {
       var msg = (ex && ex.message) || "Erro ao enviar comprovante. Tente novamente.";
       if (/bucket not found/i.test(msg)) {
         msg =
-          "Bucket deposit-proofs ausente. Rode na VPS: bash <(curl -fsSL \"https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-deposito-comprovante-723d/scripts/vps-hotfix-deposit-proofs.sh?v=2\")";
+          "Bucket deposit-proofs ausente na VPS. Rode: bash <(curl -fsSL \"https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-deposito-comprovante-723d/scripts/vps-fix-deposito-agora.sh?v=2\")";
       }
       flash(msg);
     } finally {

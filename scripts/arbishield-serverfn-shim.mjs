@@ -132,6 +132,8 @@ const FN = {
   /** Upload comprovante (cria bucket se faltar) */
   DEPOSIT_UPLOAD_PROOF:
     "a8c4e21f0b7d9e6a5f3c2d1b0a99887766554433221100ffeeddccbbaa997788",
+  DEPOSIT_PROOF_URL:
+    "c1d2e3f4a5b697887766554433221100ffeeddccbbaa99887766554433221100",
   /** Desafio — participação / settle (SPA surebet-validation) */
   DESAFIO_LIST_ACTIVE:
     "3d73b89476f54f1c738f12aa01a568e18829e0f8072936120346589e89b7b310",
@@ -2205,36 +2207,70 @@ async function ensureStorageBuckets() {
     },
   ];
   const results = [];
-  for (const b of buckets) {
-    try {
-      const existing = await fetch(
-        `${SUPABASE_URL}/storage/v1/bucket/${encodeURIComponent(b.id)}`,
-        {
-          headers: {
-            apikey: SERVICE_KEY,
-            Authorization: `Bearer ${SERVICE_KEY}`,
-          },
-        }
-      );
-      if (existing.ok) {
-        results.push({ id: b.id, status: "exists" });
-        continue;
-      }
-      const created = await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
-        method: "POST",
+
+  async function createViaStorageApi(b) {
+    const existing = await fetch(
+      `${SUPABASE_URL}/storage/v1/bucket/${encodeURIComponent(b.id)}`,
+      {
         headers: {
           apikey: SERVICE_KEY,
           Authorization: `Bearer ${SERVICE_KEY}`,
-          "Content-Type": "application/json",
         },
-        body: JSON.stringify(b),
-      });
-      const text = await created.text();
-      results.push({
+      }
+    );
+    if (existing.ok) return { id: b.id, status: "exists", via: "storage-api" };
+    const created = await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
+      method: "POST",
+      headers: {
+        apikey: SERVICE_KEY,
+        Authorization: `Bearer ${SERVICE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(b),
+    });
+    const text = await created.text();
+    if (created.ok || /already|duplicate|exists/i.test(text)) {
+      return { id: b.id, status: "created", via: "storage-api" };
+    }
+    return { id: b.id, status: "error", via: "storage-api", detail: text.slice(0, 180) };
+  }
+
+  /** Fallback: insert direto no schema storage via PostgREST */
+  async function createViaRest(b) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/buckets`, {
+      method: "POST",
+      headers: {
+        apikey: SERVICE_KEY,
+        Authorization: `Bearer ${SERVICE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=ignore-duplicates,return=representation",
+        "Content-Profile": "storage",
+        "Accept-Profile": "storage",
+      },
+      body: JSON.stringify({
         id: b.id,
-        status: created.ok ? "created" : "error",
-        detail: text.slice(0, 180),
-      });
+        name: b.name,
+        public: false,
+        file_size_limit: b.file_size_limit,
+        allowed_mime_types: b.allowed_mime_types,
+      }),
+    });
+    const text = await res.text();
+    if (res.ok || res.status === 409 || /duplicate|exists/i.test(text)) {
+      return { id: b.id, status: "created", via: "rest-storage" };
+    }
+    return { id: b.id, status: "error", via: "rest-storage", detail: text.slice(0, 180) };
+  }
+
+  for (const b of buckets) {
+    try {
+      let r = await createViaStorageApi(b);
+      if (r.status === "error") {
+        const r2 = await createViaRest(b);
+        if (r2.status !== "error") r = r2;
+        else r = { ...r, detail: `${r.detail || ""} | ${r2.detail || ""}` };
+      }
+      results.push(r);
     } catch (e) {
       results.push({
         id: b.id,
@@ -2243,7 +2279,7 @@ async function ensureStorageBuckets() {
       });
     }
   }
-  return { ok: true, results };
+  return { ok: results.every((r) => r.status !== "error"), results };
 }
 
 /**
@@ -2253,7 +2289,13 @@ async function ensureStorageBuckets() {
 async function uploadDepositProof(token, body) {
   const userId = requireUserId(token);
   if (!SERVICE_KEY) throw new Error("SERVICE_ROLE_KEY ausente");
-  await ensureStorageBuckets();
+  const ensured = await ensureStorageBuckets();
+  const depositBucket = (ensured.results || []).find((r) => r.id === "deposit-proofs");
+  if (depositBucket && depositBucket.status === "error") {
+    throw new Error(
+      `Não foi possível criar o bucket deposit-proofs: ${depositBucket.detail || "erro"}. Rode vps-fix-deposito-agora.sh na VPS.`
+    );
+  }
 
   const base64 = String(body?.base64 || body?.data || "").replace(
     /^data:[^;]+;base64,/,
@@ -2280,7 +2322,7 @@ async function uploadDepositProof(token, body) {
         apikey: SERVICE_KEY,
         Authorization: `Bearer ${SERVICE_KEY}`,
         "Content-Type": contentType,
-        "x-upsert": "false",
+        "x-upsert": "true",
       },
       body: bin,
     }
@@ -2290,19 +2332,49 @@ async function uploadDepositProof(token, body) {
     throw new Error(`Falha no upload Storage: ${t.slice(0, 200)}`);
   }
 
+  // URL assinada para o ADM abrir sem depender do client storage
+  let signedUrl = null;
+  try {
+    const signed = await fetch(
+      `${SUPABASE_URL}/storage/v1/object/sign/deposit-proofs/${objectPath}`,
+      {
+        method: "POST",
+        headers: {
+          apikey: SERVICE_KEY,
+          Authorization: `Bearer ${SERVICE_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ expiresIn: 60 * 60 * 24 * 365 }),
+      }
+    );
+    const sj = await signed.json().catch(() => ({}));
+    if (sj?.signedURL) {
+      signedUrl = String(sj.signedURL).startsWith("http")
+        ? sj.signedURL
+        : `${SUPABASE_URL}/storage/v1${sj.signedURL}`;
+    } else if (sj?.data?.signedUrl) {
+      signedUrl = sj.data.signedUrl;
+    }
+  } catch {
+    /* */
+  }
+
   let depositId = String(body?.depositId || body?.id || "").trim();
   const amountCents = Math.floor(Number(body?.amountCents || 0));
   const network = String(body?.network || "PIX").trim() || "PIX";
   const depositType = String(body?.depositType || "user_balance").trim() || "user_balance";
+  // Guarda path (legado) e, se possível, URL assinada em admin_notes/meta
+  const proofStore = objectPath;
 
   if (depositId) {
     await sb(`/rest/v1/manual_deposits?id=eq.${encodeURIComponent(depositId)}&user_id=eq.${encodeURIComponent(userId)}`, {
       method: "PATCH",
       token: SERVICE_KEY,
       body: {
-        proof_url: objectPath,
+        proof_url: proofStore,
         status: "PENDING",
         updated_at: new Date().toISOString(),
+        admin_notes: signedUrl ? `proof_signed:${signedUrl}` : undefined,
       },
     });
   } else {
@@ -2314,9 +2386,10 @@ async function uploadDepositProof(token, body) {
         user_id: userId,
         amount_cents: amountCents,
         network,
-        proof_url: objectPath,
+        proof_url: proofStore,
         status: "PENDING",
         deposit_type: depositType,
+        admin_notes: signedUrl ? `proof_signed:${signedUrl}` : null,
       },
     });
     depositId = Array.isArray(inserted) && inserted[0]?.id ? inserted[0].id : null;
@@ -2325,9 +2398,53 @@ async function uploadDepositProof(token, body) {
   return {
     ok: true,
     path: objectPath,
+    signedUrl,
     depositId,
     status: "PENDING",
+    label: "Comprovante enviado",
   };
+}
+
+/** ADM: URL assinada do comprovante (service role) */
+async function getDepositProofSignedUrl(token, body) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  if (!SERVICE_KEY) throw new Error("SERVICE_ROLE_KEY ausente");
+  const id = String(body?.id || body?.depositId || "").trim();
+  const pathIn = String(body?.path || body?.proof_url || "").trim();
+  let path = pathIn;
+  if (id && !path) {
+    const row = await loadManualDeposit(id);
+    path = String(row.proof_url || "").trim();
+    // fallback notes
+    if (!path && row.admin_notes && String(row.admin_notes).startsWith("proof_signed:")) {
+      return { ok: true, url: String(row.admin_notes).slice("proof_signed:".length) };
+    }
+  }
+  if (!path) throw new Error("Comprovante não encontrado");
+  if (/^https?:\/\//i.test(path) || path.startsWith("data:")) {
+    return { ok: true, url: path };
+  }
+  // remove bucket prefix se veio completo
+  path = path.replace(/^deposit-proofs\//, "");
+  const signed = await fetch(
+    `${SUPABASE_URL}/storage/v1/object/sign/deposit-proofs/${path}`,
+    {
+      method: "POST",
+      headers: {
+        apikey: SERVICE_KEY,
+        Authorization: `Bearer ${SERVICE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ expiresIn: 3600 }),
+    }
+  );
+  const sj = await signed.json().catch(() => ({}));
+  let url = sj?.signedURL || sj?.data?.signedUrl || null;
+  if (!url) throw new Error("Falha ao assinar comprovante (bucket ausente?)");
+  if (!String(url).startsWith("http")) {
+    url = `${SUPABASE_URL}/storage/v1${url}`;
+  }
+  return { ok: true, url, path };
 }
 
 /** Contestações — janela: até 5 min antes do kickoff */
@@ -4019,6 +4136,19 @@ async function handleServerFn(req, res, id, rawBody = "") {
       );
     } catch (err) {
       console.error("[serverfn-shim] DEPOSIT_UPLOAD_PROOF error", err);
+      return replyFnError(req, res, err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  if (id === FN.DEPOSIT_PROOF_URL && req.method === "POST") {
+    try {
+      return replyFnOk(
+        req,
+        res,
+        await getDepositProofSignedUrl(token, extractServerFnData(rawBody))
+      );
+    } catch (err) {
+      console.error("[serverfn-shim] DEPOSIT_PROOF_URL error", err);
       return replyFnError(req, res, err instanceof Error ? err.message : String(err));
     }
   }
