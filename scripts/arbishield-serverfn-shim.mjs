@@ -161,6 +161,24 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+function wantsPlainJson(req) {
+  const h = req?.headers || {};
+  const plain = String(h["x-arbishield-plain"] || "").trim();
+  return plain === "1" || plain.toLowerCase() === "true";
+}
+
+function replyFnOk(req, res, data) {
+  if (wantsPlainJson(req)) return sendJson(res, 200, data);
+  return sendTsrOk(res, data);
+}
+
+function replyFnError(req, res, message) {
+  if (wantsPlainJson(req)) {
+    return sendJson(res, 400, { error: message });
+  }
+  return sendTsrError(res, message);
+}
+
 /** Codifica valores no formato Seroval/TSR que o client TanStack Start espera. */
 function encVal(value, ids) {
   if (value === null || value === undefined) return { t: 2, s: 1 };
@@ -3594,58 +3612,62 @@ async function handleServerFn(req, res, id, rawBody = "") {
 
   if (id === FN.CONTESTATION_LIST && (req.method === "GET" || req.method === "POST")) {
     try {
-      return sendTsrOk(res, await listContestationsAdmin(token));
+      return replyFnOk(req, res, await listContestationsAdmin(token));
     } catch (err) {
       console.error("[serverfn-shim] CONTESTATION_LIST error", err);
-      return sendTsrError(res, err instanceof Error ? err.message : String(err));
+      return replyFnError(req, res, err instanceof Error ? err.message : String(err));
     }
   }
 
   if (id === FN.CONTESTATION_SUBMIT && req.method === "POST") {
     try {
-      return sendTsrOk(
+      return replyFnOk(
+        req,
         res,
         await submitContestation(token, extractServerFnData(rawBody))
       );
     } catch (err) {
       console.error("[serverfn-shim] CONTESTATION_SUBMIT error", err);
-      return sendTsrError(res, err instanceof Error ? err.message : String(err));
+      return replyFnError(req, res, err instanceof Error ? err.message : String(err));
     }
   }
 
   if (id === FN.CONTESTATION_OPERATOR && req.method === "POST") {
     try {
-      return sendTsrOk(
+      return replyFnOk(
+        req,
         res,
         await submitOperatorContestation(token, extractServerFnData(rawBody))
       );
     } catch (err) {
       console.error("[serverfn-shim] CONTESTATION_OPERATOR error", err);
-      return sendTsrError(res, err instanceof Error ? err.message : String(err));
+      return replyFnError(req, res, err instanceof Error ? err.message : String(err));
     }
   }
 
   if (id === FN.CONTESTATION_APPROVE && req.method === "POST") {
     try {
-      return sendTsrOk(
+      return replyFnOk(
+        req,
         res,
         await approveContestation(token, extractServerFnData(rawBody))
       );
     } catch (err) {
       console.error("[serverfn-shim] CONTESTATION_APPROVE error", err);
-      return sendTsrError(res, err instanceof Error ? err.message : String(err));
+      return replyFnError(req, res, err instanceof Error ? err.message : String(err));
     }
   }
 
   if (id === FN.CONTESTATION_REJECT && req.method === "POST") {
     try {
-      return sendTsrOk(
+      return replyFnOk(
+        req,
         res,
         await rejectContestation(token, extractServerFnData(rawBody))
       );
     } catch (err) {
       console.error("[serverfn-shim] CONTESTATION_REJECT error", err);
-      return sendTsrError(res, err instanceof Error ? err.message : String(err));
+      return replyFnError(req, res, err instanceof Error ? err.message : String(err));
     }
   }
 

@@ -319,6 +319,49 @@
         return signed.data.signedUrl;
       }
 
+      var FN_SUBMIT = "2a6aef91a48eaa19a2fd107fe580b1c6edf54fd10f1962c1d5d3e40f5c38d120";
+
+      async function submitContest(payload, token) {
+        async function readBody(res) {
+          var text = await res.text();
+          var data = {};
+          try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 180) }; }
+          return data;
+        }
+        // 1) REST (quando nginx já aponta para o shim)
+        var res = await fetch("/api/arbishield/contestations/submit", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify(payload),
+        });
+        var data = await readBody(res);
+        if (res.ok && !data.error) return data;
+        var restErr = data.error || data.msg || ("HTTP " + res.status);
+        // 2) Fallback: /_serverFn já está proxyado no nginx da VPS
+        if (res.status === 405 || res.status === 404 || res.status === 502 || /html|not allowed/i.test(String(data.raw || ""))) {
+          var res2 = await fetch("/_serverFn/" + FN_SUBMIT, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+              "x-arbishield-plain": "1",
+              "x-tsr-serverFn": "true",
+              Authorization: "Bearer " + token,
+            },
+            body: JSON.stringify({ data: payload }),
+          });
+          var data2 = await readBody(res2);
+          if (!res2.ok || data2.error) {
+            throw new Error(data2.error || data2.msg || restErr || "Erro ao enviar contestação");
+          }
+          return data2;
+        }
+        throw new Error(restErr || "Erro ao enviar contestação");
+      }
+
       document.getElementById("btnSend").addEventListener("click", async function () {
         var it = selected();
         if (!it || sending) return;
@@ -350,16 +393,7 @@
           var session = await supa.auth.getSession();
           var token = session.data.session && session.data.session.access_token;
           if (!token) throw new Error("Sessão expirada");
-          var res = await fetch("/api/arbishield/contestations/submit", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: "Bearer " + token,
-            },
-            body: JSON.stringify(payload),
-          });
-          var data = await res.json().catch(function () { return {}; });
-          if (!res.ok || data.error) throw new Error(data.error || "Erro ao enviar contestação");
+          var data = await submitContest(payload, token);
           if (data.alreadyExists) showOk("Já existe uma contestação em análise para esta proteção.");
           else showOk("Contestação enviada! Status: Em Contestação (Pendente).");
           closeModal();

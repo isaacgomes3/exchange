@@ -118,17 +118,53 @@
         return s.data.session && s.data.session.access_token;
       }
 
+      var FN = {
+        list: "59c0d818802363264163ee9444e24b1e3264bcd8aec301585bdc70fcac943eed",
+        approve: "9915d3faeedf7212cb506bdd07689806611c78427c4cba1c2fdbd880cb5d8232",
+        reject: "94342764ce144c96ccc6f2f642dee8f04c0f51a24a39b4ae8ff5a7b37a9cbcac",
+      };
+
       async function api(path, opts) {
         var t = await token();
-        var res = await fetch(path, Object.assign({
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer " + t,
-          },
-        }, opts || {}));
-        var data = await res.json().catch(function () { return {}; });
-        if (!res.ok || data.error) throw new Error(data.error || ("HTTP " + res.status));
-        return data;
+        var method = (opts && opts.method) || "GET";
+        var body = opts && opts.body;
+        var headers = {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + t,
+        };
+        var res = await fetch(path, { method: method, headers: headers, body: body });
+        var text = await res.text();
+        var data = {};
+        try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 180) }; }
+        if (res.ok && !data.error) {
+          return data;
+        }
+        var restErr = data.error || ("HTTP " + res.status);
+        // Fallback via /_serverFn (nginx da VPS já proxya)
+        var fnId = null;
+        if (path.indexOf("/contestations/approve") >= 0) fnId = FN.approve;
+        else if (path.indexOf("/contestations/reject") >= 0) fnId = FN.reject;
+        else if (path.replace(/\/$/, "") === "/api/arbishield/contestations") fnId = FN.list;
+        if (fnId && (res.status === 405 || res.status === 404 || res.status === 502 || /html|not allowed/i.test(String(data.raw || "")))) {
+          var payload = {};
+          try { payload = body ? JSON.parse(body) : {}; } catch (e2) { payload = {}; }
+          var res2 = await fetch("/_serverFn/" + fnId, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-arbishield-plain": "1",
+              "x-tsr-serverFn": "true",
+              Authorization: "Bearer " + t,
+            },
+            body: JSON.stringify({ data: payload }),
+          });
+          var text2 = await res2.text();
+          var data2 = {};
+          try { data2 = text2 ? JSON.parse(text2) : {}; } catch (e3) { data2 = {}; }
+          if (!res2.ok || data2.error) throw new Error(data2.error || restErr);
+          return data2;
+        }
+        throw new Error(restErr);
       }
 
       function contestType(r) {
