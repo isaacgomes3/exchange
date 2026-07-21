@@ -100,10 +100,10 @@
   <div class="modal-back" id="modal" aria-hidden="true">
     <div class="modal" role="dialog" aria-labelledby="modalTitle">
       <h3 id="modalTitle">Contestar proteção</h3>
-      <p class="hint">Se a odd na casa foi diferente da exibida na ArbiShield, ou se não conseguiu corresponder a aposta, envie a solicitação para auditoria.</p>
+      <p class="hint">Ajuste de Odd vai para auditoria do ADM. Cancelamento estorna o saldo na hora (sem aprovação).</p>
       <div class="type-grid">
         <button type="button" class="active" data-type="odd_adjustment">Ajuste de Odd</button>
-        <button type="button" data-type="cancellation">Solicitação de Cancelamento</button>
+        <button type="button" data-type="cancellation">Cancelar proteção</button>
       </div>
       <div id="panelOdd">
         <div class="warn">Se aprovado, liquidez, responsabilidade e taxas serão recalculados com a nova odd.</div>
@@ -117,14 +117,15 @@
         </div>
       </div>
       <div id="panelCancel" style="display:none">
+        <div class="warn">O saldo comprometido será estornado imediatamente. Não precisa de aprovação do administrador.</div>
         <div class="field">
           <label for="reason">Motivo do cancelamento</label>
-          <textarea id="reason" placeholder="Descreva por que não conseguiu corresponder a aposta na Exchange"></textarea>
+          <textarea id="reason" placeholder="Descreva por que deseja cancelar a proteção"></textarea>
         </div>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="btnClose">Fechar</button>
-        <button type="button" class="btn btn-primary" id="btnSend">Enviar contestação</button>
+        <button type="button" class="btn btn-primary" id="btnSend">Enviar</button>
       </div>
     </div>
   </div>
@@ -408,6 +409,40 @@
         };
       }
 
+      async function cancelViaApi(payload, token) {
+        async function readBody(res) {
+          var text = await res.text();
+          var data = {};
+          try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 180) }; }
+          return data;
+        }
+        var res = await fetch("/api/arbishield/protections", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify(Object.assign({ action: "contest_cancel_auto" }, payload)),
+        });
+        var data = await readBody(res);
+        if (res.ok && data && data.ok === true) return data;
+        // Fallback: contest_submit com type cancellation (backend v8 redireciona para auto)
+        var res2 = await fetch("/api/arbishield/protections", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify(Object.assign({ action: "contest_submit", contestType: "cancellation" }, payload)),
+        });
+        var data2 = await readBody(res2);
+        if (res2.ok && data2 && (data2.ok === true || data2.status === "cancelled")) return data2;
+        throw new Error(
+          data.error || data2.error ||
+          "Falha ao cancelar. Rode o hotfix v8 na VPS (cancelamento automático)."
+        );
+      }
+
       async function submitContest(payload, token) {
         async function readBody(res) {
           var text = await res.text();
@@ -474,7 +509,7 @@
           data.error ||
           (typeof dataB !== "undefined" && dataB.error) ||
           data2.error ||
-          "Erro ao enviar contestação. Rode o hotfix v6 na VPS."
+          "Erro ao enviar contestação. Rode o hotfix v8 na VPS."
         );
       }
 
@@ -489,26 +524,42 @@
         try {
           var gate = canContest(it);
           if (!gate.ok) throw new Error(gate.why);
-          var payload = {
-            protectionId: it.id,
-            category: it.market_category || "LAY",
-            contestType: contestType,
-          };
-          if (contestType === "odd_adjustment") {
-            var odd = parseFloat(String(document.getElementById("newOdd").value || "").replace(",", "."));
-            if (!(odd > 1)) throw new Error("Informe a nova odd obtida na Exchange");
-            var file = document.getElementById("proof").files[0];
-            if (!file) throw new Error("Anexe o print do bilhete/aposta");
-            payload.newOdd = odd;
-            payload.proofUrl = await uploadProof(file, it.id);
-          } else {
-            var reason = String(document.getElementById("reason").value || "").trim();
-            if (reason.length < 5) throw new Error("Informe o motivo do cancelamento");
-            payload.reason = reason;
-          }
           var session = await supa.auth.getSession();
           var token = session.data.session && session.data.session.access_token;
           if (!token) throw new Error("Sessão expirada");
+
+          if (contestType === "cancellation") {
+            var reason = String(document.getElementById("reason").value || "").trim();
+            if (reason.length < 5) throw new Error("Informe o motivo do cancelamento");
+            if (!window.confirm("Cancelar esta proteção agora? O saldo será estornado imediatamente.")) {
+              return;
+            }
+            var cancelData = await cancelViaApi({
+              protectionId: it.id,
+              category: it.market_category || "LAY",
+              reason: reason,
+            }, token);
+            showOk(
+              cancelData.alreadyCancelled
+                ? "Proteção já estava cancelada."
+                : "Proteção cancelada. Saldo estornado."
+            );
+            closeModal();
+            await load();
+            return;
+          }
+
+          var payload = {
+            protectionId: it.id,
+            category: it.market_category || "LAY",
+            contestType: "odd_adjustment",
+          };
+          var odd = parseFloat(String(document.getElementById("newOdd").value || "").replace(",", "."));
+          if (!(odd > 1)) throw new Error("Informe a nova odd obtida na Exchange");
+          var file = document.getElementById("proof").files[0];
+          if (!file) throw new Error("Anexe o print do bilhete/aposta");
+          payload.newOdd = odd;
+          payload.proofUrl = await uploadProof(file, it.id);
           var data = await submitContest(payload, token);
           if (data.alreadyExists) showOk("Já existe uma contestação em análise para esta proteção.");
           else showOk("Contestação enviada! Status: Em Contestação (Pendente).");
@@ -518,12 +569,12 @@
           renderList();
           renderDetail();
         } catch (ex) {
-          showErr(ex.message || "Erro ao enviar contestação");
-          window.alert(ex.message || "Erro ao enviar contestação");
+          showErr(ex.message || "Erro ao enviar");
+          window.alert(ex.message || "Erro ao enviar");
         } finally {
           sending = false;
           btn.disabled = false;
-          btn.textContent = "Enviar contestação";
+          btn.textContent = "Enviar";
         }
       });
 

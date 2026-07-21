@@ -2225,7 +2225,8 @@ async function listContestationsAdmin(token) {
     }
   }
 
-  return rows.map((r) => {
+  return rows
+    .map((r) => {
     const isBack = String(r.market_category).toUpperCase() === "BACK";
     const metaContest = getContestMeta(r, isBack) || {};
     const rowContest = contestByProtection.get(r.id) || null;
@@ -2235,14 +2236,14 @@ async function listContestationsAdmin(token) {
       rowContest?.contest_type ||
       (metaContest.requested_odd != null || rowContest?.requested_odd != null
         ? "odd_adjustment"
-        : "cancellation");
+        : "odd_adjustment");
     return {
       ...r,
       profiles: profileMap.get(r.user_id) || { full_name: "Usuário" },
       matches: matchMap.get(r.match_id) || null,
       odd_contestation: rowContest,
       contestation: {
-        type: contestType,
+        type: contestType === "cancellation" ? "cancellation" : "odd_adjustment",
         requested_odd:
           metaContest.requested_odd ?? rowContest?.requested_odd ?? null,
         original_odd:
@@ -2262,7 +2263,8 @@ async function listContestationsAdmin(token) {
           r.created_at,
       },
     };
-  });
+  })
+    .filter((r) => r.contestation.type !== "cancellation");
 }
 
 async function countPendingContestations(token) {
@@ -2307,11 +2309,90 @@ async function submitContestation(token, body) {
     throw new Error("Proteção não pertence a este usuário");
   }
   const st = String(row.status || "").toLowerCase();
-  if (st === "review_odd") {
+  if (st === "cancelled") {
+    return { ok: true, alreadyCancelled: true, status: "cancelled", protectionId };
+  }
+  // review_odd de cancelamento antigo → estorna agora; odd_adjustment → já existe
+  if (st === "review_odd" && contestType !== "cancellation") {
     return { ok: true, alreadyExists: true };
   }
-  if (st !== "active" && st !== "pending") {
+  if (st !== "active" && st !== "pending" && !(st === "review_odd" && contestType === "cancellation")) {
     throw new Error("Só é possível contestar proteções ativas");
+  }
+
+  // Cancelamento = automático (legado Cancelar Ancoragem). Não entra na fila ADM.
+  if (contestType === "cancellation") {
+    let reason = String(body?.reason || body?.note || "").trim();
+    if (reason.length < 5) {
+      reason = "Cancelamento solicitado pelo cliente";
+    }
+    const matchCancel = await loadMatchStartsAt(row.match_id);
+    if (!contestationWindowOk(matchCancel?.starts_at)) {
+      throw new Error(
+        "Cancelamento bloqueado: faltam menos de 5 minutos para o início da partida (ou o jogo já começou)."
+      );
+    }
+    // cancelProtectionRefund exige admin — estorno inline com ownership já validado
+    const amount = n(row.responsibility_cents || row.amount_cents);
+    if (row.user_id && amount > 0) {
+      const prof = await sb(
+        `/rest/v1/profiles?select=balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+        { token: SERVICE_KEY }
+      );
+      const p = Array.isArray(prof) ? prof[0] : null;
+      if (!p) throw new Error("Perfil do usuário não encontrado");
+      await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          balance_cents: n(p.balance_cents) + amount,
+          locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
+          updated_at: new Date().toISOString(),
+        },
+      });
+      try {
+        await sb("/rest/v1/wallet_transactions", {
+          method: "POST",
+          token: SERVICE_KEY,
+          body: {
+            user_id: row.user_id,
+            type: "protection_refund",
+            amount_cents: amount,
+            meta: { protection_id: protectionId, auto_cancel: true },
+          },
+        });
+      } catch {
+        /* */
+      }
+    }
+    const prevMeta =
+      row.metadata && typeof row.metadata === "object" ? { ...row.metadata } : {};
+    prevMeta.auto_cancel = {
+      reason,
+      cancelled_at: new Date().toISOString(),
+      cancelled_by: userId,
+      auto: true,
+    };
+    await patchProtectionSafe(table, protectionId, {
+      status: "cancelled",
+      settled_at: new Date().toISOString(),
+      result: "cancelled_refund",
+      metadata: prevMeta,
+      updated_at: new Date().toISOString(),
+    });
+    const marketId =
+      row.market_id ||
+      (row.metadata && (row.metadata.market_id || row.metadata.marketId)) ||
+      null;
+    await restoreMatchLiquidity(row.match_id, amount, marketId);
+    return {
+      ok: true,
+      action: "cancellation",
+      auto: true,
+      protectionId,
+      status: "cancelled",
+      refundedCents: amount,
+    };
   }
 
   const match = await loadMatchStartsAt(row.match_id);
@@ -2326,29 +2407,23 @@ async function submitContestation(token, body) {
   let proofUrl = String(
     body?.proofUrl || body?.betProofUrl || body?.proof_url || ""
   ).trim();
-  let reason = String(body?.reason || body?.note || "").trim();
+  let reasonOdd = String(body?.reason || body?.note || "").trim();
 
-  if (contestType === "odd_adjustment") {
-    requestedOdd = Number(
-      String(body?.newOdd ?? body?.requestedOdd ?? body?.approvedOdd ?? "")
-        .replace(",", ".")
-    );
-    if (!(requestedOdd > 1)) throw new Error("Informe uma odd válida (> 1)");
-    if (!proofUrl) {
-      throw new Error("Anexe o print do comprovante da casa de aposta");
-    }
-  } else {
-    if (!reason || reason.length < 5) {
-      throw new Error("Informe o motivo do cancelamento (mín. 5 caracteres)");
-    }
+  requestedOdd = Number(
+    String(body?.newOdd ?? body?.requestedOdd ?? body?.approvedOdd ?? "")
+      .replace(",", ".")
+  );
+  if (!(requestedOdd > 1)) throw new Error("Informe uma odd válida (> 1)");
+  if (!proofUrl) {
+    throw new Error("Anexe o print do comprovante da casa de aposta");
   }
 
   const contestation = {
-    type: contestType,
+    type: "odd_adjustment",
     original_odd: originalOdd,
     requested_odd: requestedOdd,
     proof_url: proofUrl || null,
-    reason: reason || null,
+    reason: reasonOdd || null,
     requested_at: new Date().toISOString(),
     requested_by: userId,
   };
@@ -2387,11 +2462,11 @@ async function submitContestation(token, body) {
     user_id: userId,
     protection_id: protectionId,
     status: "pending",
-    contest_type: contestType,
+    contest_type: "odd_adjustment",
     original_odd: originalOdd,
     requested_odd: requestedOdd,
     proof_url: proofUrl || null,
-    reason: reason || null,
+    reason: reasonOdd || null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   });
@@ -2400,7 +2475,7 @@ async function submitContestation(token, body) {
     ok: true,
     alreadyExists: false,
     status: "review_odd",
-    contestType,
+    contestType: "odd_adjustment",
     label: "Em Contestação (Pendente)",
   };
 }

@@ -1637,6 +1637,206 @@ function contestMetaFromRow(row, isBack) {
   return (row.metadata && row.metadata.contestation) || {};
 }
 
+async function restoreMatchLiquidity(matchId, amountCents, marketId) {
+  if (!matchId || !(amountCents > 0)) return;
+  try {
+    const matches = await sb(
+      `/rest/v1/matches?select=id,used_protection_cents,markets&id=eq.${encodeURIComponent(matchId)}&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    const match = Array.isArray(matches) ? matches[0] : null;
+    if (!match) return;
+    const used = Math.max(0, n(match.used_protection_cents) - amountCents);
+    let markets = Array.isArray(match.markets) ? [...match.markets] : [];
+    if (marketId && markets.length) {
+      markets = markets.map((m) => {
+        if (String(m?.id) !== String(marketId)) return m;
+        return {
+          ...m,
+          used_liquidity: Math.max(0, n(m.used_liquidity) - amountCents),
+        };
+      });
+    }
+    await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        used_protection_cents: used,
+        markets,
+        updated_at: new Date().toISOString(),
+      },
+    });
+  } catch {
+    /* liquidez best-effort */
+  }
+}
+
+/** Estorno integral + status cancelled (service role). */
+async function refundAndCancelProtection(table, row, audit = {}) {
+  const protectionId = row.id;
+  const amount = n(row.responsibility_cents || row.amount_cents);
+  const userId = row.user_id ? String(row.user_id) : null;
+  if (userId && amount > 0) {
+    const prof = await sb(
+      `/rest/v1/profiles?select=balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    const p = Array.isArray(prof) ? prof[0] : null;
+    if (p) {
+      await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          balance_cents: n(p.balance_cents) + amount,
+          locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
+          updated_at: new Date().toISOString(),
+        },
+      });
+    }
+    try {
+      await sb("/rest/v1/wallet_transactions", {
+        method: "POST",
+        token: SERVICE_KEY,
+        body: {
+          user_id: userId,
+          type: "protection_refund",
+          amount_cents: amount,
+          meta: {
+            protection_id: protectionId,
+            auto_cancel: true,
+            ...(audit || {}),
+          },
+        },
+      });
+    } catch (e) {
+      console.warn("[prelive] wallet_transactions refund:", e.message || e);
+    }
+  }
+
+  const prevMeta =
+    row.metadata && typeof row.metadata === "object" ? { ...row.metadata } : {};
+  prevMeta.auto_cancel = {
+    reason: audit.reason || null,
+    cancelled_at: new Date().toISOString(),
+    cancelled_by: audit.cancelled_by || null,
+    auto: true,
+  };
+  if (audit.reason) {
+    prevMeta.contestation = {
+      ...(prevMeta.contestation || {}),
+      type: "cancellation",
+      reason: audit.reason,
+      cancelled_at: prevMeta.auto_cancel.cancelled_at,
+      auto: true,
+    };
+  }
+
+  await patchProtectionNoUpdatedAt(table, protectionId, {
+    status: "cancelled",
+    settled_at: new Date().toISOString(),
+    result: "cancelled_refund",
+    metadata: prevMeta,
+  });
+
+  const marketId =
+    row.market_id ||
+    (row.metadata && (row.metadata.market_id || row.metadata.marketId)) ||
+    null;
+  await restoreMatchLiquidity(row.match_id, amount, marketId);
+
+  try {
+    await sb(
+      `/rest/v1/odd_contestations?protection_id=eq.${encodeURIComponent(protectionId)}&status=eq.pending`,
+      {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          status: "approved",
+          resolved_at: new Date().toISOString(),
+          resolved_by: audit.cancelled_by || null,
+        },
+      }
+    );
+  } catch {
+    /* */
+  }
+
+  return {
+    ok: true,
+    action: "cancellation",
+    auto: true,
+    protectionId,
+    status: "cancelled",
+    refundedCents: amount,
+  };
+}
+
+/**
+ * Cancelamento pelo cliente: imediato, sem fila ADM.
+ * (legado: "Cancelar Ancoragem" — saldo estornado na hora)
+ */
+async function contestCancelAuto(body, token) {
+  const payload = decodeJwtPayload(token);
+  const userId = payload?.sub ? String(payload.sub) : null;
+  if (!userId) {
+    const err = new Error("Não autorizado");
+    err.status = 401;
+    throw err;
+  }
+  if (!SERVICE_KEY) throw new Error("SERVICE_ROLE_KEY ausente no .env da VPS");
+
+  const protectionId = String(body.protectionId || body.id || "").trim();
+  const category = String(
+    body.category || body.marketType || body.market_category || "LAY"
+  ).toUpperCase();
+  const reason = String(body.reason || body.note || "Cancelamento solicitado pelo cliente").trim();
+  if (!protectionId) {
+    const err = new Error("protectionId obrigatório");
+    err.status = 400;
+    throw err;
+  }
+
+  const { table, row } = await loadProtectionForContest(protectionId, category);
+  if (String(row.user_id) !== String(userId)) {
+    const err = new Error("Proteção não pertence a este usuário");
+    err.status = 403;
+    throw err;
+  }
+  const st = String(row.status || "").toLowerCase();
+  if (st === "cancelled") {
+    return { ok: true, alreadyCancelled: true, status: "cancelled", protectionId };
+  }
+  if (st !== "active" && st !== "pending" && st !== "review_odd") {
+    const err = new Error("Só é possível cancelar proteções ativas ou em contestação");
+    err.status = 400;
+    throw err;
+  }
+
+  // Mesma trava de 5 min do legado
+  if (row.match_id) {
+    const matches = await sb(
+      `/rest/v1/matches?select=id,starts_at&id=eq.${encodeURIComponent(row.match_id)}&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    const match = Array.isArray(matches) ? matches[0] : null;
+    if (match?.starts_at) {
+      const t = new Date(match.starts_at).getTime();
+      if (!Number.isNaN(t) && Date.now() > t - CONTESTATION_LOCK_MS) {
+        const err = new Error(
+          "Cancelamento bloqueado: faltam menos de 5 minutos para o início da partida (ou o jogo já começou)."
+        );
+        err.status = 400;
+        throw err;
+      }
+    }
+  }
+
+  return refundAndCancelProtection(table, row, {
+    reason: reason.length >= 3 ? reason : "Cancelamento solicitado pelo cliente",
+    cancelled_by: userId,
+  });
+}
+
 async function contestSubmit(body, token) {
   const payload = decodeJwtPayload(token);
   const userId = payload?.sub ? String(payload.sub) : null;
@@ -1662,6 +1862,11 @@ async function contestSubmit(body, token) {
     const err = new Error("protectionId obrigatório");
     err.status = 400;
     throw err;
+  }
+
+  // Cancelamento NÃO vai para o ADM — estorna na hora
+  if (contestType === "cancellation") {
+    return contestCancelAuto(body, token);
   }
 
   const { table, row, isBack } = await loadProtectionForContest(
@@ -1703,26 +1908,20 @@ async function contestSubmit(body, token) {
   let requestedOdd = null;
   const proofUrl = String(body.proofUrl || body.betProofUrl || body.proof_url || "").trim();
   const reason = String(body.reason || body.note || "").trim();
-  if (contestType === "odd_adjustment") {
-    requestedOdd = Number(String(body.newOdd ?? body.requestedOdd ?? "").replace(",", "."));
-    if (!(requestedOdd > 1)) {
-      const err = new Error("Informe uma odd válida (> 1)");
-      err.status = 400;
-      throw err;
-    }
-    if (!proofUrl) {
-      const err = new Error("Anexe o print do comprovante da casa de aposta");
-      err.status = 400;
-      throw err;
-    }
-  } else if (reason.length < 5) {
-    const err = new Error("Informe o motivo do cancelamento (mín. 5 caracteres)");
+  requestedOdd = Number(String(body.newOdd ?? body.requestedOdd ?? "").replace(",", "."));
+  if (!(requestedOdd > 1)) {
+    const err = new Error("Informe uma odd válida (> 1)");
+    err.status = 400;
+    throw err;
+  }
+  if (!proofUrl) {
+    const err = new Error("Anexe o print do comprovante da casa de aposta");
     err.status = 400;
     throw err;
   }
 
   const contestation = {
-    type: contestType,
+    type: "odd_adjustment",
     original_odd: originalOdd,
     requested_odd: requestedOdd,
     proof_url: proofUrl || null,
@@ -1756,7 +1955,7 @@ async function contestSubmit(body, token) {
         user_id: userId,
         protection_id: protectionId,
         status: "pending",
-        contest_type: contestType,
+        contest_type: "odd_adjustment",
         original_odd: originalOdd,
         requested_odd: requestedOdd,
         proof_url: proofUrl || null,
@@ -1772,7 +1971,7 @@ async function contestSubmit(body, token) {
     ok: true,
     alreadyExists: false,
     status: "review_odd",
-    contestType,
+    contestType: "odd_adjustment",
     label: "Em Contestação (Pendente)",
   };
 }
@@ -1789,11 +1988,36 @@ async function contestList(token) {
     return (Array.isArray(rows) ? rows : []).map((r) => ({
       ...r,
       market_category: category,
+      _table: table,
     }));
   }
 
-  const list = [...(await load("protections", "LAY")), ...(await load("back_protections", "BACK"))].sort(
-    (a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))
+  const raw = [
+    ...(await load("protections", "LAY")),
+    ...(await load("back_protections", "BACK")),
+  ];
+
+  // Cancelamentos pendentes (legado errado) → estorna automaticamente, não aparecem no ADM
+  const oddOnly = [];
+  for (const r of raw) {
+    const isBack = r.market_category === "BACK";
+    const meta = contestMetaFromRow(r, isBack);
+    if (meta.type === "cancellation") {
+      try {
+        await refundAndCancelProtection(r._table || (isBack ? "back_protections" : "protections"), r, {
+          reason: meta.reason || "Cancelamento automático (fila ADM)",
+          cancelled_by: "system_auto",
+        });
+      } catch (e) {
+        console.warn("[prelive] auto-cancel pending:", e.message || e);
+      }
+      continue;
+    }
+    oddOnly.push(r);
+  }
+
+  const list = oddOnly.sort((a, b) =>
+    String(b.created_at || "").localeCompare(String(a.created_at || ""))
   );
 
   const userIds = [...new Set(list.map((r) => r.user_id).filter(Boolean))];
@@ -1818,13 +2042,12 @@ async function contestList(token) {
   return list.map((r) => {
     const isBack = r.market_category === "BACK";
     const meta = contestMetaFromRow(r, isBack);
-    const type = meta.type === "cancellation" ? "cancellation" : "odd_adjustment";
     return {
       ...r,
       profiles: profileMap.get(r.user_id) || { full_name: "Usuário" },
       matches: matchMap.get(r.match_id) || null,
       contestation: {
-        type,
+        type: "odd_adjustment",
         requested_odd: meta.requested_odd ?? null,
         original_odd: meta.original_odd ?? Number(r.odd),
         proof_url: meta.proof_url ?? null,
@@ -1851,48 +2074,11 @@ async function contestApprove(body, token) {
   const contestType = meta.type === "cancellation" ? "cancellation" : "odd_adjustment";
 
   if (contestType === "cancellation") {
-    // estorno simples: devolve amount para balance + libera locked
-    const amount = n(row.responsibility_cents || row.amount_cents);
-    if (row.user_id && amount > 0) {
-      const prof = await sb(
-        `/rest/v1/profiles?select=balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
-        { token: SERVICE_KEY }
-      );
-      const p = Array.isArray(prof) ? prof[0] : null;
-      if (p) {
-        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
-          method: "PATCH",
-          token: SERVICE_KEY,
-          body: {
-            balance_cents: n(p.balance_cents) + amount,
-            locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
-            updated_at: new Date().toISOString(),
-          },
-        });
-      }
-    }
-    await patchProtectionNoUpdatedAt(table, protectionId, {
-      status: "cancelled",
-      settled_at: new Date().toISOString(),
-      result: "cancelled_refund",
+    const result = await refundAndCancelProtection(table, row, {
+      reason: meta.reason || "Cancelamento aprovado pelo admin",
+      cancelled_by: adminId,
     });
-    try {
-      await sb(
-        `/rest/v1/odd_contestations?protection_id=eq.${encodeURIComponent(protectionId)}&status=eq.pending`,
-        {
-          method: "PATCH",
-          token: SERVICE_KEY,
-          body: {
-            status: "approved",
-            resolved_at: new Date().toISOString(),
-            resolved_by: adminId,
-          },
-        }
-      );
-    } catch {
-      /* */
-    }
-    return { ok: true, action: "cancellation", protectionId, status: "cancelled" };
+    return result;
   }
 
   const approvedOdd = Number(
@@ -2133,6 +2319,15 @@ async function handleApi(req, res) {
         action === "submit_contestation"
       ) {
         const result = await contestSubmit(body, token);
+        return sendJson(res, 200, result);
+      }
+      if (
+        action === "contest_cancel_auto" ||
+        action === "cancel_auto" ||
+        action === "cancel_protection" ||
+        action === "client_cancel"
+      ) {
+        const result = await contestCancelAuto(body, token);
         return sendJson(res, 200, result);
       }
       if (

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Hotfix v7: Contestação — atualiza o arquivo REAL do systemd + valida com JWT
+# Hotfix v8: Cancelamento automático pelo cliente; ADM só Ajuste de Odd
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/contestacao-aposta-completa-723d/scripts/vps-hotfix-contestacao-aposta.sh?v=7")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/contestacao-aposta-completa-723d/scripts/vps-hotfix-contestacao-aposta.sh?v=8")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/contestacao-aposta-completa-723d}"
@@ -55,6 +55,7 @@ TMP="$(mktemp)"
 curl -fsSL "$RAW/scripts/arbishield-prelive-events.mjs" -o "$TMP"
 grep -q 'contest_list\|contestList' "$TMP" || die "download sem contest_list"
 grep -q 'contest_submit\|contestSubmit' "$TMP" || die "download sem contest_submit"
+grep -q 'contestCancelAuto\|contest_cancel_auto' "$TMP" || die "download sem cancelamento automático (v8)"
 
 mapfile -t PRELIVE_PATHS < <(discover_prelive_paths)
 [[ ${#PRELIVE_PATHS[@]} -gt 0 ]] || die "nenhum destino prelive"
@@ -103,7 +104,8 @@ for f in app-protecoes.html admin-contestations.html v2-shell.js; do
   echo "  ok $f"
 done
 grep -q 'submitViaSupabase' "$WEB/app-protecoes.html" || die "cliente sem submitViaSupabase"
-grep -q 'backend_antigo\|matchId' "$WEB/admin-contestations.html" || die "admin sem alerta de backend antigo"
+grep -q 'contest_cancel_auto\|Cancelar proteção' "$WEB/app-protecoes.html" || die "cliente sem cancelamento automático"
+grep -q 'backend_antigo\|matchId\|Ajuste de Odd' "$WEB/admin-contestations.html" || die "admin sem filtro de contestação"
 grep -q 'contest_list' "$WEB/admin-contestations.html" || die "admin sem contest_list"
 
 # nginx contestations (opcional)
@@ -179,9 +181,10 @@ if [[ -n "$ENV_FILE" ]]; then
 fi
 
 echo
-echo "OK — Contestação v7"
-echo "  Produção estava com prelive ANTIGO (contest_list → matchId) — ADM ficava vazio."
-echo "  1) Ctrl+F5 em /app-protecoes.html → Contestar de novo"
-echo "  2) Confirme status «Em Contestação (Pendente)» no cliente"
-echo "  3) Ctrl+F5 em /admin-contestations.html → Atualizar"
-echo "  Envios que deram «Erro ao enviar» NÃO existem no banco."
+echo "OK — Contestação v8"
+echo "  • Cancelamento = automático (estorno na hora, sem ADM)"
+echo "  • ADM lista só Ajuste de Odd; cancelamentos pendentes são auto-estornados ao listar"
+echo "  1) Ctrl+F5 em /app-protecoes.html"
+echo "  2) Cancelar proteção → saldo estornado na hora"
+echo "  3) Contestar Odd → aparece no ADM para aprovar/rejeitar"
+echo "  4) Ctrl+F5 em /admin-contestations.html → Atualizar (some o cancelamento de CARLOS se ainda estiver)"

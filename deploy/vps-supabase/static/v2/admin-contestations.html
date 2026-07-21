@@ -45,7 +45,7 @@
   <div class="page-head">
     <div>
       <h1>Contestações de <span>Apostas</span></h1>
-      <p class="sub">Acompanhe aqui as reclamações de odds ou pedidos de cancelamento</p>
+      <p class="sub">Apenas Ajuste de Odd — cancelamentos são automáticos pelo cliente</p>
     </div>
     <button type="button" class="btn btn-ghost" id="btnRefresh">Atualizar</button>
   </div>
@@ -173,6 +173,11 @@
         var list = []
           .concat((layRes.data || []).map(function (r) { return normalizeRow(r, "LAY"); }))
           .concat(backRows.map(function (r) { return normalizeRow(r, "BACK"); }))
+          .filter(function (r) {
+            // Cancelamento não entra no painel — só Ajuste de Odd
+            return contestType(r) !== "cancellation" &&
+              String((r.contestation && r.contestation.type) || "odd_adjustment") !== "cancellation";
+          })
           .sort(function (a, b) {
             return String(b.created_at || "").localeCompare(String(a.created_at || ""));
           });
@@ -402,9 +407,13 @@
           api = { rows: null, error: (e && e.message) || String(e) };
         }
         if (Array.isArray(api.rows)) {
-          rows = api.rows.map(function (r) {
-            return normalizeRow(r, r.market_category || "LAY");
-          });
+          rows = api.rows
+            .map(function (r) {
+              return normalizeRow(r, r.market_category || "LAY");
+            })
+            .filter(function (r) {
+              return String((r.contestation && r.contestation.type) || "odd_adjustment") !== "cancellation";
+            });
           render();
           return;
         }
