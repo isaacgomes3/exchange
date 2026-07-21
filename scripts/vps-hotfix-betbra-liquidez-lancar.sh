@@ -2,23 +2,39 @@
 # Liquidez no lançamento BetBra + barra/valor utilizado na lista ADM (igual cliente).
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/betbra-liquidez-antes-lancar-723d/scripts/vps-hotfix-betbra-liquidez-lancar.sh?v=2")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/betbra-liquidez-antes-lancar-723d/scripts/vps-hotfix-betbra-liquidez-lancar.sh?v=3")
+#   # ou por SHA (evita cache):
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/801510e3ee8d560c3889a283f4e5d5c0931a5590/scripts/vps-hotfix-betbra-liquidez-lancar.sh")
 set -euo pipefail
 BRANCH="${ARBISHIELD_BRANCH:-cursor/betbra-liquidez-antes-lancar-723d}"
-RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${BRANCH}"
+# ARBISHIELD_REF=sha|branch opcional; default = branch
+REF="${ARBISHIELD_REF:-$BRANCH}"
+RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
 SHIM_DIR="${ARBISHIELD_SHIM_DIR:-/opt/arbishield}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
 mkdir -p "$WEB" "$SHIM_DIR" "$SCRIPTS_DIR"
 
-echo "==> UI admin-jogos.html"
+echo "==> UI admin-jogos.html (ref=$REF)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-jogos.html" -o "$WEB/admin-jogos.html"
 chmod 0644 "$WEB/admin-jogos.html"
 cp -f "$WEB/admin-jogos.html" "$WEB_ROOT/admin-jogos.html" 2>/dev/null || true
+# também em paths comuns do nginx
+for alt in "$WEB_ROOT/v2/admin-jogos.html" /var/www/html/v2/admin-jogos.html; do
+  [[ "$alt" == "$WEB/admin-jogos.html" ]] && continue
+  dir="$(dirname "$alt")"
+  [[ -d "$dir" ]] || continue
+  cp -f "$WEB/admin-jogos.html" "$alt" 2>/dev/null || true
+done
+bytes="$(wc -c < "$WEB/admin-jogos.html" | tr -d ' ')"
+echo "  bytes=$bytes"
 grep -q 'createLiquidityBrl' "$WEB/admin-jogos.html" || { echo "ERRO: sem campo liquidez"; exit 1; }
 grep -q 'liquidityCents' "$WEB/admin-jogos.html" || { echo "ERRO: sem liquidityCents no payload"; exit 1; }
-grep -q 'adm-liq-bar\|liqStats' "$WEB/admin-jogos.html" || { echo "ERRO: sem barra de liquidez na lista ADM"; exit 1; }
+# greps separados (BusyBox/grep antigo quebra em \|)
+grep -q 'adm-liq-bar' "$WEB/admin-jogos.html" || { echo "ERRO: sem adm-liq-bar"; exit 1; }
+grep -q 'function liqStats' "$WEB/admin-jogos.html" || { echo "ERRO: sem liqStats"; exit 1; }
+echo "  ok createLiquidityBrl + barra ADM"
 
 echo "==> prelive createMatchFromMarket"
 curl -fsSL "$RAW/scripts/arbishield-prelive-events.mjs" -o "$SHIM_DIR/arbishield-prelive-events.mjs"
