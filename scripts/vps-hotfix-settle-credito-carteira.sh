@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Hotfix: crédito na carteira ao encerrar partida (ArbiShield / Exchange)
+# Hotfix: crédito na carteira + layout correto de Jogos (não Desafio)
 #
-# Sintoma: ao marcar BATEU ARBISHIELD (ou Exchange), o saldo não aparece
-# no Apostador do cliente.
+# Sintomas:
+#   1) Encerrar ArbiShield/Exchange não credita Apostador
+#   2) Hotfix anterior reverteu Admin Jogos para layout antigo (tipo desafio)
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-settle-credito-carteira-723d/scripts/vps-hotfix-settle-credito-carteira.sh?v=2")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-settle-credito-carteira-723d/scripts/vps-hotfix-settle-credito-carteira.sh?v=3")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/fix-settle-credito-carteira-723d}"
@@ -41,14 +42,24 @@ chmod 0644 "$SHIM_DIR/arbishield-serverfn-shim.mjs"
 grep -q 'settle-credito-carteira-v1' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || die "shim sem fix"
 systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 
-log "UI Admin Jogos"
+log "UI Admin Jogos (layout proteção + crédito)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-jogos.html" -o "$WEB/admin-jogos.html"
 chmod 0644 "$WEB/admin-jogos.html"
 cp -f "$WEB/admin-jogos.html" "$WEB_ROOT/admin-jogos.html" 2>/dev/null || true
+
+# Layout correto de proteção (não desafio)
+grep -q 'Lançar jogo (BetBra)' "$WEB/admin-jogos.html" || die "HTML sem botão BetBra principal"
+grep -q 'não.*Desafio\|nao.*Desafio\|não</em> é Desafio\|não</em> é Desafio' "$WEB/admin-jogos.html" || \
+  grep -q 'Isso <em>não</em> é Desafio' "$WEB/admin-jogos.html" || die "HTML sem aviso ≠ Desafio"
+grep -q 'data-pf="upcoming"' "$WEB/admin-jogos.html" || die "HTML sem aba Agendados (layout revertido)"
+grep -q 'Gestão de jogos — cockpit' "$WEB/admin-jogos.html" || die "HTML sem cockpit de eventos"
+grep -q 'openNormalLaunch' "$WEB/admin-jogos.html" || die "HTML sem openNormalLaunch"
+grep -q 'Alterar horário\|scheduleModal' "$WEB/admin-jogos.html" || die "HTML sem Alterar horário"
+# Crédito carteira
 grep -q 'Reparar crédito carteira\|saldo reutilizável' "$WEB/admin-jogos.html" || die "HTML sem UI de crédito"
 
 echo
-echo "OK — Crédito na carteira ao encerrar"
+echo "OK — Crédito + layout Jogos (proteção, não desafio)"
 echo "  curl -s http://127.0.0.1:3098/health   # settle-credito-carteira-v1"
-echo "  Partidas já encerradas sem crédito: Finalizados → Reparar crédito carteira"
-echo "  MJALLBY: escolha de novo BATEU ARBISHIELD (ou Exchange) e Liquidar"
+echo "  https://arbishield.app/admin-jogos.html  (Ctrl+F5)"
+echo "  Abas: Agendados / Ao vivo / Pendente · botão + Lançar jogo (BetBra)"
