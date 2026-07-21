@@ -33,7 +33,7 @@ DECLARE
     'match_id', p_match_id,
     'market_type', upper(COALESCE(p_market_type, 'LAY')),
     'balance_type', upper(COALESCE(p_balance_type, 'REAL')),
-    'fix', 'integridade-debito-v3'
+    'fix', 'integridade-debito-v4'
   );
   v_prot_meta jsonb;
 BEGIN
@@ -143,7 +143,7 @@ BEGIN
     'amountCents', p_amount_cents,
     'balanceAfterCents', p_balance_after,
     'lockType', v_lock_type,
-    'fix', 'integridade-debito-v3'
+    'fix', 'integridade-debito-v4'
   );
 EXCEPTION WHEN OTHERS THEN
   PERFORM set_config('session_replication_role', 'origin', true);
