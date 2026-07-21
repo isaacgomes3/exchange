@@ -524,13 +524,19 @@ async function createManualMatch(body, token) {
   }
 
   const marketsIn = Array.isArray(body.markets) ? body.markets : [];
-  if (!marketsIn.length) {
-    const err = new Error("Adicione ao menos um mercado de proteção");
-    err.status = 400;
-    throw err;
-  }
+  const marketsSource =
+    marketsIn.length > 0
+      ? marketsIn
+      : [
+          {
+            name: "LAY HOME",
+            market_type: "LAY",
+            odd: 2,
+            liquidity_brl: 2000,
+          },
+        ];
 
-  const markets = marketsIn.map((m, idx) => {
+  const markets = marketsSource.map((m, idx) => {
     const odd = Number(m.odd);
     if (!Number.isFinite(odd) || odd <= 1) {
       throw Object.assign(new Error(`Odd inválida no mercado #${idx + 1}`), {
@@ -604,6 +610,7 @@ async function createManualMatch(body, token) {
       external_bet_logo: body.external_bet_logo || body.externalBetLogo || null,
       betting_house_id: body.betting_house_id || body.bettingHouseId || null,
       source: "admin_manual",
+      hide_from_site: Boolean(body.hide_from_site ?? body.hideFromSite),
     },
     markets,
   };
