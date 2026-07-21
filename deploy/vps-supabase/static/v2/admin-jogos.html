@@ -381,16 +381,42 @@
 
     <div class="toolbar">
       <div class="tabs" id="viewTabs">
-        <button class="tab active" data-view="prelive" type="button">Próximos jogos</button>
-        <button class="tab" data-view="platform" type="button">Eventos ArbiShield (liquidar)</button>
+        <button class="tab" data-view="platform" type="button">Encerrar / Eventos ArbiShield</button>
+        <button class="tab" data-view="prelive" type="button">Próximos jogos (cadastrar)</button>
       </div>
       <input class="search" id="search" type="search" placeholder="Buscar time ou liga…" />
     </div>
 
-    <section class="panel" id="prelivePanel">
+    <div id="settleHint" class="auth-banner show" style="margin-bottom:14px;border-color:rgba(201,242,35,0.35);background:rgba(201,242,35,0.08)">
+      <strong style="color:var(--lime)">Encerrar partida:</strong>
+      use a aba <strong>Encerrar / Eventos ArbiShield</strong> → filtro <strong>A liquidar</strong> → botão <strong>Encerrar partida</strong>.
+      A aba “Próximos jogos” só serve para cadastrar eventos da BetBra.
+    </div>
+
+    <section class="panel platform-list" id="platformPanel">
+      <div class="panel-head">
+        <h2>Eventos cadastrados na plataforma</h2>
+        <span class="hint" id="platformMeta">—</span>
+      </div>
+      <p class="hint" style="margin:0 0 12px">
+        Jogos com proteção aberta no Monitor aparecem em <strong style="color:var(--lime)">A liquidar</strong> — mesmo depois de +3h do kickoff.
+      </p>
+      <div class="platform-filters" id="platformFilters">
+        <button type="button" class="chip" data-pf="settle">A liquidar</button>
+        <button type="button" class="chip is-on" data-pf="fila">Fila (atuais)</button>
+        <button type="button" class="chip" data-pf="draft">Rascunhos</button>
+        <button type="button" class="chip" data-pf="done">Finalizados</button>
+        <button type="button" class="chip" data-pf="all">Todos</button>
+      </div>
+      <div id="platformContent">
+        <div class="loading">Carregando eventos…</div>
+      </div>
+    </section>
+
+    <section class="panel" id="prelivePanel" hidden>
       <div class="panel-head">
         <div>
-          <h2>Próximos jogos (BetBra)</h2>
+          <h2>Próximos jogos (BetBra) — só cadastro</h2>
           <div class="breadcrumb" id="breadcrumb">
             <span>Lista do dia</span>
           </div>
@@ -406,26 +432,6 @@
       </div>
       <div id="preliveContent">
         <div class="loading">Carregando jogos da API BetBra…</div>
-      </div>
-    </section>
-
-    <section class="panel platform-list" id="platformPanel" hidden>
-      <div class="panel-head">
-        <h2>Eventos cadastrados na plataforma</h2>
-        <span class="hint" id="platformMeta">—</span>
-      </div>
-      <p class="hint" style="margin:0 0 12px">
-        Jogos com proteção aberta no Monitor aparecem em <strong style="color:var(--lime)">A liquidar</strong> — mesmo depois de +3h do kickoff.
-      </p>
-      <div class="platform-filters" id="platformFilters">
-        <button type="button" class="chip is-on" data-pf="fila">Fila (atuais)</button>
-        <button type="button" class="chip" data-pf="settle">A liquidar</button>
-        <button type="button" class="chip" data-pf="draft">Rascunhos</button>
-        <button type="button" class="chip" data-pf="done">Finalizados</button>
-        <button type="button" class="chip" data-pf="all">Todos</button>
-      </div>
-      <div id="platformContent">
-        <div class="loading">Carregando eventos…</div>
       </div>
     </section>
   </div>
@@ -585,13 +591,13 @@
       });
 
       var auth = null;
-      var view = "prelive";
+      var view = "platform";
       var preliveEvents = [];
       var selectedEvent = null;
       var selectedMarket = null;
       var selectedRunner = null;
       var platformMatches = [];
-      var platformFilter = "fila";
+      var platformFilter = "settle";
       var platformLoaded = false;
       var platformLoading = false;
       var searchTerm = "";
@@ -1297,14 +1303,14 @@
           }
 
           platformLoaded = true;
-          // Na 1ª carga: se há jogos a liquidar (os do Monitor), abre nessa aba
+          // Mantém A liquidar na 1ª carga se houver jogos; senão cai na fila
           var settleN = platformMatches.filter(function (m) {
             return matchBucket(m) === "settle";
           }).length;
-          if (settleN > 0 && platformFilter === "fila" && !force) {
-            platformFilter = "settle";
+          if (!force) {
+            platformFilter = settleN > 0 ? "settle" : "fila";
             document.querySelectorAll("#platformFilters .chip").forEach(function (c) {
-              c.classList.toggle("is-on", c.getAttribute("data-pf") === "settle");
+              c.classList.toggle("is-on", c.getAttribute("data-pf") === platformFilter);
             });
           }
           renderPlatformList();
@@ -1324,6 +1330,8 @@
         });
         $("prelivePanel").hidden = next !== "prelive";
         $("platformPanel").hidden = next !== "platform";
+        var hint = $("settleHint");
+        if (hint) hint.style.display = next === "prelive" ? "block" : "none";
         if (next === "platform") renderPlatformList();
         else if (!selectedEvent) renderPreliveList();
       }
@@ -1699,6 +1707,7 @@
         await loadPrelive();
         auth = await resolveAuth();
         showAuthBanner(!auth);
+        setView("platform");
         await loadPlatformMatches();
       }
 
