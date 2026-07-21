@@ -449,13 +449,14 @@
         <div id="settleOutcomeBox" style="display:grid;gap:10px;margin-top:8px">
           <button type="button" class="btn btn-ghost" id="btnOutcomeArbi" data-outcome="arbishield" style="justify-content:flex-start;text-align:left;padding:14px 16px;border-color:rgba(201,242,35,0.45)">
             <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU ARBISHIELD</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção valida · reembolso ao usuário</span>
-            <span id="settleRefundHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Reembolso: —</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção válida · devolver só o stake/responsabilidade</span>
+            <span id="settleRefundHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">A reembolsar: —</span>
           </button>
           <button type="button" class="btn btn-ghost" id="btnOutcomeExch" data-outcome="exchange" style="justify-content:flex-start;text-align:left;padding:14px 16px">
             <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU CASA EXTERNA (EXCHANGE)</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0">Favorito / casa · dedução na plataforma</span>
-            <span id="settleDeductHint" style="display:block;margin-top:8px;color:var(--amber);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Dedução: —</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção perde · sem reembolso ao usuário</span>
+            <span id="settleDeductHint" style="display:block;margin-top:8px;color:var(--amber);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Dedução / margem ArbiShield: —</span>
+            <span id="settleStakeKeepHint" style="display:block;margin-top:4px;color:var(--muted);font-size:11px;font-weight:600;text-transform:none;letter-spacing:0"></span>
           </button>
         </div>
         <input type="hidden" id="settleOutcome" value="arbishield" />
@@ -1253,7 +1254,7 @@
           var openByMatch = {};
           try {
             var openProt = await rest(
-              "protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,responsibility_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents&limit=2000",
+              "protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,responsibility_cents,platform_deduction_cents,locked_deduction_cents&limit=2000",
               auth.token
             );
             (openProt || []).forEach(function (p) {
@@ -1267,7 +1268,6 @@
                 };
               }
               var amt = Number(p.responsibility_cents || p.amount_cents || 0);
-              var profit = Number(p.user_profit_cents || 0);
               var margin = Number(
                 p.platform_deduction_cents != null
                   ? p.platform_deduction_cents
@@ -1275,13 +1275,14 @@
               );
               openByMatch[p.match_id].count += 1;
               openByMatch[p.match_id].cents += amt;
-              openByMatch[p.match_id].refund += amt + Math.max(0, profit);
+              // Reembolso ArbiShield = só stake/responsabilidade (sem lucro)
+              openByMatch[p.match_id].refund += amt;
               openByMatch[p.match_id].margin += Math.max(0, margin);
             });
           } catch (e1) {}
           try {
             var openBack = await rest(
-              "back_protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents&limit=1000",
+              "back_protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,platform_deduction_cents,locked_deduction_cents&limit=1000",
               auth.token
             );
             (openBack || []).forEach(function (p) {
@@ -1295,7 +1296,6 @@
                 };
               }
               var amt = Number(p.amount_cents || 0);
-              var profit = Number(p.user_profit_cents || 0);
               var margin = Number(
                 p.platform_deduction_cents != null
                   ? p.platform_deduction_cents
@@ -1303,7 +1303,7 @@
               );
               openByMatch[p.match_id].count += 1;
               openByMatch[p.match_id].cents += amt;
-              openByMatch[p.match_id].refund += amt + Math.max(0, profit);
+              openByMatch[p.match_id].refund += amt;
               openByMatch[p.match_id].margin += Math.max(0, margin);
             });
           } catch (e2) {}
@@ -1623,7 +1623,6 @@
         var stake = Number(m._openStakeCents || m.used_protection_cents || 0);
         var refund = Number(m._openRefundCents || stake);
         var margin = Number(m._openMarginCents || 0);
-        var profit = Math.max(0, refund - stake);
         var openN = Number(m._openProtections || 0);
         $("settleSummary").textContent =
           (m.home_team || "?") +
@@ -1635,12 +1634,7 @@
           money(stake);
         if ($("settleRefundHint")) {
           $("settleRefundHint").textContent =
-            "A reembolsar: " +
-            money(refund) +
-            "  ·  stake " +
-            money(stake) +
-            " + lucro " +
-            money(profit);
+            "A reembolsar: " + money(refund) + "  ·  só stake/responsabilidade";
         }
         if ($("settleDeductHint")) {
           $("settleDeductHint").textContent =

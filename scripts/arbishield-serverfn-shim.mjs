@@ -1879,7 +1879,6 @@ function isOpenProtectionStatus(st) {
 
 async function applyProtectionSettlement(row, table, outcome) {
   const amount = n(row.responsibility_cents || row.amount_cents);
-  const profit = n(row.user_profit_cents);
   const wonArbi = String(outcome).toLowerCase() === "arbishield";
   const status = wonArbi ? "won_platform" : "won_exchange";
   const now = new Date().toISOString();
@@ -1893,9 +1892,10 @@ async function applyProtectionSettlement(row, table, outcome) {
       const p = Array.isArray(prof) ? prof[0] : null;
       if (p) {
         const locked = Math.max(0, n(p.locked_balance_cents) - amount);
-        // arbishield: devolve stake + lucro; exchange: stake fica na plataforma
+        // arbishield: devolve só stake/responsabilidade (sem lucro);
+        // exchange: stake fica na plataforma
         const balance = wonArbi
-          ? n(p.balance_cents) + amount + Math.max(0, profit)
+          ? n(p.balance_cents) + amount
           : n(p.balance_cents);
         await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
           method: "PATCH",
