@@ -52,6 +52,7 @@
     walletTx: [],
     affBalance: 0,
     realBalance: 0,
+    apostadorHeader: 0,
     providerBalance: 0,
     locked: 0,
     activeCount: 0,
