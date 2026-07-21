@@ -63,8 +63,11 @@ function money(cents) {
     currency: "BRL",
   });
 }
+function n(v) {
+  return Number(v || 0);
+}
 
-async function sb(p) {
+async function sb(p, { okNull = false } = {}) {
   const res = await fetch(`${SUPABASE_URL}${p}`, {
     headers: {
       apikey: SERVICE_KEY,
@@ -78,8 +81,24 @@ async function sb(p) {
   } catch {
     data = text;
   }
-  if (!res.ok) throw new Error(`${res.status} ${p}: ${text.slice(0, 200)}`);
+  if (!res.ok) {
+    if (okNull) return null;
+    throw new Error(`${res.status} ${p}: ${text.slice(0, 240)}`);
+  }
   return data;
+}
+
+async function sbTry(paths) {
+  let last = null;
+  for (const p of paths) {
+    try {
+      return await sb(p);
+    } catch (e) {
+      last = e;
+    }
+  }
+  if (last) throw last;
+  return null;
 }
 
 async function findAuthUser(email) {
@@ -128,15 +147,14 @@ async function main() {
     process.exit(3);
   }
 
-  const real = Number(p.balance_cents || 0) + Number(p.reusable_balance_cents || 0);
-  const apostador =
-    real + Number(p.demo_balance_cents || 0);
+  const real = n(p.balance_cents) + n(p.reusable_balance_cents);
+  const apostador = real + n(p.demo_balance_cents);
   const provedor =
-    Number(p.investor_balance_cents || 0) +
-    Number(p.demo_balance_provider_cents || 0);
+    n(p.investor_balance_cents) + n(p.demo_balance_provider_cents);
 
   console.log("\n==> Buckets profiles");
   for (const k of [
+    "full_name",
     "balance_cents",
     "reusable_balance_cents",
     "demo_balance_cents",
@@ -160,43 +178,104 @@ async function main() {
   console.log(`  Saldo Real (carteira, sem demo): ${money(real)}`);
   console.log(`  Chip Apostador (shell = real+demo): ${money(apostador)}`);
   console.log(`  Provedor: ${money(provedor)}`);
-  console.log(`  Desafio: ${money(p.desafio_balance_cents)}`);
-  if (Number(p.demo_balance_cents || 0) > 0) {
+  console.log(`  Desafio (chip separado): ${money(p.desafio_balance_cents)}`);
+  console.log(
+    `  Home "Evolução hoje" (apostador+provedor): ${money(apostador + provedor)}`
+  );
+  if (n(p.demo_balance_cents) > 0) {
     console.log(
       "  ⚠ demo_balance_cents > 0 — bug antigo fazia chip mudar no refresh da Carteira"
     );
-  }
-
-  const txs = await sb(
-    `/rest/v1/wallet_transactions?select=id,type,amount_cents,meta,created_at&user_id=eq.${encodeURIComponent(id)}&order=created_at.desc&limit=30`
-  );
-  console.log("\n==> Últimas 30 wallet_transactions");
-  for (const t of Array.isArray(txs) ? txs : []) {
+  } else {
     console.log(
-      `  ${t.created_at}  ${String(t.type).padEnd(22)} ${money(t.amount_cents)}  ${JSON.stringify(t.meta || {}).slice(0, 80)}`
+      "  demo=0 → bug do chip demo NÃO explica inconsistência desta conta"
+    );
+  }
+  if (n(p.desafio_balance_cents) > 0) {
+    console.log(
+      "  ⚠ Tem saldo Desafio separado — não entra no chip Apostador; confusão comum ao comparar números"
     );
   }
 
+  // Proteções ativas (locked implícito)
+  const prots = await sb(
+    `/rest/v1/protections?select=id,status,amount_cents,responsibility_cents,result,created_at,settled_at&user_id=eq.${encodeURIComponent(id)}&order=created_at.desc&limit=100`
+  );
+  const protRows = Array.isArray(prots) ? prots : [];
+  const active = protRows.filter(
+    (r) => String(r.status || "").toLowerCase() === "active"
+  );
+  const activeLocked = active.reduce(
+    (a, r) => a + n(r.responsibility_cents || r.amount_cents),
+    0
+  );
+  console.log("\n==> Proteções");
+  console.log(`  total listadas (100): ${protRows.length}`);
+  console.log(`  ativas: ${active.length} · capital ativo: ${money(activeLocked)}`);
+  console.log(
+    `  Carteira "Saldo Total" (real+prov+aff+locked): ~${money(real + provedor + activeLocked)} (aff não calculado aqui)`
+  );
+  console.log("  últimas 15:");
+  for (const r of protRows.slice(0, 15)) {
+    console.log(
+      `    ${r.created_at}  ${String(r.status).padEnd(14)} ${money(r.amount_cents)}  ${r.result || "—"}`
+    );
+  }
+
+  // Depósitos
   const deps = await sb(
-    `/rest/v1/manual_deposits?select=id,amount_cents,status,network,deposit_type,admin_notes,created_at,updated_at&user_id=eq.${encodeURIComponent(id)}&order=created_at.desc&limit=20`
+    `/rest/v1/manual_deposits?select=id,amount_cents,status,network,deposit_type,admin_notes,created_at&user_id=eq.${encodeURIComponent(id)}&order=created_at.desc&limit=20`
   );
   console.log("\n==> Últimos 20 manual_deposits");
+  let approvedSum = 0;
   for (const d of Array.isArray(deps) ? deps : []) {
+    if (String(d.status || "").toUpperCase() === "APPROVED") {
+      approvedSum += n(d.amount_cents);
+    }
     console.log(
-      `  ${d.created_at}  ${String(d.status).padEnd(14)} ${money(d.amount_cents)}  ${d.network || "—"}  ${d.deposit_type || ""}  ${(d.admin_notes || "").slice(0, 40)}`
+      `  ${d.created_at}  ${String(d.status).padEnd(14)} ${money(d.amount_cents)}  ${d.network || "—"}  ${d.deposit_type || ""}`
     );
   }
+  console.log(`  soma APPROVED (amostra 20): ${money(approvedSum)}`);
 
-  const prots = await sb(
-    `/rest/v1/protections?select=id,status,amount_cents,result,created_at,settled_at&user_id=eq.${encodeURIComponent(id)}&order=created_at.desc&limit=20`
-  );
-  console.log("\n==> Últimas 20 protections");
-  for (const r of Array.isArray(prots) ? prots : []) {
-    console.log(
-      `  ${r.created_at}  ${String(r.status).padEnd(14)} ${money(r.amount_cents)}  ${r.result || "—"}`
-    );
+  // wallet_transactions — schema usa metadata (não meta)
+  console.log("\n==> Últimas 30 wallet_transactions");
+  try {
+    const txs = await sbTry([
+      `/rest/v1/wallet_transactions?select=id,type,amount_cents,metadata,ref,created_at&user_id=eq.${encodeURIComponent(id)}&order=created_at.desc&limit=30`,
+      `/rest/v1/wallet_transactions?select=id,type,amount_cents,ref,created_at&user_id=eq.${encodeURIComponent(id)}&order=created_at.desc&limit=30`,
+      `/rest/v1/wallet_transactions?select=id,type,amount_cents,created_at&user_id=eq.${encodeURIComponent(id)}&order=created_at.desc&limit=30`,
+    ]);
+    for (const t of Array.isArray(txs) ? txs : []) {
+      const extra = t.metadata != null ? JSON.stringify(t.metadata).slice(0, 70) : t.ref || "";
+      console.log(
+        `  ${t.created_at}  ${String(t.type || "").padEnd(22)} ${money(t.amount_cents)}  ${extra}`
+      );
+    }
+  } catch (e) {
+    console.log("  falhou:", e.message || e);
   }
 
+  console.log("\n==> unified_wallet_transactions (se existir)");
+  try {
+    const utx = await sb(
+      `/rest/v1/unified_wallet_transactions?select=*&user_id=eq.${encodeURIComponent(id)}&order=created_at.desc&limit=15`
+    );
+    for (const t of Array.isArray(utx) ? utx : []) {
+      console.log(
+        `  ${t.created_at || t.ts}  ${String(t.type || t.category || "").padEnd(18)} ${money(t.amount_cents || t.value_cents)}`
+      );
+    }
+    if (!Array.isArray(utx) || !utx.length) console.log("  (vazio)");
+  } catch (e) {
+    console.log("  indisponível:", String(e.message || e).slice(0, 120));
+  }
+
+  console.log("\n==> Hipóteses se o usuário ainda vê número diferente no refresh");
+  console.log("  1) Comparando chip Apostador com card Saldo Total (inclui locked/aff)");
+  console.log("  2) Comparando Apostador com Desafio (chips separados)");
+  console.log("  3) Cache do navegador — pedir Ctrl+Shift+R após hotfix do header");
+  console.log("  4) Página antiga / legado vs /app.html");
   console.log("\nOK");
 }
 

@@ -1275,7 +1275,7 @@ async function transferRealToDesafio(token, body) {
         type: "transfer_to_desafio",
         amount_cents: -amountCents,
         balance_after_cents: nextBalance + nextReusable,
-        meta: { destino: "desafio", amount_cents: amountCents },
+        metadata: { destino: "desafio", amount_cents: amountCents },
       },
     });
   } catch {
@@ -1474,7 +1474,7 @@ async function maybeForfeitCircuitToProviders(desafioId, userId) {
         user_id: userId,
         type: "desafio_forfeit_to_provider",
         amount_cents: -(take || wonAmount),
-        meta: {
+        metadata: {
           desafio_id: desafioId,
           providers: dist.count,
           totalDistributed: dist.totalDistributed,
@@ -1991,7 +1991,7 @@ async function cancelProtectionRefund(token, body) {
           user_id: row.user_id,
           type: "protection_refund",
           amount_cents: amount,
-          meta: { protection_id: protectionId, marketType },
+          metadata: { protection_id: protectionId, marketType },
         },
       });
     } catch {
@@ -2136,7 +2136,7 @@ async function approveManualDeposit(token, body) {
         user_id: userId,
         type: isInvestor ? "provider_deposit" : "deposit",
         amount_cents: amount,
-        meta: {
+        metadata: {
           manual_deposit_id: id,
           network: row.network || null,
           deposit_type: row.deposit_type || "user_balance",
@@ -2815,7 +2815,7 @@ async function submitContestation(token, body) {
             user_id: row.user_id,
             type: "protection_refund",
             amount_cents: amount,
-            meta: { protection_id: protectionId, auto_cancel: true },
+            metadata: { protection_id: protectionId, auto_cancel: true },
           },
         });
       } catch {
