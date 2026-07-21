@@ -184,9 +184,62 @@
         return Number(p.balance_cents || 0) + Number(p.reusable_balance_cents || 0);
       }
       function liqLeft(m) {
+        // Legado Ye: soma liquidez restante dos mercados; senão max−used da partida
+        var markets = Array.isArray(m.markets) ? m.markets : [];
+        if (markets.length > 0) {
+          return markets.reduce(function (acc, mk) {
+            var max = Number(
+              mk.liquidity != null
+                ? mk.liquidity
+                : mk.max_cents != null
+                  ? mk.max_cents
+                  : mk.max_protection_cents != null
+                    ? mk.max_protection_cents
+                    : 0
+            );
+            var used = Number(
+              mk.used_liquidity != null
+                ? mk.used_liquidity
+                : mk.used_cents != null
+                  ? mk.used_cents
+                  : mk.used_protection_cents != null
+                    ? mk.used_protection_cents
+                    : 0
+            );
+            return acc + Math.max(0, max - used);
+          }, 0);
+        }
         var max = Number(m.max_protection_cents || 0);
         var used = Number(m.used_protection_cents || 0);
         return Math.max(0, max - used);
+      }
+      /** Janela pós-kickoff do legado (9000s ≈ 2h30). */
+      var LIVE_WINDOW_MS = 9000 * 1000;
+      /**
+       * Legado Je: jogo fica na grade só com liquidez restante e ainda na janela.
+       * Quando used_protection >= max_protection (liquidez esgotada), sai da grade.
+       */
+      function isOnAvailableGrid(m) {
+        if (!m || !m.starts_at) return false;
+        var now = Date.now();
+        var start = new Date(m.starts_at).getTime();
+        if (!Number.isFinite(start)) return false;
+        var status = m.status_v2 || m.status || "open";
+        if (
+          status === "FINISHED" ||
+          ["closed", "cancelled", "finished", "settled", "finalizado", "void"].indexOf(
+            String(status).toLowerCase()
+          ) >= 0
+        ) {
+          return false;
+        }
+        // Legado Je: max > 0 && used < max  → senão some da grade
+        var max = Number(m.max_protection_cents || 0);
+        var used = Number(m.used_protection_cents || 0);
+        if (!(max > 0 && used < max)) return false;
+        // Reforço: liquidez restante (mercados ou partida) deve ser > 0
+        if (liqLeft(m) <= 0) return false;
+        return start + LIVE_WINDOW_MS > now;
       }
       function marketsOf(m) {
         if (Array.isArray(m.markets) && m.markets.length) return m.markets;
@@ -194,11 +247,21 @@
         return [{ id: null, name: "Mercado principal", odd: odd, market_type: "LAY", liquidity: m.max_protection_cents, used_liquidity: m.used_protection_cents }];
       }
       function isLive(m) {
-        var st = String(m.status || m.status_v2 || "").toLowerCase();
-        if (/live|in_play|ao.?vivo|running/.test(st)) return true;
-        if (!m.starts_at) return false;
-        var t = new Date(m.starts_at).getTime();
-        return t <= Date.now() && t > Date.now() - 3 * 3600 * 1000 && !/settled|closed|finished|cancel/.test(st);
+        // Legado Ne: kickoff <= now < kickoff + 2h30 e não encerrado
+        if (!m || !m.starts_at) return false;
+        var now = Date.now();
+        var start = new Date(m.starts_at).getTime();
+        if (!Number.isFinite(start)) return false;
+        var status = m.status_v2 || m.status || "open";
+        if (
+          status === "FINISHED" ||
+          ["closed", "cancelled", "finished", "settled", "finalizado", "void"].indexOf(
+            String(status).toLowerCase()
+          ) >= 0
+        ) {
+          return false;
+        }
+        return now >= start && now < start + LIVE_WINDOW_MS;
       }
       function sportOf(m) {
         return String(m.sport_type || m.sport || "futebol").toLowerCase();
@@ -213,6 +276,7 @@
       function filtered() {
         var q = state.q.trim().toLowerCase();
         return state.matches.filter(function (m) {
+          if (!isOnAvailableGrid(m)) return false;
           if (state.sport !== "todos" && sportOf(m) !== state.sport) return false;
           if (state.side === "live" && !isLive(m)) return false;
           if ((state.side === "lay" || state.side === "back") && !hasSide(m, state.side)) return false;
@@ -515,15 +579,8 @@
             .limit(150);
           if (matchesRes.error) throw matchesRes.error;
 
-          var now = Date.now();
           state.matches = (matchesRes.data || []).filter(function (m) {
-            var st = String(m.status || m.status_v2 || "").toLowerCase();
-            if (/settled|closed|finished|cancel|void/.test(st)) return false;
-            var starts = m.starts_at ? new Date(m.starts_at).getTime() : 0;
-            var future = starts > now - 15 * 60 * 1000;
-            var live = isLive(m);
-            if (!future && !live) return false;
-            return liqLeft(m) > 0 || (Array.isArray(m.markets) && m.markets.length);
+            return isOnAvailableGrid(m);
           });
 
           state.syncIn = 30;
