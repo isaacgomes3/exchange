@@ -260,6 +260,17 @@
             "pode falhar — peça ao admin para confirmar sua conta."
           );
         }
+        if (
+          low.indexOf("error sending confirmation email") >= 0 ||
+          low.indexOf("confirmation email") >= 0 ||
+          code === "unexpected_failure"
+        ) {
+          return (
+            "Não foi possível enviar o e-mail de confirmação (SMTP da VPS). " +
+            "Peça ao admin para ativar autoconfirmação (ENABLE_EMAIL_AUTOCONFIRM=true) " +
+            "ou configurar SMTP. Se a conta já foi criada, tente Entrar."
+          );
+        }
         if (currentMode === "signup" && (low.indexOf("rate") >= 0 || code.indexOf("rate") >= 0)) {
           return "Muitas tentativas. Aguarde um minuto e tente de novo.";
         }
