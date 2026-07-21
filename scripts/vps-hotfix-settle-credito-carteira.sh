@@ -5,7 +5,7 @@
 # no Apostador do cliente.
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-settle-credito-carteira-723d/scripts/vps-hotfix-settle-credito-carteira.sh?v=1")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-settle-credito-carteira-723d/scripts/vps-hotfix-settle-credito-carteira.sh?v=2")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/fix-settle-credito-carteira-723d}"

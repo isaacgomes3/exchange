@@ -389,11 +389,14 @@
     </div>
 
     <div id="settleHint" class="auth-banner show" style="margin-bottom:14px;border-color:rgba(201,242,35,0.35);background:rgba(201,242,35,0.08)">
-      <strong style="color:var(--lime)">Lançar jogo normal:</strong>
-      use <strong>+ Lançar jogo (BetBra)</strong> → escolha o jogo → mercado → <strong>Lançar evento</strong>.
-      Isso <em>não</em> é Desafio (Desafios ficam em Gestão de Desafios).
+      <strong style="color:var(--lime)">Carteira (igual ao site antigo):</strong>
+      na proteção debita o valor cheio (saldo real → reutilizável) e trava.
       <span style="display:block;margin-top:6px">
-        <strong>Encerrar:</strong> aba Encerrar / Eventos ArbiShield → filtro A liquidar → Encerrar partida.
+        <strong>Bateu ArbiShield</strong> → devolve 100% no <em>reutilizável</em> (Apostador).
+        <strong>Bateu Exchange</strong> → devolve stake − taxa no <em>saldo real</em>.
+      </span>
+      <span style="display:block;margin-top:6px">
+        Finalizados sem crédito: use <strong>Reparar crédito carteira</strong>.
       </span>
     </div>
 
@@ -1649,8 +1652,10 @@
           " vs " +
           (m.away_team || "?") +
           " · " +
-          openN +
-          " proteção(ões) · protegido " +
+          (openN > 0
+            ? openN + " proteção(ões) aberta(s)"
+            : "reparar crédito se ainda não lançado") +
+          " · protegido " +
           money(stake);
         if ($("settleRefundHint")) {
           $("settleRefundHint").textContent =
