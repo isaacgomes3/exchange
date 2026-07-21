@@ -217,7 +217,12 @@ export async function createProtection(
     const field = pickBalanceField(balanceType);
     const cur = num(profile[field]);
     patch = { [field]: cur - amountCents };
-     const FIX_TAG = "integridade-debito-v3";
+    balanceAfter = cur - amountCents;
+  }
+
+  patch.locked_balance_cents = num(profile.locked_balance_cents) + amountCents;
+
+  const FIX_TAG = "integridade-debito-v3";
   const protectionId = crypto.randomUUID();
   const primaryLockType =
     marketType === "BACK" ? "protection_lock" : "anchor_lock";
@@ -359,10 +364,7 @@ export async function createProtection(
           };
     const { error: protErr } = await admin.from(table).insert(row);
     if (protErr) {
-      await admin
-        .from("wallet_transactions")
-        .delete()
-        .eq("ref", protectionId);
+      await admin.from("wallet_transactions").delete().eq("ref", protectionId);
       await admin
         .from("profiles")
         .update({
@@ -401,17 +403,6 @@ export async function createProtection(
       updated_at: new Date().toISOString(),
     })
     .eq("id", input.matchId);
-
-  return {
-    ok: true,
-    protectionId,
-    marketType,
-    amountCents,
-    balanceAfterCents: balanceAfter,
-  };
-}
-
-  }
 
   return {
     ok: true,
