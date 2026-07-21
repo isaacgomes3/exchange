@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Hotfix: cria buckets deposit-proofs + bet-proofs e ativa aprovação ADM de depósitos
+# Hotfix v2: buckets + upload via shim + ADM aprovar depósitos
 #
-# Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-deposito-comprovante-723d/scripts/vps-hotfix-deposit-proofs.sh?v=1")
+# OBRIGATÓRIO na VPS (sem isso o site continua com "Bucket not found"):
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-deposito-comprovante-723d/scripts/vps-hotfix-deposit-proofs.sh?v=2")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/fix-deposito-comprovante-723d}"
@@ -79,7 +79,24 @@ mkdir -p "$SHIM_DIR" /opt/arbishield/scripts
 curl -fsSL "$RAW/scripts/arbishield-serverfn-shim.mjs" -o "$SHIM_DIR/arbishield-serverfn-shim.mjs"
 cp -f "$SHIM_DIR/arbishield-serverfn-shim.mjs" /opt/arbishield/scripts/arbishield-serverfn-shim.mjs 2>/dev/null || true
 grep -q 'DEPOSIT_APPROVE\|approveManualDeposit' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || die "shim sem aprovação de depósito"
+grep -q 'ensureStorageBuckets\|DEPOSIT_UPLOAD_PROOF\|uploadDepositProof' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || die "shim sem upload/ensure buckets"
+# também em scripts/
+cp -f "$SHIM_DIR/arbishield-serverfn-shim.mjs" /opt/arbishield/scripts/arbishield-serverfn-shim.mjs 2>/dev/null || true
+# descobrir ExecStart do shim
+for u in arbishield-serverfn-shim.service; do
+  if systemctl cat "$u" >/dev/null 2>&1; then
+    exec="$(systemctl show -p ExecStart --value "$u" 2>/dev/null | head -1 || true)"
+    if [[ "$exec" =~ (/[^[:space:]]+arbishield-serverfn-shim\.mjs) ]]; then
+      cp -f "$SHIM_DIR/arbishield-serverfn-shim.mjs" "${BASH_REMATCH[1]}"
+      echo "  wrote ${BASH_REMATCH[1]}"
+    fi
+  fi
+done
 systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
+sleep 2
+# força ensure buckets via health
+curl -sS "http://127.0.0.1:3101/health" | head -c 300; echo
+
 
 log "UI depósito + ADM"
 mkdir -p "$WEB"
@@ -91,7 +108,58 @@ for f in v2-deposit.js admin-manual-deposits.html v2-shell.js; do
   echo "  ok $f"
 done
 grep -q 'deposit-proofs' "$WEB/v2-deposit.js" || die "v2-deposit sem deposit-proofs"
-grep -q 'Confirmar e Creditar\|DEPOSIT_APPROVE\|81753fec' "$WEB/admin-manual-deposits.html" || die "admin sem aprovar depósito"
+grep -q 'uploadProofViaServer\|DEPOSIT_UPLOAD\|a8c4e21f' "$WEB/v2-deposit.js" || die "v2-deposit sem fallback servidor"
+grep -q 'Confirmar e Creditar\|81753fec' "$WEB/admin-manual-deposits.html" || die "admin sem aprovar depósito"
+
+# nginx: body size + deposit-proof → :3101
+NGINX_CONF=""
+for c in /etc/nginx/sites-enabled/arbishield.app \
+         /etc/nginx/conf.d/arbishield.app.conf \
+         /etc/nginx/sites-available/arbishield.app; do
+  if [[ -f "$c" ]]; then NGINX_CONF="$c"; break; fi
+done
+if [[ -n "$NGINX_CONF" ]]; then
+  log "nginx client_max_body_size + location deposit-proof"
+  python3 - <<'PY' "$NGINX_CONF"
+import sys
+path = sys.argv[1]
+text = open(path).read()
+changed = False
+if "client_max_body_size" not in text:
+    text = text.replace("server {", "server {\n    client_max_body_size 15m;", 1)
+    changed = True
+block = """
+    location ^~ /api/arbishield/deposit-proof {
+        proxy_pass http://127.0.0.1:3101;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Authorization $http_authorization;
+        proxy_pass_request_headers on;
+        client_max_body_size 15m;
+        proxy_read_timeout 120s;
+    }
+    location ^~ /api/arbishield/ensure-storage-buckets {
+        proxy_pass http://127.0.0.1:3101;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Authorization $http_authorization;
+        proxy_pass_request_headers on;
+    }
+"""
+if "location ^~ /api/arbishield/deposit-proof" not in text:
+    anchor = "location ^~ /_serverFn/"
+    if anchor in text:
+        text = text.replace(anchor, block + "\n    " + anchor, 1)
+        changed = True
+if changed:
+    open(path, "w").write(text)
+    print("nginx patched")
+else:
+    print("nginx already ok")
+PY
+  nginx -t >/dev/null 2>&1 && systemctl reload nginx 2>/dev/null || true
+fi
+
 
 # Sanity bucket
 log "Sanity GET bucket deposit-proofs"
