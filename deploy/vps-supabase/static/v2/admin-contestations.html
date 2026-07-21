@@ -290,7 +290,7 @@
         try { data2 = text2 ? JSON.parse(text2) : {}; } catch (e3) { data2 = {}; }
         if (res2.ok && (data2.ok === true || data2.rejected === true)) return data2;
         throw new Error(
-          data.error || dataB.error || data2.error || ("Falha ao " + kind + ". Rode hotfix v5.")
+          data.error || dataB.error || data2.error || ("Falha ao " + kind + ". Rode hotfix v6.")
         );
       }
 

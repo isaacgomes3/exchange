@@ -320,6 +320,93 @@
       }
 
       var FN_SUBMIT = "2a6aef91a48eaa19a2fd107fe580b1c6edf54fd10f1962c1d5d3e40f5c38d120";
+      var LOCK_MS_SUBMIT = 5 * 60 * 1000;
+
+      /** Grava direto no banco (não depende do prelive/shim). Espelha o legado: status=review_odd */
+      async function submitViaSupabase(payload) {
+        var table = String(payload.category || "LAY").toUpperCase() === "BACK"
+          ? "back_protections"
+          : "protections";
+        var got = await supa
+          .from(table)
+          .select("*")
+          .eq("id", payload.protectionId)
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (got.error) throw got.error;
+        var row = got.data;
+        if (!row) throw new Error("Proteção não encontrada");
+        var st = String(row.status || "").toLowerCase();
+        if (st === "review_odd") return { ok: true, alreadyExists: true };
+        if (st !== "active" && st !== "pending") {
+          throw new Error("Só é possível contestar proteções ativas");
+        }
+        if (row.match_id) {
+          var mres = await supa
+            .from("matches")
+            .select("starts_at")
+            .eq("id", row.match_id)
+            .maybeSingle();
+          var starts = mres.data && mres.data.starts_at;
+          if (starts) {
+            var t = new Date(starts).getTime();
+            if (!Number.isNaN(t) && Date.now() > t - LOCK_MS_SUBMIT) {
+              throw new Error(
+                "Contestação bloqueada: faltam menos de 5 minutos para o início da partida (ou o jogo já começou)."
+              );
+            }
+          }
+        }
+        var contestation = {
+          type: payload.contestType,
+          original_odd: Number(row.odd),
+          requested_odd: payload.newOdd != null ? Number(payload.newOdd) : null,
+          proof_url: payload.proofUrl || null,
+          reason: payload.reason || null,
+          requested_at: new Date().toISOString(),
+          requested_by: user.id,
+        };
+        var meta = Object.assign({}, row.metadata || {});
+        meta.contestation = contestation;
+        var patch = { status: "review_odd", metadata: meta };
+        if (table === "back_protections") {
+          var calc = Object.assign({}, row.calculations || meta.calculations || {});
+          calc.contestation = contestation;
+          patch.calculations = calc;
+          meta.calculations = calc;
+          patch.metadata = meta;
+        }
+        var up = await supa
+          .from(table)
+          .update(patch)
+          .eq("id", row.id)
+          .eq("user_id", user.id)
+          .select("id,status");
+        if (up.error) throw up.error;
+        if (!up.data || !up.data.length) {
+          throw new Error(
+            "Não foi possível marcar a proteção como Em Contestação (permissão/RLS). Rode o hotfix v6 na VPS."
+          );
+        }
+        try {
+          await supa.from("odd_contestations").insert({
+            user_id: user.id,
+            protection_id: row.id,
+            status: "pending",
+            contest_type: payload.contestType,
+            original_odd: contestation.original_odd,
+            requested_odd: contestation.requested_odd,
+            proof_url: contestation.proof_url,
+            reason: contestation.reason,
+          });
+        } catch (eIns) { /* tabela/colunas podem diferir */ }
+        return {
+          ok: true,
+          alreadyExists: false,
+          status: "review_odd",
+          via: "supabase-direct",
+        };
+      }
 
       async function submitContest(payload, token) {
         async function readBody(res) {
@@ -329,7 +416,16 @@
           return data;
         }
 
-        // 1) Rota que JÁ funciona no nginx da VPS → prelive :3098
+        // 1) Direto no Supabase — funciona mesmo com prelive antigo
+        try {
+          var direct = await submitViaSupabase(payload);
+          if (direct && direct.ok) return direct;
+        } catch (eDirect) {
+          console.warn("[contest] supabase-direct", eDirect);
+          var directErr = eDirect;
+        }
+
+        // 2) Prelive :3098 (após hotfix v5/v6)
         var res = await fetch("/api/arbishield/protections", {
           method: "POST",
           headers: {
@@ -340,20 +436,26 @@
         });
         var data = await readBody(res);
         if (res.ok && data && data.ok === true) return data;
+        // prelive antigo ignora action e responde matchId obrigatório
+        var preliveOld =
+          String(data.error || "").indexOf("matchId") >= 0 ||
+          String(data.error || "").indexOf("Valor inválido") >= 0;
 
-        // 2) REST dedicado (se nginx já tiver location de contestations)
-        var resB = await fetch("/api/arbishield/contestations/submit", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer " + token,
-          },
-          body: JSON.stringify(payload),
-        });
-        var dataB = await readBody(resB);
-        if (resB.ok && dataB && dataB.ok === true) return dataB;
+        // 3) REST dedicado
+        if (!preliveOld) {
+          var resB = await fetch("/api/arbishield/contestations/submit", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + token,
+            },
+            body: JSON.stringify(payload),
+          });
+          var dataB = await readBody(resB);
+          if (resB.ok && dataB && dataB.ok === true) return dataB;
+        }
 
-        // 3) Fallback /_serverFn
+        // 4) /_serverFn
         var res2 = await fetch("/_serverFn/" + FN_SUBMIT, {
           method: "POST",
           headers: {
@@ -368,8 +470,11 @@
         if (res2.ok && data2 && data2.ok === true) return data2;
 
         throw new Error(
-          data.error || dataB.error || data2.error ||
-          "Erro ao enviar contestação. Rode o hotfix v5 na VPS (prelive :3098)."
+          (directErr && directErr.message) ||
+          data.error ||
+          (typeof dataB !== "undefined" && dataB.error) ||
+          data2.error ||
+          "Erro ao enviar contestação. Rode o hotfix v6 na VPS."
         );
       }
 

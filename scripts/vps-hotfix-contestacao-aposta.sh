@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Hotfix: Contestação via /api/arbishield/protections (rota nginx que JÁ funciona → :3098)
+# Hotfix v6: Contestação cliente (Supabase direto + prelive) + ADM
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/contestacao-aposta-completa-723d/scripts/vps-hotfix-contestacao-aposta.sh?v=5")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/contestacao-aposta-completa-723d/scripts/vps-hotfix-contestacao-aposta.sh?v=6")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/contestacao-aposta-completa-723d}"
@@ -45,7 +45,9 @@ for f in app-protecoes.html admin-contestations.html v2-shell.js; do
   cp -f "$WEB/$f" "$WEB_ROOT/$f" 2>/dev/null || true
   echo "  ok $f"
 done
+grep -q 'submitViaSupabase' "$WEB/app-protecoes.html" || die "cliente sem submitViaSupabase (v6)"
 grep -q 'contest_submit\|action: "contest_submit"' "$WEB/app-protecoes.html" || die "cliente sem contest_submit"
+grep -q 'loadFromSupabase' "$WEB/admin-contestations.html" || die "admin sem loadFromSupabase"
 grep -q 'contest_list\|action: "contest_list"' "$WEB/admin-contestations.html" || die "admin sem contest_list"
 
 # nginx contestations (opcional; primary usa /protections)
@@ -81,17 +83,22 @@ PY
   nginx -t >/dev/null 2>&1 && systemctl reload nginx 2>/dev/null || true
 fi
 
-log "Sanity :3098 contest_list sem token → 401"
+log "Sanity :3098 contest_list sem token → 401 (não pode ser matchId)"
 code="$(curl -sS -o /tmp/contest-sanity.json -w '%{http_code}' -X POST \
   http://127.0.0.1:3098/api/arbishield/protections \
   -H 'Content-Type: application/json' \
   -d '{"action":"contest_list"}' || true)"
-echo "  HTTP $code $(head -c 120 /tmp/contest-sanity.json 2>/dev/null || true)"
+body="$(head -c 200 /tmp/contest-sanity.json 2>/dev/null || true)"
+echo "  HTTP $code $body"
+if echo "$body" | grep -qi 'matchId'; then
+  die "prelive AINDA antigo (contest_list → matchId). Reinicie arbishield-prelive-events."
+fi
 echo "$code" | grep -qE '401|403|200' || echo "AVISO: prelive não respondeu contest_list" >&2
 
 echo
-echo "OK — Contestação v5 (via /api/arbishield/protections → :3098)"
+echo "OK — Contestação v6"
+echo "  • Cliente grava review_odd direto no Supabase (não depende do prelive)"
+echo "  • ADM lista via contest_list (:3098) ou fallback Supabase"
 echo "  1) Ctrl+F5 em /app-protecoes.html"
-echo "  2) Contestar de novo (grava status review_odd)"
+echo "  2) Contestar de novo (envios antigos que falharam NÃO existem no banco)"
 echo "  3) Ctrl+F5 em /admin-contestations.html → Atualizar"
-echo "  Contestações antigas que falharam no envio NÃO aparecem — precisa reenviar."
