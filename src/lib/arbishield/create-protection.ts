@@ -29,6 +29,8 @@ export type CreateProtectionResult = {
 type Sb = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PostgrestQueryBuilder
   from: (table: string) => any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  rpc: (fn: string, args?: Record<string, unknown>) => any;
 };
 
 /** LAY (mercado padrão): amount = responsabilidade */
@@ -215,98 +217,10 @@ export async function createProtection(
     const field = pickBalanceField(balanceType);
     const cur = num(profile[field]);
     patch = { [field]: cur - amountCents };
-    balanceAfter = cur - amountCents;
-  }
-
-  patch.locked_balance_cents =
-    num(profile.locked_balance_cents) + amountCents;
-
-  const { error: debitErr } = await admin
-    .from("profiles")
-    .update({ ...patch, updated_at: new Date().toISOString() })
-    .eq("id", input.userId);
-
-  if (debitErr) throw new Error(debitErr.message);
-
-  // Trigger de integridade: ledger ANTES do INSERT.
-  // LAY → anchor_lock; BACK → protection_lock (com fallbacks de sinal/tipo).
+     const FIX_TAG = "integridade-debito-v3";
   const protectionId = crypto.randomUUID();
-  let walletTxId: string | null = null;
-  const FIX_TAG = "integridade-debito-v2";
-
-  const restoreProfile = async () => {
-    await admin
-      .from("profiles")
-      .update({
-        balance_cents: profile.balance_cents,
-        reusable_balance_cents: profile.reusable_balance_cents,
-        demo_balance_cents: profile.demo_balance_cents,
-        investor_balance_cents: profile.investor_balance_cents,
-        locked_balance_cents: profile.locked_balance_cents,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", input.userId);
-  };
-
-  const deleteWalletTx = async () => {
-    if (!walletTxId) return;
-    await admin.from("wallet_transactions").delete().eq("id", walletTxId);
-    walletTxId = null;
-  };
-
   const primaryLockType =
     marketType === "BACK" ? "protection_lock" : "anchor_lock";
-  const altLockType =
-    marketType === "BACK" ? "anchor_lock" : "protection_lock";
-  const walletAttempts = [
-    { type: primaryLockType, amount_cents: -amountCents },
-    { type: primaryLockType, amount_cents: amountCents },
-    { type: altLockType, amount_cents: -amountCents },
-    { type: altLockType, amount_cents: amountCents },
-  ];
-
-  const ledgerMeta = {
-    protection_id: protectionId,
-    match_id: input.matchId,
-    market_type: marketType,
-    balance_type: balanceType,
-    fix: FIX_TAG,
-  };
-
-  const insertWalletDebit = async (attempt: {
-    type: string;
-    amount_cents: number;
-  }) => {
-    const payload: Record<string, unknown> = {
-      user_id: input.userId,
-      type: attempt.type,
-      amount_cents: attempt.amount_cents,
-      balance_before_cents: balanceBefore,
-      balance_after_cents: balanceAfter,
-      ref: protectionId,
-      metadata: ledgerMeta,
-      meta: ledgerMeta,
-    };
-    let { data: walletRow, error: walletErr } = await admin
-      .from("wallet_transactions")
-      .insert(payload)
-      .select("id")
-      .single();
-    if (walletErr && /meta|column/i.test(walletErr.message || "")) {
-      delete payload.meta;
-      ({ data: walletRow, error: walletErr } = await admin
-        .from("wallet_transactions")
-        .insert(payload)
-        .select("id")
-        .single());
-    }
-    if (walletErr || !walletRow?.id) {
-      throw new Error(
-        walletErr?.message || "Falha ao registrar débito no saldo"
-      );
-    }
-    return walletRow.id as string;
-  };
 
   const meta = {
     ...(input.metadata || {}),
@@ -318,89 +232,153 @@ export async function createProtection(
     fix: FIX_TAG,
   };
 
-  const insertProtectionRow = async () => {
-    if (marketType === "BACK") {
-      const c = calcBack(amountCents, odd);
-      const row = {
-        id: protectionId,
-        user_id: input.userId,
-        match_id: input.matchId,
-        odd: c.odd,
-        status: "active",
-        amount_cents: c.coverageCents,
-        user_profit_cents: c.userProfitCents,
-        platform_deduction_cents: c.arbiShieldDeductionCents,
-        balance_before_cents: balanceBefore,
-        balance_after_cents: balanceAfter,
-        metadata: {
-          ...meta,
-          exchange_fee_cents: c.exchangeFeeCents,
-          calculations: c,
-          balance_type: balanceType,
-        },
-      };
-      const { error } = await admin.from("back_protections").insert(row);
-      if (error) throw new Error(error.message);
-    } else {
-      const c = calcLay(amountCents, odd);
-      const row = {
-        id: protectionId,
-        user_id: input.userId,
-        match_id: input.matchId,
-        side: input.side || "home",
-        odd: c.odd,
-        status: "active",
-        amount_cents: c.responsibilityCents,
-        responsibility_cents: c.responsibilityCents,
-        user_profit_cents: c.userProfitCents,
-        platform_deduction_cents: c.arbiShieldDeductionCents,
-        platform_profit_cents: c.arbiShieldDeductionCents,
-        locked_deduction_cents: c.lockedDeductionCents,
+  let protectionPayload: Record<string, unknown> = {};
+  if (marketType === "BACK") {
+    const c = calcBack(amountCents, odd);
+    protectionPayload = {
+      amount_cents: c.coverageCents,
+      user_profit_cents: c.userProfitCents,
+      platform_deduction_cents: c.arbiShieldDeductionCents,
+      metadata: {
+        ...meta,
         exchange_fee_cents: c.exchangeFeeCents,
-        exchange_profit_net_cents: c.exchangeProfitNetCents,
-        balance_before_cents: balanceBefore,
-        balance_after_cents: balanceAfter,
-        metadata: {
-          ...meta,
-          balance_type: balanceType,
-        },
-      };
-      const { error } = await admin.from("protections").insert(row);
-      if (error) throw new Error(error.message);
-    }
-  };
+        calculations: c,
+        balance_type: balanceType,
+      },
+    };
+  } else {
+    const c = calcLay(amountCents, odd);
+    protectionPayload = {
+      amount_cents: c.responsibilityCents,
+      responsibility_cents: c.responsibilityCents,
+      user_profit_cents: c.userProfitCents,
+      platform_deduction_cents: c.arbiShieldDeductionCents,
+      platform_profit_cents: c.arbiShieldDeductionCents,
+      locked_deduction_cents: c.lockedDeductionCents,
+      exchange_fee_cents: c.exchangeFeeCents,
+      exchange_profit_net_cents: c.exchangeProfitNetCents,
+      metadata: {
+        ...meta,
+        balance_type: balanceType,
+      },
+    };
+  }
 
-  const isIntegrityErr = (err: unknown) =>
-    /integridade|registro de d[eé]bito|sem registro/i.test(
-      String(err instanceof Error ? err.message : err || "")
-    );
-
-  let lastErr: unknown = null;
-  let created = false;
-  for (const attempt of walletAttempts) {
-    try {
-      await deleteWalletTx();
-      walletTxId = await insertWalletDebit(attempt);
-      await insertProtectionRow();
-      created = true;
-      break;
-    } catch (err) {
-      lastErr = err;
-      const msg = String(err instanceof Error ? err.message : err || "");
-      if (!isIntegrityErr(err) && !/meta|metadata|column|type|check|violat/i.test(msg)) {
-        await deleteWalletTx();
-        await restoreProfile();
-        throw err;
+  let rpcOk = false;
+  try {
+    const { data: rpcResult, error: rpcErr } = await admin.rpc(
+      "arbishield_create_protection",
+      {
+        p_user_id: input.userId,
+        p_match_id: input.matchId,
+        p_market_type: marketType,
+        p_amount_cents: amountCents,
+        p_odd: odd,
+        p_side: input.side || "home",
+        p_balance_type: balanceType,
+        p_balance_before: balanceBefore,
+        p_balance_after: balanceAfter,
+        p_profile_patch: patch,
+        p_protection: protectionPayload,
+        p_lock_type: primaryLockType,
+        p_protection_id: protectionId,
       }
+    );
+    if (rpcErr) throw new Error(rpcErr.message);
+    const row = Array.isArray(rpcResult) ? rpcResult[0] : rpcResult;
+    if (row && (row as { ok?: boolean }).ok) rpcOk = true;
+    else if (row && (row as { protectionId?: string }).protectionId) rpcOk = true;
+    else throw new Error("RPC create_protection sem retorno ok");
+  } catch (rpcErr) {
+    const msg = String(rpcErr instanceof Error ? rpcErr.message : rpcErr || "");
+    if (!/could not find|PGRST202|404|does not exist|function/i.test(msg)) {
+      throw rpcErr instanceof Error ? rpcErr : new Error(msg);
     }
   }
 
-  if (!created) {
-    await deleteWalletTx();
-    await restoreProfile();
-    throw lastErr instanceof Error
-      ? lastErr
-      : new Error("Falha ao gravar proteção");
+  if (!rpcOk) {
+    const { error: debitErr } = await admin
+      .from("profiles")
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq("id", input.userId);
+    if (debitErr) throw new Error(debitErr.message);
+
+    const { error: walletErr } = await admin.from("wallet_transactions").insert({
+      user_id: input.userId,
+      type: primaryLockType,
+      amount_cents: -amountCents,
+      balance_before_cents: balanceBefore,
+      balance_after_cents: balanceAfter,
+      ref: protectionId,
+      metadata: {
+        protection_id: protectionId,
+        match_id: input.matchId,
+        market_type: marketType,
+        balance_type: balanceType,
+        fix: FIX_TAG,
+      },
+    });
+    if (walletErr) {
+      await admin
+        .from("profiles")
+        .update({
+          balance_cents: profile.balance_cents,
+          reusable_balance_cents: profile.reusable_balance_cents,
+          demo_balance_cents: profile.demo_balance_cents,
+          investor_balance_cents: profile.investor_balance_cents,
+          locked_balance_cents: profile.locked_balance_cents,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", input.userId);
+      throw new Error(walletErr.message);
+    }
+
+    const table = marketType === "BACK" ? "back_protections" : "protections";
+    const row =
+      marketType === "BACK"
+        ? {
+            id: protectionId,
+            user_id: input.userId,
+            match_id: input.matchId,
+            odd,
+            status: "active",
+            ...protectionPayload,
+            balance_before_cents: balanceBefore,
+            balance_after_cents: balanceAfter,
+          }
+        : {
+            id: protectionId,
+            user_id: input.userId,
+            match_id: input.matchId,
+            side: input.side || "home",
+            odd,
+            status: "active",
+            ...protectionPayload,
+            balance_before_cents: balanceBefore,
+            balance_after_cents: balanceAfter,
+          };
+    const { error: protErr } = await admin.from(table).insert(row);
+    if (protErr) {
+      await admin
+        .from("wallet_transactions")
+        .delete()
+        .eq("ref", protectionId);
+      await admin
+        .from("profiles")
+        .update({
+          balance_cents: profile.balance_cents,
+          reusable_balance_cents: profile.reusable_balance_cents,
+          demo_balance_cents: profile.demo_balance_cents,
+          investor_balance_cents: profile.investor_balance_cents,
+          locked_balance_cents: profile.locked_balance_cents,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", input.userId);
+      throw new Error(
+        protErr.message +
+          " — aplique a migration RPC (hotfix integridade v3) na VPS."
+      );
+    }
   }
 
   if (market) {
@@ -415,7 +393,7 @@ export async function createProtection(
     }
   }
 
-  const { error: matchErr } = await admin
+  await admin
     .from("matches")
     .update({
       markets,
@@ -423,8 +401,16 @@ export async function createProtection(
       updated_at: new Date().toISOString(),
     })
     .eq("id", input.matchId);
-  if (matchErr) {
-    console.warn("[createProtection] match update:", matchErr.message);
+
+  return {
+    ok: true,
+    protectionId,
+    marketType,
+    amountCents,
+    balanceAfterCents: balanceAfter,
+  };
+}
+
   }
 
   return {

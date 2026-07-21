@@ -1201,84 +1201,10 @@ async function createProtection(body, userToken) {
     }
   }
 
-  await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: patch,
-  });
-
-  // Trigger de integridade exige wallet_transactions (débito/reserva) ANTES
-  // do INSERT da proteção. LAY usa anchor_lock; BACK usa protection_lock.
+  const FIX_TAG = "integridade-debito-v3";
   const protectionId = randomUUID();
-  let walletTxId = null;
-  const FIX_TAG = "integridade-debito-v2";
-
-  const restoreProfile = async () => {
-    await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
-      method: "PATCH",
-      token: SERVICE_KEY,
-      body: {
-        balance_cents: profile.balance_cents,
-        reusable_balance_cents: profile.reusable_balance_cents,
-        demo_balance_cents: profile.demo_balance_cents,
-        investor_balance_cents: profile.investor_balance_cents,
-        locked_balance_cents: profile.locked_balance_cents,
-        updated_at: new Date().toISOString(),
-      },
-    }).catch(() => {});
-  };
-
-  const deleteWalletTx = async () => {
-    if (!walletTxId) return;
-    await sb(
-      `/rest/v1/wallet_transactions?id=eq.${encodeURIComponent(walletTxId)}`,
-      { method: "DELETE", token: SERVICE_KEY }
-    ).catch(() => {});
-    walletTxId = null;
-  };
-
   const primaryLockType =
     marketType === "BACK" ? "protection_lock" : "anchor_lock";
-  const altLockType =
-    marketType === "BACK" ? "anchor_lock" : "protection_lock";
-  // Tentativas: tipo correto ±valor, depois tipo alternativo ±valor
-  const walletAttempts = [
-    { type: primaryLockType, amount_cents: -amountCents },
-    { type: primaryLockType, amount_cents: amountCents },
-    { type: altLockType, amount_cents: -amountCents },
-    { type: altLockType, amount_cents: amountCents },
-  ];
-
-  const ledgerMeta = {
-    protection_id: protectionId,
-    match_id: matchId,
-    market_type: marketType,
-    balance_type: balanceType,
-    fix: FIX_TAG,
-  };
-
-  const insertWalletDebit = async (attempt) => {
-    const walletInserted = await sb("/rest/v1/wallet_transactions", {
-      method: "POST",
-      token: SERVICE_KEY,
-      body: {
-        user_id: userId,
-        type: attempt.type,
-        amount_cents: attempt.amount_cents,
-        balance_before_cents: balanceBefore,
-        balance_after_cents: balanceAfter,
-        ref: protectionId,
-        // Algumas migrations usam meta; outras metadata
-        meta: ledgerMeta,
-        metadata: ledgerMeta,
-      },
-    });
-    const id = Array.isArray(walletInserted)
-      ? walletInserted[0]?.id
-      : walletInserted?.id;
-    if (!id) throw new Error("Falha ao registrar débito no saldo");
-    return id;
-  };
 
   const meta = {
     ...(body.metadata && typeof body.metadata === "object" ? body.metadata : {}),
@@ -1290,126 +1216,193 @@ async function createProtection(body, userToken) {
     fix: FIX_TAG,
   };
 
-  const insertProtectionRow = async () => {
-    if (marketType === "BACK") {
-      const c = calcBack(amountCents, odd);
-      await sb("/rest/v1/back_protections", {
-        method: "POST",
-        token: SERVICE_KEY,
-        body: {
-          id: protectionId,
-          user_id: userId,
-          match_id: matchId,
-          odd: c.odd,
-          status: "active",
-          amount_cents: c.coverageCents,
-          user_profit_cents: c.userProfitCents,
-          platform_deduction_cents: c.arbiShieldDeductionCents,
-          balance_before_cents: balanceBefore,
-          balance_after_cents: balanceAfter,
-          metadata: {
-            ...meta,
-            exchange_fee_cents: c.exchangeFeeCents,
-            calculations: c,
-            balance_type: balanceType,
-          },
-        },
-      });
+  let protectionPayload = {};
+  if (marketType === "BACK") {
+    const c = calcBack(amountCents, odd);
+    protectionPayload = {
+      amount_cents: c.coverageCents,
+      user_profit_cents: c.userProfitCents,
+      platform_deduction_cents: c.arbiShieldDeductionCents,
+      metadata: {
+        ...meta,
+        exchange_fee_cents: c.exchangeFeeCents,
+        calculations: c,
+        balance_type: balanceType,
+      },
+    };
+  } else {
+    const c = calcLay(amountCents, odd);
+    protectionPayload = {
+      amount_cents: c.responsibilityCents,
+      responsibility_cents: c.responsibilityCents,
+      user_profit_cents: c.userProfitCents,
+      platform_deduction_cents: c.arbiShieldDeductionCents,
+      platform_profit_cents: c.arbiShieldDeductionCents,
+      locked_deduction_cents: c.lockedDeductionCents,
+      exchange_fee_cents: c.exchangeFeeCents,
+      exchange_profit_net_cents: c.exchangeProfitNetCents,
+      metadata: {
+        ...meta,
+        balance_type: balanceType,
+      },
+    };
+  }
+
+  // Preferência: RPC em uma única TX (profile + wallet + proteção).
+  // REST separado falha no trigger de integridade.
+  let rpcOk = false;
+  try {
+    const rpcResult = await sb("/rest/v1/rpc/arbishield_create_protection", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        p_user_id: userId,
+        p_match_id: matchId,
+        p_market_type: marketType,
+        p_amount_cents: amountCents,
+        p_odd: odd,
+        p_side: side,
+        p_balance_type: balanceType,
+        p_balance_before: balanceBefore,
+        p_balance_after: balanceAfter,
+        p_profile_patch: patch,
+        p_protection: protectionPayload,
+        p_lock_type: primaryLockType,
+        p_protection_id: protectionId,
+      },
+    });
+    const row = Array.isArray(rpcResult) ? rpcResult[0] : rpcResult;
+    if (row && (row.ok === true || row.protectionId)) {
+      rpcOk = true;
+      console.log(`[createProtection] ${FIX_TAG} rpc ok`, row.protectionId || protectionId);
     } else {
-      const c = calcLay(amountCents, odd);
-      await sb("/rest/v1/protections", {
-        method: "POST",
-        token: SERVICE_KEY,
-        body: {
-          id: protectionId,
-          user_id: userId,
-          match_id: matchId,
-          side,
-          odd: c.odd,
-          status: "active",
-          amount_cents: c.responsibilityCents,
-          responsibility_cents: c.responsibilityCents,
-          user_profit_cents: c.userProfitCents,
-          platform_deduction_cents: c.arbiShieldDeductionCents,
-          platform_profit_cents: c.arbiShieldDeductionCents,
-          locked_deduction_cents: c.lockedDeductionCents,
-          exchange_fee_cents: c.exchangeFeeCents,
-          exchange_profit_net_cents: c.exchangeProfitNetCents,
-          balance_before_cents: balanceBefore,
-          balance_after_cents: balanceAfter,
-          metadata: {
-            ...meta,
-            balance_type: balanceType,
-          },
-        },
-      });
+      throw new Error("RPC create_protection sem retorno ok");
     }
-  };
-
-  const isIntegrityErr = (err) =>
-    /integridade|registro de d[eé]bito|sem registro/i.test(
-      String(err?.message || err || "")
-    );
-
-  let lastErr = null;
-  let created = false;
-  for (const attempt of walletAttempts) {
-    try {
-      await deleteWalletTx();
-      walletTxId = await insertWalletDebit(attempt);
-      await insertProtectionRow();
-      created = true;
-      console.log(
-        `[createProtection] ${FIX_TAG} ok type=${attempt.type} amount=${attempt.amount_cents}`
-      );
-      break;
-    } catch (err) {
-      lastErr = err;
-      // Coluna meta/metadata inexistente: tenta sem o campo extra na próxima
-      const msg = String(err?.message || err || "");
-      if (/meta|metadata|column/i.test(msg) && !isIntegrityErr(err)) {
-        try {
-          await deleteWalletTx();
-          const slim = await sb("/rest/v1/wallet_transactions", {
-            method: "POST",
-            token: SERVICE_KEY,
-            body: {
-              user_id: userId,
-              type: attempt.type,
-              amount_cents: attempt.amount_cents,
-              balance_before_cents: balanceBefore,
-              balance_after_cents: balanceAfter,
-              ref: protectionId,
-              metadata: ledgerMeta,
-            },
-          });
-          walletTxId = Array.isArray(slim) ? slim[0]?.id : slim?.id;
-          if (walletTxId) {
-            await insertProtectionRow();
-            created = true;
-            break;
-          }
-        } catch (err2) {
-          lastErr = err2;
-        }
-      }
-      if (!isIntegrityErr(err) && !/meta|metadata|column/i.test(msg)) {
-        // Erro não relacionado a integridade (ex.: constraint) — aborta
-        await deleteWalletTx();
-        await restoreProfile();
-        throw err;
-      }
-      console.warn(
-        `[createProtection] ${FIX_TAG} tentativa falhou type=${attempt.type} amount=${attempt.amount_cents}:`,
-        msg.slice(0, 160)
-      );
+  } catch (rpcErr) {
+    const msg = String(rpcErr?.message || rpcErr || "");
+    console.warn(`[createProtection] ${FIX_TAG} rpc falhou:`, msg.slice(0, 200));
+    // Se a função não existe, cai no fallback REST (v2)
+    if (!/could not find|PGRST202|404|does not exist|function/i.test(msg)) {
+      throw rpcErr;
     }
   }
 
-  if (!created) {
-    await deleteWalletTx();
-    await restoreProfile();
-    throw lastErr || new Error("Falha ao gravar proteção");
+  if (!rpcOk) {
+    // Fallback v2: wallet antes + retries (requer migration aplicada idealmente)
+    await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: patch,
+    });
+
+    let walletTxId = null;
+    const restoreProfile = async () => {
+      await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          balance_cents: profile.balance_cents,
+          reusable_balance_cents: profile.reusable_balance_cents,
+          demo_balance_cents: profile.demo_balance_cents,
+          investor_balance_cents: profile.investor_balance_cents,
+          locked_balance_cents: profile.locked_balance_cents,
+          updated_at: new Date().toISOString(),
+        },
+      }).catch(() => {});
+    };
+    const deleteWalletTx = async () => {
+      if (!walletTxId) return;
+      await sb(
+        `/rest/v1/wallet_transactions?id=eq.${encodeURIComponent(walletTxId)}`,
+        { method: "DELETE", token: SERVICE_KEY }
+      ).catch(() => {});
+      walletTxId = null;
+    };
+
+    const altLockType =
+      marketType === "BACK" ? "anchor_lock" : "protection_lock";
+    const walletAttempts = [
+      { type: primaryLockType, amount_cents: -amountCents },
+      { type: primaryLockType, amount_cents: amountCents },
+      { type: altLockType, amount_cents: -amountCents },
+      { type: altLockType, amount_cents: amountCents },
+    ];
+    const ledgerMeta = {
+      protection_id: protectionId,
+      match_id: matchId,
+      market_type: marketType,
+      balance_type: balanceType,
+      fix: FIX_TAG,
+    };
+
+    let lastErr = null;
+    let created = false;
+    for (const attempt of walletAttempts) {
+      try {
+        await deleteWalletTx();
+        const walletInserted = await sb("/rest/v1/wallet_transactions", {
+          method: "POST",
+          token: SERVICE_KEY,
+          body: {
+            user_id: userId,
+            type: attempt.type,
+            amount_cents: attempt.amount_cents,
+            balance_before_cents: balanceBefore,
+            balance_after_cents: balanceAfter,
+            ref: protectionId,
+            metadata: ledgerMeta,
+          },
+        });
+        walletTxId = Array.isArray(walletInserted)
+          ? walletInserted[0]?.id
+          : walletInserted?.id;
+        if (!walletTxId) throw new Error("Falha ao registrar débito no saldo");
+
+        if (marketType === "BACK") {
+          await sb("/rest/v1/back_protections", {
+            method: "POST",
+            token: SERVICE_KEY,
+            body: { id: protectionId, user_id: userId, match_id: matchId, odd, status: "active", ...protectionPayload, balance_before_cents: balanceBefore, balance_after_cents: balanceAfter },
+          });
+        } else {
+          await sb("/rest/v1/protections", {
+            method: "POST",
+            token: SERVICE_KEY,
+            body: {
+              id: protectionId,
+              user_id: userId,
+              match_id: matchId,
+              side,
+              odd,
+              status: "active",
+              ...protectionPayload,
+              balance_before_cents: balanceBefore,
+              balance_after_cents: balanceAfter,
+            },
+          });
+        }
+        created = true;
+        break;
+      } catch (err) {
+        lastErr = err;
+        const em = String(err?.message || err || "");
+        if (!/integridade|débito|debito|sem registro|meta|column|type|check|violat/i.test(em)) {
+          await deleteWalletTx();
+          await restoreProfile();
+          throw err;
+        }
+      }
+    }
+    if (!created) {
+      await deleteWalletTx();
+      await restoreProfile();
+      throw (
+        lastErr ||
+        new Error(
+          "Falha de integridade ao criar proteção. Aplique a migration RPC na VPS (hotfix v3)."
+        )
+      );
+    }
   }
 
   if (market) {
@@ -1433,7 +1426,6 @@ async function createProtection(body, userToken) {
       },
     });
   } catch (err) {
-    // Proteção + ledger já gravados; falha no match não deve orfanar saldo.
     console.warn("[createProtection] match update:", err.message || err);
   }
 
@@ -1446,6 +1438,7 @@ async function createProtection(body, userToken) {
   };
 }
 
+
 async function handleApi(req, res) {
   if (req.method === "OPTIONS") return sendJson(res, 204, {});
 
@@ -1455,7 +1448,7 @@ async function handleApi(req, res) {
     return sendJson(res, 200, {
       ok: true,
       service: "prelive-events",
-      protectionIntegrityFix: "integridade-debito-v2",
+      protectionIntegrityFix: "integridade-debito-v3",
     });
   }
 
