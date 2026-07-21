@@ -74,7 +74,7 @@
       title: "Compliance & Risco",
       color: "#f59e0b",
       items: [
-        p("contestations", "Contestações", "/admin-contestations.html"),
+        p("contestations", "Contestações de Apostas", "/admin-contestations.html"),
         p("approvals", "Aprovações", "/admin-approvals.html"),
         p("proofs", "Comprovantes", "/admin-proofs.html"),
         p("investigation", "Investigação", "/admin-investigation.html"),
@@ -575,6 +575,36 @@
           else window.alert("Página não encontrada");
         });
       }
+
+      // Badge de contestações pendentes no menu lateral
+      (async function refreshContestationBadge() {
+        try {
+          if (!(global.ArbiV2 && global.ArbiV2.client)) return;
+          var badgeSupa = global.ArbiV2.client();
+          var session = await badgeSupa.auth.getSession();
+          var tok = session.data.session && session.data.session.access_token;
+          if (!tok) return;
+          var res = await fetch("/api/arbishield/contestations/pending-count", {
+            headers: { Authorization: "Bearer " + tok },
+          });
+          var data = await res.json().catch(function () { return {}; });
+          var n = Number(data.pending || 0);
+          var link = document.querySelector('.v2-sidebar a[href="/admin-contestations.html"]');
+          if (!link) return;
+          var badge = link.querySelector(".badge");
+          if (n > 0) {
+            if (!badge) {
+              badge = document.createElement("span");
+              badge.className = "badge";
+              link.appendChild(badge);
+            }
+            badge.textContent = String(n);
+            link.classList.add("glow");
+          } else if (badge) {
+            badge.remove();
+          }
+        } catch (e) {}
+      })();
     }
 
     global.ArbiV2Shell = { adminSections: ADMIN_SECTIONS, appSections: APP_SECTIONS };

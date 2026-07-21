@@ -4,25 +4,276 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <title>Contestações — ArbiShield v2</title>
+  <title>Contestações de Apostas — ArbiShield</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
-  <script src="/v2-pages.js"></script>
   <script src="/v2-shell.js" defer></script>
+  <style>
+    .c-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+    @media (max-width: 800px) { .c-kpis { grid-template-columns: 1fr; } }
+    .c-kpi { border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 14px; background: rgba(4,26,20,0.85); }
+    .c-kpi span { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+    .c-kpi strong { font-size: 22px; }
+    .c-table { width: 100%; border-collapse: collapse; }
+    .c-table th, .c-table td { text-align: left; padding: 12px 10px; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 13px; vertical-align: middle; }
+    .c-table th { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; }
+    .c-wrap { border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; overflow: auto; background: rgba(4,26,20,0.75); }
+    .tag { display: inline-flex; padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; border: 1px solid rgba(255,255,255,0.12); }
+    .tag.odd { color: #fbbf24; border-color: rgba(251,191,36,0.4); }
+    .tag.cancel { color: #f87171; border-color: rgba(248,113,113,0.4); }
+    .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .actions .btn { height: 34px; padding: 0 10px; font-size: 11px; }
+    .proof-link { color: #c9f223; font-weight: 700; text-decoration: none; }
+    .empty { padding: 28px; text-align: center; color: var(--muted); }
+    .drawer-back {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 90;
+      display: none; align-items: stretch; justify-content: flex-end;
+    }
+    .drawer-back.show { display: flex; }
+    .drawer {
+      width: min(420px, 100%); background: #041a14; border-left: 1px solid rgba(201,242,35,0.2);
+      padding: 18px; overflow: auto;
+    }
+    .drawer img { width: 100%; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); margin-top: 10px; }
+  </style>
 </head>
 <body data-shell="admin" data-active="contestations">
   <div class="page-head">
     <div>
-      <h1>Gestão de <span>Contestações</span></h1>
-      <p class="sub">Compliance & Risco · layout Jogos · nativo v2 · sem SPA</p>
+      <h1>Contestações de <span>Apostas</span></h1>
+      <p class="sub">Compliance & Risco · aprovar ajuste de odd ou cancelamento</p>
     </div>
+    <button type="button" class="btn btn-ghost" id="btnRefresh">Atualizar</button>
   </div>
   <div id="err" class="err"></div>
-  <div id="pageBody"><div class="meta">Carregando…</div></div>
+  <div id="ok" class="ok-msg" style="display:none"></div>
+
+  <div class="c-kpis">
+    <div class="c-kpi"><span>Pendentes</span><strong id="kpiPending">0</strong></div>
+    <div class="c-kpi"><span>Ajuste de Odd</span><strong id="kpiOdd">0</strong></div>
+    <div class="c-kpi"><span>Cancelamento</span><strong id="kpiCancel">0</strong></div>
+  </div>
+
+  <div class="c-wrap">
+    <table class="c-table">
+      <thead>
+        <tr>
+          <th>Cliente</th>
+          <th>Confronto</th>
+          <th>Tipo</th>
+          <th>Valor</th>
+          <th>Solicitação</th>
+          <th>Print</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"><tr><td colspan="7" class="empty">Carregando…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="drawer-back" id="drawer" aria-hidden="true">
+    <div class="drawer">
+      <h2 style="margin:0 0 8px;font-size:15px;text-transform:uppercase;letter-spacing:.08em">Evidência</h2>
+      <p id="drawerMeta" class="sub" style="color:var(--muted);font-size:12px"></p>
+      <img id="drawerImg" alt="Print do comprovante" />
+      <div style="margin-top:12px">
+        <button type="button" class="btn btn-ghost" id="drawerClose">Fechar</button>
+      </div>
+    </div>
+  </div>
+
   <script>
-    ArbiV2Page.mountAdmin({"sources": [{"table": "odd_contestations", "limit": 200}, {"table": "protections", "limit": 200}], "cols": ["id", "user_id", "status", "created_at"]});
+    (async function () {
+      var money = ArbiV2.money;
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+      var isAdmin = await ArbiV2.requireAdmin(supa, user);
+      if (!isAdmin) {
+        location.replace("/app.html");
+        return;
+      }
+
+      var rows = [];
+      var errEl = document.getElementById("err");
+      var okEl = document.getElementById("ok");
+      var tbody = document.getElementById("tbody");
+      var drawer = document.getElementById("drawer");
+
+      function showErr(msg) {
+        errEl.textContent = msg || "";
+        errEl.classList.toggle("show", !!msg);
+      }
+      function showOk(msg) {
+        okEl.textContent = msg || "";
+        okEl.style.display = msg ? "block" : "none";
+        if (msg) setTimeout(function () { okEl.style.display = "none"; }, 3500);
+      }
+
+      async function token() {
+        var s = await supa.auth.getSession();
+        return s.data.session && s.data.session.access_token;
+      }
+
+      async function api(path, opts) {
+        var t = await token();
+        var res = await fetch(path, Object.assign({
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + t,
+          },
+        }, opts || {}));
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok || data.error) throw new Error(data.error || ("HTTP " + res.status));
+        return data;
+      }
+
+      function contestType(r) {
+        var t = (r.contestation && r.contestation.type) || "odd_adjustment";
+        return t === "cancellation" ? "cancellation" : "odd_adjustment";
+      }
+      function matchName(r) {
+        var m = r.matches;
+        if (m && m.home_team && m.away_team) return m.home_team + " × " + m.away_team;
+        return "Partida";
+      }
+      function clientName(r) {
+        return (r.profiles && r.profiles.full_name) || "Usuário";
+      }
+      function requestedAt(r) {
+        var d = (r.contestation && r.contestation.requested_at) || r.updated_at || r.created_at;
+        try { return new Date(d).toLocaleString("pt-BR"); } catch (e) { return "—"; }
+      }
+      function proofUrl(r) {
+        return (r.contestation && r.contestation.proof_url) || null;
+      }
+
+      function render() {
+        var pending = rows.length;
+        var oddN = rows.filter(function (r) { return contestType(r) === "odd_adjustment"; }).length;
+        var cancelN = pending - oddN;
+        document.getElementById("kpiPending").textContent = String(pending);
+        document.getElementById("kpiOdd").textContent = String(oddN);
+        document.getElementById("kpiCancel").textContent = String(cancelN);
+
+        if (!rows.length) {
+          tbody.innerHTML = '<tr><td colspan="7" class="empty">Nenhuma contestação pendente.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = rows.map(function (r, idx) {
+          var type = contestType(r);
+          var amount = r.responsibility_cents || r.amount_cents || 0;
+          var proof = proofUrl(r);
+          var typeLabel = type === "cancellation" ? "Cancelamento" : "Ajuste de Odd";
+          var extra = type === "odd_adjustment"
+            ? (" · odd " + Number((r.contestation && r.contestation.requested_odd) || r.odd || 0).toFixed(2))
+            : (" · " + String((r.contestation && r.contestation.reason) || "").slice(0, 40));
+          return (
+            "<tr data-idx=\"" + idx + "\">" +
+              "<td>" + clientName(r) + "</td>" +
+              "<td>" + matchName(r) + "<div style=\"color:var(--muted);font-size:11px\">" + (r.market_category || "LAY") + extra + "</div></td>" +
+              "<td><span class=\"tag " + (type === "cancellation" ? "cancel" : "odd") + "\">" + typeLabel + "</span></td>" +
+              "<td>" + money(amount) + "</td>" +
+              "<td>" + requestedAt(r) + "</td>" +
+              "<td>" + (proof
+                ? '<a class="proof-link" href="#" data-proof="' + idx + '">Ver print</a>'
+                : "—") + "</td>" +
+              '<td><div class="actions">' +
+                '<button type="button" class="btn btn-primary" data-approve="' + idx + '">Aprovar</button>' +
+                '<button type="button" class="btn btn-ghost" data-reject="' + idx + '">Rejeitar</button>' +
+              "</div></td>" +
+            "</tr>"
+          );
+        }).join("");
+
+        tbody.querySelectorAll("[data-proof]").forEach(function (a) {
+          a.addEventListener("click", function (e) {
+            e.preventDefault();
+            var r = rows[Number(a.getAttribute("data-proof"))];
+            var url = proofUrl(r);
+            if (!url) return;
+            document.getElementById("drawerMeta").textContent = clientName(r) + " · " + matchName(r);
+            document.getElementById("drawerImg").src = url;
+            drawer.classList.add("show");
+          });
+        });
+        tbody.querySelectorAll("[data-approve]").forEach(function (b) {
+          b.addEventListener("click", function () { approve(Number(b.getAttribute("data-approve"))); });
+        });
+        tbody.querySelectorAll("[data-reject]").forEach(function (b) {
+          b.addEventListener("click", function () { reject(Number(b.getAttribute("data-reject"))); });
+        });
+      }
+
+      async function load() {
+        showErr("");
+        rows = await api("/api/arbishield/contestations");
+        if (!Array.isArray(rows)) rows = [];
+        render();
+      }
+
+      async function approve(idx) {
+        var r = rows[idx];
+        if (!r) return;
+        var type = contestType(r);
+        var odd = Number((r.contestation && r.contestation.requested_odd) || r.odd || 0);
+        var msg = type === "cancellation"
+          ? "Aprovar cancelamento e estornar integralmente o saldo comprometido?"
+          : ("Aprovar odd " + odd.toFixed(2) + " e recalcular liquidez/taxas?");
+        if (!window.confirm(msg)) return;
+        try {
+          await api("/api/arbishield/contestations/approve", {
+            method: "POST",
+            body: JSON.stringify({
+              protectionId: r.id,
+              category: r.market_category || "LAY",
+              approvedOdd: odd,
+            }),
+          });
+          showOk(type === "cancellation" ? "Cancelamento aprovado e saldo estornado." : "Odd aprovada e recalculada.");
+          await load();
+        } catch (ex) {
+          showErr(ex.message || String(ex));
+        }
+      }
+
+      async function reject(idx) {
+        var r = rows[idx];
+        if (!r) return;
+        var reason = window.prompt("Motivo da rejeição (opcional):", "Odd validada como correta pelo sistema.");
+        if (reason === null) return;
+        try {
+          await api("/api/arbishield/contestations/reject", {
+            method: "POST",
+            body: JSON.stringify({
+              protectionId: r.id,
+              category: r.market_category || "LAY",
+              reason: reason,
+            }),
+          });
+          showOk("Contestação rejeitada. Valores originais mantidos.");
+          await load();
+        } catch (ex) {
+          showErr(ex.message || String(ex));
+        }
+      }
+
+      document.getElementById("btnRefresh").addEventListener("click", function () { load().catch(function (e) { showErr(e.message); }); });
+      document.getElementById("drawerClose").addEventListener("click", function () { drawer.classList.remove("show"); });
+      drawer.addEventListener("click", function (e) { if (e.target === drawer) drawer.classList.remove("show"); });
+
+      try {
+        await load();
+        setInterval(function () { load().catch(function () {}); }, 20000);
+      } catch (ex) {
+        showErr(ex.message || String(ex));
+        tbody.innerHTML = '<tr><td colspan="7" class="empty">Falha ao carregar contestações.</td></tr>';
+      }
+    })();
   </script>
 </body>
 </html>
