@@ -1201,7 +1201,7 @@ async function createProtection(body, userToken) {
     }
   }
 
-  const FIX_TAG = "integridade-debito-v4";
+  const FIX_TAG = "integridade-debito-v5";
   const protectionId = randomUUID();
   const primaryLockType =
     marketType === "BACK" ? "protection_lock" : "anchor_lock";
@@ -1448,7 +1448,7 @@ async function handleApi(req, res) {
     return sendJson(res, 200, {
       ok: true,
       service: "prelive-events",
-      protectionIntegrityFix: "integridade-debito-v4",
+      protectionIntegrityFix: "integridade-debito-v5",
     });
   }
 

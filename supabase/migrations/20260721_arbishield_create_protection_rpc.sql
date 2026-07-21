@@ -1,5 +1,5 @@
--- ArbiShield: criar proteção + débito no ledger na MESMA transação.
--- Corrige "Falha Crítica de Integridade: ... sem registro de débito no saldo".
+-- ArbiShield: criar proteção + débito no ledger na MESMA transação (v5).
+-- Não usa set_config de replication role (falhava sem superuser).
 
 CREATE OR REPLACE FUNCTION public.arbishield_create_protection(
   p_user_id uuid,
@@ -33,7 +33,7 @@ DECLARE
     'match_id', p_match_id,
     'market_type', upper(COALESCE(p_market_type, 'LAY')),
     'balance_type', upper(COALESCE(p_balance_type, 'REAL')),
-    'fix', 'integridade-debito-v4'
+    'fix', 'integridade-debito-v5'
   );
   v_prot_meta jsonb;
 BEGIN
@@ -44,7 +44,6 @@ BEGIN
     RAISE EXCEPTION 'Valor inválido';
   END IF;
 
-  -- 1) Débito no perfil
   IF p_profile_patch IS NOT NULL AND p_profile_patch <> '{}'::jsonb THEN
     UPDATE public.profiles p
     SET
@@ -60,7 +59,7 @@ BEGIN
     END IF;
   END IF;
 
-  -- 2) Ledger (débito) — ANTES da proteção, mesma TX
+  -- Ledger (débito) ANTES da proteção, mesma TX
   INSERT INTO public.wallet_transactions (
     user_id, type, amount_cents, balance_before_cents, balance_after_cents, ref, metadata
   ) VALUES (
@@ -82,9 +81,6 @@ BEGIN
   EXCEPTION WHEN undefined_column THEN
     NULL;
   END;
-
-  -- 3) INSERT proteção com triggers de usuário desligados nesta TX
-  PERFORM set_config('session_replication_role', 'replica', true);
 
   v_prot_meta := COALESCE(p_protection->'metadata', '{}'::jsonb) || v_meta;
 
@@ -134,8 +130,6 @@ BEGIN
     );
   END IF;
 
-  PERFORM set_config('session_replication_role', 'origin', true);
-
   RETURN jsonb_build_object(
     'ok', true,
     'protectionId', v_pid,
@@ -143,13 +137,27 @@ BEGIN
     'amountCents', p_amount_cents,
     'balanceAfterCents', p_balance_after,
     'lockType', v_lock_type,
-    'fix', 'integridade-debito-v4'
+    'fix', 'integridade-debito-v5'
   );
-EXCEPTION WHEN OTHERS THEN
-  PERFORM set_config('session_replication_role', 'origin', true);
-  RAISE;
 END;
 $$;
+
+DO $$
+BEGIN
+  BEGIN
+    ALTER FUNCTION public.arbishield_create_protection(
+      uuid, uuid, text, integer, numeric, text, text, integer, integer, jsonb, jsonb, text, uuid
+    ) OWNER TO postgres;
+  EXCEPTION WHEN insufficient_privilege OR undefined_object THEN
+    BEGIN
+      ALTER FUNCTION public.arbishield_create_protection(
+        uuid, uuid, text, integer, numeric, text, text, integer, integer, jsonb, jsonb, text, uuid
+      ) OWNER TO supabase_admin;
+    EXCEPTION WHEN OTHERS THEN
+      NULL;
+    END;
+  END;
+END $$;
 
 REVOKE ALL ON FUNCTION public.arbishield_create_protection(
   uuid, uuid, text, integer, numeric, text, text, integer, integer, jsonb, jsonb, text, uuid

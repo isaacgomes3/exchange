@@ -222,7 +222,7 @@ export async function createProtection(
 
   patch.locked_balance_cents = num(profile.locked_balance_cents) + amountCents;
 
-  const FIX_TAG = "integridade-debito-v4";
+  const FIX_TAG = "integridade-debito-v5";
   const protectionId = crypto.randomUUID();
   const primaryLockType =
     marketType === "BACK" ? "protection_lock" : "anchor_lock";
