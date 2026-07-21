@@ -18,7 +18,7 @@
     .c-kpi span { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
     .c-kpi strong { font-size: 22px; }
     .c-table { width: 100%; border-collapse: collapse; }
-    .c-table th, .c-table td { text-align: left; padding: 12px 10px; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 13px; vertical-align: middle; }
+    .c-table th, .c-table td { text-align: left; padding: 12px 10px; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 13px; vertical-align: top; }
     .c-table th { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; }
     .c-wrap { border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; overflow: auto; background: rgba(4,26,20,0.75); }
     .tag { display: inline-flex; padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; border: 1px solid rgba(255,255,255,0.12); }
@@ -28,6 +28,7 @@
     .actions .btn { height: 34px; padding: 0 10px; font-size: 11px; }
     .proof-link { color: #c9f223; font-weight: 700; text-decoration: none; }
     .empty { padding: 28px; text-align: center; color: var(--muted); }
+    .muted { color: var(--muted); font-size: 11px; margin-top: 4px; }
     .drawer-back {
       position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 90;
       display: none; align-items: stretch; justify-content: flex-end;
@@ -44,7 +45,7 @@
   <div class="page-head">
     <div>
       <h1>Contestações de <span>Apostas</span></h1>
-      <p class="sub">Compliance & Risco · aprovar ajuste de odd ou cancelamento</p>
+      <p class="sub">Acompanhe aqui as reclamações de odds ou pedidos de cancelamento</p>
     </div>
     <button type="button" class="btn btn-ghost" id="btnRefresh">Atualizar</button>
   </div>
@@ -53,8 +54,8 @@
 
   <div class="c-kpis">
     <div class="c-kpi"><span>Pendentes</span><strong id="kpiPending">0</strong></div>
-    <div class="c-kpi"><span>Ajuste de Odd</span><strong id="kpiOdd">0</strong></div>
-    <div class="c-kpi"><span>Cancelamento</span><strong id="kpiCancel">0</strong></div>
+    <div class="c-kpi"><span>Ajustes de Odd</span><strong id="kpiOdd">0</strong></div>
+    <div class="c-kpi"><span>Cancelamentos</span><strong id="kpiCancel">0</strong></div>
   </div>
 
   <div class="c-wrap">
@@ -65,8 +66,8 @@
           <th>Confronto</th>
           <th>Tipo</th>
           <th>Valor</th>
-          <th>Solicitação</th>
-          <th>Print</th>
+          <th>Observação</th>
+          <th>Data</th>
           <th>Ações</th>
         </tr>
       </thead>
@@ -103,6 +104,12 @@
       var tbody = document.getElementById("tbody");
       var drawer = document.getElementById("drawer");
 
+      var FN = {
+        list: "59c0d818802363264163ee9444e24b1e3264bcd8aec301585bdc70fcac943eed",
+        approve: "9915d3faeedf7212cb506bdd07689806611c78427c4cba1c2fdbd880cb5d8232",
+        reject: "94342764ce144c96ccc6f2f642dee8f04c0f51a24a39b4ae8ff5a7b37a9cbcac",
+      };
+
       function showErr(msg) {
         errEl.textContent = msg || "";
         errEl.classList.toggle("show", !!msg);
@@ -118,53 +125,151 @@
         return s.data.session && s.data.session.access_token;
       }
 
-      var FN = {
-        list: "59c0d818802363264163ee9444e24b1e3264bcd8aec301585bdc70fcac943eed",
-        approve: "9915d3faeedf7212cb506bdd07689806611c78427c4cba1c2fdbd880cb5d8232",
-        reject: "94342764ce144c96ccc6f2f642dee8f04c0f51a24a39b4ae8ff5a7b37a9cbcac",
-      };
+      function getContestMeta(r) {
+        var isBack = String(r.market_category || "").toUpperCase() === "BACK";
+        if (isBack) {
+          var calc = r.calculations || (r.metadata && r.metadata.calculations) || {};
+          return (calc && calc.contestation) || (r.metadata && r.metadata.contestation) || {};
+        }
+        return (r.metadata && r.metadata.contestation) || {};
+      }
 
-      async function api(path, opts) {
+      function normalizeRow(r, category) {
+        var meta = getContestMeta(Object.assign({}, r, { market_category: category }));
+        var type = meta.type === "cancellation" ? "cancellation" : "odd_adjustment";
+        return Object.assign({}, r, {
+          market_category: category,
+          status: r.status || "review_odd",
+          contestation: {
+            type: type,
+            requested_odd: meta.requested_odd != null ? meta.requested_odd : null,
+            original_odd: meta.original_odd != null ? meta.original_odd : Number(r.odd),
+            proof_url: meta.proof_url || meta.bet_proof_url || null,
+            reason: meta.reason || null,
+            requested_at: meta.requested_at || r.updated_at || r.created_at,
+          },
+        });
+      }
+
+      /** Espelha o fallback do SPA legado (ae): protections status=review_odd */
+      async function loadFromSupabase() {
+        var layRes = await supa
+          .from("protections")
+          .select("*")
+          .eq("status", "review_odd")
+          .order("created_at", { ascending: false })
+          .limit(300);
+        if (layRes.error) throw layRes.error;
+
+        var backRes = await supa
+          .from("back_protections")
+          .select("*")
+          .eq("status", "review_odd")
+          .order("created_at", { ascending: false })
+          .limit(300);
+        // back pode falhar por RLS/tabela — não derruba a lista LAY
+        var backRows = backRes.error ? [] : backRes.data || [];
+
+        var list = []
+          .concat((layRes.data || []).map(function (r) { return normalizeRow(r, "LAY"); }))
+          .concat(backRows.map(function (r) { return normalizeRow(r, "BACK"); }))
+          .sort(function (a, b) {
+            return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+          });
+
+        var userIds = Array.from(new Set(list.map(function (r) { return r.user_id; }).filter(Boolean)));
+        var matchIds = Array.from(new Set(list.map(function (r) { return r.match_id; }).filter(Boolean)));
+
+        var profileMap = {};
+        var matchMap = {};
+        if (userIds.length) {
+          var pr = await supa.from("profiles").select("id,full_name").in("id", userIds);
+          if (!pr.error) (pr.data || []).forEach(function (p) { profileMap[p.id] = p; });
+        }
+        if (matchIds.length) {
+          var mr = await supa
+            .from("matches")
+            .select("id,home_team,away_team,league,starts_at")
+            .in("id", matchIds);
+          if (!mr.error) (mr.data || []).forEach(function (m) { matchMap[m.id] = m; });
+        }
+
+        return list.map(function (r) {
+          return Object.assign({}, r, {
+            profiles: profileMap[r.user_id] || { full_name: "Usuário" },
+            matches: matchMap[r.match_id] || null,
+          });
+        });
+      }
+
+      async function loadFromApi() {
         var t = await token();
-        var method = (opts && opts.method) || "GET";
-        var body = opts && opts.body;
-        var headers = {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + t,
-        };
-        var res = await fetch(path, { method: method, headers: headers, body: body });
+        if (!t) return null;
+        async function tryFetch(url, init) {
+          var res = await fetch(url, init);
+          var text = await res.text();
+          var data = {};
+          try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 160) }; }
+          return { res: res, data: data };
+        }
+        var out = await tryFetch("/api/arbishield/contestations", {
+          headers: { Authorization: "Bearer " + t },
+        });
+        if (out.res.ok && Array.isArray(out.data)) return out.data;
+        out = await tryFetch("/_serverFn/" + FN.list, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-arbishield-plain": "1",
+            Authorization: "Bearer " + t,
+          },
+          body: "{}",
+        });
+        if (out.res.ok && Array.isArray(out.data)) return out.data;
+        return null;
+      }
+
+      async function callAction(kind, payload) {
+        var t = await token();
+        var path =
+          kind === "approve"
+            ? "/api/arbishield/contestations/approve"
+            : "/api/arbishield/contestations/reject";
+        var fnId = kind === "approve" ? FN.approve : FN.reject;
+        var res = await fetch(path, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + t,
+          },
+          body: JSON.stringify(payload),
+        });
         var text = await res.text();
         var data = {};
-        try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 180) }; }
-        if (res.ok && !data.error) {
-          return data;
-        }
-        var restErr = data.error || ("HTTP " + res.status);
-        // Fallback via /_serverFn (nginx da VPS já proxya)
-        var fnId = null;
-        if (path.indexOf("/contestations/approve") >= 0) fnId = FN.approve;
-        else if (path.indexOf("/contestations/reject") >= 0) fnId = FN.reject;
-        else if (path.replace(/\/$/, "") === "/api/arbishield/contestations") fnId = FN.list;
-        if (fnId && (res.status === 405 || res.status === 404 || res.status === 502 || /html|not allowed/i.test(String(data.raw || "")))) {
-          var payload = {};
-          try { payload = body ? JSON.parse(body) : {}; } catch (e2) { payload = {}; }
+        try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 160) }; }
+        if (res.ok && data.ok) return data;
+        if (res.status === 405 || res.status === 404 || res.status === 502 || data.raw) {
           var res2 = await fetch("/_serverFn/" + fnId, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               "x-arbishield-plain": "1",
-              "x-tsr-serverFn": "true",
               Authorization: "Bearer " + t,
             },
             body: JSON.stringify({ data: payload }),
           });
           var text2 = await res2.text();
           var data2 = {};
-          try { data2 = text2 ? JSON.parse(text2) : {}; } catch (e3) { data2 = {}; }
-          if (!res2.ok || data2.error) throw new Error(data2.error || restErr);
+          try { data2 = text2 ? JSON.parse(text2) : {}; } catch (e2) { data2 = {}; }
+          if (!res2.ok || data2.error || data2.ok === false) {
+            throw new Error(data2.error || data.error || ("Falha ao " + kind));
+          }
+          if (data2.ok !== true && data2.rejected !== true && !data2.protectionId) {
+            throw new Error("Shim não processou a ação. Rode o hotfix v4 do contestação.");
+          }
           return data2;
         }
-        throw new Error(restErr);
+        throw new Error(data.error || ("HTTP " + res.status));
       }
 
       function contestType(r) {
@@ -186,17 +291,26 @@
       function proofUrl(r) {
         return (r.contestation && r.contestation.proof_url) || null;
       }
+      function observation(r) {
+        var type = contestType(r);
+        if (type === "cancellation") {
+          return String((r.contestation && r.contestation.reason) || "Pedido de cancelamento");
+        }
+        var odd = Number((r.contestation && r.contestation.requested_odd) || r.odd || 0);
+        var orig = Number((r.contestation && r.contestation.original_odd) || r.odd || 0);
+        return "Odd " + orig.toFixed(2) + " → " + odd.toFixed(2);
+      }
 
       function render() {
         var pending = rows.length;
         var oddN = rows.filter(function (r) { return contestType(r) === "odd_adjustment"; }).length;
-        var cancelN = pending - oddN;
         document.getElementById("kpiPending").textContent = String(pending);
         document.getElementById("kpiOdd").textContent = String(oddN);
-        document.getElementById("kpiCancel").textContent = String(cancelN);
+        document.getElementById("kpiCancel").textContent = String(pending - oddN);
 
         if (!rows.length) {
-          tbody.innerHTML = '<tr><td colspan="7" class="empty">Nenhuma contestação pendente.</td></tr>';
+          tbody.innerHTML =
+            '<tr><td colspan="7" class="empty">Sem dados disponíveis para exibir<br><span class="muted">Nenhuma proteção em status «Em Contestação (Pendente)». Se o cliente acabou de enviar, clique Atualizar.</span></td></tr>';
           return;
         }
 
@@ -205,19 +319,16 @@
           var amount = r.responsibility_cents || r.amount_cents || 0;
           var proof = proofUrl(r);
           var typeLabel = type === "cancellation" ? "Cancelamento" : "Ajuste de Odd";
-          var extra = type === "odd_adjustment"
-            ? (" · odd " + Number((r.contestation && r.contestation.requested_odd) || r.odd || 0).toFixed(2))
-            : (" · " + String((r.contestation && r.contestation.reason) || "").slice(0, 40));
           return (
-            "<tr data-idx=\"" + idx + "\">" +
+            "<tr>" +
               "<td>" + clientName(r) + "</td>" +
-              "<td>" + matchName(r) + "<div style=\"color:var(--muted);font-size:11px\">" + (r.market_category || "LAY") + extra + "</div></td>" +
+              "<td>" + matchName(r) + '<div class="muted">' + (r.market_category || "LAY") + "</div></td>" +
               "<td><span class=\"tag " + (type === "cancellation" ? "cancel" : "odd") + "\">" + typeLabel + "</span></td>" +
               "<td>" + money(amount) + "</td>" +
+              "<td>" + observation(r) +
+                (proof ? '<div style="margin-top:6px"><a class="proof-link" href="#" data-proof="' + idx + '">Ver print</a></div>' : "") +
+              "</td>" +
               "<td>" + requestedAt(r) + "</td>" +
-              "<td>" + (proof
-                ? '<a class="proof-link" href="#" data-proof="' + idx + '">Ver print</a>'
-                : "—") + "</td>" +
               '<td><div class="actions">' +
                 '<button type="button" class="btn btn-primary" data-approve="' + idx + '">Aprovar</button>' +
                 '<button type="button" class="btn btn-ghost" data-reject="' + idx + '">Rejeitar</button>' +
@@ -247,8 +358,19 @@
 
       async function load() {
         showErr("");
-        rows = await api("/api/arbishield/contestations");
-        if (!Array.isArray(rows)) rows = [];
+        // 1) Direto no banco (igual legado ae) — não depende do nginx/API
+        var direct = await loadFromSupabase();
+        // 2) API/shim como complemento (service role vê tudo mesmo com RLS restritiva)
+        var apiRows = null;
+        try { apiRows = await loadFromApi(); } catch (e) { apiRows = null; }
+
+        if (Array.isArray(apiRows) && apiRows.length) {
+          rows = apiRows.map(function (r) {
+            return normalizeRow(r, r.market_category || "LAY");
+          });
+        } else {
+          rows = direct;
+        }
         render();
       }
 
@@ -257,18 +379,16 @@
         if (!r) return;
         var type = contestType(r);
         var odd = Number((r.contestation && r.contestation.requested_odd) || r.odd || 0);
-        var msg = type === "cancellation"
-          ? "Aprovar cancelamento e estornar integralmente o saldo comprometido?"
-          : ("Aprovar odd " + odd.toFixed(2) + " e recalcular liquidez/taxas?");
+        var msg =
+          type === "cancellation"
+            ? "Aprovar cancelamento e estornar integralmente o saldo comprometido?"
+            : ("Aprovar odd " + odd.toFixed(2) + " e recalcular liquidez/taxas?");
         if (!window.confirm(msg)) return;
         try {
-          await api("/api/arbishield/contestations/approve", {
-            method: "POST",
-            body: JSON.stringify({
-              protectionId: r.id,
-              category: r.market_category || "LAY",
-              approvedOdd: odd,
-            }),
+          await callAction("approve", {
+            protectionId: r.id,
+            category: r.market_category || "LAY",
+            approvedOdd: odd,
           });
           showOk(type === "cancellation" ? "Cancelamento aprovado e saldo estornado." : "Odd aprovada e recalculada.");
           await load();
@@ -283,13 +403,10 @@
         var reason = window.prompt("Motivo da rejeição (opcional):", "Odd validada como correta pelo sistema.");
         if (reason === null) return;
         try {
-          await api("/api/arbishield/contestations/reject", {
-            method: "POST",
-            body: JSON.stringify({
-              protectionId: r.id,
-              category: r.market_category || "LAY",
-              reason: reason,
-            }),
+          await callAction("reject", {
+            protectionId: r.id,
+            category: r.market_category || "LAY",
+            reason: reason,
           });
           showOk("Contestação rejeitada. Valores originais mantidos.");
           await load();
@@ -298,9 +415,15 @@
         }
       }
 
-      document.getElementById("btnRefresh").addEventListener("click", function () { load().catch(function (e) { showErr(e.message); }); });
-      document.getElementById("drawerClose").addEventListener("click", function () { drawer.classList.remove("show"); });
-      drawer.addEventListener("click", function (e) { if (e.target === drawer) drawer.classList.remove("show"); });
+      document.getElementById("btnRefresh").addEventListener("click", function () {
+        load().catch(function (e) { showErr(e.message); });
+      });
+      document.getElementById("drawerClose").addEventListener("click", function () {
+        drawer.classList.remove("show");
+      });
+      drawer.addEventListener("click", function (e) {
+        if (e.target === drawer) drawer.classList.remove("show");
+      });
 
       try {
         await load();

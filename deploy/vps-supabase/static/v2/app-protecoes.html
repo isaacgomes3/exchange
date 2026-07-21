@@ -338,10 +338,10 @@
           body: JSON.stringify(payload),
         });
         var data = await readBody(res);
-        if (res.ok && !data.error) return data;
+        if (res.ok && data && data.ok === true) return data;
         var restErr = data.error || data.msg || ("HTTP " + res.status);
         // 2) Fallback: /_serverFn já está proxyado no nginx da VPS
-        if (res.status === 405 || res.status === 404 || res.status === 502 || /html|not allowed/i.test(String(data.raw || ""))) {
+        if (res.status === 405 || res.status === 404 || res.status === 502 || /html|not allowed/i.test(String(data.raw || "")) || data.ok !== true) {
           var res2 = await fetch("/_serverFn/" + FN_SUBMIT, {
             method: "POST",
             headers: {
@@ -356,6 +356,11 @@
           var data2 = await readBody(res2);
           if (!res2.ok || data2.error) {
             throw new Error(data2.error || data2.msg || restErr || "Erro ao enviar contestação");
+          }
+          if (data2.ok !== true) {
+            throw new Error(
+              "Servidor ainda sem handler de contestação. Rode o hotfix v4 na VPS e tente de novo."
+            );
           }
           return data2;
         }

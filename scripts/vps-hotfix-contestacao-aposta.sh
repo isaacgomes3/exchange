@@ -2,7 +2,7 @@
 # Hotfix: Contestação de Aposta completa (cliente + ADM + shim)
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/contestacao-aposta-completa-723d/scripts/vps-hotfix-contestacao-aposta.sh?v=3")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/contestacao-aposta-completa-723d/scripts/vps-hotfix-contestacao-aposta.sh?v=4")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/contestacao-aposta-completa-723d}"
@@ -114,8 +114,8 @@ else
 fi
 
 echo
-echo "OK — Contestação de Aposta (v3)"
+echo "OK — Contestação de Aposta (v4)"
 echo "  Cliente: https://arbishield.app/app-protecoes.html"
 echo "  Admin:   https://arbishield.app/admin-contestations.html"
-echo "  Fallback: /_serverFn (não depende do regex nginx)"
+echo "  Admin lista direto de protections status=review_odd (igual legado)"
 echo "  Ctrl+F5 nas páginas"
