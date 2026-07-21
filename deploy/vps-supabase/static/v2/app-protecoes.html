@@ -4,25 +4,633 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <title>MinhasProteções — ArbiShield</title>
+  <title>Minhas Proteções — ArbiShield</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
-  <script src="/v2-pages.js"></script>
   <script src="/v2-shell.js" defer></script>
+  <style>
+    .mp-kpis {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin: 0 0 18px;
+    }
+    .mp-kpi {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .mp-kpi span {
+      display: block;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.4);
+    }
+    .mp-kpi strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 22px;
+      font-weight: 900;
+      color: #fff;
+      font-variant-numeric: tabular-nums;
+    }
+    .mp-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .mp-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .mp-tabs button {
+      height: 32px;
+      padding: 0 12px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      background: rgba(255, 255, 255, 0.02);
+      color: rgba(255, 255, 255, 0.45);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .mp-tabs button.active {
+      background: rgba(198, 255, 0, 0.18);
+      color: #c6ff00;
+      border-color: rgba(198, 255, 0, 0.35);
+    }
+    .mp-tabs button .n {
+      display: inline-flex;
+      min-width: 18px;
+      height: 16px;
+      margin-left: 6px;
+      padding: 0 4px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      background: rgba(0, 0, 0, 0.25);
+      font-size: 9px;
+      font-weight: 900;
+    }
+    .mp-search {
+      flex: 1;
+      min-width: 180px;
+      position: relative;
+    }
+    .mp-search input {
+      width: 100%;
+      height: 32px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(255, 255, 255, 0.03);
+      color: #fff;
+      padding: 0 12px 0 34px;
+      font-size: 12px;
+      outline: none;
+    }
+    .mp-search input:focus { border-color: rgba(198, 255, 0, 0.35); }
+    .mp-search svg {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      opacity: 0.45;
+    }
+    .mp-panel {
+      border: 1px solid rgba(198, 255, 0, 0.08);
+      border-radius: 12px;
+      background: #071413;
+      overflow: hidden;
+    }
+    .mp-head {
+      display: none;
+      grid-template-columns: 150px 1fr 180px 140px 120px;
+      gap: 12px;
+      padding: 12px 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.4);
+    }
+    @media (min-width: 960px) {
+      .mp-head { display: grid; }
+      .mp-row {
+        display: grid;
+        grid-template-columns: 150px 1fr 180px 140px 120px;
+        gap: 12px;
+        align-items: center;
+      }
+    }
+    .mp-row {
+      padding: 16px 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+    .mp-row:last-child { border-bottom: 0; }
+    .mp-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      border: 1px solid transparent;
+      max-width: 100%;
+    }
+    .mp-status.blue { color: #60a5fa; background: rgba(96, 165, 250, 0.1); border-color: rgba(96, 165, 250, 0.2); }
+    .mp-status.lime { color: #c9f223; background: rgba(201, 242, 35, 0.1); border-color: rgba(201, 242, 35, 0.25); }
+    .mp-status.green { color: #34d399; background: rgba(52, 211, 153, 0.1); border-color: rgba(52, 211, 153, 0.2); }
+    .mp-status.amber { color: #fbbf24; background: rgba(251, 191, 36, 0.1); border-color: rgba(251, 191, 36, 0.2); }
+    .mp-status.slate { color: #94a3b8; background: rgba(148, 163, 184, 0.1); border-color: rgba(148, 163, 184, 0.2); }
+    .mp-status.red { color: #f87171; background: rgba(248, 113, 113, 0.1); border-color: rgba(248, 113, 113, 0.2); }
+    .mp-match strong {
+      display: block;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      line-height: 1.25;
+    }
+    .mp-match small {
+      display: block;
+      margin-top: 4px;
+      color: rgba(255, 255, 255, 0.42);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .mp-vals { font-size: 12px; color: rgba(255, 255, 255, 0.7); }
+    .mp-vals b { display: block; color: #fff; font-size: 13px; margin-bottom: 2px; }
+    .mp-date { font-size: 12px; color: rgba(255, 255, 255, 0.55); font-variant-numeric: tabular-nums; }
+    .mp-action { text-align: right; }
+    .mp-action a, .mp-action button {
+      height: 32px;
+      padding: 0 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(198, 255, 0, 0.25);
+      background: rgba(198, 255, 0, 0.08);
+      color: #c6ff00;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      text-decoration: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+    }
+    .mp-empty {
+      padding: 64px 20px;
+      text-align: center;
+      color: rgba(255, 255, 255, 0.4);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    @media (max-width: 959px) {
+      .mp-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .mp-row { display: grid; gap: 10px; }
+      .mp-action { text-align: left; }
+    }
+  </style>
 </head>
 <body data-shell="app" data-active="protecoes">
-  <div class="page-head">
+  <div class="page-head term-head">
     <div>
-      <h1>Minhas<span>Proteções</span></h1>
-      <p class="sub">Histórico de ancoragens · template legado</p>
+      <h1>Minhas <span>Proteções</span></h1>
+      <p class="sub">Histórico de ancoragens</p>
+    </div>
+    <div class="term-head-actions">
+      <a class="term-ghost-btn" href="/app-proteger.html"><span aria-hidden="true">+</span> Proteger Aposta</a>
+      <button type="button" class="term-icon-btn" id="btnRefresh" title="Atualizar" aria-label="Atualizar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
     </div>
   </div>
+
   <div id="err" class="err"></div>
-  <div id="pageBody"><div class="meta">Carregando…</div></div>
+
+  <div class="mp-kpis">
+    <article class="mp-kpi"><span>Proteções Ativas</span><strong id="kpiActive">0</strong></article>
+    <article class="mp-kpi"><span>Operações Finalizadas</span><strong id="kpiSettled">0</strong></article>
+    <article class="mp-kpi"><span>Reembolsos</span><strong id="kpiRefund">0</strong></article>
+    <article class="mp-kpi"><span>Volume Protegido</span><strong id="kpiVolume">R$ 0,00</strong></article>
+  </div>
+
+  <div class="mp-filters">
+    <div class="mp-tabs" id="filterTabs" role="tablist" aria-label="Filtro de status"></div>
+    <label class="mp-search">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input id="q" type="search" placeholder="Pesquisar partida..." autocomplete="off" />
+    </label>
+  </div>
+
+  <div class="mp-panel">
+    <div class="mp-head" aria-hidden="true">
+      <span>Status</span>
+      <span>Partida / Mercado</span>
+      <span>Valores</span>
+      <span>Data</span>
+      <span style="text-align:right">Ação</span>
+    </div>
+    <div id="list"><div class="mp-empty">Carregando…</div></div>
+  </div>
+
   <script>
-    ArbiV2Page.mountApp({"id": "protecoes", "scopeUser": true, "render": "table", "sources": [{"table": "protections", "limit": 200}, {"table": "back_protections", "limit": 200}], "cols": ["id", "status", "amount_cents", "odd", "match_id", "created_at"]});
+    (function () {
+      var STATUS = {
+        active: { label: "Proteção Ativa", tone: "blue" },
+        pending_refund: { label: "ArbiShield Atingida", tone: "lime" },
+        won_platform: { label: "Solicite seu Reembolso", tone: "lime" },
+        lost_platform: { label: "Exchange", tone: "green" },
+        settled: { label: "Exchange", tone: "green" },
+        won_exchange: { label: "Exchange", tone: "green" },
+        lost_exchange: { label: "ArbiShield", tone: "lime" },
+        refund_requested: { label: "Aguardando Reembolso", tone: "amber" },
+        refunded: { label: "Reembolso Recebido", tone: "green" },
+        balance_released: { label: "Saldo Liberado", tone: "blue" },
+        cancelled: { label: "Cancelada", tone: "red" },
+        concluded: { label: "Protocolo Finalizado", tone: "slate" },
+      };
+
+      var FILTERS = [
+        { id: "all", label: "Todas" },
+        { id: "active", label: "Ativas" },
+        { id: "settled", label: "Encerradas" },
+        { id: "refund", label: "Reembolsos" },
+        { id: "cancelled", label: "Canceladas" },
+      ];
+
+      var state = {
+        rows: [],
+        filter: "all",
+        q: "",
+        loading: false,
+      };
+
+      function money(cents) {
+        var n = Number(cents || 0) / 100;
+        return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      }
+
+      function esc(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function showErr(msg) {
+        var el = document.getElementById("err");
+        if (!msg) {
+          el.style.display = "none";
+          el.textContent = "";
+          return;
+        }
+        el.style.display = "block";
+        el.textContent = msg;
+      }
+
+      function statusMeta(st) {
+        var key = String(st || "").toLowerCase();
+        return STATUS[key] || { label: key || "—", tone: "slate" };
+      }
+
+      function isActive(st) {
+        return String(st || "").toLowerCase() === "active";
+      }
+      function isCancelled(st) {
+        return String(st || "").toLowerCase() === "cancelled";
+      }
+      function isRefund(st) {
+        var s = String(st || "").toLowerCase();
+        return (
+          s.indexOf("refund") >= 0 ||
+          s === "pending_refund" ||
+          s === "won_platform" ||
+          s === "pix_approved" ||
+          s === "pix_sent"
+        );
+      }
+      function isSettled(st) {
+        var s = String(st || "").toLowerCase();
+        return (
+          !isActive(s) &&
+          !isCancelled(s) &&
+          !isRefund(s) &&
+          (s.indexOf("settled") >= 0 ||
+            s.indexOf("exchange") >= 0 ||
+            s.indexOf("lost_") >= 0 ||
+            s.indexOf("won_") >= 0 ||
+            s === "concluded" ||
+            s === "balance_released")
+        );
+      }
+
+      function matchLabel(row) {
+        var m = row.match || {};
+        var home = m.home_team || row.home_team || "";
+        var away = m.away_team || row.away_team || "";
+        var score = row.final_score || m.final_score || "";
+        if (home && away) {
+          return home + " × " + away + (score ? " " + score : "");
+        }
+        if (row.match_name) return row.match_name;
+        return "Partida";
+      }
+
+      function marketLine(row) {
+        var side = String(row.market_type || row.side_type || "").toUpperCase();
+        if (side !== "LAY" && side !== "BACK") {
+          side = row._kind === "BACK" ? "BACK" : "LAY";
+        }
+        var market =
+          row.market_name ||
+          row.market_category ||
+          (row.metadata && (row.metadata.market_name || row.metadata.market_category)) ||
+          "Mercado";
+        var odd = row.odd != null ? Number(row.odd).toFixed(2) : "—";
+        var league =
+          (row.match && row.match.league) ||
+          row.league ||
+          (row.metadata && row.metadata.league) ||
+          "";
+        var parts = [side, "Mercado", "Odd " + odd];
+        if (league) parts.push(league);
+        else if (market && String(market).toLowerCase() !== "mercado") parts.push(market);
+        return parts.join(" · ");
+      }
+
+      function amountOf(row) {
+        return Number(
+          row.responsibility_cents != null ? row.responsibility_cents : row.amount_cents || 0
+        );
+      }
+
+      function feeOf(row) {
+        return Number(
+          row.platform_deduction_cents != null
+            ? row.platform_deduction_cents
+            : row.locked_deduction_cents || 0
+        );
+      }
+
+      function filterRows() {
+        var q = state.q.trim().toLowerCase();
+        return state.rows.filter(function (r) {
+          var st = String(r.status || "").toLowerCase();
+          if (state.filter === "active" && !isActive(st)) return false;
+          if (state.filter === "cancelled" && !isCancelled(st)) return false;
+          if (state.filter === "refund" && !isRefund(st)) return false;
+          if (state.filter === "settled" && !isSettled(st)) return false;
+          if (!q) return true;
+          var hay = [
+            matchLabel(r),
+            marketLine(r),
+            r.id,
+            r.status,
+            r.match_id,
+          ]
+            .join(" ")
+            .toLowerCase();
+          return hay.indexOf(q) >= 0;
+        });
+      }
+
+      function counts() {
+        var c = { all: state.rows.length, active: 0, settled: 0, refund: 0, cancelled: 0 };
+        state.rows.forEach(function (r) {
+          var st = String(r.status || "").toLowerCase();
+          if (isActive(st)) c.active++;
+          else if (isCancelled(st)) c.cancelled++;
+          else if (isRefund(st)) c.refund++;
+          else if (isSettled(st)) c.settled++;
+        });
+        return c;
+      }
+
+      function renderTabs() {
+        var c = counts();
+        var host = document.getElementById("filterTabs");
+        host.innerHTML = FILTERS.map(function (f) {
+          return (
+            '<button type="button" class="' +
+            (state.filter === f.id ? "active" : "") +
+            '" data-filter="' +
+            f.id +
+            '">' +
+            esc(f.label) +
+            '<span class="n">' +
+            (c[f.id] || 0) +
+            "</span></button>"
+          );
+        }).join("");
+        host.querySelectorAll("[data-filter]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            state.filter = btn.getAttribute("data-filter");
+            renderTabs();
+            renderList();
+          });
+        });
+      }
+
+      function renderKpis() {
+        var c = counts();
+        var volume = state.rows.reduce(function (acc, r) {
+          return acc + amountOf(r);
+        }, 0);
+        document.getElementById("kpiActive").textContent = String(c.active);
+        document.getElementById("kpiSettled").textContent = String(c.settled);
+        document.getElementById("kpiRefund").textContent = String(c.refund);
+        document.getElementById("kpiVolume").textContent = money(volume);
+      }
+
+      function renderList() {
+        var rows = filterRows();
+        var host = document.getElementById("list");
+        if (!rows.length) {
+          host.innerHTML =
+            '<div class="mp-empty">Nenhuma proteção encontrada neste filtro.</div>';
+          return;
+        }
+        host.innerHTML = rows
+          .map(function (r) {
+            var meta = statusMeta(r.status);
+            var when = r.created_at
+              ? new Date(r.created_at).toLocaleString("pt-BR")
+              : "—";
+            return (
+              '<article class="mp-row">' +
+              '<div><span class="mp-status ' +
+              meta.tone +
+              '">' +
+              esc(meta.label) +
+              "</span></div>" +
+              '<div class="mp-match"><strong>' +
+              esc(matchLabel(r)) +
+              "</strong><small>" +
+              esc(marketLine(r)) +
+              "</small></div>" +
+              '<div class="mp-vals"><b>Proteção ' +
+              money(amountOf(r)) +
+              "</b>Taxa " +
+              money(feeOf(r)) +
+              "</div>" +
+              '<div class="mp-date">' +
+              esc(when) +
+              "</div>" +
+              '<div class="mp-action"><a href="/app-proteger.html">Detalhes →</a></div>' +
+              "</article>"
+            );
+          })
+          .join("");
+      }
+
+      function normalizeRow(r, kind) {
+        var meta = r.metadata && typeof r.metadata === "object" ? r.metadata : {};
+        return Object.assign({}, r, {
+          _kind: kind,
+          market_type:
+            meta.market_type ||
+            (kind === "BACK" ? "BACK" : "LAY"),
+          market_name: meta.market_name || r.market_category || null,
+          match: r.match || null,
+        });
+      }
+
+      async function fetchMatchMap(supa, ids) {
+        var uniq = Array.from(new Set(ids.filter(Boolean)));
+        if (!uniq.length) return {};
+        var map = {};
+        var chunk = 80;
+        for (var i = 0; i < uniq.length; i += chunk) {
+          var slice = uniq.slice(i, i + chunk);
+          var res = await supa
+            .from("matches")
+            .select("id,home_team,away_team,league,final_score,metadata")
+            .in("id", slice);
+          if (res.error) continue;
+          (res.data || []).forEach(function (m) {
+            map[m.id] = m;
+          });
+        }
+        return map;
+      }
+
+      async function load() {
+        if (state.loading) return;
+        state.loading = true;
+        var btn = document.getElementById("btnRefresh");
+        if (btn) btn.classList.add("spin");
+        showErr("");
+        try {
+          var sess = await ArbiV2.requireSession();
+          var user = sess.user;
+          var supa = ArbiV2.supabase;
+
+          var selectJoin =
+            "id,user_id,match_id,side,odd,status,amount_cents,responsibility_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents,created_at,settled_at,market_category,metadata,match:matches(home_team,away_team,league,final_score)";
+          var selectPlain =
+            "id,user_id,match_id,side,odd,status,amount_cents,responsibility_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents,created_at,settled_at,market_category,metadata";
+
+          var layRes = await supa
+            .from("protections")
+            .select(selectJoin)
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+            .limit(500);
+          var lays = [];
+          if (layRes.error) {
+            var layPlain = await supa
+              .from("protections")
+              .select(selectPlain)
+              .eq("user_id", user.id)
+              .order("created_at", { ascending: false })
+              .limit(500);
+            if (layPlain.error) throw layPlain.error;
+            lays = layPlain.data || [];
+          } else {
+            lays = layRes.data || [];
+          }
+
+          var backRes = await supa
+            .from("back_protections")
+            .select(selectPlain)
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+            .limit(500);
+          if (backRes.error) throw backRes.error;
+          var backs = backRes.data || [];
+
+          var needIds = []
+            .concat(lays, backs)
+            .filter(function (r) {
+              return r.match_id && !r.match;
+            })
+            .map(function (r) {
+              return r.match_id;
+            });
+          var matchMap = await fetchMatchMap(supa, needIds);
+
+          state.rows = []
+            .concat(
+              lays.map(function (r) {
+                var row = normalizeRow(r, "LAY");
+                if (!row.match && row.match_id && matchMap[row.match_id]) {
+                  row.match = matchMap[row.match_id];
+                }
+                return row;
+              }),
+              backs.map(function (r) {
+                var row = normalizeRow(r, "BACK");
+                if (!row.match && row.match_id && matchMap[row.match_id]) {
+                  row.match = matchMap[row.match_id];
+                }
+                return row;
+              })
+            )
+            .sort(function (a, b) {
+              return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+            });
+
+          renderKpis();
+          renderTabs();
+          renderList();
+        } catch (ex) {
+          showErr(ex.message || "Erro ao carregar proteções");
+          document.getElementById("list").innerHTML =
+            '<div class="mp-empty">Falha ao carregar.</div>';
+        } finally {
+          state.loading = false;
+          if (btn) btn.classList.remove("spin");
+        }
+      }
+
+      document.getElementById("btnRefresh").addEventListener("click", load);
+      document.getElementById("q").addEventListener("input", function (e) {
+        state.q = e.target.value || "";
+        renderList();
+      });
+
+      load();
+    })();
   </script>
 </body>
 </html>
