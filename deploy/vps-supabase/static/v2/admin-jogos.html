@@ -472,6 +472,21 @@
     </div>
   </div>
 
+  <div class="modal-backdrop" id="scheduleModal">
+    <div class="modal" style="width:min(420px,100%)">
+      <h3>Alterar <span style="color:var(--lime)">horário</span></h3>
+      <p id="scheduleSummary" class="hint">Defina a data e o horário de início do jogo (como no sistema antigo).</p>
+      <div class="field" style="margin-top:12px">
+        <label for="scheduleStarts">Data e horário</label>
+        <input id="scheduleStarts" type="datetime-local" required />
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="btnCancelSchedule" type="button">Cancelar</button>
+        <button class="btn btn-primary btn-sm" id="btnConfirmSchedule" type="button">Salvar horário</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-backdrop" id="createModal">
     <div class="modal">
       <h3>Lançar evento na plataforma</h3>
@@ -632,6 +647,25 @@
             day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
           });
         } catch (e) { return iso; }
+      }
+
+      /** Formato datetime-local a partir de ISO (igual ao site antigo). */
+      function toDatetimeLocal(iso) {
+        if (!iso) return "";
+        var d = typeof iso === "string" ? new Date(iso) : iso;
+        if (isNaN(d.getTime())) return "";
+        function pad(n) { return String(n).padStart(2, "0"); }
+        return (
+          d.getFullYear() +
+          "-" +
+          pad(d.getMonth() + 1) +
+          "-" +
+          pad(d.getDate()) +
+          "T" +
+          pad(d.getHours()) +
+          ":" +
+          pad(d.getMinutes())
+        );
       }
 
       function withTimeout(promise, ms, label) {
@@ -1131,6 +1165,12 @@
                     m.id +
                     '" style="margin-top:8px">Encerrar partida</button>'
                   : "";
+              var scheduleBtn =
+                bucket !== "done"
+                  ? '<button class="btn btn-ghost btn-sm" type="button" data-schedule="' +
+                    m.id +
+                    '" style="margin-top:8px;margin-left:6px">Alterar horário</button>'
+                  : "";
               var used = Number(m.used_protection_cents || 0);
               var openN = Number(m._openProtections || 0);
               return (
@@ -1153,6 +1193,7 @@
                 "</div>" +
                 publishBtn +
                 settleBtn +
+                scheduleBtn +
                 "</div>" +
                 '<div class="time">' +
                 badge +
@@ -1174,6 +1215,11 @@
             openSettleModal(btn.getAttribute("data-settle"));
           });
         });
+        $("platformContent").querySelectorAll("button[data-schedule]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            openScheduleModal(btn.getAttribute("data-schedule"));
+          });
+        });
       }
 
       async function publishMatch(matchId, btn) {
@@ -1186,13 +1232,20 @@
           btn.textContent = "Publicando…";
         }
         try {
-          await rest("matches?id=eq." + encodeURIComponent(matchId), auth.token, {
-            method: "PATCH",
-            body: {
-              is_published: true,
-              updated_at: new Date().toISOString(),
-            },
-          });
+          try {
+            await rest("matches?id=eq." + encodeURIComponent(matchId), auth.token, {
+              method: "PATCH",
+              body: {
+                is_published: true,
+                updated_at: new Date().toISOString(),
+              },
+            });
+          } catch (patchErr) {
+            await rest("matches?id=eq." + encodeURIComponent(matchId), auth.token, {
+              method: "PATCH",
+              body: { is_published: true },
+            });
+          }
           var row = platformMatches.find(function (m) { return m.id === matchId; });
           if (row) row.is_published = true;
           alert("Publicado! O jogo já aparece em Proteger Aposta para o cliente.");
@@ -1613,6 +1666,81 @@
       }
 
       var settleMatchId = null;
+      var scheduleMatchId = null;
+
+      function openScheduleModal(matchId) {
+        var m = platformMatches.find(function (x) { return String(x.id) === String(matchId); });
+        if (!m) return;
+        if (!auth) {
+          alert("Faça login admin.");
+          return;
+        }
+        scheduleMatchId = matchId;
+        $("scheduleSummary").textContent =
+          (m.home_team || "?") +
+          " vs " +
+          (m.away_team || "?") +
+          " · horário atual: " +
+          (m.starts_at ? fmtDate(m.starts_at) : "—");
+        $("scheduleStarts").value = toDatetimeLocal(m.starts_at);
+        $("scheduleModal").classList.add("show");
+      }
+
+      async function confirmSchedule() {
+        if (!scheduleMatchId || !auth) {
+          alert("Faça login admin.");
+          return;
+        }
+        var local = String($("scheduleStarts").value || "").trim();
+        if (!local) {
+          alert("Informe data e horário.");
+          return;
+        }
+        var iso = new Date(local).toISOString();
+        if (isNaN(new Date(local).getTime())) {
+          alert("Horário inválido.");
+          return;
+        }
+        $("btnConfirmSchedule").disabled = true;
+        $("btnConfirmSchedule").textContent = "Salvando…";
+        try {
+          try {
+            await rest(
+              "matches?id=eq." + encodeURIComponent(scheduleMatchId),
+              auth.token,
+              {
+                method: "PATCH",
+                body: {
+                  starts_at: iso,
+                  updated_at: new Date().toISOString(),
+                },
+              }
+            );
+          } catch (err) {
+            await rest(
+              "matches?id=eq." + encodeURIComponent(scheduleMatchId),
+              auth.token,
+              {
+                method: "PATCH",
+                body: { starts_at: iso },
+              }
+            );
+          }
+          var row = platformMatches.find(function (m) {
+            return String(m.id) === String(scheduleMatchId);
+          });
+          if (row) row.starts_at = iso;
+          alert("Horário atualizado: " + fmtDate(iso));
+          $("scheduleModal").classList.remove("show");
+          scheduleMatchId = null;
+          renderPlatformList();
+        } catch (err) {
+          alert(err.message || "Erro ao alterar horário");
+        } finally {
+          $("btnConfirmSchedule").disabled = false;
+          $("btnConfirmSchedule").textContent = "Salvar horário";
+        }
+      }
 
       function setSettleOutcome(outcome) {
         $("settleOutcome").value = outcome;
@@ -1837,6 +1965,23 @@
         if ($("settleModal")) {
           $("settleModal").addEventListener("click", function (e) {
             if (e.target === $("settleModal")) $("settleModal").classList.remove("show");
+          });
+        }
+        if ($("btnCancelSchedule")) {
+          $("btnCancelSchedule").addEventListener("click", function () {
+            $("scheduleModal").classList.remove("show");
+            scheduleMatchId = null;
+          });
+        }
+        if ($("btnConfirmSchedule")) {
+          $("btnConfirmSchedule").addEventListener("click", confirmSchedule);
+        }
+        if ($("scheduleModal")) {
+          $("scheduleModal").addEventListener("click", function (e) {
+            if (e.target === $("scheduleModal")) {
+              $("scheduleModal").classList.remove("show");
+              scheduleMatchId = null;
+            }
           });
         }
         if ($("onlyWithOdds")) {
