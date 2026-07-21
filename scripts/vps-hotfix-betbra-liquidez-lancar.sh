@@ -31,6 +31,7 @@ done
 bytes="$(wc -c < "$WEB/admin-jogos.html" | tr -d ' ')"
 echo "  bytes=$bytes"
 grep -q 'preliveLiquidityBrl' "$WEB/admin-jogos.html" || { echo "ERRO: sem campo liquidez acima da lista"; exit 1; }
+grep -q 'btnConfirmPreliveLiq' "$WEB/admin-jogos.html" || { echo "ERRO: sem botão Confirmar liquidez"; exit 1; }
 grep -q 'liquidityCents' "$WEB/admin-jogos.html" || { echo "ERRO: sem liquidityCents no payload"; exit 1; }
 # greps separados (BusyBox/grep antigo quebra em \|)
 grep -q 'adm-liq-bar' "$WEB/admin-jogos.html" || { echo "ERRO: sem adm-liq-bar"; exit 1; }

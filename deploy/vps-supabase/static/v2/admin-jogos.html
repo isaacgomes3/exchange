@@ -459,10 +459,13 @@
     </section>
 
     <section class="panel" id="prelivePanel" hidden>
-      <div class="field prelive-liq" style="margin:0 16px 14px;max-width:360px">
+      <div class="field prelive-liq" style="margin:0 16px 14px;max-width:420px">
         <label for="preliveLiquidityBrl">Liquidez real (R$) — usada ao lançar cada seleção BetBra</label>
-        <input id="preliveLiquidityBrl" type="text" inputmode="decimal" value="2000" placeholder="Ex.: 2000 ou 2.500,00" autocomplete="off" />
-        <p class="hint" style="margin:6px 0 0">Defina antes de escolher o jogo. Padrão R$ 2.000.</p>
+        <div style="display:flex;gap:10px;align-items:stretch">
+          <input id="preliveLiquidityBrl" type="text" inputmode="decimal" value="2000" placeholder="Ex.: 2000 ou 2.500,00" autocomplete="off" style="flex:1;min-width:0" />
+          <button type="button" class="btn btn-primary btn-sm" id="btnConfirmPreliveLiq" style="white-space:nowrap;align-self:stretch">Confirmar</button>
+        </div>
+        <p class="hint" id="preliveLiqStatus" style="margin:6px 0 0">Informe o valor e clique em Confirmar. Padrão R$ 2.000.</p>
       </div>
       <div class="panel-head">
         <div>
@@ -1341,14 +1344,66 @@
         });
       }
 
+      var confirmedPreliveLiqBrl = null;
+
       function readPreliveLiquidityBrl() {
+        if (confirmedPreliveLiqBrl != null && confirmedPreliveLiqBrl > 0) {
+          return confirmedPreliveLiqBrl;
+        }
         var el = $("preliveLiquidityBrl");
         if (!el) return null;
         if (!String(el.value || "").trim()) el.value = "2000";
         return parseMoneyToNumber(el.value);
       }
 
+      function setPreliveLiqStatus(ok, msg) {
+        var st = $("preliveLiqStatus");
+        if (!st) return;
+        st.textContent = msg;
+        st.style.color = ok ? "var(--lime)" : "";
+      }
+
+      function confirmPreliveLiquidity() {
+        var el = $("preliveLiquidityBrl");
+        if (!el) return false;
+        if (!String(el.value || "").trim()) el.value = "2000";
+        var liqBrl = parseMoneyToNumber(el.value);
+        if (liqBrl == null || !(liqBrl > 0)) {
+          confirmedPreliveLiqBrl = null;
+          setPreliveLiqStatus(false, "Informe um valor válido (ex.: 2000) e confirme.");
+          alert("Informe a liquidez real (R$) para confirmar. Ex.: 2000");
+          el.focus();
+          return false;
+        }
+        if (Math.round(liqBrl * 100) < 100) {
+          confirmedPreliveLiqBrl = null;
+          setPreliveLiqStatus(false, "Liquidez mínima: R$ 1,00.");
+          alert("Liquidez mínima: R$ 1,00");
+          el.focus();
+          return false;
+        }
+        confirmedPreliveLiqBrl = liqBrl;
+        el.value = String(
+          liqBrl.toLocaleString("pt-BR", {
+            minimumFractionDigits: liqBrl % 1 ? 2 : 0,
+            maximumFractionDigits: 2,
+          })
+        );
+        setPreliveLiqStatus(
+          true,
+          "Liquidez confirmada: " +
+            liqBrl.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) +
+            " — pode escolher o jogo."
+        );
+        return true;
+      }
+
       function openCreateModal(market, runner) {
+        if (confirmedPreliveLiqBrl == null || !(confirmedPreliveLiqBrl > 0)) {
+          alert("Confirme a liquidez no botão acima de Próximos jogos antes de lançar.");
+          if ($("preliveLiquidityBrl")) $("preliveLiquidityBrl").focus();
+          return;
+        }
         selectedMarket = market;
         selectedRunner = runner;
         var ev = selectedEvent;
@@ -1394,8 +1449,8 @@
         var market = selectedMarket;
         var runner = selectedRunner;
         var liqBrl = readPreliveLiquidityBrl();
-        if (liqBrl == null || !(liqBrl > 0)) {
-          alert("Informe a liquidez real (R$) no campo acima de Próximos jogos. Ex.: 2000");
+        if (confirmedPreliveLiqBrl == null || liqBrl == null || !(liqBrl > 0)) {
+          alert("Confirme a liquidez no botão acima de Próximos jogos. Ex.: 2000");
           $("createModal").classList.remove("show");
           if ($("preliveLiquidityBrl")) $("preliveLiquidityBrl").focus();
           return;
@@ -2241,6 +2296,21 @@
         if ($("onlyWithOdds")) {
           $("onlyWithOdds").addEventListener("change", function () {
             if (window.__preliveMarketsData) renderMarkets(window.__preliveMarketsData);
+          });
+        }
+        if ($("btnConfirmPreliveLiq")) {
+          $("btnConfirmPreliveLiq").addEventListener("click", confirmPreliveLiquidity);
+        }
+        if ($("preliveLiquidityBrl")) {
+          $("preliveLiquidityBrl").addEventListener("input", function () {
+            confirmedPreliveLiqBrl = null;
+            setPreliveLiqStatus(false, "Valor alterado — clique em Confirmar para aplicar.");
+          });
+          $("preliveLiquidityBrl").addEventListener("keydown", function (e) {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              confirmPreliveLiquidity();
+            }
           });
         }
         document.querySelectorAll("#platformFilters .chip").forEach(function (chip) {
