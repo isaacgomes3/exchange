@@ -122,6 +122,13 @@ const FN = {
     "21c595c85ce2650c9c69d344a653ac759200afa18939bed530bb7448f7f8ffe0",
   MATCH_SETTLE_MULTI:
     "b70f19e71ec3ab8c40e0717abe92ab2082c7eedd832da71ab87cea2f2d95e286",
+  /** Admin depósitos manuais (SPA admin.manual-deposits) */
+  DEPOSIT_APPROVE:
+    "81753fec5a4788d0cecf17daf4605047d90238c386a240b54855a19f0fbc53d2",
+  DEPOSIT_MARK_CREDITED:
+    "1b3d8a890eea085aa1507094a9ce6e49ca532e35c3e17363c50b9dc1a253ddd5",
+  DEPOSIT_REJECT:
+    "97fbb202a39627b7eeade54ac383dd1197c5a76c5f392f3046ee5875fef4da50",
   /** Desafio — participação / settle (SPA surebet-validation) */
   DESAFIO_LIST_ACTIVE:
     "3d73b89476f54f1c738f12aa01a568e18829e0f8072936120346589e89b7b310",
@@ -2023,6 +2030,144 @@ async function cancelProtectionRefund(token, body) {
   return { ok: true, protectionId, status: "cancelled", refundedCents: amount };
 }
 
+/** Depósitos manuais — aprovar / já creditado / rejeitar (legado SPA) */
+async function loadManualDeposit(id) {
+  const rows = await sb(
+    `/rest/v1/manual_deposits?select=*&id=eq.${encodeURIComponent(id)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row) throw new Error("Depósito não encontrado");
+  return row;
+}
+
+async function approveManualDeposit(token, body) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const adminId = requireUserId(token);
+  const id = String(body?.id || body?.depositId || "").trim();
+  if (!id) throw new Error("id obrigatório");
+  const row = await loadManualDeposit(id);
+  const st = String(row.status || "").toUpperCase();
+  if (st === "APPROVED") return { ok: true, alreadyApproved: true, id };
+  if (st === "REJECTED") throw new Error("Depósito já rejeitado");
+  if (st !== "PENDING" && st !== "PROCESSING" && st !== "AWAITING_PROOF") {
+    throw new Error(`Status inválido para aprovação: ${st}`);
+  }
+  const amount = n(row.amount_cents);
+  if (!(amount > 0)) throw new Error("Valor do depósito inválido");
+  const userId = row.user_id;
+  if (!userId) throw new Error("Depósito sem usuário");
+
+  const dtype = String(row.deposit_type || "user_balance").toLowerCase();
+  const isInvestor = dtype === "investor" || dtype === "provider" || dtype === "partner";
+  const prof = await sb(
+    `/rest/v1/profiles?select=balance_cents,investor_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const p = Array.isArray(prof) ? prof[0] : null;
+  if (!p) throw new Error("Perfil do usuário não encontrado");
+
+  const patch = { updated_at: new Date().toISOString() };
+  if (isInvestor) {
+    patch.investor_balance_cents = n(p.investor_balance_cents) + amount;
+  } else {
+    patch.balance_cents = n(p.balance_cents) + amount;
+  }
+  await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: patch,
+  });
+
+  try {
+    await sb("/rest/v1/wallet_transactions", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        user_id: userId,
+        type: isInvestor ? "provider_deposit" : "deposit",
+        amount_cents: amount,
+        meta: {
+          manual_deposit_id: id,
+          network: row.network || null,
+          deposit_type: row.deposit_type || "user_balance",
+        },
+      },
+    });
+  } catch (e) {
+    console.warn("[deposit] wallet_transactions:", e.message || e);
+  }
+
+  await sb(`/rest/v1/manual_deposits?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: {
+      status: "APPROVED",
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: adminId,
+      updated_at: new Date().toISOString(),
+      admin_notes: row.admin_notes || "Aprovado e creditado",
+    },
+  });
+
+  return {
+    ok: true,
+    id,
+    status: "APPROVED",
+    creditedCents: amount,
+    depositType: isInvestor ? "investor" : "user_balance",
+  };
+}
+
+async function markManualDepositCredited(token, body) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const adminId = requireUserId(token);
+  const id = String(body?.id || body?.depositId || "").trim();
+  if (!id) throw new Error("id obrigatório");
+  const row = await loadManualDeposit(id);
+  const st = String(row.status || "").toUpperCase();
+  if (st === "APPROVED") return { ok: true, alreadyApproved: true, id };
+  if (st === "REJECTED") throw new Error("Depósito já rejeitado");
+
+  await sb(`/rest/v1/manual_deposits?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: {
+      status: "APPROVED",
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: adminId,
+      updated_at: new Date().toISOString(),
+      admin_notes: "Já creditado (sem alterar saldo)",
+    },
+  });
+  return { ok: true, id, status: "APPROVED", creditedCents: 0, markedOnly: true };
+}
+
+async function rejectManualDeposit(token, body) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const adminId = requireUserId(token);
+  const id = String(body?.id || body?.depositId || "").trim();
+  const reason = String(body?.reason || body?.note || "Comprovante inválido").trim();
+  if (!id) throw new Error("id obrigatório");
+  const row = await loadManualDeposit(id);
+  const st = String(row.status || "").toUpperCase();
+  if (st === "REJECTED") return { ok: true, alreadyRejected: true, id };
+  if (st === "APPROVED") throw new Error("Depósito já aprovado");
+
+  await sb(`/rest/v1/manual_deposits?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: {
+      status: "REJECTED",
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: adminId,
+      updated_at: new Date().toISOString(),
+      admin_notes: reason || "Rejeitado",
+    },
+  });
+  return { ok: true, id, status: "REJECTED", reason };
+}
+
 /** Contestações — janela: até 5 min antes do kickoff */
 const CONTESTATION_LOCK_MS = 5 * 60 * 1000;
 
@@ -3661,6 +3806,45 @@ async function handleServerFn(req, res, id, rawBody = "") {
         res,
         err instanceof Error ? err.message : String(err)
       );
+    }
+  }
+
+  if (id === FN.DEPOSIT_APPROVE && req.method === "POST") {
+    try {
+      return replyFnOk(
+        req,
+        res,
+        await approveManualDeposit(token, extractServerFnData(rawBody))
+      );
+    } catch (err) {
+      console.error("[serverfn-shim] DEPOSIT_APPROVE error", err);
+      return replyFnError(req, res, err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  if (id === FN.DEPOSIT_MARK_CREDITED && req.method === "POST") {
+    try {
+      return replyFnOk(
+        req,
+        res,
+        await markManualDepositCredited(token, extractServerFnData(rawBody))
+      );
+    } catch (err) {
+      console.error("[serverfn-shim] DEPOSIT_MARK_CREDITED error", err);
+      return replyFnError(req, res, err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  if (id === FN.DEPOSIT_REJECT && req.method === "POST") {
+    try {
+      return replyFnOk(
+        req,
+        res,
+        await rejectManualDeposit(token, extractServerFnData(rawBody))
+      );
+    } catch (err) {
+      console.error("[serverfn-shim] DEPOSIT_REJECT error", err);
+      return replyFnError(req, res, err instanceof Error ? err.message : String(err));
     }
   }
 

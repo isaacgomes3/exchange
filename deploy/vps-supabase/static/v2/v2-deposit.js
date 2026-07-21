@@ -287,16 +287,18 @@
         money(state.amountCents) +
         "</em></h3>" +
         '<p class="dep-sub">' +
-        esc(state.network) +
-        " · copie a chave e pague o valor exato</p></div>";
+        esc(state.network === "PIX" ? "PIX · copie a chave (CNPJ) e pague o valor exato" : state.network + " · copie o endereço e pague o valor exato") +
+        "</p></div>";
       if (qr) {
-        html += '<div class="dep-qr"><img src="' + esc(qr) + '" alt="QR Code" /></div>';
+        html += '<div class="dep-qr"><img src="' + esc(qr) + '" alt="QR Code PIX" /></div>';
       }
       html +=
         '<div class="dep-addr"><code id="depAddr">' +
-        esc(addr || "Endereço não configurado") +
+        esc(addr || "Chave/endereço não configurado — use platform_settings") +
         "</code>" +
-        '<button type="button" class="dep-btn sm" data-act="copy">Copiar</button></div>' +
+        '<button type="button" class="dep-btn sm" data-act="copy">' +
+        (state.network === "PIX" ? "Copiar chave PIX" : "Copiar") +
+        "</button></div>" +
         '<button type="button" class="dep-btn" data-act="paid"' +
         (state.busy ? " disabled" : "") +
         '>Já realizei o pagamento</button>' +
@@ -515,7 +517,15 @@
       var ext = (state.file.name.split(".").pop() || "jpg").toLowerCase();
       var path = uid + "/" + Math.random().toString(36).slice(2) + "." + ext;
       var up = await supa.storage.from("deposit-proofs").upload(path, state.file);
-      if (up.error) throw up.error;
+      if (up.error) {
+        var umsg = (up.error && up.error.message) || String(up.error);
+        if (/bucket not found/i.test(umsg)) {
+          throw new Error(
+            "Bucket deposit-proofs não existe na Storage. Rode o hotfix vps-hotfix-deposit-proofs.sh na VPS."
+          );
+        }
+        throw up.error;
+      }
 
       if (state.depositId) {
         var upd = await supa
