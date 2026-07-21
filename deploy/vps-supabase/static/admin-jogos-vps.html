@@ -461,11 +461,11 @@
         <input id="manExternalId" placeholder="Ex: 10574843" />
       </div>
 
-      <details style="margin:18px 0 8px;border-top:1px solid var(--border);padding-top:14px">
-        <summary style="cursor:pointer;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted)">
-          Mercados de proteção (opcional)
+      <details open style="margin:18px 0 8px;border-top:1px solid var(--border);padding-top:14px">
+        <summary style="cursor:pointer;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:var(--lime)">
+          + Mercados de proteção
         </summary>
-        <p class="hint" style="margin:10px 0">Se vazio, cria LAY HOME @ 2.00 com R$ 2.000 de liquidez.</p>
+        <p class="hint" style="margin:10px 0">Escolha no catálogo (igual site antigo). Se vazio ao salvar, cria Lay Casa @ 2.00 com R$ 2.000.</p>
         <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
           <button type="button" class="btn btn-primary btn-sm" id="btnAddMarket">+ Adicionar mercado</button>
         </div>
@@ -480,6 +480,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/market-catalog.js"></script>
   <script>
     (function () {
       var ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzg0NDc5OTk4LCJleHAiOjE5NDIxNTk5OTh9.mxLqs20sCUNn58jWlsD0sznclCOr8rbksjTEAuQee3s";
@@ -1102,11 +1103,68 @@
         return Number.isFinite(n) ? n : null;
       }
 
+      function marketCatalog() {
+        return Array.isArray(window.ARBISHIELD_MARKET_CATALOG)
+          ? window.ARBISHIELD_MARKET_CATALOG
+          : [];
+      }
+
+      function inferMarketType(name) {
+        var n = String(name || "").trim().toLowerCase();
+        if (/^back\b/.test(n) || n.indexOf("back ") === 0) return "BACK";
+        if (/^lay\b/.test(n) || n.indexOf("lay ") === 0) return "LAY";
+        return null;
+      }
+
+      function catalogSelectHtml(selectedName) {
+        var groups = marketCatalog();
+        var html =
+          '<select data-f="catalog" class="market-catalog-select" style="color-scheme:dark">' +
+          '<option value="">Bancar — escolha do catálogo…</option>';
+        groups.forEach(function (g) {
+          html += '<optgroup label="' + String(g.label || "").replace(/"/g, "&quot;") + '">';
+          (g.options || []).forEach(function (opt) {
+            var sel = selectedName === opt ? " selected" : "";
+            html +=
+              '<option value="' +
+              String(opt).replace(/"/g, "&quot;") +
+              '"' +
+              sel +
+              ">" +
+              opt +
+              "</option>";
+          });
+          html += "</optgroup>";
+        });
+        html += "</select>";
+        return html;
+      }
+
+      function typeToggleHtml(marketType) {
+        var isLay = marketType !== "BACK";
+        return (
+          '<div class="field"><label>Tipo</label>' +
+          '<div style="display:flex;gap:8px">' +
+          '<button type="button" class="btn btn-sm type-lay' +
+          (isLay ? " btn-primary" : " btn-ghost") +
+          '" data-set-type="LAY" style="flex:1">LAY</button>' +
+          '<button type="button" class="btn btn-sm type-back' +
+          (!isLay ? " btn-primary" : " btn-ghost") +
+          '" data-set-type="BACK" style="flex:1">BACK</button>' +
+          "</div>" +
+          '<input type="hidden" data-f="market_type" value="' +
+          (isLay ? "LAY" : "BACK") +
+          '" />' +
+          "</div>"
+        );
+      }
+
       function renderManualMarkets() {
         var host = $("manMarkets");
         if (!host) return;
         if (!manualMarkets.length) {
-          host.innerHTML = '<div class="empty" style="margin:0">Nenhum mercado. Clique em Adicionar mercado.</div>';
+          host.innerHTML =
+            '<div class="empty" style="margin:0">Nenhum mercado. Clique em + Adicionar mercado ou escolha no catálogo após adicionar.</div>';
           return;
         }
         host.innerHTML = manualMarkets
@@ -1116,22 +1174,31 @@
               '<div class="mh"><strong>Mercado ' + (idx + 1) + "</strong>" +
               '<button type="button" class="btn btn-ghost btn-sm" data-rm="' + idx + '">Remover</button></div>' +
               '<div class="grid2">' +
-              '<div class="field"><label>Tipo</label><select data-f="market_type">' +
-              '<option value="LAY"' + (m.market_type === "LAY" ? " selected" : "") + ">LAY</option>" +
-              '<option value="BACK"' + (m.market_type === "BACK" ? " selected" : "") + ">BACK</option>" +
-              "</select></div>" +
+              typeToggleHtml(m.market_type || "LAY") +
               '<div class="field"><label>Nome do mercado</label>' +
-              '<input data-f="name" value="' + String(m.name || "").replace(/"/g, "&quot;") + '" placeholder="Digite o mercado (ex.: LAY HOME)" /></div>' +
+              '<input data-f="name" value="' +
+              String(m.name || "").replace(/"/g, "&quot;") +
+              '" placeholder="Digite o mercado (ex.: Lay Casa)" />' +
+              catalogSelectHtml(m.name || "") +
+              "</div>" +
               '</div><div class="grid2">' +
               '<div class="field"><label>ID externo</label>' +
-              '<input data-f="external_id" value="' + String(m.external_id || "").replace(/"/g, "&quot;") + '" placeholder="Ex: 1.22456" /></div>' +
+              '<input data-f="external_id" value="' +
+              String(m.external_id || "").replace(/"/g, "&quot;") +
+              '" placeholder="Ex: 1.22456" /></div>' +
               '<div class="field"><label>Odd</label>' +
-              '<input data-f="odd" value="' + (m.odd != null ? m.odd : "") + '" placeholder="Ex: 2.00" /></div>' +
+              '<input data-f="odd" value="' +
+              (m.odd != null ? m.odd : "") +
+              '" placeholder="Ex: 2.00" /></div>' +
               '</div><div class="grid2">' +
               '<div class="field"><label>Liquidez real (R$)</label>' +
-              '<input data-f="liquidity_brl" value="' + (m.liquidity_brl != null ? m.liquidity_brl : "2000") + '" placeholder="Controla a entrada" /></div>' +
+              '<input data-f="liquidity_brl" value="' +
+              (m.liquidity_brl != null ? m.liquidity_brl : "2000") +
+              '" placeholder="Controla a entrada" /></div>' +
               '<div class="field"><label>Liquidez exibida (R$) — opcional</label>' +
-              '<input data-f="display_brl" value="' + (m.display_brl != null ? m.display_brl : "") + '" placeholder="O que o usuário vê" /></div>' +
+              '<input data-f="display_brl" value="' +
+              (m.display_brl != null ? m.display_brl : "") +
+              '" placeholder="O que o usuário vê" /></div>' +
               "</div></div>"
             );
           })
@@ -1144,7 +1211,31 @@
             renderManualMarkets();
           });
         });
+        host.querySelectorAll("[data-set-type]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var card = btn.closest(".market-card");
+            if (!card) return;
+            var hidden = card.querySelector('[data-f="market_type"]');
+            if (hidden) hidden.value = btn.getAttribute("data-set-type");
+            syncManualMarketsFromDom();
+            renderManualMarkets();
+          });
+        });
+        host.querySelectorAll("[data-f=catalog]").forEach(function (sel) {
+          sel.addEventListener("change", function () {
+            var card = sel.closest(".market-card");
+            if (!card || !sel.value) return;
+            var nameInput = card.querySelector('[data-f="name"]');
+            if (nameInput) nameInput.value = sel.value;
+            var inferred = inferMarketType(sel.value);
+            var hidden = card.querySelector('[data-f="market_type"]');
+            if (inferred && hidden) hidden.value = inferred;
+            syncManualMarketsFromDom();
+            renderManualMarkets();
+          });
+        });
         host.querySelectorAll("[data-f]").forEach(function (input) {
+          if (input.getAttribute("data-f") === "catalog") return;
           input.addEventListener("change", syncManualMarketsFromDom);
           input.addEventListener("input", syncManualMarketsFromDom);
         });
@@ -1194,8 +1285,17 @@
           $("manLiberarProtecao").classList.add("on");
           $("manLiberarProtecao").setAttribute("aria-pressed", "true");
         }
-        // Mercado padrão oculto — só cria no save se a lista estiver vazia
-        manualMarkets = [];
+        // Um mercado já aberto com catálogo (igual site antigo)
+        manualMarkets = [
+          {
+            market_type: "LAY",
+            name: "Lay Casa",
+            external_id: "",
+            odd: "2.00",
+            liquidity_brl: "2000",
+            display_brl: "",
+          },
+        ];
         renderManualMarkets();
         $("manualDrawer").classList.add("show");
       }
@@ -1231,7 +1331,7 @@
           manualMarkets = [
             {
               market_type: "LAY",
-              name: "LAY HOME",
+              name: "Lay Casa",
               external_id: "",
               odd: "2.00",
               liquidity_brl: "2000",
@@ -1244,7 +1344,7 @@
           var liqBrl = parseMoneyToNumber(m.liquidity_brl);
           var dispBrl = parseMoneyToNumber(m.display_brl);
           return {
-            name: m.name || "LAY HOME",
+            name: m.name || "Lay Casa",
             market_type: m.market_type || "LAY",
             external_id: m.external_id || null,
             odd: odd,
@@ -1380,7 +1480,7 @@
           syncManualMarketsFromDom();
           manualMarkets.push({
             market_type: "LAY",
-            name: "LAY HOME",
+            name: "Lay Casa",
             external_id: "",
             odd: "2.00",
             liquidity_brl: "2000",

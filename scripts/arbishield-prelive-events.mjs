@@ -529,7 +529,7 @@ async function createManualMatch(body, token) {
       ? marketsIn
       : [
           {
-            name: "LAY HOME",
+            name: "Lay Casa",
             market_type: "LAY",
             odd: 2,
             liquidity_brl: 2000,
