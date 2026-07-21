@@ -100,7 +100,10 @@ echo "  $got" | head -c 200; echo
 echo "$got" | grep -q 'deposit-proofs' || die "bucket deposit-proofs ainda ausente"
 
 echo
-echo "OK — Depósito comprovante + aprovação ADM"
-echo "  1) Ctrl+F5 no app → Depósito → enviar comprovante"
-echo "  2) ADM → Depósitos manuais → Confirmar e Creditar"
-echo "  PIX continua estático (chave/QR de platform_settings ou fallback Inter)"
+echo "OK — Depósito hotfix v2"
+echo "  • bucket deposit-proofs criado"
+echo "  • shim cria bucket ao subir + upload via /_serverFn"
+echo "  • ADM Depósitos com Confirmar e Creditar"
+echo "  1) Ctrl+F5 no app (cliente) → enviar comprovante"
+echo "  2) Ctrl+F5 em /admin-manual-deposits.html → Confirmar e Creditar"
+echo "  PIX continua estático (chave/QR)"

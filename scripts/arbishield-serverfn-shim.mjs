@@ -129,6 +129,9 @@ const FN = {
     "1b3d8a890eea085aa1507094a9ce6e49ca532e35c3e17363c50b9dc1a253ddd5",
   DEPOSIT_REJECT:
     "97fbb202a39627b7eeade54ac383dd1197c5a76c5f392f3046ee5875fef4da50",
+  /** Upload comprovante (cria bucket se faltar) */
+  DEPOSIT_UPLOAD_PROOF:
+    "a8c4e21f0b7d9e6a5f3c2d1b0a99887766554433221100ffeeddccbbaa997788",
   /** Desafio — participação / settle (SPA surebet-validation) */
   DESAFIO_LIST_ACTIVE:
     "3d73b89476f54f1c738f12aa01a568e18829e0f8072936120346589e89b7b310",
@@ -2168,6 +2171,165 @@ async function rejectManualDeposit(token, body) {
   return { ok: true, id, status: "REJECTED", reason };
 }
 
+/** Garante buckets usados pelo app (service role). */
+async function ensureStorageBuckets() {
+  if (!SERVICE_KEY) return { ok: false, error: "SERVICE_ROLE_KEY ausente" };
+  const buckets = [
+    {
+      id: "deposit-proofs",
+      name: "deposit-proofs",
+      public: false,
+      file_size_limit: 10485760,
+      allowed_mime_types: [
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/gif",
+        "image/heic",
+        "application/pdf",
+      ],
+    },
+    {
+      id: "bet-proofs",
+      name: "bet-proofs",
+      public: false,
+      file_size_limit: 10485760,
+      allowed_mime_types: [
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/gif",
+        "image/heic",
+        "application/pdf",
+      ],
+    },
+  ];
+  const results = [];
+  for (const b of buckets) {
+    try {
+      const existing = await fetch(
+        `${SUPABASE_URL}/storage/v1/bucket/${encodeURIComponent(b.id)}`,
+        {
+          headers: {
+            apikey: SERVICE_KEY,
+            Authorization: `Bearer ${SERVICE_KEY}`,
+          },
+        }
+      );
+      if (existing.ok) {
+        results.push({ id: b.id, status: "exists" });
+        continue;
+      }
+      const created = await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
+        method: "POST",
+        headers: {
+          apikey: SERVICE_KEY,
+          Authorization: `Bearer ${SERVICE_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(b),
+      });
+      const text = await created.text();
+      results.push({
+        id: b.id,
+        status: created.ok ? "created" : "error",
+        detail: text.slice(0, 180),
+      });
+    } catch (e) {
+      results.push({
+        id: b.id,
+        status: "error",
+        detail: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+  return { ok: true, results };
+}
+
+/**
+ * Upload comprovante via service role (contorna bucket ausente no client).
+ * body: { depositId?, fileName, contentType, base64, amountCents?, network?, depositType? }
+ */
+async function uploadDepositProof(token, body) {
+  const userId = requireUserId(token);
+  if (!SERVICE_KEY) throw new Error("SERVICE_ROLE_KEY ausente");
+  await ensureStorageBuckets();
+
+  const base64 = String(body?.base64 || body?.data || "").replace(
+    /^data:[^;]+;base64,/,
+    ""
+  );
+  if (!base64) throw new Error("Arquivo (base64) obrigatório");
+  if (base64.length > 14e6) throw new Error("Arquivo muito grande (máx. ~10MB)");
+
+  const fileName = String(body?.fileName || body?.name || "comprovante.jpg");
+  const ext = (fileName.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+  const contentType =
+    String(body?.contentType || body?.mime || "image/jpeg").trim() ||
+    "image/jpeg";
+  const objectPath = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+  const bin = Buffer.from(base64, "base64");
+  if (!(bin.length > 0)) throw new Error("Arquivo vazio");
+  if (bin.length > 10485760) throw new Error("Arquivo maior que 10MB");
+
+  const up = await fetch(
+    `${SUPABASE_URL}/storage/v1/object/deposit-proofs/${objectPath}`,
+    {
+      method: "POST",
+      headers: {
+        apikey: SERVICE_KEY,
+        Authorization: `Bearer ${SERVICE_KEY}`,
+        "Content-Type": contentType,
+        "x-upsert": "false",
+      },
+      body: bin,
+    }
+  );
+  if (!up.ok) {
+    const t = await up.text();
+    throw new Error(`Falha no upload Storage: ${t.slice(0, 200)}`);
+  }
+
+  let depositId = String(body?.depositId || body?.id || "").trim();
+  const amountCents = Math.floor(Number(body?.amountCents || 0));
+  const network = String(body?.network || "PIX").trim() || "PIX";
+  const depositType = String(body?.depositType || "user_balance").trim() || "user_balance";
+
+  if (depositId) {
+    await sb(`/rest/v1/manual_deposits?id=eq.${encodeURIComponent(depositId)}&user_id=eq.${encodeURIComponent(userId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        proof_url: objectPath,
+        status: "PENDING",
+        updated_at: new Date().toISOString(),
+      },
+    });
+  } else {
+    if (!(amountCents > 0)) throw new Error("amountCents obrigatório sem depositId");
+    const inserted = await sb("/rest/v1/manual_deposits", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        user_id: userId,
+        amount_cents: amountCents,
+        network,
+        proof_url: objectPath,
+        status: "PENDING",
+        deposit_type: depositType,
+      },
+    });
+    depositId = Array.isArray(inserted) && inserted[0]?.id ? inserted[0].id : null;
+  }
+
+  return {
+    ok: true,
+    path: objectPath,
+    depositId,
+    status: "PENDING",
+  };
+}
+
 /** Contestações — janela: até 5 min antes do kickoff */
 const CONTESTATION_LOCK_MS = 5 * 60 * 1000;
 
@@ -3848,6 +4010,19 @@ async function handleServerFn(req, res, id, rawBody = "") {
     }
   }
 
+  if (id === FN.DEPOSIT_UPLOAD_PROOF && req.method === "POST") {
+    try {
+      return replyFnOk(
+        req,
+        res,
+        await uploadDepositProof(token, extractServerFnData(rawBody))
+      );
+    } catch (err) {
+      console.error("[serverfn-shim] DEPOSIT_UPLOAD_PROOF error", err);
+      return replyFnError(req, res, err instanceof Error ? err.message : String(err));
+    }
+  }
+
   if (id === FN.PROTECTION_CLOSE_NO_REFUND && req.method === "POST") {
     try {
       return sendTsrOk(
@@ -4103,14 +4278,15 @@ async function handleServerFn(req, res, id, rawBody = "") {
   return sendTsrOk(res, null);
 }
 
-function parseBody(req) {
-  return new Promise((resolvePromise) => {
+function parseBody(req, maxBytes = 14e6) {
+  return new Promise((resolvePromise, rejectPromise) => {
     let data = "";
     req.on("data", (c) => {
       data += c;
-      if (data.length > 2e6) req.destroy();
+      if (data.length > maxBytes) req.destroy();
     });
     req.on("end", () => resolvePromise(data));
+    req.on("error", (e) => rejectPromise(e));
   });
 }
 
@@ -4458,7 +4634,46 @@ const server = createServer(async (req, res) => {
   }
 
   if (url.pathname === "/health") {
-    return sendJson(res, 200, { ok: true, service: "serverfn-shim" });
+    try {
+      const buckets = await ensureStorageBuckets();
+      return sendJson(res, 200, { ok: true, service: "serverfn-shim", buckets });
+    } catch (e) {
+      return sendJson(res, 200, { ok: true, service: "serverfn-shim" });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/ensure-storage-buckets" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      if (!token) return sendJson(res, 401, { error: "Não autorizado" });
+      const out = await ensureStorageBuckets();
+      return sendJson(res, 200, out);
+    } catch (err) {
+      return sendJson(res, 500, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/deposit-proof" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      if (!token) return sendJson(res, 401, { error: "Não autorizado" });
+      const raw = await parseBody(req, 14e6);
+      let body = {};
+      try {
+        body = raw ? JSON.parse(raw) : {};
+      } catch {
+        return sendJson(res, 400, { error: "JSON inválido" });
+      }
+      const result = await uploadDepositProof(token, body.data || body);
+      return sendJson(res, 200, result);
+    } catch (err) {
+      return sendJson(res, 400, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   const m = url.pathname.match(/^\/_serverFn\/([a-f0-9]+)/i);
@@ -4478,6 +4693,15 @@ const server = createServer(async (req, res) => {
 });
 
 const [host, portStr] = LISTEN.split(":");
-server.listen(Number(portStr || 3101), host, () => {
+server.listen(Number(portStr || 3101), host, async () => {
   console.log(`serverfn-shim on http://${host}:${portStr || 3101}`);
+  try {
+    const out = await ensureStorageBuckets();
+    console.log("[serverfn-shim] storage buckets:", JSON.stringify(out));
+  } catch (e) {
+    console.warn(
+      "[serverfn-shim] ensureStorageBuckets:",
+      e instanceof Error ? e.message : e
+    );
+  }
 });

@@ -503,6 +503,71 @@
     }
   }
 
+  async function fileToBase64(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        var s = String(reader.result || "");
+        var i = s.indexOf(",");
+        resolve(i >= 0 ? s.slice(i + 1) : s);
+      };
+      reader.onerror = function () { reject(new Error("Falha ao ler arquivo")); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function uploadProofViaServer(pathHint, file, uid) {
+    var tokenRes = await client().auth.getSession();
+    var token = tokenRes.data.session && tokenRes.data.session.access_token;
+    if (!token) throw new Error("Sessão expirada. Faça login novamente.");
+    var b64 = await fileToBase64(file);
+    var payload = {
+      depositId: state.depositId || null,
+      fileName: file.name || "comprovante.jpg",
+      contentType: file.type || "image/jpeg",
+      base64: b64,
+      amountCents: state.amountCents,
+      network: state.network,
+      depositType: state.dest || "user_balance",
+    };
+    var FN_UPLOAD = "a8c4e21f0b7d9e6a5f3c2d1b0a99887766554433221100ffeeddccbbaa997788";
+    async function readJson(res) {
+      var text = await res.text();
+      var data = {};
+      try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 180) }; }
+      if (data && data.result != null && data.error == null) data = data.result;
+      return data;
+    }
+    // 1) /_serverFn (já proxyado no nginx → :3101)
+    var res = await fetch("/_serverFn/" + FN_UPLOAD, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-arbishield-plain": "1",
+        Authorization: "Bearer " + token,
+      },
+      body: JSON.stringify({ data: payload }),
+    });
+    var data = await readJson(res);
+    if (res.ok && data && data.ok) return data;
+    // 2) REST dedicado (se nginx tiver location)
+    var res2 = await fetch("/api/arbishield/deposit-proof", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token,
+      },
+      body: JSON.stringify(payload),
+    });
+    var data2 = await readJson(res2);
+    if (res2.ok && data2 && data2.ok) return data2;
+    throw new Error(
+      (data && data.error) ||
+      (data2 && data2.error) ||
+      "Falha no upload pelo servidor. Rode o hotfix de depósito na VPS."
+    );
+  }
+
   async function submitProof() {
     if (state.busy || !state.file || !state.network) return;
     state.busy = true;
@@ -516,39 +581,50 @@
 
       var ext = (state.file.name.split(".").pop() || "jpg").toLowerCase();
       var path = uid + "/" + Math.random().toString(36).slice(2) + "." + ext;
-      var up = await supa.storage.from("deposit-proofs").upload(path, state.file);
-      if (up.error) {
-        var umsg = (up.error && up.error.message) || String(up.error);
-        if (/bucket not found/i.test(umsg)) {
-          throw new Error(
-            "Bucket deposit-proofs não existe na Storage. Rode o hotfix vps-hotfix-deposit-proofs.sh na VPS."
-          );
+      var usedServer = false;
+      try {
+        var up = await supa.storage.from("deposit-proofs").upload(path, state.file);
+        if (up.error) throw up.error;
+      } catch (upErr) {
+        var umsg = (upErr && upErr.message) || String(upErr);
+        if (/bucket not found/i.test(umsg) || /not found/i.test(umsg) || /row-level security/i.test(umsg)) {
+          var serverUp = await uploadProofViaServer(path, state.file, uid);
+          usedServer = true;
+          if (serverUp.depositId) state.depositId = serverUp.depositId;
+        } else {
+          throw upErr;
         }
-        throw up.error;
       }
 
-      if (state.depositId) {
-        var upd = await supa
-          .from("manual_deposits")
-          .update({ proof_url: path, status: "PENDING" })
-          .eq("id", state.depositId);
-        if (upd.error) throw upd.error;
-      } else {
-        var ins = await supa.from("manual_deposits").insert({
-          user_id: uid,
-          amount_cents: state.amountCents,
-          network: state.network,
-          proof_url: path,
-          status: "PENDING",
-          deposit_type: state.dest || "user_balance",
-        });
-        if (ins.error) throw ins.error;
+      if (!usedServer) {
+        if (state.depositId) {
+          var upd = await supa
+            .from("manual_deposits")
+            .update({ proof_url: path, status: "PENDING" })
+            .eq("id", state.depositId);
+          if (upd.error) throw upd.error;
+        } else {
+          var ins = await supa.from("manual_deposits").insert({
+            user_id: uid,
+            amount_cents: state.amountCents,
+            network: state.network,
+            proof_url: path,
+            status: "PENDING",
+            deposit_type: state.dest || "user_balance",
+          });
+          if (ins.error) throw ins.error;
+        }
       }
       state.step = "success";
       state.ok = "Comprovante enviado com sucesso!";
       state.err = "";
     } catch (ex) {
-      flash((ex && ex.message) || "Erro ao enviar comprovante. Tente novamente.");
+      var msg = (ex && ex.message) || "Erro ao enviar comprovante. Tente novamente.";
+      if (/bucket not found/i.test(msg)) {
+        msg =
+          "Bucket deposit-proofs ausente. Rode na VPS: bash <(curl -fsSL \"https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-deposito-comprovante-723d/scripts/vps-hotfix-deposit-proofs.sh?v=2\")";
+      }
+      flash(msg);
     } finally {
       state.busy = false;
       paint();
