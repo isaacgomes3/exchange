@@ -333,10 +333,23 @@
     var rpc = await supa.rpc(rpcName, args);
     if (!rpc.error) return;
     var msg = String((rpc.error && rpc.error.message) || "");
+    if (/infinite recursion/i.test(msg)) {
+      throw new Error(
+        "Erro de permissão no banco (RLS em profiles). Peça ao admin para rodar vps-hotfix-perfil-editar.sh na VPS."
+      );
+    }
     // fallback se RPC não existir na VPS
     if (/function|does not exist|404|PGRST202/i.test(msg) && patch) {
       var up = await supa.from("profiles").update(patch).eq("id", state.user.id);
-      if (up.error) throw up.error;
+      if (up.error) {
+        var um = String((up.error && up.error.message) || "");
+        if (/infinite recursion/i.test(um)) {
+          throw new Error(
+            "Erro de permissão no banco (RLS em profiles). Peça ao admin para rodar vps-hotfix-perfil-editar.sh na VPS."
+          );
+        }
+        throw up.error;
+      }
       return;
     }
     throw rpc.error;

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Meu Perfil v2: campos do legado + Editar (dados, PIX, banco, senha)
+# Inclui correção RLS: infinite recursion detected in policy for relation "profiles"
 #
 # Na VPS (root):
 #   curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/perfil-editar-campos-723d/scripts/vps-hotfix-perfil-editar.sh" -o /tmp/hotfix-perfil.sh
@@ -16,6 +17,45 @@ mkdir -p "$WEB"
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
 
+apply_sql() {
+  local label="$1"
+  local url="$2"
+  local sql_tmp
+  sql_tmp="$(mktemp)"
+  curl -fsSL "$url" -o "$sql_tmp" || {
+    echo "  AVISO: não baixou $label"
+    rm -f "$sql_tmp"
+    return 1
+  }
+  [[ -s "$sql_tmp" ]] || {
+    echo "  AVISO: $label vazio"
+    rm -f "$sql_tmp"
+    return 1
+  }
+  local applied=0
+  if command -v docker >/dev/null 2>&1; then
+    for c in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -Ei 'db|postgres|supabase' || true); do
+      if docker exec -i "$c" psql -U postgres -d postgres < "$sql_tmp" 2>/tmp/pf-sql.err; then
+        echo "  SQL ok ($label) via $c"
+        applied=1
+        break
+      fi
+    done
+    if [[ "$applied" -eq 0 && -d "$COMPOSE_DIR" ]]; then
+      if (cd "$COMPOSE_DIR" && docker compose exec -T db psql -U postgres -d postgres < "$sql_tmp"); then
+        echo "  SQL ok ($label) via docker compose"
+        applied=1
+      fi
+    fi
+  fi
+  rm -f "$sql_tmp"
+  [[ "$applied" -eq 1 ]] || {
+    echo "  AVISO: SQL $label não aplicado"
+    return 1
+  }
+  return 0
+}
+
 log "1/3 — UI perfil"
 for f in app-perfil.html v2-perfil.js v2.css v2-shell.js; do
   curl -fsSL "$RAW/deploy/vps-supabase/static/v2/$f" -o "$WEB/$f"
@@ -27,31 +67,15 @@ grep -q 'v2-perfil.js' "$WEB/app-perfil.html" || die "app-perfil sem v2-perfil.j
 grep -q 'update_own_profile' "$WEB/v2-perfil.js" || die "v2-perfil sem update_own_profile"
 grep -q 'pf-card' "$WEB/v2.css" || die "v2.css sem estilos pf-"
 
-log "2/3 — SQL RPCs (se Docker disponível)"
-SQL_TMP="$(mktemp)"
-curl -fsSL "$RAW/supabase/migrations/20260722_profile_own_rpcs.sql" -o "$SQL_TMP" || true
-if [[ -s "$SQL_TMP" ]] && grep -q 'update_own_profile' "$SQL_TMP"; then
-  applied=0
-  if command -v docker >/dev/null 2>&1; then
-    for c in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -Ei 'db|postgres|supabase' || true); do
-      if docker exec -i "$c" psql -U postgres -d postgres < "$SQL_TMP" 2>/tmp/pf-sql.err; then
-        echo "  SQL ok via $c"
-        applied=1
-        break
-      fi
-    done
-    if [[ "$applied" -eq 0 && -d "$COMPOSE_DIR" ]]; then
-      (cd "$COMPOSE_DIR" && docker compose exec -T db psql -U postgres -d postgres < "$SQL_TMP") && applied=1 || true
-    fi
-  fi
-  [[ "$applied" -eq 1 ]] || echo "  AVISO: SQL não aplicado — UI tem fallback PATCH em profiles"
-else
-  echo "  AVISO: migration não baixada"
-fi
-rm -f "$SQL_TMP"
+log "2/3 — SQL RLS + RPCs (obrigatório para PIX)"
+# Migration completa: helper sem recursão + policies + RPCs com row_security=off
+apply_sql "profiles_rls_no_recursion" \
+  "$RAW/supabase/migrations/20260722_profiles_rls_no_recursion.sql" \
+  || apply_sql "profile_own_rpcs" \
+  "$RAW/supabase/migrations/20260722_profile_own_rpcs.sql" \
+  || echo "  AVISO: sem SQL — cadastro PIX pode falhar com infinite recursion"
 
 log "3/3 — bucket avatars (best-effort)"
-# cria bucket privado/público se service role existir no unit
 SK=""
 for ef in $(systemctl cat arbishield-serverfn-shim.service 2>/dev/null | sed -n 's/^EnvironmentFile=-*//p'); do
   [[ -f "$ef" ]] || continue
@@ -70,4 +94,4 @@ fi
 
 echo
 echo "OK — Ctrl+Shift+R em https://arbishield.app/app-perfil.html"
-echo "  Editar dados · PIX · banco · senha · foto"
+echo "  PIX / dados / banco / senha — RLS recursion corrigida"
