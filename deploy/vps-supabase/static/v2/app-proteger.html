@@ -7,10 +7,10 @@
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=ui-cards-23" />
+  <link rel="stylesheet" href="/v2.css?v=jogos-mercado-24" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
-  <script src="/v2-shell.js?v=ui-cards-23" defer></script>
+  <script src="/v2-shell.js?v=jogos-mercado-24" defer></script>
 </head>
 <body data-shell="app" data-active="proteger">
   <div class="page-head term-head">
@@ -72,6 +72,7 @@
       <span>Horário</span>
       <span>Confronto</span>
       <span class="c">LAY/BACK</span>
+      <span class="c">Mercado</span>
       <span class="r">Liquidez</span>
       <span class="r">Ação</span>
     </div>
@@ -493,6 +494,11 @@
                 d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) +
                 "</span>";
             }
+            var competition = String(m.league || m.competition || "").trim();
+            var marketLabel =
+              primary && primary.name && String(primary.name).trim()
+                ? String(primary.name).trim()
+                : "—";
             return (
               '<article class="term-row" data-id="' +
               esc(m.id) +
@@ -505,16 +511,19 @@
               esc(m.home_team || "?") +
               " <span>×</span> " +
               esc(m.away_team || "?") +
-              "</strong>" +
-              "<small>" +
-              esc(m.league || "—") +
-              (primary && primary.name ? " · " + esc(primary.name) : "") +
-              "</small></div>" +
+              (competition
+                ? ' <em class="term-comp">' + esc(competition) + "</em>"
+                : "") +
+              "</strong></div>" +
               '<div class="term-col-sides">' +
               (hasLay ? '<span class="term-side lay">LAY</span>' : "") +
               (hasBack ? '<span class="term-side back">BACK</span>' : "") +
               (!hasLay && !hasBack ? '<span class="term-side lay">LAY</span>' : "") +
               "</div>" +
+              '<div class="term-col-market">' +
+              '<span class="term-market">' +
+              esc(marketLabel) +
+              "</span></div>" +
               '<div class="term-col-liq">' +
               "<strong>" +
               money(left) +
