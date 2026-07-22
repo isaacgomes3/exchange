@@ -23,6 +23,13 @@ curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-monitoring-protections.html
 chmod 0644 "$WEB/admin-monitoring-protections.html"
 cp -f "$WEB/admin-monitoring-protections.html" "$WEB_ROOT/admin-monitoring-protections.html" 2>/dev/null || true
 grep -q 'refundedCents' "$WEB/admin-monitoring-protections.html" || die "UI sem mensagem de refundedCents"
+grep -q 'Processando' "$WEB/admin-monitoring-protections.html" || die "UI sem estado Processando"
+# regressão: finally precisa dar paint() senão botões ficam cinza
+grep -q 'finally' "$WEB/admin-monitoring-protections.html" || die "UI sem finally"
+# texto de ajuda removido
+if grep -q 'Encerrar: fecha a operação' "$WEB/admin-monitoring-protections.html"; then
+  die "texto de ajuda Encerrar/Cancelar ainda presente"
+fi
 
 log "2/3 — shim cancelProtectionRefund"
 curl -fsSL "$RAW/scripts/arbishield-serverfn-shim.mjs" -o "$SHIM_DIR/arbishield-serverfn-shim.mjs"
