@@ -37,7 +37,8 @@ for f in "${FILES[@]}"; do
 done
 
 grep -q 'Sistema responsivo' "$WEB/v2.css" || { echo "ERRO: v2.css sem bloco responsivo"; exit 1; }
-grep -q 'position: fixed' "$WEB/v2.css" || { echo "ERRO: sidebar mobile sem fixed"; exit 1; }
+grep -q 'v2-app-balances-bar' "$WEB/v2.css" || { echo "ERRO: CSS sem balances-bar"; exit 1; }
+grep -q 'v2-app-balances-bar' "$WEB/v2-shell.js" || { echo "ERRO: shell sem balances-bar"; exit 1; }
 grep -q 'repeat(4, minmax(0, 1fr))' "$WEB/v2.css" || { echo "ERRO: saldos mobile sem 4 colunas"; exit 1; }
 grep -q 'isMobileShell' "$WEB/v2-shell.js" || { echo "ERRO: shell sem close mobile"; exit 1; }
 grep -q 'tpl-stat-row-4' "$WEB/admin.html" || { echo "ERRO: admin.html sem tpl-stat-row-4"; exit 1; }

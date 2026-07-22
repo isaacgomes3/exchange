@@ -282,12 +282,6 @@
         appHeader.id = "v2AppHeader";
         appHeader.innerHTML =
           '<button type="button" class="v2-menu-btn" id="v2MenuBtnHeader" aria-label="Menu">Menu</button>' +
-          '<div class="v2-app-balances" aria-label="Saldos">' +
-          '<a class="v2-bal-chip v2-bal-apostador" href="/app-carteira.html"><span class="l">Apostador</span><span class="v" id="v2BalApostador">—</span></a>' +
-          '<a class="v2-bal-chip v2-bal-desafio" href="/app-desafio.html"><span class="l">Desafio</span><span class="v" id="v2BalDesafio">—</span></a>' +
-          '<a class="v2-bal-chip v2-bal-afiliado" href="/app-afiliados.html"><span class="l">Afiliado</span><span class="v" id="v2BalAfiliado">—</span></a>' +
-          '<a class="v2-bal-chip v2-bal-provedor" href="/app-partners.html"><span class="l">Provedor</span><span class="v" id="v2BalProvedor">—</span></a>' +
-          "</div>" +
           '<div class="v2-app-header-actions">' +
           '<a class="v2-deposit-btn" href="#deposito" data-open-deposit="1"><span aria-hidden="true">+</span> Depósito</a>' +
           '<a class="v2-icon-btn" href="/app-suporte.html" aria-label="Notificações" title="Notificações">' +
@@ -296,6 +290,19 @@
           '<a class="v2-avatar-btn" href="/app-perfil.html" id="v2AppAvatar" aria-label="Perfil">U</a>' +
           "</div>";
         main.appendChild(appHeader);
+
+        // Contadores fora do header sticky — rolam com a página
+        var balBar = document.createElement("div");
+        balBar.className = "v2-app-balances-bar";
+        balBar.id = "v2AppBalancesBar";
+        balBar.innerHTML =
+          '<div class="v2-app-balances" aria-label="Saldos">' +
+          '<a class="v2-bal-chip v2-bal-apostador" href="/app-carteira.html"><span class="l">Apostador</span><span class="v" id="v2BalApostador">—</span></a>' +
+          '<a class="v2-bal-chip v2-bal-desafio" href="/app-desafio.html"><span class="l">Desafio</span><span class="v" id="v2BalDesafio">—</span></a>' +
+          '<a class="v2-bal-chip v2-bal-afiliado" href="/app-afiliados.html"><span class="l">Afiliado</span><span class="v" id="v2BalAfiliado">—</span></a>' +
+          '<a class="v2-bal-chip v2-bal-provedor" href="/app-partners.html"><span class="l">Provedor</span><span class="v" id="v2BalProvedor">—</span></a>' +
+          "</div>";
+        main.appendChild(balBar);
       }
       var page = document.createElement("div");
       page.className = "v2-page";

@@ -1804,13 +1804,13 @@ body[data-shell="app"] .btn-primary {
   box-shadow: 0 0 20px rgba(198, 255, 0, 0.25);
 }
 
-/* Header membro (mobile + desktop sticky) */
+/* Header membro (mobile + desktop sticky) — só menu/depósito/ações */
 .v2-app-header {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
-  min-height: 72px;
+  min-height: 64px;
   padding: 12px clamp(14px, 2vw, 28px);
   padding-top: calc(12px + env(safe-area-inset-top, 0px));
   background: rgba(4, 17, 13, 0.9);
@@ -1820,28 +1820,33 @@ body[data-shell="app"] .btn-primary {
   top: 0;
   z-index: 30;
 }
+/* Contadores: rolam com a página (fora do sticky) */
+.v2-app-balances-bar {
+  position: static;
+  z-index: 1;
+  padding: 10px clamp(14px, 2vw, 28px) 4px;
+  background: transparent;
+}
 .v2-app-balances {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: stretch;
   gap: 8px;
-  flex: 1;
+  width: 100%;
   min-width: 0;
-  overflow-x: auto;
-  padding-bottom: 2px;
 }
 .v2-bal-chip {
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 2px;
-  min-width: 118px;
-  padding: 8px 12px;
+  min-width: 0;
+  padding: 8px 10px;
   border-radius: 12px;
   background: #051a14;
   border: 1px solid rgba(255, 255, 255, 0.06);
   text-decoration: none;
   color: inherit;
-  flex-shrink: 0;
 }
 .v2-bal-chip .l {
   font-size: 9px;
@@ -2001,22 +2006,20 @@ body[data-shell="app"] .btn-primary {
   body[data-shell="app"] .v2-topbar { display: none !important; }
   body[data-shell="app"] .v2-app-header .v2-menu-btn { display: inline-flex; }
   body[data-shell="app"] .v2-app-header {
-    flex-wrap: wrap;
     justify-content: flex-start;
+    flex-wrap: nowrap;
+  }
+  body[data-shell="app"] .v2-app-balances-bar {
+    position: static !important;
   }
   body[data-shell="app"] .v2-app-balances {
-    order: 3;
-    width: 100%;
-    flex: 1 1 100%;
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
     gap: 6px;
-    overflow: visible;
-    padding-bottom: 0;
+    width: 100%;
   }
   body[data-shell="app"] .v2-bal-chip {
     min-width: 0;
-    flex-shrink: 1;
     padding: 7px 4px;
     align-items: center;
     text-align: center;
