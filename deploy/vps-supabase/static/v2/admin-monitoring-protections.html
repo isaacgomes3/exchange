@@ -368,22 +368,22 @@
                     "</strong></div></div>" +
                     (canAct
                       ? '<div class="mon-actions">' +
-                        '<button type="button" class="mon-btn warn sm" data-close="' +
-                        esc(r.id) +
-                        '" data-mkt="' +
-                        esc(r.marketType) +
-                        '"' +
-                        (state.busy ? " disabled" : "") +
-                        ">Encerrar (sem estorno)</button>" +
                         '<button type="button" class="mon-btn danger sm" data-cancel="' +
                         esc(r.id) +
                         '" data-mkt="' +
                         esc(r.marketType) +
                         '"' +
                         (state.busy ? " disabled" : "") +
-                        ">Cancelar e estornar</button>" +
+                        ' title="Cancelar e estornar saldo ao usuário">Cancelar e estornar</button>' +
+                        '<button type="button" class="mon-btn ghost sm" data-close="' +
+                        esc(r.id) +
+                        '" data-mkt="' +
+                        esc(r.marketType) +
+                        '"' +
+                        (state.busy ? " disabled" : "") +
+                        ' title="Encerrar SEM estornar saldo (use quando o saldo já foi reconciliado)">Encerrar sem estorno</button>' +
                         "</div>" +
-                        '<p style="margin:0;font-size:11px;color:#8b949e">Encerrar: fecha a operação e devolve liquidez ao jogo (saldo do usuário não volta). Cancelar: estorna o valor ao usuário.</p>'
+                        '<p style="margin:0;font-size:11px;color:#8b949e">Como no site antigo: <b>Cancelar e estornar</b> devolve o saldo ao cliente. <b>Encerrar sem estorno</b> só quando o saldo já foi reconciliado manualmente (não usa para liquidar placar — isso é em Admin Jogos).</p>'
                       : '<p style="margin:0;font-size:12px;color:#8b949e">Operação já finalizada — sem ações de encerramento.</p>') +
                     "</div>"
                   : "") +
@@ -608,12 +608,24 @@
 
   async function actClose(id, marketType) {
     if (state.busy || !id) return;
+    // Prompt alinhado ao site antigo (admin.monitoring-protections)
     var reason = window.prompt(
-      "Encerrar SEM estornar saldo.\nInforme o motivo (obrigatório):"
+      "ENCERRAR SEM ESTORNAR\n\n" +
+        "O saldo do usuário NÃO será creditado.\n" +
+        "Use APENAS quando o saldo já foi reconciliado manualmente.\n\n" +
+        "Para liquidar placar / Bateu ArbiShield ou Exchange, use Admin → Jogos.\n\n" +
+        "Informe o motivo (obrigatório):"
     );
     if (!reason || !String(reason).trim()) {
       state.err = "Motivo é obrigatório para encerrar sem estornar.";
       paint();
+      return;
+    }
+    if (
+      !window.confirm(
+        "Confirma ENCERRAR SEM ESTORNO?\nO cliente NÃO recebe o valor de volta."
+      )
+    ) {
       return;
     }
     state.busy = true;
