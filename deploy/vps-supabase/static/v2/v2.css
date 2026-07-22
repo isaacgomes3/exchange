@@ -2008,6 +2008,34 @@ body[data-shell="app"] .btn-primary {
     order: 3;
     width: 100%;
     flex: 1 1 100%;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    overflow: visible;
+    padding-bottom: 0;
+  }
+  body[data-shell="app"] .v2-bal-chip {
+    min-width: 0;
+    flex-shrink: 1;
+    padding: 7px 4px;
+    align-items: center;
+    text-align: center;
+    gap: 3px;
+  }
+  body[data-shell="app"] .v2-bal-chip .l {
+    font-size: 7px;
+    letter-spacing: 0.05em;
+    line-height: 1.1;
+  }
+  body[data-shell="app"] .v2-bal-chip .v {
+    font-size: 11px;
+    gap: 4px;
+    justify-content: center;
+    letter-spacing: -0.03em;
+  }
+  body[data-shell="app"] .v2-bal-chip .v::after {
+    width: 4px;
+    height: 4px;
   }
   body[data-shell="app"] .v2-app-header-actions {
     margin-left: auto;
@@ -6092,12 +6120,6 @@ body.dep-open { overflow: hidden; }
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
   .grid2 { grid-template-columns: 1fr; }
-  .v2-app-balances {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    width: 100%;
-  }
   .term-side-tabs,
   .term-sports {
     width: 100%;
@@ -6117,9 +6139,23 @@ body.dep-open { overflow: hidden; }
   .dash-kpis,
   .ops-stats,
   .fin-kpi-row,
-  .aff-kpi-row,
-  .v2-app-balances {
+  .aff-kpi-row {
     grid-template-columns: 1fr !important;
+  }
+  body[data-shell="app"] .v2-app-balances {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+  }
+  body[data-shell="app"] .v2-bal-chip {
+    padding: 6px 2px;
+    border-radius: 10px;
+  }
+  body[data-shell="app"] .v2-bal-chip .l {
+    font-size: 6px;
+    letter-spacing: 0.04em;
+  }
+  body[data-shell="app"] .v2-bal-chip .v {
+    font-size: 10px;
   }
   .page-head h1 {
     font-size: clamp(1.45rem, 7vw, 1.9rem);
