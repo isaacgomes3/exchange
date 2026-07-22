@@ -676,10 +676,10 @@
 
   function computeMetrics() {
     var p = state.profile || {};
-    // Saldo Real (carteira) = real + reutilizável — sem demo
+    // Saldo Real (carteira) = balance (+ legado reusable consolidado) — sem demo
     var real =
       Number(p.balance_cents || 0) + Number(p.reusable_balance_cents || 0);
-    // Chip do header "Apostador" = mesma fórmula do shell/legado (inclui demo)
+    // Chip do header "Apostador" = mesma fórmula do shell (inclui demo)
     var apostadorHeader = real + Number(p.demo_balance_cents || 0);
     var provider =
       Number(p.investor_balance_cents || 0) +

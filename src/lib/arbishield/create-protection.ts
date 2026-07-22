@@ -99,6 +99,7 @@ function availableBalance(
 ): number {
   if (balanceType === "DEMO") return num(profile.demo_balance_cents);
   if (balanceType === "INVESTOR") return num(profile.investor_balance_cents);
+  // Política: não há mais carteira reutilizável — tudo conta como saldo real
   return num(profile.balance_cents) + num(profile.reusable_balance_cents);
 }
 
@@ -201,16 +202,14 @@ export async function createProtection(
   let balanceAfter = 0;
 
   if (balanceType === "REAL") {
-    const bal = num(profile.balance_cents);
-    const reusable = num(profile.reusable_balance_cents);
-    if (bal >= amountCents) {
-      patch = { balance_cents: bal - amountCents };
-      balanceAfter = bal - amountCents + reusable;
-    } else {
-      const rest = amountCents - bal;
-      patch = { balance_cents: 0, reusable_balance_cents: reusable - rest };
-      balanceAfter = reusable - rest;
-    }
+    // Consolida reutilizável → real e debita só do balance_cents
+    const bal =
+      num(profile.balance_cents) + num(profile.reusable_balance_cents);
+    patch = {
+      balance_cents: bal - amountCents,
+      reusable_balance_cents: 0,
+    };
+    balanceAfter = bal - amountCents;
   } else {
     const field = pickBalanceField(balanceType);
     const cur = num(profile[field]);

@@ -1230,10 +1230,9 @@ async function transferRealToDesafio(token, body) {
   );
   const p = Array.isArray(rows) ? rows[0] : null;
   if (!p) throw new Error("Perfil não encontrado");
-  const balance = n(p.balance_cents);
-  const reusable = n(p.reusable_balance_cents);
+  const balance = n(p.balance_cents) + n(p.reusable_balance_cents);
   const desafio = n(p.desafio_balance_cents);
-  const banca = balance + reusable;
+  const banca = balance; // tudo é saldo real
   const maxTransfer = Math.floor(banca / 2);
   if (amountCents > maxTransfer) {
     throw new Error(
@@ -1242,25 +1241,14 @@ async function transferRealToDesafio(token, body) {
   }
   if (amountCents > banca) throw new Error("Saldo insuficiente");
 
-  let nextBalance = balance;
-  let nextReusable = reusable;
-  let left = amountCents;
-  if (nextBalance >= left) {
-    nextBalance -= left;
-    left = 0;
-  } else {
-    left -= nextBalance;
-    nextBalance = 0;
-    nextReusable = Math.max(0, nextReusable - left);
-    left = 0;
-  }
+  const nextBalance = balance - amountCents;
 
   await sb(`/rest/v1/profiles?id=eq.${userId}`, {
     method: "PATCH",
     token: SERVICE_KEY,
     body: {
       balance_cents: nextBalance,
-      reusable_balance_cents: nextReusable,
+      reusable_balance_cents: 0,
       desafio_balance_cents: desafio + amountCents,
       updated_at: new Date().toISOString(),
     },
@@ -1274,7 +1262,7 @@ async function transferRealToDesafio(token, body) {
         user_id: userId,
         type: "transfer_to_desafio",
         amount_cents: -amountCents,
-        balance_after_cents: nextBalance + nextReusable,
+        balance_after_cents: nextBalance,
         metadata: { destino: "desafio", amount_cents: amountCents },
       },
     });
@@ -1286,7 +1274,7 @@ async function transferRealToDesafio(token, body) {
     ok: true,
     amountCents,
     balance_cents: nextBalance,
-    reusable_balance_cents: nextReusable,
+    reusable_balance_cents: 0,
     desafio_balance_cents: desafio + amountCents,
   };
 }

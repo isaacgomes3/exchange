@@ -1454,16 +1454,11 @@ async function createProtection(body, userToken) {
       n(profile.investor_balance_cents) - amountCents;
     balanceAfter = patch.investor_balance_cents;
   } else {
-    const bal = n(profile.balance_cents);
-    const reusable = n(profile.reusable_balance_cents);
-    if (bal >= amountCents) {
-      patch.balance_cents = bal - amountCents;
-      balanceAfter = bal - amountCents + reusable;
-    } else {
-      patch.balance_cents = 0;
-      patch.reusable_balance_cents = reusable - (amountCents - bal);
-      balanceAfter = patch.reusable_balance_cents;
-    }
+    // Política: sem carteira reutilizável — consolida e debita só balance_cents
+    const bal = n(profile.balance_cents) + n(profile.reusable_balance_cents);
+    patch.balance_cents = bal - amountCents;
+    patch.reusable_balance_cents = 0;
+    balanceAfter = bal - amountCents;
   }
 
   await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
