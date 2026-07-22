@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Auditoria/correção — Pedro Iuri settlements ArbiShield sem reembolso no saldo real
+# Auditoria/correção — Pedro Iuri: settlements ArbiShield → saldo REAL
 #
 # Relatório:
 #   bash /tmp/audit-pedro.sh
-# Corrigir:
+#
+# Mover R$ 250 (e qualquer reusable) para saldo real + creditar faltantes:
 #   FIX=1 bash /tmp/audit-pedro.sh
 set -euo pipefail
 BRANCH="${ARBISHIELD_BRANCH:-cursor/fix-reembolso-pedro-iuri-723d}"
@@ -16,14 +17,18 @@ NAME="${NAME:-PEDRO IURI TEIXEIRA DOS SANTOS}"
 ID_PREFIX="${ID_PREFIX:-24037bdf}"
 DAYS="${DAYS:-14}"
 FIX="${FIX:-0}"
+# Com FIX=1, por padrão move TODO o reusable → real
+MOVE_ALL_REUSABLE="${MOVE_ALL_REUSABLE:-1}"
 
-echo "==> baixar auditoria Pedro ArbiShield"
+echo "==> baixar auditoria Pedro ArbiShield (saldo sempre real)"
 curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
   "$RAW/scripts/vps-audit-pedro-arbishield.mjs" \
   -o "$SCRIPTS_DIR/vps-audit-pedro-arbishield.mjs"
 chmod 0644 "$SCRIPTS_DIR/vps-audit-pedro-arbishield.mjs"
-grep -q 'vps-audit-pedro-arbishield' "$SCRIPTS_DIR/vps-audit-pedro-arbishield.mjs" \
+grep -q 'MOVE_ALL_REUSABLE\|vps-audit-pedro-arbishield-v2\|política: saldo sempre real' \
+  "$SCRIPTS_DIR/vps-audit-pedro-arbishield.mjs" \
+  || grep -q 'vps-audit-pedro-arbishield' "$SCRIPTS_DIR/vps-audit-pedro-arbishield.mjs" \
   || { echo "ERRO: script inválido"; exit 1; }
 
-export NAME ID_PREFIX DAYS FIX
+export NAME ID_PREFIX DAYS FIX MOVE_ALL_REUSABLE
 node "$SCRIPTS_DIR/vps-audit-pedro-arbishield.mjs"

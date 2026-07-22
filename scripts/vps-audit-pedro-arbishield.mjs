@@ -15,6 +15,11 @@ import fs from "node:fs";
 import path from "node:path";
 
 const FIX = process.env.FIX === "1" || process.env.FIX === "true";
+/** Com FIX=1, move TODO o reusable → real (política: saldo sempre real). */
+const MOVE_ALL_REUSABLE =
+  process.env.MOVE_ALL_REUSABLE === "1" ||
+  process.env.MOVE_ALL_REUSABLE === "true" ||
+  (FIX && process.env.MOVE_ALL_REUSABLE !== "0");
 const NAME = String(
   process.env.NAME || "PEDRO IURI TEIXEIRA DOS SANTOS"
 ).trim();
@@ -207,6 +212,10 @@ async function main() {
   console.log("    ID_PREFIX:", ID_PREFIX || "—");
   console.log("    desde:", SINCE, `(${DAYS}d)`);
   console.log("    FIX:", FIX ? "SIM" : "não (só relatório)");
+  console.log(
+    "    MOVE_ALL_REUSABLE:",
+    MOVE_ALL_REUSABLE ? "SIM (tudo → saldo real)" : "não"
+  );
 
   const user = await resolveUser();
   console.log("\n  user:", user.id);
@@ -362,8 +371,8 @@ async function main() {
   }
 
   if (!FIX) {
-    if (moveTotal > 0 || missTotal > 0) {
-      console.log("\n  Para corrigir:");
+    if (moveTotal > 0 || missTotal > 0 || n(user.reusable_balance_cents) > 0) {
+      console.log("\n  Para mover reusable → saldo real (e creditar faltantes):");
       console.log(
         `  FIX=1 ID_PREFIX=${ID_PREFIX || "24037bdf"} node scripts/vps-audit-pedro-arbishield.mjs`
       );
@@ -372,41 +381,48 @@ async function main() {
     return;
   }
 
-  // Aplicar correções
+  // Aplicar correções — política: crédito sempre no saldo real
   let bal = n(user.balance_cents);
   let reusable = n(user.reusable_balance_cents);
   const now = new Date().toISOString();
 
-  if (moveTotal > 0) {
-    const move = Math.min(moveTotal, reusable);
-    if (move <= 0) {
-      console.log("\n  ⚠ pediu mover", money(moveTotal), "mas reusable está", money(reusable));
-    } else {
-      console.log("\n==> Movendo", money(move), "reusable → real");
-      bal += move;
-      reusable -= move;
-      await patchProfile(user.id, {
-        balance_cents: bal,
-        reusable_balance_cents: reusable,
-      });
-      await sb("/rest/v1/wallet_transactions", {
-        method: "POST",
-        body: {
-          user_id: user.id,
-          type: "admin_adjustment",
-          amount_cents: move,
-          ref: actions.moveReusable[0]?.row?.id || null,
-          metadata: {
-            reason: "mover reusable→real (settlement arbishield legado)",
-            protections: actions.moveReusable.map((x) => x.row.id),
-            fix: "vps-audit-pedro-arbishield-v1",
-            bucket_from: "reusable_balance_cents",
-            bucket_to: "balance_cents",
-          },
+  const wantMove = MOVE_ALL_REUSABLE
+    ? reusable
+    : Math.min(moveTotal > 0 ? moveTotal : 0, reusable);
+
+  if (wantMove > 0) {
+    console.log(
+      "\n==> Movendo",
+      money(wantMove),
+      "reusable → real",
+      MOVE_ALL_REUSABLE ? "(todo o reutilizável)" : "(só settlements ArbiShield)"
+    );
+    bal += wantMove;
+    reusable -= wantMove;
+    await patchProfile(user.id, {
+      balance_cents: bal,
+      reusable_balance_cents: reusable,
+    });
+    await sb("/rest/v1/wallet_transactions", {
+      method: "POST",
+      body: {
+        user_id: user.id,
+        type: "admin_adjustment",
+        amount_cents: wantMove,
+        ref: actions.moveReusable[0]?.row?.id || null,
+        metadata: {
+          reason: "mover reusable→real (política: saldo sempre real)",
+          protections: actions.moveReusable.map((x) => x.row.id),
+          fix: "vps-audit-pedro-arbishield-v2",
+          bucket_from: "reusable_balance_cents",
+          bucket_to: "balance_cents",
+          move_all_reusable: MOVE_ALL_REUSABLE,
         },
-      });
-      console.log("  saldo agora real", money(bal), "reutil", money(reusable));
-    }
+      },
+    });
+    console.log("  saldo agora real", money(bal), "reutil", money(reusable));
+  } else if (moveTotal > 0) {
+    console.log("\n  ⚠ pediu mover", money(moveTotal), "mas reusable está", money(reusable));
   }
 
   for (const item of actions.creditMissing) {
