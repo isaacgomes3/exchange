@@ -5,10 +5,10 @@
 # 2) Atualiza prelive/shim/UI
 #
 # Na VPS:
-#   FIX=1 bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-sem-saldo-reutilizavel.sh")
+#   FIX=1 bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/7c20b84/scripts/vps-hotfix-sem-saldo-reutilizavel.sh")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/remover-saldo-reutilizavel-723d}"
+REF="${ARBISHIELD_REF:-7c20b84}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
