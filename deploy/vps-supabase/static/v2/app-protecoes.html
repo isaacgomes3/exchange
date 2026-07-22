@@ -12,7 +12,7 @@
   <script src="/v2.js"></script>
   <script src="/v2-shell.js" defer></script>
   <style>
-    .prot-layout { display: grid; grid-template-columns: 1fr minmax(min(100%, 280px), 360px); gap: 16px; align-items: start; }
+    .prot-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 16px; align-items: start; }
     @media (max-width: 960px) {
       .prot-layout { grid-template-columns: 1fr; }
       .prot-detail { position: static; }
@@ -20,15 +20,17 @@
     @media (max-width: 560px) {
       .prot-kv, .type-grid { grid-template-columns: 1fr; }
     }
-    /* Mesmo padrão visual de Proteger Aposta (.term-row) */
+    /* Mesmo padrão visual de Proteger Aposta — Mercado priorizado */
     .prot-term-panel { background: transparent; border: 0; overflow: visible; }
     .prot-term-panel .term-table-head {
       display: grid;
-      grid-template-columns: 88px minmax(0, 1.15fr) minmax(110px, 0.7fr) 96px 88px 120px 132px;
+      grid-template-columns: 72px minmax(120px, 0.9fr) minmax(88px, 0.5fr) 84px minmax(180px, 1.5fr) 108px 118px;
+      gap: 10px;
     }
     .prot-list.term-list { gap: 12px; padding: 2px 2px 8px; min-height: 180px; }
     .prot-list .term-row {
-      grid-template-columns: 88px minmax(0, 1.15fr) minmax(110px, 0.7fr) 96px 88px 120px 132px;
+      grid-template-columns: 72px minmax(120px, 0.9fr) minmax(88px, 0.5fr) 84px minmax(180px, 1.5fr) 108px 118px;
+      gap: 10px;
       cursor: pointer;
     }
     .prot-list .term-row.prot-active {
@@ -37,6 +39,32 @@
         0 18px 40px rgba(0, 0, 0, 0.55),
         0 0 0 1px rgba(201, 242, 35, 0.16),
         0 0 28px rgba(201, 242, 35, 0.12);
+    }
+    .prot-list .term-col-match strong { font-size: 15px; }
+    .prot-list .term-col-market {
+      justify-content: flex-start;
+      min-width: 0;
+      width: 100%;
+    }
+    .prot-list .term-market {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      min-width: 0;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.35;
+      letter-spacing: 0.01em;
+      text-align: left;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      color: #fff;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
     }
     .prot-list .term-col-valor { text-align: right; }
     .prot-list .term-col-valor strong {
@@ -82,18 +110,19 @@
           "time match"
           "time sides"
           "comp comp"
-          "market valor"
-          "status status";
+          "market market"
+          "valor status";
         gap: 10px 12px;
       }
       .prot-list .term-col-time { grid-area: time; }
       .prot-list .term-col-match { grid-area: match; }
       .prot-list .term-col-comp { grid-area: comp; }
       .prot-list .term-col-sides { grid-area: sides; justify-content: flex-start; }
-      .prot-list .term-col-market { grid-area: market; justify-content: flex-start; }
-      .prot-list .term-col-valor { grid-area: valor; }
-      .prot-list .term-col-status { grid-area: status; justify-content: flex-start; }
+      .prot-list .term-col-market { grid-area: market; justify-content: stretch; }
+      .prot-list .term-col-valor { grid-area: valor; text-align: left; }
+      .prot-list .term-col-status { grid-area: status; justify-content: flex-end; }
       .prot-list .term-comp { white-space: normal; }
+      .prot-list .term-market { font-size: 14px; padding: 12px 14px; }
     }
     .prot-detail {
       border: 1px solid rgba(255,255,255,0.08); border-radius: 16px;
