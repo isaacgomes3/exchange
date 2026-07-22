@@ -96,6 +96,7 @@
             '<div class="meta">real ' + money(r.balance_cents) +
             (Number(r.reusable_balance_cents || 0) ? " · reutilizável " + money(r.reusable_balance_cents) : "") +
             (Number(r.demo_balance_cents || 0) ? " · demo " + money(r.demo_balance_cents) : "") +
+            (Number(r.locked_balance_cents || 0) ? " · em proteção " + money(r.locked_balance_cents) : "") +
             "</div></td><td>" +
             (r.created_at ? new Date(r.created_at).toLocaleString("pt-BR") : "—") +
             "</td></tr>"
@@ -140,7 +141,7 @@
         document.getElementById("err").classList.remove("show");
         var res = await supa
           .from("profiles")
-          .select("id,full_name,account_status,balance_cents,reusable_balance_cents,demo_balance_cents,created_at")
+          .select("id,full_name,account_status,balance_cents,reusable_balance_cents,demo_balance_cents,locked_balance_cents,created_at")
           .order("created_at", { ascending: false })
           .limit(500);
         if (res.error) throw res.error;
