@@ -89,6 +89,7 @@
     .mon-alert { border-radius: 12px; padding: 10px 12px; font-size: 12px; }
     .mon-alert.ok { background: rgba(0,255,0,0.08); border: 1px solid rgba(0,255,0,0.3); color: #00ff00; }
     .mon-alert.bad { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.35); color: #f87171; }
+    .mon-alert.busy { background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.35); color: #fbbf24; }
     @media (max-width: 900px) {
       .mon-kpis, .mon-details-grid { grid-template-columns: 1fr 1fr; }
       .mon-right { text-align: left; justify-items: start; width: 100%; }
@@ -240,6 +241,7 @@
     root.innerHTML =
       '<header class="mon-head"><div><h1>Monitor de <span>Proteções &amp; Liquidação</span></h1>' +
       '<p class="sub">Veja quem entrou, filtre por status e encerre ou estorne operações.</p></div></header>' +
+      (state.busy ? '<div class="mon-alert busy">Processando… aguarde o estorno/encerramento terminar.</div>' : "") +
       (state.err ? '<div class="mon-alert bad">' + esc(state.err) + "</div>" : "") +
       (state.ok ? '<div class="mon-alert ok">' + esc(state.ok) + "</div>" : "") +
       '<section class="mon-filters">' +
@@ -369,8 +371,7 @@
                         '"' +
                         (state.busy ? " disabled" : "") +
                         ">Cancelar e estornar</button>" +
-                        "</div>" +
-                        '<p style="margin:0;font-size:11px;color:#8b949e">Encerrar: fecha a operação e devolve liquidez ao jogo (saldo do usuário não volta). Cancelar: estorna o valor ao usuário.</p>'
+                        "</div>"
                       : '<p style="margin:0;font-size:12px;color:#8b949e">Operação já finalizada — sem ações de encerramento.</p>') +
                     "</div>"
                   : "") +
@@ -564,6 +565,28 @@
     paint();
   }
 
+  async function fetchJson(url, options, timeoutMs) {
+    var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    var timer = null;
+    var opts = options || {};
+    if (ctrl) opts.signal = ctrl.signal;
+    if (timeoutMs > 0 && ctrl) {
+      timer = setTimeout(function () {
+        try { ctrl.abort(); } catch (e) {}
+      }, timeoutMs);
+    }
+    try {
+      var res = await fetch(url, opts);
+      var text = await res.text();
+      var data = {};
+      try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: String(text).slice(0, 180) }; }
+      if (data && data.result != null && data.error == null) data = data.result;
+      return { res: res, data: data };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   async function actClose(id, marketType) {
     if (state.busy || !id) return;
     var reason = window.prompt(
@@ -580,27 +603,37 @@
     paint();
     try {
       var token = await authToken(ArbiV2.client());
-      var res = await fetch("/api/arbishield/protection-close", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + token,
-          "Content-Type": "application/json",
+      if (!token) throw new Error("Sessão expirada — faça login de novo.");
+      var out = await fetchJson(
+        "/api/arbishield/protection-close",
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            protectionId: id,
+            marketType: marketType || "LAY",
+            reason: String(reason).trim(),
+          }),
         },
-        body: JSON.stringify({
-          protectionId: id,
-          marketType: marketType || "LAY",
-          reason: String(reason).trim(),
-        }),
-      });
-      var data = await res.json().catch(function () { return {}; });
-      if (!res.ok) throw new Error(data.error || "Falha ao encerrar");
+        45000
+      );
+      if (!out.res.ok) {
+        throw new Error(out.data.error || out.data.message || "Falha ao encerrar (HTTP " + out.res.status + ")");
+      }
       state.ok = "Operação encerrada sem estorno. Liquidez devolvida ao jogo.";
+      state.busy = false;
       await load();
     } catch (ex) {
-      state.err = (ex && ex.message) || "Erro ao encerrar";
-      paint();
+      state.err =
+        (ex && ex.name === "AbortError"
+          ? "Tempo esgotado ao encerrar. Tente de novo."
+          : (ex && ex.message) || "Erro ao encerrar");
     } finally {
       state.busy = false;
+      paint();
     }
   }
 
@@ -619,20 +652,30 @@
     paint();
     try {
       var token = await authToken(ArbiV2.client());
-      var res = await fetch("/api/arbishield/protection-cancel", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + token,
-          "Content-Type": "application/json",
+      if (!token) throw new Error("Sessão expirada — faça login de novo.");
+      var out = await fetchJson(
+        "/api/arbishield/protection-cancel",
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            protectionId: id,
+            marketType: marketType || "LAY",
+          }),
         },
-        body: JSON.stringify({
-          protectionId: id,
-          marketType: marketType || "LAY",
-        }),
-      });
-      var data = await res.json().catch(function () { return {}; });
-      if (data && data.result != null && data.error == null) data = data.result;
-      if (!res.ok) throw new Error(data.error || data.message || "Falha ao cancelar");
+        45000
+      );
+      var data = out.data || {};
+      if (!out.res.ok) {
+        throw new Error(
+          data.error ||
+            data.message ||
+            "Falha ao cancelar (HTTP " + out.res.status + "). Rode o hotfix de estorno na VPS."
+        );
+      }
       if (data.error) throw new Error(data.error);
       var refunded = Number(data.refundedCents || 0);
       if (data.message) {
@@ -647,12 +690,16 @@
       } else {
         state.ok = "Operação cancelada e saldo estornado.";
       }
+      state.busy = false;
       await load();
     } catch (ex) {
-      state.err = (ex && ex.message) || "Erro ao cancelar";
-      paint();
+      state.err =
+        (ex && ex.name === "AbortError"
+          ? "Tempo esgotado ao estornar. Tente de novo."
+          : (ex && ex.message) || "Erro ao cancelar");
     } finally {
       state.busy = false;
+      paint();
     }
   }
 
