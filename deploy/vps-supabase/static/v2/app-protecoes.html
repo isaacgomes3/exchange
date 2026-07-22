@@ -19,26 +19,82 @@
     }
     @media (max-width: 560px) {
       .prot-kv, .type-grid { grid-template-columns: 1fr; }
-      .prot-card .row { flex-direction: column; }
     }
-    .prot-list { display: flex; flex-direction: column; gap: 10px; }
-    .prot-card {
-      border: 1px solid rgba(255,255,255,0.08); border-radius: 14px;
-      background: rgba(4,26,20,0.85); padding: 14px 16px; cursor: pointer;
-      transition: border-color .15s ease, background .15s ease;
+    /* Mesmo padrão visual de Proteger Aposta (.term-row) */
+    .prot-term-panel { background: transparent; border: 0; overflow: visible; }
+    .prot-term-panel .term-table-head {
+      display: grid;
+      grid-template-columns: 88px minmax(0, 1.15fr) minmax(110px, 0.7fr) 96px 88px 120px 132px;
     }
-    .prot-card:hover, .prot-card.active { border-color: rgba(201,242,35,0.45); background: rgba(8,40,30,0.95); }
-    .prot-card .row { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
-    .prot-card .title { font-weight: 800; font-size: 14px; letter-spacing: 0.02em; }
-    .prot-card .meta { color: var(--muted, #8a9a92); font-size: 11px; margin-top: 4px; }
+    .prot-list.term-list { gap: 12px; padding: 2px 2px 8px; min-height: 180px; }
+    .prot-list .term-row {
+      grid-template-columns: 88px minmax(0, 1.15fr) minmax(110px, 0.7fr) 96px 88px 120px 132px;
+      cursor: pointer;
+    }
+    .prot-list .term-row.prot-active {
+      border-color: rgba(201, 242, 35, 0.5);
+      box-shadow:
+        0 18px 40px rgba(0, 0, 0, 0.55),
+        0 0 0 1px rgba(201, 242, 35, 0.16),
+        0 0 28px rgba(201, 242, 35, 0.12);
+    }
+    .prot-list .term-col-valor { text-align: right; }
+    .prot-list .term-col-valor strong {
+      display: block;
+      font-size: 15px;
+      font-weight: 800;
+      color: #fff;
+      font-variant-numeric: tabular-nums;
+    }
+    .prot-list .term-col-valor small {
+      display: block;
+      margin-top: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.4);
+    }
+    .prot-list .term-col-status {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+    }
     .prot-badge {
-      display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px;
-      font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+      display: inline-flex; align-items: center; justify-content: center;
+      min-height: 28px; padding: 6px 10px; border-radius: 8px;
+      font-size: 10px; font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase;
       border: 1px solid rgba(255,255,255,0.12); color: #cfe8a8;
+      background: rgba(255,255,255,0.04); text-align: center; line-height: 1.2;
     }
     .prot-badge.review { border-color: rgba(251,191,36,0.45); color: #fbbf24; background: rgba(251,191,36,0.08); }
-    .prot-badge.active { border-color: rgba(201,242,35,0.35); color: #c9f223; }
-    .prot-badge.cancelled { border-color: rgba(248,113,113,0.35); color: #f87171; }
+    .prot-badge.active { border-color: rgba(201,242,35,0.4); color: #c9f223; background: rgba(201,242,35,0.08); }
+    .prot-badge.cancelled {
+      border-color: rgba(248,113,113,0.45); color: #fff;
+      background: rgba(220, 50, 50, 0.88);
+    }
+    .prot-badge.settled { border-color: rgba(201,242,35,0.35); color: #c9f223; }
+    @media (max-width: 1100px) {
+      .prot-term-panel .term-table-head { display: none; }
+      .prot-list .term-row {
+        grid-template-columns: 72px 1fr;
+        grid-template-areas:
+          "time match"
+          "time sides"
+          "comp comp"
+          "market valor"
+          "status status";
+        gap: 10px 12px;
+      }
+      .prot-list .term-col-time { grid-area: time; }
+      .prot-list .term-col-match { grid-area: match; }
+      .prot-list .term-col-comp { grid-area: comp; }
+      .prot-list .term-col-sides { grid-area: sides; justify-content: flex-start; }
+      .prot-list .term-col-market { grid-area: market; justify-content: flex-start; }
+      .prot-list .term-col-valor { grid-area: valor; }
+      .prot-list .term-col-status { grid-area: status; justify-content: flex-start; }
+      .prot-list .term-comp { white-space: normal; }
+    }
     .prot-detail {
       border: 1px solid rgba(255,255,255,0.08); border-radius: 16px;
       background: rgba(4,26,20,0.92); padding: 16px; position: sticky; top: 12px;
@@ -97,7 +153,18 @@
   <div id="ok" class="ok-msg" style="display:none"></div>
 
   <div class="prot-layout">
-    <div id="list" class="prot-list"><div class="empty">Carregando…</div></div>
+    <div class="prot-term-panel term-panel">
+      <div class="term-table-head" aria-hidden="true">
+        <span>Horário</span>
+        <span>Confronto</span>
+        <span>Competição</span>
+        <span class="c">LAY/BACK</span>
+        <span class="c">Mercado</span>
+        <span class="r">Valor</span>
+        <span class="r">Status</span>
+      </div>
+      <div id="list" class="prot-list term-list"><div class="empty">Carregando…</div></div>
+    </div>
     <aside id="detail" class="prot-detail">
       <h2>Protocolo de auditoria</h2>
       <p class="sub">Selecione uma proteção para ver detalhes e ações.</p>
@@ -168,8 +235,8 @@
 
       function statusLabel(st) {
         st = String(st || "").toLowerCase();
-        if (st === "review_odd") return "Em Contestação (Pendente)";
-        if (st === "active") return "Proteção Ativa";
+        if (st === "review_odd") return "Em Contestação";
+        if (st === "active") return "Ativa";
         if (st === "cancelled") return "Cancelada";
         if (st === "settled" || st === "won_exchange" || st === "lost_exchange") return "Encerrada";
         return st || "—";
@@ -179,7 +246,49 @@
         if (st === "review_odd") return "review";
         if (st === "active") return "active";
         if (st === "cancelled") return "cancelled";
+        if (st === "settled" || st === "won_exchange" || st === "lost_exchange") return "settled";
         return "";
+      }
+      function esc(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+      function marketLabelOf(it) {
+        var meta = it.metadata && typeof it.metadata === "object" ? it.metadata : {};
+        var name = meta.market_name || meta.marketName || meta.runner_name || "";
+        if (name && String(name).trim()) return String(name).trim();
+        var odd = Number(it.odd || 0);
+        return odd > 0 ? odd.toFixed(2) : "—";
+      }
+      function whenHtmlOf(it) {
+        var starts = it.matches && it.matches.starts_at;
+        if (!starts) {
+          var c = it.created_at ? new Date(it.created_at) : null;
+          if (!c || Number.isNaN(c.getTime())) return "—";
+          return (
+            '<span class="term-time">' +
+            c.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) +
+            '</span><span class="term-date">' +
+            c.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) +
+            "</span>"
+          );
+        }
+        var d = new Date(starts);
+        if (Number.isNaN(d.getTime())) return "—";
+        var now = Date.now();
+        if (now >= d.getTime() && String(it.status || "").toLowerCase() === "active") {
+          return '<span class="term-live">AO VIVO</span>';
+        }
+        return (
+          '<span class="term-time">' +
+          d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) +
+          '</span><span class="term-date">' +
+          d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) +
+          "</span>"
+        );
       }
       function canContest(item) {
         var st = String(item.status || "").toLowerCase();
@@ -233,17 +342,24 @@
         }
         listEl.innerHTML = items.map(function (it) {
           var amount = it.responsibility_cents || it.amount_cents || 0;
+          var side = String(it.market_category || "LAY").toUpperCase() === "BACK" ? "BACK" : "LAY";
+          var m = it.matches || {};
+          var competition = String(m.league || m.competition || "").trim() || "—";
+          var home = m.home_team || "?";
+          var away = m.away_team || "?";
           return (
-            '<article class="prot-card' + (selectedId === it.id ? ' active' : '') + '" data-id="' + it.id + '">' +
-              '<div class="row">' +
-                '<div><div class="title">' + matchName(it) + '</div>' +
-                '<div class="meta">' + (it.market_category || "LAY") + " · Odd " + Number(it.odd || 0).toFixed(2) + " · " + money(amount) + "</div></div>" +
-                '<span class="prot-badge ' + statusClass(it.status) + '">' + statusLabel(it.status) + "</span>" +
-              "</div>" +
+            '<article class="term-row' + (selectedId === it.id ? " prot-active" : "") + '" data-id="' + esc(it.id) + '">' +
+              '<div class="term-col-time">' + whenHtmlOf(it) + "</div>" +
+              '<div class="term-col-match"><strong>' + esc(home) + " <span>×</span> " + esc(away) + "</strong></div>" +
+              '<div class="term-col-comp"><span class="term-comp">' + esc(competition) + "</span></div>" +
+              '<div class="term-col-sides"><span class="term-side ' + side.toLowerCase() + '">' + side + "</span></div>" +
+              '<div class="term-col-market"><span class="term-market">' + esc(marketLabelOf(it)) + "</span></div>" +
+              '<div class="term-col-valor"><strong>' + money(amount) + '</strong><small>protegido</small></div>' +
+              '<div class="term-col-status"><span class="prot-badge ' + statusClass(it.status) + '">' + esc(statusLabel(it.status)) + "</span></div>" +
             "</article>"
           );
         }).join("");
-        listEl.querySelectorAll(".prot-card").forEach(function (el) {
+        listEl.querySelectorAll(".term-row").forEach(function (el) {
           el.addEventListener("click", function () {
             selectedId = el.getAttribute("data-id");
             renderList();
