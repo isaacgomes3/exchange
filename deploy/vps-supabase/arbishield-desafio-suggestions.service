@@ -1,0 +1,17 @@
+[Unit]
+Description=ArbiShield desafio suggestions API (BetBra surebet)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/arbishield
+EnvironmentFile=-/opt/arbishield/.arbishield-odds-sync.env
+Environment=DESAFIO_SUGGESTIONS_LISTEN=127.0.0.1:3099
+ExecStart=/usr/bin/node /opt/arbishield/scripts/arbishield-desafio-suggestions.mjs --serve
+Restart=always
+RestartSec=5
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
