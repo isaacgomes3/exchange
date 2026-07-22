@@ -259,7 +259,7 @@ async function main() {
   if (matchIds.length) {
     const chunk = matchIds.slice(0, 80);
     const ms = await sb(
-      `/rest/v1/matches?select=id,home_team,away_team,league,starts_at,status,home_score,away_score&id=in.(${chunk.map((id) => `"${id}"`).join(",")})`
+      `/rest/v1/matches?select=id,home_team,away_team,league,starts_at,status,final_score&id=in.(${chunk.map((id) => `"${id}"`).join(",")})`
     );
     for (const m of Array.isArray(ms) ? ms : []) matchMap[m.id] = m;
   }
@@ -283,7 +283,7 @@ async function main() {
     const jogo = `${m.home_team || "?"} × ${m.away_team || "?"}`;
 
     console.log("\n—", row.id);
-    console.log(`  ${jogo}  ${m.starts_at || ""}  placar ${m.home_score ?? "—"}-${m.away_score ?? "—"}`);
+    console.log(`  ${jogo}  ${m.starts_at || ""}  placar ${m.final_score ?? "—"}`);
     console.log(
       `  ${row._side}  status=${st}  outcome=${outcome}  stake=${money(amount)}  esperado=${money(expect)}`
     );
