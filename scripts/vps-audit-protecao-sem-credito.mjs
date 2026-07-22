@@ -5,7 +5,7 @@
  *   NAME="JOÃO PAULO" MATCH="Klubi" node scripts/vps-audit-protecao-sem-credito.mjs
  *   FIX=1 NAME="JOÃO PAULO" MATCH="Klubi" node scripts/vps-audit-protecao-sem-credito.mjs
  *
- * FIX credita settlement faltante (outcome=exchange → stake−taxa; arbishield → stake em reusable)
+ * FIX credita settlement faltante (exchange → stake−taxa; arbishield → stake integral) no saldo real
  * ou estorno total se FORCE_REFUND=1.
  */
 import fs from "node:fs";
@@ -292,12 +292,9 @@ async function main() {
     const patch = {
       locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
       updated_at: now,
+      // Sempre saldo real (igual ao settle atual)
+      balance_cents: n(p.balance_cents) + pay,
     };
-    if (FORCE_REFUND || !wonArbi) {
-      patch.balance_cents = n(p.balance_cents) + pay;
-    } else {
-      patch.reusable_balance_cents = n(p.reusable_balance_cents) + pay;
-    }
 
     try {
       await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}`, {
