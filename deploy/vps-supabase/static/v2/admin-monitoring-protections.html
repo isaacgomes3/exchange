@@ -631,8 +631,22 @@
         }),
       });
       var data = await res.json().catch(function () { return {}; });
-      if (!res.ok) throw new Error(data.error || "Falha ao cancelar");
-      state.ok = "Operação cancelada e saldo estornado.";
+      if (data && data.result != null && data.error == null) data = data.result;
+      if (!res.ok) throw new Error(data.error || data.message || "Falha ao cancelar");
+      if (data.error) throw new Error(data.error);
+      var refunded = Number(data.refundedCents || 0);
+      if (data.message) {
+        state.ok = data.message;
+      } else if (refunded > 0) {
+        state.ok =
+          "Operação cancelada. Estornado " +
+          money(refunded) +
+          " ao usuário.";
+      } else if (data.alreadyRefunded || data.alreadyCancelled) {
+        state.ok = "Proteção já estava cancelada/estornada.";
+      } else {
+        state.ok = "Operação cancelada e saldo estornado.";
+      }
       await load();
     } catch (ex) {
       state.err = (ex && ex.message) || "Erro ao cancelar";

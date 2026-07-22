@@ -1827,15 +1827,94 @@ async function patchProtectionSafe(table, protectionId, body) {
 }
 
 async function loadProtectionRow(protectionId, marketType) {
-  const isBack = String(marketType || "").toUpperCase() === "BACK";
-  const table = isBack ? "back_protections" : "protections";
-  const rows = await sb(
-    `/rest/v1/${table}?select=*&id=eq.${encodeURIComponent(protectionId)}&limit=1`,
+  const preferBack = String(marketType || "").toUpperCase() === "BACK";
+  const order = preferBack
+    ? ["back_protections", "protections"]
+    : ["protections", "back_protections"];
+  for (const table of order) {
+    const rows = await sb(
+      `/rest/v1/${table}?select=*&id=eq.${encodeURIComponent(protectionId)}&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (row) {
+      return {
+        table,
+        row,
+        isBack: table === "back_protections",
+        marketType: table === "back_protections" ? "BACK" : "LAY",
+      };
+    }
+  }
+  throw new Error("Proteção não encontrada");
+}
+
+/** Valor bloqueado/estornável da proteção. */
+function protectionRefundAmountCents(row) {
+  const resp = n(row?.responsibility_cents);
+  const amt = n(row?.amount_cents);
+  // LAY grava os dois iguais; BACK usa amount_cents (cobertura)
+  return resp > 0 ? resp : amt;
+}
+
+async function creditProtectionRefund(row, protectionId, marketType) {
+  const amount = protectionRefundAmountCents(row);
+  if (!row?.user_id || !(amount > 0)) return 0;
+  if (await protectionAlreadyCredited(protectionId)) return 0;
+
+  const prof = await sb(
+    `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
     { token: SERVICE_KEY }
   );
-  const row = Array.isArray(rows) ? rows[0] : null;
-  if (!row) throw new Error("Proteção não encontrada");
-  return { table, row, isBack };
+  const p = Array.isArray(prof) ? prof[0] : null;
+  if (!p) throw new Error("Perfil do usuário não encontrado");
+
+  const patch = {
+    balance_cents: n(p.balance_cents) + amount,
+    locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
+  };
+  let lastErr = null;
+  for (const body of [
+    { ...patch, updated_at: new Date().toISOString() },
+    patch,
+  ]) {
+    try {
+      await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body,
+      });
+      lastErr = null;
+      break;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  if (lastErr) throw lastErr;
+
+  try {
+    await sb("/rest/v1/wallet_transactions", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        user_id: row.user_id,
+        type: "protection_refund",
+        amount_cents: amount,
+        ref: protectionId,
+        metadata: {
+          protection_id: protectionId,
+          marketType,
+          source: "admin_cancel_refund",
+        },
+      },
+    });
+  } catch (err) {
+    console.warn(
+      "[serverfn-shim] wallet_transactions protection_refund:",
+      err?.message || err
+    );
+  }
+  return amount;
 }
 
 async function restoreMatchLiquidity(matchId, amountCents, marketId) {
@@ -1875,37 +1954,50 @@ async function restoreMatchLiquidity(matchId, amountCents, marketId) {
 async function closeProtectionNoRefund(token, body) {
   if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
   const protectionId = String(body?.protectionId || body?.id || "").trim();
-  const marketType = String(body?.marketType || body?.market_category || "LAY");
+  const marketTypeIn = String(body?.marketType || body?.market_category || "LAY");
   const reason = String(body?.reason || "").trim();
   if (!protectionId) throw new Error("protectionId obrigatório");
   if (!reason) throw new Error("Motivo é obrigatório para encerrar sem estornar.");
 
-  const { table, row } = await loadProtectionRow(protectionId, marketType);
+  const { table, row, marketType } = await loadProtectionRow(
+    protectionId,
+    marketTypeIn
+  );
   const st = String(row.status || "").toLowerCase();
   if (st === "cancelled" || st === "settled" || st === "closed") {
     throw new Error("Proteção já finalizada");
   }
-  const amount = n(row.responsibility_cents || row.amount_cents);
+  const amount = protectionRefundAmountCents(row);
   const adminId = requireUserId(token);
 
-  await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(protectionId)}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: {
-      status: "settled",
-      settled_at: new Date().toISOString(),
-      result: "closed_no_refund",
-      metadata: {
-        ...(row.metadata && typeof row.metadata === "object" ? row.metadata : {}),
-        close_reason: reason,
-        closed_by: adminId,
-        closed_at: new Date().toISOString(),
-      },
-      updated_at: new Date().toISOString(),
-    },
-  });
+  // VPS: nem sempre há updated_at / result — usa patch seguro em camadas
+  const meta = {
+    ...(row.metadata && typeof row.metadata === "object" ? row.metadata : {}),
+    close_reason: reason,
+    closed_by: adminId,
+    closed_at: new Date().toISOString(),
+  };
+  let closed = false;
+  let lastCloseErr = null;
+  for (const payload of [
+    { status: "settled", settled_at: new Date().toISOString(), result: "closed_no_refund", metadata: meta },
+    { status: "settled", settled_at: new Date().toISOString(), metadata: meta },
+    { status: "settled", settled_at: new Date().toISOString() },
+    { status: "settled" },
+  ]) {
+    try {
+      await patchProtectionSafe(table, protectionId, payload);
+      closed = true;
+      break;
+    } catch (err) {
+      lastCloseErr = err;
+    }
+  }
+  if (!closed) {
+    throw lastCloseErr || new Error("Falha ao encerrar proteção");
+  }
 
-  if (row.user_id) {
+  if (row.user_id && amount > 0) {
     try {
       const prof = await sb(
         `/rest/v1/profiles?select=locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
@@ -1913,14 +2005,22 @@ async function closeProtectionNoRefund(token, body) {
       );
       const p = Array.isArray(prof) ? prof[0] : null;
       if (p) {
-        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
-          method: "PATCH",
-          token: SERVICE_KEY,
-          body: {
-            locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
-            updated_at: new Date().toISOString(),
-          },
-        });
+        const lockedPatch = {
+          locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
+        };
+        try {
+          await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+            method: "PATCH",
+            token: SERVICE_KEY,
+            body: { ...lockedPatch, updated_at: new Date().toISOString() },
+          });
+        } catch {
+          await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+            method: "PATCH",
+            token: SERVICE_KEY,
+            body: lockedPatch,
+          });
+        }
       }
     } catch {
       /* */
@@ -1955,19 +2055,51 @@ async function closeProtectionNoRefund(token, body) {
 async function cancelProtectionRefund(token, body) {
   if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
   const protectionId = String(body?.protectionId || body?.id || "").trim();
-  const marketType = String(body?.marketType || body?.market_category || "LAY");
+  const marketTypeIn = String(body?.marketType || body?.market_category || "LAY");
   if (!protectionId) throw new Error("protectionId obrigatório");
 
-  const { table, row } = await loadProtectionRow(protectionId, marketType);
+  const loaded = await loadProtectionRow(protectionId, marketTypeIn);
+  const { table, row } = loaded;
+  const marketType = loaded.marketType || marketTypeIn;
   const st = String(row.status || "").toLowerCase();
+  const amount = protectionRefundAmountCents(row);
+  const adminId = requireUserId(token);
+  const marketId =
+    row.market_id ||
+    (row.metadata && (row.metadata.market_id || row.metadata.marketId)) ||
+    null;
+
+  // Já cancelada: se nunca creditou, cura o estorno agora
   if (st === "cancelled") {
-    return { ok: true, alreadyCancelled: true, protectionId, refundedCents: 0 };
+    if (await protectionAlreadyCredited(protectionId)) {
+      return {
+        ok: true,
+        alreadyCancelled: true,
+        alreadyRefunded: true,
+        protectionId,
+        refundedCents: 0,
+        message: "Proteção já cancelada e estornada.",
+      };
+    }
+    const refundedCents = await creditProtectionRefund(row, protectionId, marketType);
+    await restoreMatchLiquidity(row.match_id, amount, marketId);
+    return {
+      ok: true,
+      healed: true,
+      alreadyCancelled: true,
+      protectionId,
+      status: "cancelled",
+      refundedCents,
+      message:
+        refundedCents > 0
+          ? "Proteção já cancelada — estorno aplicado agora."
+          : "Proteção já cancelada.",
+    };
   }
-  if (st === "settled" || st === "closed") {
+
+  if (st === "settled" || st === "closed" || st.indexOf("won_") === 0 || st.indexOf("lost_") === 0) {
     throw new Error("Proteção já encerrada — use estorno manual se necessário");
   }
-  const amount = n(row.responsibility_cents || row.amount_cents);
-  const adminId = requireUserId(token);
 
   if (await protectionAlreadyCredited(protectionId)) {
     await claimProtectionCancelled(table, protectionId, {});
@@ -1977,62 +2109,51 @@ async function cancelProtectionRefund(token, body) {
       protectionId,
       status: "cancelled",
       refundedCents: 0,
+      message: "Estorno já havia sido creditado. Status marcado como cancelado.",
     };
   }
 
-  const claimed = await claimProtectionCancelled(table, protectionId, {});
+  const prevMeta =
+    row.metadata && typeof row.metadata === "object" ? { ...row.metadata } : {};
+  prevMeta.admin_cancel_refund = {
+    at: new Date().toISOString(),
+    by: adminId,
+    marketType,
+  };
+
+  const claimed = await claimProtectionCancelled(table, protectionId, {
+    metadata: prevMeta,
+  });
   if (!claimed) {
-    return { ok: true, alreadyCancelled: true, protectionId, refundedCents: 0 };
-  }
-
-  if (row.user_id && amount > 0) {
-    const prof = await sb(
-      `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
-      { token: SERVICE_KEY }
+    // revalida — corrida com outro request / status inesperado
+    const again = await loadProtectionRow(protectionId, marketType);
+    const st2 = String(again.row.status || "").toLowerCase();
+    if (st2 === "cancelled") {
+      const refundedCents = await creditProtectionRefund(
+        again.row,
+        protectionId,
+        marketType
+      );
+      await restoreMatchLiquidity(again.row.match_id, amount, marketId);
+      return {
+        ok: true,
+        alreadyCancelled: true,
+        healed: refundedCents > 0,
+        protectionId,
+        status: "cancelled",
+        refundedCents,
+        message:
+          refundedCents > 0
+            ? "Proteção cancelada — estorno aplicado."
+            : "Proteção já estava cancelada.",
+      };
+    }
+    throw new Error(
+      `Não foi possível cancelar (status atual: ${st2 || st || "desconhecido"}). Recarregue e tente de novo.`
     );
-    const p = Array.isArray(prof) ? prof[0] : null;
-    if (!p) throw new Error("Perfil do usuário não encontrado");
-    try {
-      await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
-        method: "PATCH",
-        token: SERVICE_KEY,
-        body: {
-          balance_cents: n(p.balance_cents) + amount,
-          locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
-          updated_at: new Date().toISOString(),
-        },
-      });
-    } catch {
-      await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
-        method: "PATCH",
-        token: SERVICE_KEY,
-        body: {
-          balance_cents: n(p.balance_cents) + amount,
-          locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
-        },
-      });
-    }
-    try {
-      await sb("/rest/v1/wallet_transactions", {
-        method: "POST",
-        token: SERVICE_KEY,
-        body: {
-          user_id: row.user_id,
-          type: "protection_refund",
-          amount_cents: amount,
-          ref: protectionId,
-          metadata: { protection_id: protectionId, marketType },
-        },
-      });
-    } catch {
-      /* */
-    }
   }
 
-  const marketId =
-    row.market_id ||
-    (row.metadata && (row.metadata.market_id || row.metadata.marketId)) ||
-    null;
+  const refundedCents = await creditProtectionRefund(row, protectionId, marketType);
   await restoreMatchLiquidity(row.match_id, amount, marketId);
 
   try {
@@ -2044,14 +2165,26 @@ async function cancelProtectionRefund(token, body) {
         action: "protection_cancel_refund",
         entity_type: table,
         entity_id: protectionId,
-        details: { amount_cents: amount, marketType },
+        details: { amount_cents: amount, refundedCents, marketType },
       },
     });
   } catch {
     /* */
   }
 
-  return { ok: true, protectionId, status: "cancelled", refundedCents: amount };
+  if (!(refundedCents > 0) && amount > 0) {
+    throw new Error(
+      "Proteção cancelada, mas o crédito na carteira falhou. Tente Cancelar e estornar de novo (modo recuperação)."
+    );
+  }
+
+  return {
+    ok: true,
+    protectionId,
+    status: "cancelled",
+    refundedCents,
+    message: "Operação cancelada e saldo estornado.",
+  };
 }
 
 /** Depósitos manuais — aprovar / já creditado / rejeitar (legado SPA) */
@@ -3303,37 +3436,48 @@ async function protectionAlreadyCredited(protectionId) {
 
 /** Claim atômico cancelled — impede re-crédito em F5 / listagens. */
 async function claimProtectionCancelled(table, protectionId, extraBody = {}) {
-  const body = {
-    status: "cancelled",
-    settled_at: new Date().toISOString(),
-    result: "cancelled_refund",
-    ...extraBody,
-  };
-  delete body.updated_at;
-  try {
-    const claimed = await sb(
-      `/rest/v1/${table}?id=eq.${encodeURIComponent(protectionId)}&status=in.(active,pending,review_odd)`,
-      { method: "PATCH", token: SERVICE_KEY, body }
-    );
-    return Array.isArray(claimed) && claimed.length > 0;
-  } catch {
+  const now = new Date().toISOString();
+  const extra =
+    extraBody && typeof extraBody === "object" ? { ...extraBody } : {};
+  delete extra.updated_at;
+  const statusFilter = "status=in.(active,pending,review_odd)";
+  const payloads = [
+    {
+      status: "cancelled",
+      settled_at: now,
+      result: "cancelled_refund",
+      ...extra,
+    },
+    {
+      status: "cancelled",
+      settled_at: now,
+      ...extra,
+    },
+    {
+      status: "cancelled",
+      settled_at: now,
+      result: "cancelled_refund",
+    },
+    {
+      status: "cancelled",
+      settled_at: now,
+    },
+    { status: "cancelled" },
+  ];
+  for (const body of payloads) {
     try {
       const claimed = await sb(
-        `/rest/v1/${table}?id=eq.${encodeURIComponent(protectionId)}&status=in.(active,pending,review_odd)`,
-        {
-          method: "PATCH",
-          token: SERVICE_KEY,
-          body: {
-            status: "cancelled",
-            settled_at: new Date().toISOString(),
-          },
-        }
+        `/rest/v1/${table}?id=eq.${encodeURIComponent(protectionId)}&${statusFilter}`,
+        { method: "PATCH", token: SERVICE_KEY, body }
       );
-      return Array.isArray(claimed) && claimed.length > 0;
+      if (Array.isArray(claimed) && claimed.length > 0) return true;
+      // array vazio = filtro de status não bateu (já mudou) — não tenta outro payload
+      if (Array.isArray(claimed)) return false;
     } catch {
-      return false;
+      /* tenta payload mais enxuto */
     }
   }
+  return false;
 }
 
 async function creditWalletForSettlement(row, outcome, now) {
