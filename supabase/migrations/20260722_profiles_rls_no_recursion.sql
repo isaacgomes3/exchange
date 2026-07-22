@@ -14,14 +14,17 @@ begin
   if uid is null then
     return false;
   end if;
-  return exists (
+  if exists (
     select 1 from public.profiles p
     where p.id = uid and p.is_super_admin is true
-  )
-  or exists (
+  ) then
+    return true;
+  end if;
+  -- ::text evita "invalid input value for enum app_role: master_admin"
+  return exists (
     select 1 from public.user_roles ur
     where ur.user_id = uid
-      and ur.role in ('admin', 'master_admin')
+      and ur.role::text in ('admin', 'master_admin')
   );
 end;
 $$;

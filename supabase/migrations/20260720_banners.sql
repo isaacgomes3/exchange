@@ -41,7 +41,7 @@ create policy banners_admin_all on public.banners
     or exists (
       select 1 from public.user_roles ur
       where ur.user_id = auth.uid()
-        and ur.role in ('admin', 'master_admin')
+        and ur.role::text in ('admin', 'master_admin')
     )
   )
   with check (
@@ -52,7 +52,7 @@ create policy banners_admin_all on public.banners
     or exists (
       select 1 from public.user_roles ur
       where ur.user_id = auth.uid()
-        and ur.role in ('admin', 'master_admin')
+        and ur.role::text in ('admin', 'master_admin')
     )
   );
 
@@ -90,7 +90,7 @@ create policy banners_storage_admin_write on storage.objects
       or exists (
         select 1 from public.user_roles ur
         where ur.user_id = auth.uid()
-          and ur.role in ('admin', 'master_admin')
+          and ur.role::text in ('admin', 'master_admin')
       )
     )
   )
@@ -104,7 +104,7 @@ create policy banners_storage_admin_write on storage.objects
       or exists (
         select 1 from public.user_roles ur
         where ur.user_id = auth.uid()
-          and ur.role in ('admin', 'master_admin')
+          and ur.role::text in ('admin', 'master_admin')
       )
     )
   );

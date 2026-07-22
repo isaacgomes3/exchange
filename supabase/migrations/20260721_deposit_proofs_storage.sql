@@ -43,7 +43,7 @@ create policy deposit_proofs_select_own on storage.objects
       or exists (
         select 1 from public.user_roles ur
         where ur.user_id = auth.uid()
-          and ur.role in ('admin', 'master_admin')
+          and ur.role::text in ('admin', 'master_admin')
       )
     )
   );
@@ -87,7 +87,7 @@ create policy bet_proofs_select_own on storage.objects
       or exists (
         select 1 from public.user_roles ur
         where ur.user_id = auth.uid()
-          and ur.role in ('admin', 'master_admin')
+          and ur.role::text in ('admin', 'master_admin')
       )
     )
   );

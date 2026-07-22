@@ -14,7 +14,7 @@ create policy "Admins can update all deposits"
     or exists (
       select 1 from public.user_roles ur
       where ur.user_id = auth.uid()
-        and ur.role in ('admin', 'master_admin')
+        and ur.role::text in ('admin', 'master_admin')
     )
   )
   with check (
@@ -25,7 +25,7 @@ create policy "Admins can update all deposits"
     or exists (
       select 1 from public.user_roles ur
       where ur.user_id = auth.uid()
-        and ur.role in ('admin', 'master_admin')
+        and ur.role::text in ('admin', 'master_admin')
     )
   );
 
@@ -44,6 +44,6 @@ create policy "Admins can select all deposits"
     or exists (
       select 1 from public.user_roles ur
       where ur.user_id = auth.uid()
-        and ur.role in ('admin', 'master_admin')
+        and ur.role::text in ('admin', 'master_admin')
     )
   );
