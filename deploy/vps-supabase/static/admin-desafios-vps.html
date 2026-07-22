@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gestão de Desafios — ArbiShield</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #050505;
+      --panel: #0a0a0a;
+      --border: #1f1f1f;
+      --text: #f5f5f7;
+      --muted: #8a8a8f;
+      --lime: #c9f223;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      background: radial-gradient(900px 500px at 0% 0%, rgba(201,242,35,0.07), transparent 50%), var(--bg);
+      color: var(--text);
+    }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 24px 18px 64px; }
+    header {
+      display: flex; flex-wrap: wrap; gap: 14px;
+      align-items: flex-start; justify-content: space-between;
+      margin-bottom: 22px;
+    }
+    h1 {
+      margin: 0; font-size: clamp(1.5rem, 3vw, 2.1rem);
+      font-weight: 800; letter-spacing: -0.04em; text-transform: uppercase;
+    }
+    h1 span { color: var(--lime); }
+    .sub {
+      margin: 6px 0 0; color: var(--muted); font-size: 0.72rem;
+      letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;
+    }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn {
+      border: 0; border-radius: 12px; padding: 12px 16px;
+      font-weight: 800; font-size: 10px; letter-spacing: 0.12em;
+      text-transform: uppercase; cursor: pointer; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn-primary { background: var(--lime); color: #000; }
+    .btn-ghost {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-lime-outline {
+      background: transparent; color: var(--lime);
+      border: 1px solid rgba(201,242,35,0.4);
+    }
+    .stats {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+      gap: 10px; margin-bottom: 20px;
+    }
+    .stat {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; padding: 12px 14px;
+    }
+    .stat .l {
+      font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted); font-weight: 700;
+    }
+    .stat .v { font-size: 1.5rem; font-weight: 800; margin-top: 4px; }
+    .stat .v.lime { color: var(--lime); }
+    .stat .v.amber { color: #f59e0b; }
+    .stat .v.red { color: #ef4444; }
+    .meta { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+    .list { display: flex; flex-direction: column; gap: 12px; }
+    .card {
+      border: 1px solid var(--border); border-radius: 16px;
+      background: var(--panel); padding: 16px;
+    }
+    .card-top {
+      display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .title { font-weight: 800; }
+    .badge {
+      font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
+      text-transform: uppercase; padding: 4px 8px; border-radius: 999px;
+      border: 1px solid var(--border); color: var(--muted);
+    }
+    .badge.on { color: var(--lime); border-color: rgba(201,242,35,0.35); }
+    .steps { color: var(--muted); font-size: 13px; line-height: 1.45; }
+    .empty, .error, .loading {
+      border: 1px dashed var(--border); border-radius: 16px;
+      padding: 28px; text-align: center; color: var(--muted);
+    }
+    .error { border-color: rgba(239,68,68,0.4); color: #fca5a5; }
+    .suggest {
+      display: none;
+      margin-bottom: 18px;
+      border: 1px solid rgba(201,242,35,0.35);
+      border-radius: 16px;
+      background: rgba(201,242,35,0.06);
+      padding: 16px;
+    }
+    .suggest.show { display: block; }
+    .suggest h2 {
+      margin: 0 0 8px;
+      font-size: 0.85rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--lime);
+    }
+    .suggest .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .suggest .k {
+      font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted); font-weight: 700;
+    }
+    .suggest .v { font-weight: 700; margin-top: 2px; word-break: break-word; }
+    .suggest .hint { color: var(--muted); font-size: 13px; margin: 0 0 4px; }
+    .suggest .actions { margin-top: 14px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Gestão de <span>Desafios</span></h1>
+        <p class="sub">Cockpit de Desafios ArbiShield · VPS</p>
+      </div>
+      <div class="actions">
+        <a class="btn btn-ghost" href="/admin">← Admin</a>
+        <a class="btn btn-lime-outline" href="/desafio-sugestoes.html">Sugestão de Desafio</a>
+        <button class="btn btn-primary" id="btnRefresh" type="button">Atualizar</button>
+      </div>
+    </header>
+
+    <section class="suggest" id="suggestPanel" aria-live="polite">
+      <h2>Sugestão pronta para lançamento</h2>
+      <p class="hint">Dados vindos de “Usar no lançamento”. Revise e use no formulário de criação quando disponível.</p>
+      <div class="grid" id="suggestGrid"></div>
+      <div class="actions">
+        <a class="btn btn-lime-outline" id="suggestBetbra" href="#" target="_blank" rel="noopener">Abrir BetBra</a>
+        <button class="btn btn-ghost" id="suggestClear" type="button">Descartar sugestão</button>
+        <button class="btn btn-primary" id="suggestCopy" type="button">Copiar resumo</button>
+      </div>
+    </section>
+
+    <div class="stats" id="stats"></div>
+    <div class="meta" id="meta">Carregando…</div>
+    <div class="list" id="list"></div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const money = (c) =>
+      c == null ? "—" : (Number(c) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+    function stepState(step) {
+      if (!step?.starts_at) return "upcoming";
+      if (step.status === "done" || step.status === "current") return step.status === "done" ? "done" : "live";
+      const u = new Date(step.starts_at).getTime();
+      const end = u + 9000 * 1000;
+      const now = Date.now();
+      if (now >= end) return "pending";
+      if (now >= u) return "live";
+      return "upcoming";
+    }
+
+    function totals(rows) {
+      const alive = rows.filter((x) => !x.deleted_at);
+      const steps = alive.flatMap((x) => x.desafio_steps || []);
+      const closed = (x) => {
+        const s = x.desafio_steps || [];
+        return s.length > 0 && s.every((e) => e.status === "done");
+      };
+      return {
+        total: alive.length,
+        active: alive.filter((x) => x.is_active).length,
+        drafts: alive.filter((x) => !x.is_active && !closed(x)).length,
+        upcoming: steps.filter((x) => stepState(x) === "upcoming").length,
+        live: steps.filter((x) => stepState(x) === "live").length,
+        pending: steps.filter((x) => stepState(x) === "pending").length,
+        closed: alive.filter(closed).length,
+        deleted: rows.filter((x) => x.deleted_at).length,
+      };
+    }
+
+    function renderStats(t) {
+      const items = [
+        ["Total", t.total, ""],
+        ["Ativos", t.active, "lime"],
+        ["Rascunhos", t.drafts, ""],
+        ["Agendadas", t.upcoming, ""],
+        ["Ao Vivo", t.live, "red"],
+        ["Pendente", t.pending, "amber"],
+        ["Encerrados", t.closed, "lime"],
+        ["Excluídos", t.deleted, "red"],
+      ];
+      $("stats").innerHTML = items
+        .map(
+          ([l, v, c]) =>
+            `<div class="stat"><div class="l">${l}</div><div class="v ${c}">${v}</div></div>`
+        )
+        .join("");
+    }
+
+    function render(rows) {
+      const t = totals(rows);
+      renderStats(t);
+      $("meta").textContent = `${rows.length} registro(s) · ${t.total} visíveis`;
+      const visible = rows
+        .filter((x) => !x.deleted_at)
+        .sort((a, b) => {
+          const ta = new Date(a.updated_at || a.created_at || 0).getTime();
+          const tb = new Date(b.updated_at || b.created_at || 0).getTime();
+          return tb - ta;
+        });
+      if (!visible.length) {
+        $("list").innerHTML = `<div class="empty">Nenhum desafio encontrado.</div>`;
+        return;
+      }
+      $("list").innerHTML = visible
+        .map((d) => {
+          const steps = (d.desafio_steps || [])
+            .slice()
+            .sort((a, b) => a.step_index - b.step_index);
+          const lines = steps
+            .map(
+              (s) =>
+                `#${s.step_index} ${s.match_label || s.home_team + " x " + s.away_team || "—"} · ` +
+                `${s.market_name_casa || s.market_name || "?"} @ ${s.casa_odd ?? "—"} / ` +
+                `Arbi ${s.market_name_arbishield || "?"} @ ${s.arbi_odd ?? "—"}`
+            )
+            .join("<br/>");
+          return `<article class="card">
+            <div class="card-top">
+              <div class="title">${d.title || "Desafio"} <span style="color:var(--muted);font-weight:600">#${d.number ?? "—"}</span></div>
+              <span class="badge ${d.is_active ? "on" : ""}">${d.is_active ? "Ativo" : "Rascunho"}</span>
+            </div>
+            <div class="steps">${lines || "Sem etapas"}</div>
+            <div class="steps" style="margin-top:8px">Saldo inicial ${money(d.initial_balance_cents)} · Lucro alvo ${d.target_profit_pct ?? "—"}%</div>
+          </article>`;
+        })
+        .join("");
+    }
+
+    async function load() {
+      $("list").innerHTML = `<div class="loading">Carregando desafios…</div>`;
+      $("meta").textContent = "Buscando…";
+      try {
+        const res = await fetch("/api/arbishield/desafios", {
+          cache: "no-store",
+          headers: { accept: "application/json" },
+        });
+        const text = await res.text();
+        let data;
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch {
+          throw new Error(
+            res.status === 502
+              ? "502 — API offline. Na VPS: bash <(curl -fsSL https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/consolidate-arbishield-app-723d/scripts/vps-stabilize-arbishield.sh)"
+              : "Resposta inválida (" + res.status + ")"
+          );
+        }
+        if (!res.ok) {
+          throw new Error((data && data.error) || "HTTP " + res.status);
+        }
+        if (!Array.isArray(data)) throw new Error("Resposta inválida da API");
+        render(data);
+      } catch (err) {
+        $("stats").innerHTML = "";
+        $("meta").textContent = "";
+        $("list").innerHTML = `<div class="error">${String(err.message || err)}</div>`;
+      }
+    }
+
+    function readSuggestion() {
+      const want =
+        new URLSearchParams(location.search).get("sugestao") === "1" ||
+        Boolean(localStorage.getItem("arbishield_desafio_suggestion"));
+      if (!want) return null;
+      const raw = localStorage.getItem("arbishield_desafio_suggestion");
+      if (!raw) return null;
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    }
+
+    function clearSuggestionQuery() {
+      try {
+        const u = new URL(location.href);
+        if (u.searchParams.has("sugestao")) {
+          u.searchParams.delete("sugestao");
+          history.replaceState({}, "", u.pathname + u.search);
+        }
+      } catch {}
+    }
+
+    function renderSuggestion() {
+      const data = readSuggestion();
+      const panel = $("suggestPanel");
+      if (!data) {
+        panel.classList.remove("show");
+        return;
+      }
+      const step = (data.steps && data.steps[0]) || data.step || {};
+      const rows = [
+        ["Título", data.title],
+        ["Subtítulo", data.subtitle],
+        ["Partida", step.match_label || [step.home_team, step.away_team].filter(Boolean).join(" x ")],
+        ["Mercado casa", step.market_name_casa || step.market_name],
+        ["Odd casa", step.casa_odd],
+        ["Mercado Arbi", step.market_name_arbishield],
+        ["Odd Arbi", step.arbi_odd],
+        ["Stake casa", money(step.casa_stake_cents)],
+        ["Stake Arbi", money(data.initial_balance_cents ?? step.arbi_stake_cents)],
+        ["Liquidez", money(step.liquidity_cents)],
+        ["Início", step.starts_at],
+        [
+          "Lucro surebet",
+          data.target_profit_pct != null
+            ? `${data.target_profit_pct}%`
+            : data.profitMarginPct != null
+              ? `${data.profitMarginPct}%`
+              : null,
+        ],
+      ];
+      $("suggestGrid").innerHTML = rows
+        .filter(([, v]) => v != null && v !== "")
+        .map(([k, v]) => `<div><div class="k">${k}</div><div class="v">${v}</div></div>`)
+        .join("");
+      const link = step.external_bet_link || data.betbraLink || "#";
+      const a = $("suggestBetbra");
+      a.href = link;
+      a.style.display = link && link !== "#" ? "inline-flex" : "none";
+      panel.classList.add("show");
+      clearSuggestionQuery();
+    }
+
+    $("suggestClear").addEventListener("click", () => {
+      localStorage.removeItem("arbishield_desafio_suggestion");
+      localStorage.removeItem("arbishield_desafio_suggestion_at");
+      renderSuggestion();
+    });
+
+    $("suggestCopy").addEventListener("click", async () => {
+      const data = readSuggestion();
+      if (!data) return;
+      const step = (data.steps && data.steps[0]) || {};
+      const text = [
+        data.title,
+        data.subtitle,
+        step.match_label || `${step.home_team || ""} x ${step.away_team || ""}`,
+        `Casa: ${step.market_name_casa || "?"} @ ${step.casa_odd ?? "—"}`,
+        `Arbi: ${step.market_name_arbishield || "?"} @ ${step.arbi_odd ?? "—"}`,
+        `Stake casa ${money(step.casa_stake_cents)} · Arbi ${money(data.initial_balance_cents ?? step.arbi_stake_cents)}`,
+        step.external_bet_link || "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+      try {
+        await navigator.clipboard.writeText(text);
+        $("suggestCopy").textContent = "Copiado";
+        setTimeout(() => {
+          $("suggestCopy").textContent = "Copiar resumo";
+        }, 1500);
+      } catch {
+        alert(text);
+      }
+    });
+
+    $("btnRefresh").addEventListener("click", load);
+    renderSuggestion();
+    load();
+  </script>
+</body>
+</html>

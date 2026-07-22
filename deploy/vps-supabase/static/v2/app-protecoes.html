@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Gestão de Proteções — ArbiShield</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js"></script>
+  <script src="/v2-shell.js" defer></script>
+  <style>
+    .prot-layout { display: grid; grid-template-columns: 1fr minmax(280px, 360px); gap: 16px; align-items: start; }
+    @media (max-width: 960px) { .prot-layout { grid-template-columns: 1fr; } }
+    .prot-list { display: flex; flex-direction: column; gap: 10px; }
+    .prot-card {
+      border: 1px solid rgba(255,255,255,0.08); border-radius: 14px;
+      background: rgba(4,26,20,0.85); padding: 14px 16px; cursor: pointer;
+      transition: border-color .15s ease, background .15s ease;
+    }
+    .prot-card:hover, .prot-card.active { border-color: rgba(201,242,35,0.45); background: rgba(8,40,30,0.95); }
+    .prot-card .row { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+    .prot-card .title { font-weight: 800; font-size: 14px; letter-spacing: 0.02em; }
+    .prot-card .meta { color: var(--muted, #8a9a92); font-size: 11px; margin-top: 4px; }
+    .prot-badge {
+      display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px;
+      font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+      border: 1px solid rgba(255,255,255,0.12); color: #cfe8a8;
+    }
+    .prot-badge.review { border-color: rgba(251,191,36,0.45); color: #fbbf24; background: rgba(251,191,36,0.08); }
+    .prot-badge.active { border-color: rgba(201,242,35,0.35); color: #c9f223; }
+    .prot-badge.cancelled { border-color: rgba(248,113,113,0.35); color: #f87171; }
+    .prot-detail {
+      border: 1px solid rgba(255,255,255,0.08); border-radius: 16px;
+      background: rgba(4,26,20,0.92); padding: 16px; position: sticky; top: 12px;
+    }
+    .prot-detail h2 { margin: 0 0 4px; font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; }
+    .prot-detail .sub { color: var(--muted); font-size: 12px; margin: 0 0 14px; }
+    .prot-kv { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+    .prot-kv div { border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 10px; }
+    .prot-kv span { display: block; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+    .prot-kv strong { font-size: 14px; font-variant-numeric: tabular-nums; }
+    .prot-actions { display: flex; flex-direction: column; gap: 8px; }
+    .prot-actions .btn { width: 100%; }
+    .prot-actions .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .modal-back {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.72); z-index: 80;
+      display: none; align-items: center; justify-content: center; padding: 16px;
+    }
+    .modal-back.show { display: flex; }
+    .modal {
+      width: min(460px, 100%); background: #041a14; border: 1px solid rgba(201,242,35,0.25);
+      border-radius: 16px; padding: 18px; max-height: 90vh; overflow: auto;
+    }
+    .modal h3 { margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.08em; font-size: 14px; }
+    .modal .hint { color: var(--muted); font-size: 12px; line-height: 1.45; margin: 0 0 14px; }
+    .type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+    .type-grid button {
+      border: 1px solid rgba(255,255,255,0.1); background: transparent; color: #cfe8a8;
+      border-radius: 12px; padding: 12px 10px; cursor: pointer; font-weight: 800; font-size: 11px;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .type-grid button.active { border-color: rgba(201,242,35,0.55); background: rgba(201,242,35,0.1); color: #c9f223; }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+    .field input, .field textarea {
+      width: 100%; border-radius: 10px; border: 1px solid rgba(255,255,255,0.12);
+      background: #06251d; color: #fff; padding: 10px 12px; font: inherit;
+    }
+    .field textarea { min-height: 90px; resize: vertical; }
+    .warn {
+      border: 1px solid rgba(201,242,35,0.3); background: rgba(201,242,35,0.08);
+      color: #d7ff1f; border-radius: 10px; padding: 10px 12px; font-size: 12px; margin-bottom: 12px;
+    }
+    .modal-actions { display: flex; gap: 8px; margin-top: 8px; }
+    .modal-actions .btn { flex: 1; }
+    .empty { color: var(--muted); padding: 28px; text-align: center; border: 1px dashed rgba(255,255,255,0.1); border-radius: 14px; }
+  </style>
+</head>
+<body data-shell="app" data-active="protecoes">
+  <div class="page-head">
+    <div>
+      <h1>Gestão de <span>Proteções</span></h1>
+      <p class="sub">Ancoragens ativas · contestação até 5 min antes do jogo</p>
+    </div>
+  </div>
+  <div id="err" class="err"></div>
+  <div id="ok" class="ok-msg" style="display:none"></div>
+
+  <div class="prot-layout">
+    <div id="list" class="prot-list"><div class="empty">Carregando…</div></div>
+    <aside id="detail" class="prot-detail">
+      <h2>Protocolo de auditoria</h2>
+      <p class="sub">Selecione uma proteção para ver detalhes e ações.</p>
+    </aside>
+  </div>
+
+  <div class="modal-back" id="modal" aria-hidden="true">
+    <div class="modal" role="dialog" aria-labelledby="modalTitle">
+      <h3 id="modalTitle">Contestar proteção</h3>
+      <p class="hint">Ajuste de Odd vai para auditoria do ADM. Cancelamento estorna o saldo na hora (sem aprovação).</p>
+      <div class="type-grid">
+        <button type="button" class="active" data-type="odd_adjustment">Ajuste de Odd</button>
+        <button type="button" data-type="cancellation">Cancelar proteção</button>
+      </div>
+      <div id="panelOdd">
+        <div class="warn">Se aprovado, liquidez, responsabilidade e taxas serão recalculados com a nova odd.</div>
+        <div class="field">
+          <label for="newOdd">Nova odd obtida na Exchange</label>
+          <input id="newOdd" type="number" min="1.01" step="0.01" inputmode="decimal" placeholder="Ex: 2.10" />
+        </div>
+        <div class="field">
+          <label for="proof">Upload do print do bilhete/aposta na Exchange</label>
+          <input id="proof" type="file" accept="image/*,.pdf,image/heic" />
+        </div>
+      </div>
+      <div id="panelCancel" style="display:none">
+        <div class="warn">O saldo comprometido será estornado imediatamente. Não precisa de aprovação do administrador.</div>
+        <div class="field">
+          <label for="reason">Motivo do cancelamento</label>
+          <textarea id="reason" placeholder="Descreva por que deseja cancelar a proteção"></textarea>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="btnClose">Fechar</button>
+        <button type="button" class="btn btn-primary" id="btnSend">Enviar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (async function () {
+      var LOCK_MS = 5 * 60 * 1000;
+      var money = ArbiV2.money;
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+
+      var items = [];
+      var selectedId = null;
+      var contestType = "odd_adjustment";
+      var sending = false;
+
+      var listEl = document.getElementById("list");
+      var detailEl = document.getElementById("detail");
+      var errEl = document.getElementById("err");
+      var okEl = document.getElementById("ok");
+      var modal = document.getElementById("modal");
+
+      function showErr(msg) {
+        errEl.textContent = msg || "";
+        errEl.classList.toggle("show", !!msg);
+      }
+      function showOk(msg) {
+        okEl.textContent = msg || "";
+        okEl.style.display = msg ? "block" : "none";
+        if (msg) setTimeout(function () { okEl.style.display = "none"; }, 4000);
+      }
+
+      function statusLabel(st) {
+        st = String(st || "").toLowerCase();
+        if (st === "review_odd") return "Em Contestação (Pendente)";
+        if (st === "active") return "Proteção Ativa";
+        if (st === "cancelled") return "Cancelada";
+        if (st === "settled" || st === "won_exchange" || st === "lost_exchange") return "Encerrada";
+        return st || "—";
+      }
+      function statusClass(st) {
+        st = String(st || "").toLowerCase();
+        if (st === "review_odd") return "review";
+        if (st === "active") return "active";
+        if (st === "cancelled") return "cancelled";
+        return "";
+      }
+      function canContest(item) {
+        var st = String(item.status || "").toLowerCase();
+        if (st !== "active") return { ok: false, why: st === "review_odd" ? "Já em contestação" : "Indisponível para este status" };
+        var starts = item.matches && item.matches.starts_at;
+        if (!starts) return { ok: true };
+        var t = new Date(starts).getTime();
+        if (Number.isNaN(t)) return { ok: true };
+        if (Date.now() > t - LOCK_MS) {
+          return { ok: false, why: "Bloqueado: faltam menos de 5 min para o início (ou o jogo já começou)" };
+        }
+        return { ok: true };
+      }
+
+      async function load() {
+        showErr("");
+        var [lay, back] = await Promise.all([
+          supa.from("protections").select("id,status,amount_cents,responsibility_cents,odd,match_id,created_at,metadata,user_profit_cents").eq("user_id", user.id).order("created_at", { ascending: false }).limit(150),
+          supa.from("back_protections").select("id,status,amount_cents,odd,match_id,created_at,metadata,user_profit_cents").eq("user_id", user.id).order("created_at", { ascending: false }).limit(150),
+        ]);
+        if (lay.error) throw lay.error;
+        if (back.error) throw back.error;
+        items = []
+          .concat((lay.data || []).map(function (r) { return Object.assign({}, r, { market_category: "LAY" }); }))
+          .concat((back.data || []).map(function (r) { return Object.assign({}, r, { market_category: "BACK" }); }))
+          .sort(function (a, b) { return String(b.created_at).localeCompare(String(a.created_at)); });
+
+        var matchIds = Array.from(new Set(items.map(function (i) { return i.match_id; }).filter(Boolean)));
+        var matchMap = {};
+        if (matchIds.length) {
+          var mres = await supa.from("matches").select("id,home_team,away_team,league,starts_at").in("id", matchIds);
+          if (!mres.error) {
+            (mres.data || []).forEach(function (m) { matchMap[m.id] = m; });
+          }
+        }
+        items.forEach(function (i) { i.matches = matchMap[i.match_id] || null; });
+        renderList();
+        renderDetail();
+      }
+
+      function matchName(item) {
+        var m = item.matches;
+        if (m && m.home_team && m.away_team) return m.home_team + " × " + m.away_team;
+        return "Partida";
+      }
+
+      function renderList() {
+        if (!items.length) {
+          listEl.innerHTML = '<div class="empty">Nenhuma proteção encontrada.</div>';
+          return;
+        }
+        listEl.innerHTML = items.map(function (it) {
+          var amount = it.responsibility_cents || it.amount_cents || 0;
+          return (
+            '<article class="prot-card' + (selectedId === it.id ? ' active' : '') + '" data-id="' + it.id + '">' +
+              '<div class="row">' +
+                '<div><div class="title">' + matchName(it) + '</div>' +
+                '<div class="meta">' + (it.market_category || "LAY") + " · Odd " + Number(it.odd || 0).toFixed(2) + " · " + money(amount) + "</div></div>" +
+                '<span class="prot-badge ' + statusClass(it.status) + '">' + statusLabel(it.status) + "</span>" +
+              "</div>" +
+            "</article>"
+          );
+        }).join("");
+        listEl.querySelectorAll(".prot-card").forEach(function (el) {
+          el.addEventListener("click", function () {
+            selectedId = el.getAttribute("data-id");
+            renderList();
+            renderDetail();
+          });
+        });
+      }
+
+      function selected() {
+        return items.find(function (i) { return i.id === selectedId; }) || null;
+      }
+
+      function renderDetail() {
+        var it = selected();
+        if (!it) {
+          detailEl.innerHTML = "<h2>Protocolo de auditoria</h2><p class=\"sub\">Selecione uma proteção para ver detalhes e ações.</p>";
+          return;
+        }
+        var gate = canContest(it);
+        var amount = it.responsibility_cents || it.amount_cents || 0;
+        var starts = it.matches && it.matches.starts_at
+          ? new Date(it.matches.starts_at).toLocaleString("pt-BR")
+          : "—";
+        detailEl.innerHTML =
+          "<h2>Protocolo de auditoria</h2>" +
+          '<p class="sub">' + matchName(it) + "</p>" +
+          '<div class="prot-kv">' +
+            "<div><span>Status</span><strong>" + statusLabel(it.status) + "</strong></div>" +
+            "<div><span>Odd alvo</span><strong>" + Number(it.odd || 0).toFixed(2) + "</strong></div>" +
+            "<div><span>Valor protegido</span><strong>" + money(amount) + "</strong></div>" +
+            "<div><span>Início</span><strong>" + starts + "</strong></div>" +
+          "</div>" +
+          '<div class="prot-actions">' +
+            '<button type="button" class="btn btn-primary" id="btnContest"' + (gate.ok ? "" : " disabled") + ">Contestar proteção</button>" +
+            (gate.ok ? "" : '<p class="sub" style="margin:0">' + gate.why + "</p>") +
+          "</div>";
+        var btn = document.getElementById("btnContest");
+        if (btn && gate.ok) btn.addEventListener("click", openModal);
+      }
+
+      function openModal() {
+        var it = selected();
+        if (!it) return;
+        contestType = "odd_adjustment";
+        document.querySelectorAll(".type-grid button").forEach(function (b) {
+          b.classList.toggle("active", b.getAttribute("data-type") === contestType);
+        });
+        document.getElementById("panelOdd").style.display = "";
+        document.getElementById("panelCancel").style.display = "none";
+        document.getElementById("newOdd").value = "";
+        document.getElementById("proof").value = "";
+        document.getElementById("reason").value = "";
+        modal.classList.add("show");
+        modal.setAttribute("aria-hidden", "false");
+      }
+      function closeModal() {
+        modal.classList.remove("show");
+        modal.setAttribute("aria-hidden", "true");
+      }
+
+      document.querySelectorAll(".type-grid button").forEach(function (b) {
+        b.addEventListener("click", function () {
+          contestType = b.getAttribute("data-type");
+          document.querySelectorAll(".type-grid button").forEach(function (x) {
+            x.classList.toggle("active", x === b);
+          });
+          document.getElementById("panelOdd").style.display = contestType === "odd_adjustment" ? "" : "none";
+          document.getElementById("panelCancel").style.display = contestType === "cancellation" ? "" : "none";
+        });
+      });
+      document.getElementById("btnClose").addEventListener("click", closeModal);
+      modal.addEventListener("click", function (e) { if (e.target === modal) closeModal(); });
+
+      async function uploadProof(file, protectionId) {
+        var ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+        var path = "contestations/contestation-" + protectionId + "-" + Date.now() + "-" + Math.random().toString(36).slice(2) + "." + ext;
+        var up = await supa.storage.from("bet-proofs").upload(path, file, { contentType: file.type || "image/jpeg", upsert: false });
+        if (up.error) throw up.error;
+        var signed = await supa.storage.from("bet-proofs").createSignedUrl(path, 3600 * 24 * 365);
+        if (signed.error || !signed.data || !signed.data.signedUrl) throw signed.error || new Error("Falha ao gerar URL do comprovante");
+        return signed.data.signedUrl;
+      }
+
+      var FN_SUBMIT = "2a6aef91a48eaa19a2fd107fe580b1c6edf54fd10f1962c1d5d3e40f5c38d120";
+      var LOCK_MS_SUBMIT = 5 * 60 * 1000;
+
+      /** Grava direto no banco (não depende do prelive/shim). Espelha o legado: status=review_odd */
+      async function submitViaSupabase(payload) {
+        var table = String(payload.category || "LAY").toUpperCase() === "BACK"
+          ? "back_protections"
+          : "protections";
+        var got = await supa
+          .from(table)
+          .select("*")
+          .eq("id", payload.protectionId)
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (got.error) throw got.error;
+        var row = got.data;
+        if (!row) throw new Error("Proteção não encontrada");
+        var st = String(row.status || "").toLowerCase();
+        if (st === "review_odd") return { ok: true, alreadyExists: true };
+        if (st !== "active" && st !== "pending") {
+          throw new Error("Só é possível contestar proteções ativas");
+        }
+        if (row.match_id) {
+          var mres = await supa
+            .from("matches")
+            .select("starts_at")
+            .eq("id", row.match_id)
+            .maybeSingle();
+          var starts = mres.data && mres.data.starts_at;
+          if (starts) {
+            var t = new Date(starts).getTime();
+            if (!Number.isNaN(t) && Date.now() > t - LOCK_MS_SUBMIT) {
+              throw new Error(
+                "Contestação bloqueada: faltam menos de 5 minutos para o início da partida (ou o jogo já começou)."
+              );
+            }
+          }
+        }
+        var contestation = {
+          type: payload.contestType,
+          original_odd: Number(row.odd),
+          requested_odd: payload.newOdd != null ? Number(payload.newOdd) : null,
+          proof_url: payload.proofUrl || null,
+          reason: payload.reason || null,
+          requested_at: new Date().toISOString(),
+          requested_by: user.id,
+        };
+        var meta = Object.assign({}, row.metadata || {});
+        meta.contestation = contestation;
+        var patch = { status: "review_odd", metadata: meta };
+        if (table === "back_protections") {
+          var calc = Object.assign({}, row.calculations || meta.calculations || {});
+          calc.contestation = contestation;
+          patch.calculations = calc;
+          meta.calculations = calc;
+          patch.metadata = meta;
+        }
+        var up = await supa
+          .from(table)
+          .update(patch)
+          .eq("id", row.id)
+          .eq("user_id", user.id)
+          .select("id,status");
+        if (up.error) throw up.error;
+        if (!up.data || !up.data.length) {
+          throw new Error(
+            "Não foi possível marcar a proteção como Em Contestação (permissão/RLS). Rode o hotfix v6 na VPS."
+          );
+        }
+        try {
+          await supa.from("odd_contestations").insert({
+            user_id: user.id,
+            protection_id: row.id,
+            status: "pending",
+            contest_type: payload.contestType,
+            original_odd: contestation.original_odd,
+            requested_odd: contestation.requested_odd,
+            proof_url: contestation.proof_url,
+            reason: contestation.reason,
+          });
+        } catch (eIns) { /* tabela/colunas podem diferir */ }
+        return {
+          ok: true,
+          alreadyExists: false,
+          status: "review_odd",
+          via: "supabase-direct",
+        };
+      }
+
+      async function cancelViaApi(payload, token) {
+        async function readBody(res) {
+          var text = await res.text();
+          var data = {};
+          try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 180) }; }
+          return data;
+        }
+        var res = await fetch("/api/arbishield/protections", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify(Object.assign({ action: "contest_cancel_auto" }, payload)),
+        });
+        var data = await readBody(res);
+        if (res.ok && data && data.ok === true) return data;
+        // Fallback: contest_submit com type cancellation (backend v8 redireciona para auto)
+        var res2 = await fetch("/api/arbishield/protections", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify(Object.assign({ action: "contest_submit", contestType: "cancellation" }, payload)),
+        });
+        var data2 = await readBody(res2);
+        if (res2.ok && data2 && (data2.ok === true || data2.status === "cancelled")) return data2;
+        throw new Error(
+          data.error || data2.error ||
+          "Falha ao cancelar. Rode o hotfix v8 na VPS (cancelamento automático)."
+        );
+      }
+
+      async function submitContest(payload, token) {
+        async function readBody(res) {
+          var text = await res.text();
+          var data = {};
+          try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 180) }; }
+          return data;
+        }
+
+        // 1) Direto no Supabase — funciona mesmo com prelive antigo
+        try {
+          var direct = await submitViaSupabase(payload);
+          if (direct && direct.ok) return direct;
+        } catch (eDirect) {
+          console.warn("[contest] supabase-direct", eDirect);
+          var directErr = eDirect;
+        }
+
+        // 2) Prelive :3098 (após hotfix v5/v6)
+        var res = await fetch("/api/arbishield/protections", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify(Object.assign({ action: "contest_submit" }, payload)),
+        });
+        var data = await readBody(res);
+        if (res.ok && data && data.ok === true) return data;
+        // prelive antigo ignora action e responde matchId obrigatório
+        var preliveOld =
+          String(data.error || "").indexOf("matchId") >= 0 ||
+          String(data.error || "").indexOf("Valor inválido") >= 0;
+
+        // 3) REST dedicado
+        if (!preliveOld) {
+          var resB = await fetch("/api/arbishield/contestations/submit", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + token,
+            },
+            body: JSON.stringify(payload),
+          });
+          var dataB = await readBody(resB);
+          if (resB.ok && dataB && dataB.ok === true) return dataB;
+        }
+
+        // 4) /_serverFn
+        var res2 = await fetch("/_serverFn/" + FN_SUBMIT, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-arbishield-plain": "1",
+            "x-tsr-serverFn": "true",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify({ data: payload }),
+        });
+        var data2 = await readBody(res2);
+        if (res2.ok && data2 && data2.ok === true) return data2;
+
+        throw new Error(
+          (directErr && directErr.message) ||
+          data.error ||
+          (typeof dataB !== "undefined" && dataB.error) ||
+          data2.error ||
+          "Erro ao enviar contestação. Rode o hotfix v8 na VPS."
+        );
+      }
+
+      document.getElementById("btnSend").addEventListener("click", async function () {
+        var it = selected();
+        if (!it || sending) return;
+        var btn = document.getElementById("btnSend");
+        sending = true;
+        btn.disabled = true;
+        btn.textContent = "Enviando...";
+        showErr("");
+        try {
+          var gate = canContest(it);
+          if (!gate.ok) throw new Error(gate.why);
+          var session = await supa.auth.getSession();
+          var token = session.data.session && session.data.session.access_token;
+          if (!token) throw new Error("Sessão expirada");
+
+          if (contestType === "cancellation") {
+            var reason = String(document.getElementById("reason").value || "").trim();
+            if (reason.length < 5) throw new Error("Informe o motivo do cancelamento");
+            if (!window.confirm("Cancelar esta proteção agora? O saldo será estornado imediatamente.")) {
+              return;
+            }
+            var cancelData = await cancelViaApi({
+              protectionId: it.id,
+              category: it.market_category || "LAY",
+              reason: reason,
+            }, token);
+            showOk(
+              cancelData.alreadyCancelled
+                ? "Proteção já estava cancelada."
+                : "Proteção cancelada. Saldo estornado."
+            );
+            closeModal();
+            await load();
+            return;
+          }
+
+          var payload = {
+            protectionId: it.id,
+            category: it.market_category || "LAY",
+            contestType: "odd_adjustment",
+          };
+          var odd = parseFloat(String(document.getElementById("newOdd").value || "").replace(",", "."));
+          if (!(odd > 1)) throw new Error("Informe a nova odd obtida na Exchange");
+          var file = document.getElementById("proof").files[0];
+          if (!file) throw new Error("Anexe o print do bilhete/aposta");
+          payload.newOdd = odd;
+          payload.proofUrl = await uploadProof(file, it.id);
+          var data = await submitContest(payload, token);
+          if (data.alreadyExists) showOk("Já existe uma contestação em análise para esta proteção.");
+          else showOk("Contestação enviada! Status: Em Contestação (Pendente).");
+          closeModal();
+          await load();
+          selectedId = it.id;
+          renderList();
+          renderDetail();
+        } catch (ex) {
+          showErr(ex.message || "Erro ao enviar");
+          window.alert(ex.message || "Erro ao enviar");
+        } finally {
+          sending = false;
+          btn.disabled = false;
+          btn.textContent = "Enviar";
+        }
+      });
+
+      try {
+        await load();
+        if (items[0]) {
+          selectedId = items[0].id;
+          renderList();
+          renderDetail();
+        }
+      } catch (ex) {
+        showErr(ex.message || String(ex));
+        listEl.innerHTML = '<div class="empty">Falha ao carregar proteções.</div>';
+      }
+    })();
+  </script>
+</body>
+</html>
