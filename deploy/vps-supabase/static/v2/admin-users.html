@@ -140,7 +140,7 @@
         document.getElementById("err").classList.remove("show");
         var res = await supa
           .from("profiles")
-          .select("id,full_name,account_status,balance_cents,created_at")
+          .select("id,full_name,account_status,balance_cents,reusable_balance_cents,demo_balance_cents,created_at")
           .order("created_at", { ascending: false })
           .limit(500);
         if (res.error) throw res.error;
