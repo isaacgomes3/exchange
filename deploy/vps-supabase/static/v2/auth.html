@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>ArbiShield — Entrar / Cadastrar</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js"></script>
+  <style>
+    .auth-card .tabs { display: flex; gap: 8px; margin: 0 0 16px; }
+    .auth-card .tabs button {
+      flex: 1; height: 40px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);
+      background: transparent; color: var(--muted, #8a9a92); font-weight: 700; cursor: pointer;
+      text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px;
+    }
+    .auth-card .tabs button.active {
+      background: rgba(201,242,35,0.12); border-color: rgba(201,242,35,0.45); color: var(--lime, #c9f223);
+    }
+    .ref-banner {
+      display: none; margin: 0 0 14px; padding: 10px 12px; border-radius: 10px;
+      border: 1px solid rgba(201,242,35,0.35); background: rgba(201,242,35,0.08);
+      color: #d7ff1f; font-size: 12px; font-weight: 700;
+    }
+    .ref-banner.show { display: block; }
+    #signupExtra { display: none; }
+    #signupExtra.show { display: block; }
+  </style>
+</head>
+<body>
+  <div class="auth-shell">
+    <section class="auth-hero">
+      <a class="brand" href="/" aria-label="ArbiShield">
+        <img class="brand-logo lg" src="/brand/logo.png" srcset="/brand/logo.png 1x, /brand/logo@2x.png 2x" width="180" height="42" alt="ArbiShield" decoding="async" />
+      </a>
+      <div>
+        <h1>Proteção <span>inteligente</span></h1>
+        <p>Entre com a mesma conta do arbishield.app. Sessão compartilhada com o app e o admin.</p>
+      </div>
+      <p class="meta" style="margin:0">Sistema novo · isolado do SPA</p>
+    </section>
+    <section class="auth-panel">
+      <div class="auth-card">
+        <div class="tabs" id="modeTabs">
+          <button type="button" class="active" data-mode="login">Entrar</button>
+          <button type="button" data-mode="signup">Criar conta</button>
+        </div>
+        <h2 id="title">Entrar</h2>
+        <p class="sub" id="subtitle">Use e-mail e senha da plataforma</p>
+        <div id="refBanner" class="ref-banner"></div>
+        <div id="err" class="err"></div>
+        <form id="form">
+          <div id="signupExtra">
+            <label for="fullName">Nome completo</label>
+            <input id="fullName" name="fullName" type="text" autocomplete="name" />
+          </div>
+          <label for="email">E-mail</label>
+          <input id="email" name="email" type="email" required autocomplete="username" />
+          <label for="password">Senha</label>
+          <input id="password" name="password" type="password" required autocomplete="current-password" minlength="6" />
+          <button class="btn btn-primary" type="submit" id="btnSubmit">Entrar</button>
+        </form>
+        <div class="actions" style="margin-top:16px">
+          <a class="btn btn-ghost" href="/app.html">Área do membro</a>
+          <a class="btn btn-ghost" href="/admin.html">Admin</a>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+    (async function () {
+      var REF_KEY = "arbishield_referral_code";
+      var params = new URLSearchParams(location.search);
+      var mode = (params.get("mode") || "login").toLowerCase();
+      if (mode !== "signup") mode = "login";
+      var refCode = String(params.get("ref") || "").trim().toUpperCase();
+      if (refCode) {
+        try { localStorage.setItem(REF_KEY, refCode); } catch (e) {}
+        mode = "signup";
+      } else {
+        try { refCode = String(localStorage.getItem(REF_KEY) || "").trim().toUpperCase(); } catch (e) {}
+      }
+
+      var supa = ArbiV2.client();
+      var session = await supa.auth.getSession();
+      if (session.data.session) {
+        // Se já logado e veio com ref, tenta aplicar indicação
+        if (refCode) {
+          try {
+            var tok = session.data.session.access_token;
+            await fetch("/api/arbishield/apply-referral", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: "Bearer " + tok,
+              },
+              body: JSON.stringify({ code: refCode }),
+            });
+            try { localStorage.removeItem(REF_KEY); } catch (e) {}
+          } catch (e) {}
+        }
+        location.replace("/app.html");
+        return;
+      }
+
+      var title = document.getElementById("title");
+      var subtitle = document.getElementById("subtitle");
+      var signupExtra = document.getElementById("signupExtra");
+      var btnSubmit = document.getElementById("btnSubmit");
+      var fullName = document.getElementById("fullName");
+      var refBanner = document.getElementById("refBanner");
+
+      function setMode(next) {
+        mode = next === "signup" ? "signup" : "login";
+        document.querySelectorAll("#modeTabs button").forEach(function (b) {
+          b.classList.toggle("active", b.getAttribute("data-mode") === mode);
+        });
+        title.textContent = mode === "signup" ? "Criar conta" : "Entrar";
+        subtitle.textContent =
+          mode === "signup"
+            ? "Cadastro de apostador" + (refCode ? " · indicação ativa" : "")
+            : "Use e-mail e senha da plataforma";
+        signupExtra.classList.toggle("show", mode === "signup");
+        fullName.required = mode === "signup";
+        btnSubmit.textContent = mode === "signup" ? "Criar conta" : "Entrar";
+        document.getElementById("password").autocomplete =
+          mode === "signup" ? "new-password" : "current-password";
+        if (refCode && mode === "signup") {
+          refBanner.textContent = "Indicacao: codigo " + refCode;
+          refBanner.classList.add("show");
+        } else {
+          refBanner.classList.remove("show");
+        }
+        try {
+          var u = new URL(location.href);
+          if (mode === "signup") u.searchParams.set("mode", "signup");
+          else u.searchParams.delete("mode");
+          if (refCode) u.searchParams.set("ref", refCode);
+          history.replaceState(null, "", u.pathname + u.search);
+        } catch (e) {}
+      }
+
+      document.querySelectorAll("#modeTabs button").forEach(function (b) {
+        b.addEventListener("click", function () {
+          setMode(b.getAttribute("data-mode"));
+        });
+      });
+      setMode(mode);
+
+      async function applyReferral(token, code) {
+        if (!token || !code) return;
+        var res = await fetch("/api/arbishield/apply-referral", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify({ code: code }),
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok) throw new Error(data.error || "Falha ao vincular indicacao");
+        return data;
+      }
+
+      document.getElementById("form").addEventListener("submit", async function (e) {
+        e.preventDefault();
+        var err = document.getElementById("err");
+        err.classList.remove("show");
+        var email = document.getElementById("email").value.trim();
+        var password = document.getElementById("password").value;
+        var name = fullName.value.trim();
+        btnSubmit.disabled = true;
+        try {
+          if (mode === "signup") {
+            if (!name || name.length < 3) throw new Error("Informe seu nome completo");
+            var up = await supa.auth.signUp({
+              email: email,
+              password: password,
+              options: { data: { full_name: name } },
+            });
+            if (up.error) throw up.error;
+            var sess = up.data.session;
+            if (!sess) {
+              // confirmação de e-mail pode estar ativa
+              var login = await supa.auth.signInWithPassword({ email: email, password: password });
+              if (login.error) {
+                err.textContent =
+                  "Conta criada. Confirme o e-mail (se exigido) e entre para concluir a indicação.";
+                err.classList.add("show");
+                btnSubmit.disabled = false;
+                setMode("login");
+                return;
+              }
+              sess = login.data.session;
+            }
+            var uid = sess && sess.user && sess.user.id;
+            if (uid && name) {
+              try {
+                await supa
+                  .from("profiles")
+                  .upsert({ id: uid, full_name: name }, { onConflict: "id" });
+              } catch (e2) {}
+            }
+            var code = refCode;
+            if (!code) {
+              try { code = String(localStorage.getItem(REF_KEY) || "").trim().toUpperCase(); } catch (e3) {}
+            }
+            if (code && sess && sess.access_token) {
+              await applyReferral(sess.access_token, code);
+              try { localStorage.removeItem(REF_KEY); } catch (e4) {}
+            }
+            location.replace("/app.html");
+            return;
+          }
+
+          var res = await supa.auth.signInWithPassword({ email: email, password: password });
+          if (res.error) throw res.error;
+          var codeLogin = refCode;
+          if (!codeLogin) {
+            try { codeLogin = String(localStorage.getItem(REF_KEY) || "").trim().toUpperCase(); } catch (e5) {}
+          }
+          if (codeLogin && res.data.session) {
+            try {
+              await applyReferral(res.data.session.access_token, codeLogin);
+              try { localStorage.removeItem(REF_KEY); } catch (e6) {}
+            } catch (e7) {}
+          }
+          location.replace("/app.html");
+        } catch (ex) {
+          err.textContent = mapAuthError(ex, mode);
+          err.classList.add("show");
+          btnSubmit.disabled = false;
+        }
+      });
+
+      function mapAuthError(ex, currentMode) {
+        var raw = String((ex && ex.message) || ex || "");
+        var code = String((ex && (ex.code || ex.error_code)) || "").toLowerCase();
+        var low = raw.toLowerCase();
+        if (
+          low.indexOf("invalid login credentials") >= 0 ||
+          code === "invalid_credentials"
+        ) {
+          return (
+            "Credenciais inválidas. Use o mesmo e-mail/senha do site antigo " +
+            "(Auth compartilhado). Se a senha estiver correta, o e-mail pode " +
+            "estar sem confirmação — peça ao admin para confirmar a conta ou " +
+            "redefinir a senha."
+          );
+        }
+        if (low.indexOf("user already registered") >= 0 || code === "user_already_exists") {
+          return "Este e-mail já está cadastrado. Use a aba Entrar com a senha atual.";
+        }
+        if (low.indexOf("email not confirmed") >= 0 || code === "email_not_confirmed") {
+          return (
+            "E-mail ainda não confirmado. Com o SMTP da VPS, a confirmação automática " +
+            "pode falhar — peça ao admin para confirmar sua conta."
+          );
+        }
+        if (currentMode === "signup" && (low.indexOf("rate") >= 0 || code.indexOf("rate") >= 0)) {
+          return "Muitas tentativas. Aguarde um minuto e tente de novo.";
+        }
+        return raw || "Falha na autenticação";
+      }
+    })();
+  </script>
+</body>
+</html>
