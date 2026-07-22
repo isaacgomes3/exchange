@@ -7,10 +7,10 @@
   <title>Monitor de Proteções — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=14" />
+  <link rel="stylesheet" href="/v2.css?v=15" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=14"></script>
-  <script src="/v2-shell.js?v=14" defer></script>
+  <script src="/v2.js?v=15"></script>
+  <script src="/v2-shell.js?v=15" defer></script>
   <style>
     .mon-wrap { display: grid; gap: 16px; padding-bottom: 48px; }
     .mon-head h1 { margin: 0; font-size: clamp(1.4rem, 3vw, 1.9rem); font-weight: 900; letter-spacing: -0.03em; text-transform: uppercase; }
@@ -81,9 +81,13 @@
       display: grid; gap: 10px;
     }
     .mon-details-grid {
-      display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; font-size: 12px;
+      display: grid; grid-template-columns: minmax(160px, 1.6fr) repeat(3, minmax(0, 1fr)); gap: 8px; font-size: 12px;
     }
     .mon-details-grid .l { color: #8b949e; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+    .mon-details-grid .mon-market-val {
+      display: block; margin-top: 4px; font-size: 13px; font-weight: 800; line-height: 1.35;
+      color: #fff; white-space: normal; overflow-wrap: anywhere;
+    }
     .mon-actions { display: flex; flex-wrap: wrap; gap: 8px; }
     .mon-empty { text-align: center; color: #8b949e; padding: 36px 12px; font-size: 13px; }
     .mon-alert { border-radius: 12px; padding: 10px 12px; font-size: 12px; }
@@ -203,7 +207,7 @@
         } else if (b !== state.tab) return false;
       }
       if (q) {
-        var hay = [r.userName, r.userId, r.home, r.away, r.league, r.id, r.status]
+        var hay = [r.userName, r.userId, r.home, r.away, r.league, r.marketName, r.id, r.status]
           .join(" ")
           .toLowerCase();
         if (hay.indexOf(q) < 0) return false;
@@ -344,6 +348,9 @@
                 (open
                   ? '<div class="mon-details">' +
                     '<div class="mon-details-grid">' +
+                    '<div><div class="l">Mercado</div><strong class="mon-market-val">' +
+                    esc(r.marketName || "—") +
+                    "</strong></div>" +
                     '<div><div class="l">Usuário</div><strong>' +
                     esc(r.userName || "—") +
                     "</strong></div>" +
@@ -355,6 +362,9 @@
                     "</strong></div>" +
                     '<div><div class="l">Status DB</div><strong>' +
                     esc(r.status) +
+                    "</strong></div>" +
+                    '<div><div class="l">LAY/BACK</div><strong>' +
+                    esc(r.marketType || "LAY") +
                     "</strong></div></div>" +
                     (canAct
                       ? '<div class="mon-actions">' +
@@ -447,6 +457,21 @@
     });
   }
 
+  function marketNameFrom(r) {
+    var meta = r && r.metadata && typeof r.metadata === "object" ? r.metadata : {};
+    var name =
+      meta.market_name ||
+      meta.marketName ||
+      meta.runner_name ||
+      meta.runnerName ||
+      r.market_name ||
+      r.marketName ||
+      "";
+    if (name && String(name).trim()) return String(name).trim();
+    if (r.odd != null && Number(r.odd) > 0) return "Odd " + Number(r.odd).toFixed(2);
+    return "";
+  }
+
   async function loadFromView(supa) {
     var res = await supa
       .from("view_all_protections")
@@ -471,6 +496,7 @@
           String(r.market_category || r.side || "LAY").toUpperCase() === "BACK"
             ? "BACK"
             : "LAY",
+        marketName: marketNameFrom(r),
         odd: r.odd,
         amountCents: Number(r.responsibility_cents || r.amount_cents || 0),
         userProfitCents: Number(r.user_profit_cents || 0),
@@ -483,7 +509,7 @@
     var res = await supa
       .from("protections")
       .select(
-        "id,user_id,match_id,status,amount_cents,responsibility_cents,user_profit_cents,created_at,side,odd,market_category"
+        "id,user_id,match_id,status,amount_cents,responsibility_cents,user_profit_cents,created_at,side,odd,market_category,metadata"
       )
       .order("created_at", { ascending: false })
       .limit(400);
@@ -492,7 +518,7 @@
     var back = await supa
       .from("back_protections")
       .select(
-        "id,user_id,match_id,status,amount_cents,user_profit_cents,created_at,odd"
+        "id,user_id,match_id,status,amount_cents,user_profit_cents,created_at,odd,metadata"
       )
       .order("created_at", { ascending: false })
       .limit(200);
@@ -522,7 +548,7 @@
     if (matchIds.length) {
       var mr = await supa
         .from("matches")
-        .select("id,home_team,away_team,league,status,starts_at")
+        .select("id,home_team,away_team,league,status,starts_at,markets")
         .in("id", matchIds);
       (mr.data || []).forEach(function (m) {
         matches[m.id] = m;
@@ -530,6 +556,18 @@
     }
     return rows.map(function (r) {
       var m = matches[r.match_id] || {};
+      var marketName = marketNameFrom(r);
+      if (!marketName && Array.isArray(m.markets) && m.markets.length) {
+        var meta = r.metadata && typeof r.metadata === "object" ? r.metadata : {};
+        var mid = meta.market_id || meta.marketId;
+        var mk =
+          (mid &&
+            m.markets.find(function (x) {
+              return String(x.id) === String(mid);
+            })) ||
+          m.markets[0];
+        if (mk && mk.name) marketName = String(mk.name).trim();
+      }
       return {
         id: r.id,
         userId: r.user_id,
@@ -546,6 +584,7 @@
           String(r.market_category || r.side || "LAY").toUpperCase() === "BACK"
             ? "BACK"
             : "LAY",
+        marketName: marketName || (r.odd != null ? "Odd " + Number(r.odd).toFixed(2) : "—"),
         odd: r.odd,
         amountCents: Number(r.responsibility_cents || r.amount_cents || 0),
         userProfitCents: Number(r.user_profit_cents || 0),
