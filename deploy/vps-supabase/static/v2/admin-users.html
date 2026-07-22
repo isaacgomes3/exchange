@@ -92,7 +92,11 @@
             "<tr><td><strong>" + (r.full_name || "—") + "</strong><div class=\"meta\">" +
             String(r.id).slice(0, 8) + "…</div></td><td><span class=\"ops-badge " + sc + "\">" +
             (r.account_status || "—") + "</span></td><td>" +
-            money(r.balance_cents) + "</td><td>" +
+            money(Number(r.balance_cents || 0) + Number(r.reusable_balance_cents || 0) + Number(r.demo_balance_cents || 0)) +
+            '<div class="meta">real ' + money(r.balance_cents) +
+            (Number(r.reusable_balance_cents || 0) ? " · reutilizável " + money(r.reusable_balance_cents) : "") +
+            (Number(r.demo_balance_cents || 0) ? " · demo " + money(r.demo_balance_cents) : "") +
+            "</div></td><td>" +
             (r.created_at ? new Date(r.created_at).toLocaleString("pt-BR") : "—") +
             "</td></tr>"
           );
