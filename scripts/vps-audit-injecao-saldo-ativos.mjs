@@ -160,14 +160,12 @@ async function fetchActiveProfiles() {
     if (from > 50000) break;
   }
   return out.filter((p) => {
-    const st = String(p.account_status || "").toLowerCase();
-    return (
-      !st ||
-      st === "active" ||
-      st === "ativo" ||
-      st === "approved" ||
-      st === "ok"
-    );
+    const st = String(p.account_status || "").toLowerCase().trim();
+    if (["blocked", "suspended", "banned", "inactive", "inativo", "rejected"].includes(st)) {
+      return false;
+    }
+    // active / ativo / approved / ok / vazio / qualquer outro status operacional
+    return true;
   });
 }
 
@@ -205,44 +203,83 @@ async function fetchOpeningAfter(userId, fromIso) {
 
 function analyzeTxs(txs, openingHint, balanceCents) {
   const gaps = [];
-  let opening = openingHint;
-  if (opening == null) {
-    const net = txs.reduce((a, t) => a + signedAmount(t), 0);
-    opening = n(balanceCents) - net;
-  }
-
-  let running = opening;
-  let prevAfter = opening;
   let flipped = 0;
   let hasAfter = false;
 
+  // 1) Buracos só entre balance_after reais (não usa abertura retrocalculada)
+  let prevAfter = null;
+  let sinceLast = 0;
   for (const t of txs) {
     const raw = n(t.amount_cents);
     const amt = signedAmount(t);
     if (amt !== raw) flipped += 1;
-    running += amt;
 
     if (t.balance_after_cents != null) {
       hasAfter = true;
       const after = n(t.balance_after_cents);
-      const expected = prevAfter + amt;
-      const gap = after - expected;
-      if (Math.abs(gap) >= MIN_GAP) {
-        gaps.push({
-          when: t.created_at,
-          type: t.type,
-          gap,
-          prevAfter,
-          after,
-          amt,
-        });
+      if (prevAfter != null) {
+        const expected = prevAfter + sinceLast + amt;
+        const gap = after - expected;
+        if (Math.abs(gap) >= MIN_GAP) {
+          gaps.push({
+            when: t.created_at,
+            type: t.type,
+            gap,
+            prevAfter,
+            after,
+            amt,
+            sinceLast,
+          });
+        }
       }
       prevAfter = after;
+      sinceLast = 0;
+    } else {
+      sinceLast += amt;
     }
   }
 
   const gapSum = gaps.reduce((a, g) => a + g.gap, 0);
-  const drift = n(balanceCents) - running;
+  const gapPositive = gaps.reduce((a, g) => a + Math.max(0, g.gap), 0);
+
+  // 2) Abertura: hint, senão 1º balance_after − movimento até ele
+  let opening = openingHint;
+  let openingSource = openingHint != null ? "balance_after anterior" : null;
+  if (opening == null) {
+    let acc = 0;
+    for (const t of txs) {
+      const amt = signedAmount(t);
+      if (t.balance_after_cents != null) {
+        opening = n(t.balance_after_cents) - acc - amt;
+        openingSource = "retro do 1º balance_after";
+        break;
+      }
+      acc += amt;
+    }
+  }
+  if (opening == null) {
+    opening = 0;
+    openingSource = "zero (sem balance_after)";
+  }
+
+  let running = opening;
+  for (const t of txs) running += signedAmount(t);
+
+  // 3) Drift: preferir última âncora balance_after + movos depois
+  let suggested = running;
+  let drift = n(balanceCents) - running;
+  if (prevAfter != null) {
+    const fromLastAfter = prevAfter + sinceLast;
+    // se o profile bate com a âncora, drift~0; se profile >> âncora, overcredit
+    const driftAnchor = n(balanceCents) - fromLastAfter;
+    // usa o maior sinal de problema
+    if (Math.abs(driftAnchor) > Math.abs(drift)) {
+      suggested = fromLastAfter;
+      drift = driftAnchor;
+    }
+  }
+  // Injeção nos buracos também conta como overcredit a corrigir
+  const overcredit = Math.max(0, drift, gapPositive);
 
   // Estornos duplicados
   const refunds = txs.filter(
@@ -273,15 +310,19 @@ function analyzeTxs(txs, openingHint, balanceCents) {
 
   return {
     opening,
-    suggested: running,
+    openingSource,
+    suggested,
     drift,
+    overcredit,
     gapSum,
+    gapPositive,
     gaps,
     flipped,
     hasAfter,
     refundExcess,
     dupProts,
     txCount: txs.length,
+    lastAfter: prevAfter,
   };
 }
 
@@ -311,11 +352,12 @@ async function main() {
     const openingHint = await fetchOpeningAfter(p.id, fromIso);
     const a = analyzeTxs(txs, openingHint, p.balance_cents);
 
-    const materialGap = Math.abs(a.gapSum) >= MIN_GAP || a.gaps.length > 0;
+    const materialGap = a.gapPositive >= MIN_GAP || a.gaps.some((g) => g.gap >= MIN_GAP);
     const materialDrift = a.drift >= MIN_DRIFT;
     const materialRefund = a.refundExcess >= MIN_DRIFT;
+    const materialOver = a.overcredit >= MIN_DRIFT;
 
-    if (!materialGap && !materialDrift && !materialRefund) continue;
+    if (!materialGap && !materialDrift && !materialRefund && !materialOver) continue;
 
     suspects.push({
       id: p.id,
@@ -325,7 +367,7 @@ async function main() {
       reusable: n(p.reusable_balance_cents),
       locked: n(p.locked_balance_cents),
       ...a,
-      score: Math.max(a.gapSum, 0) + Math.max(a.drift, 0) + a.refundExcess,
+      score: a.overcredit + a.refundExcess + Math.max(0, a.gapPositive),
     });
   }
 
@@ -335,42 +377,44 @@ async function main() {
   console.log(`==> Suspeitos: ${suspects.length}`);
 
   if (!suspects.length) {
-    console.log("  nenhum cliente ativo com buraco/drift/estorno duplicado material");
+    console.log("  nenhum cliente operacional com buraco/drift/estorno duplicado material");
     console.log("OK");
     return;
   }
 
+  console.log("\n==> LISTA PARA CORRIGIR (ordenado por overcredit)");
   console.log(
-    "\n" +
-      pad("nome", 28) +
+    pad("nome", 28) +
       pad("saldo atual", 14) +
       pad("sugerido", 14) +
-      pad("drift", 14) +
-      pad("buracos", 14) +
-      pad("F5 excess", 14) +
+      pad("corrigir", 14) +
+      pad("buracos+", 14) +
+      pad("F5", 12) +
       "id"
   );
   console.log("-".repeat(120));
 
   for (const s of suspects) {
+    const corrigir = Math.max(s.overcredit, s.gapPositive, s.refundExcess);
     console.log(
       pad(String(s.name).slice(0, 26), 28) +
         pad(money(s.balance), 14) +
         pad(money(s.suggested), 14) +
-        pad(money(s.drift), 14) +
-        pad(money(s.gapSum), 14) +
-        pad(money(s.refundExcess), 14) +
+        pad(money(corrigir), 14) +
+        pad(money(s.gapPositive), 14) +
+        pad(money(s.refundExcess), 12) +
         String(s.id).slice(0, 8)
     );
   }
 
-  console.log("\n==> Detalhe dos buracos (top 20 por score)");
-  for (const s of suspects.slice(0, 20)) {
+  console.log("\n==> Detalhe dos buracos (top 25)");
+  for (const s of suspects.slice(0, 25)) {
+    const corrigir = Math.max(s.overcredit, s.gapPositive, s.refundExcess);
     console.log(
-      `\n  ${s.name}  (${s.id})\n  saldo ${money(s.balance)} · sugerido ${money(s.suggested)} · drift ${money(s.drift)} · F5 ${money(s.refundExcess)} (${s.dupProts} prot.) · locks c/ sinal+ ${s.flipped}`
+      `\n  ${s.name}  (${s.id})  status=${s.status}\n  saldo ${money(s.balance)} · sugerido ${money(s.suggested)} · CORRIGIR ${money(corrigir)} · F5 ${money(s.refundExcess)} (${s.dupProts} prot.) · locks sinal+ ${s.flipped}`
     );
     if (!s.gaps.length) {
-      console.log("    (sem buraco balance_after ≥ limiar; drift/F5)");
+      console.log("    (sem buraco balance_after ≥ limiar)");
       continue;
     }
     for (const g of s.gaps.slice(0, 8)) {
@@ -381,18 +425,19 @@ async function main() {
     if (s.gaps.length > 8) console.log(`    … +${s.gaps.length - 8} buracos`);
   }
 
-  const totDrift = suspects.reduce((a, s) => a + Math.max(0, s.drift), 0);
-  const totGap = suspects.reduce((a, s) => a + Math.max(0, s.gapSum), 0);
+  const totCorrigir = suspects.reduce(
+    (a, s) => a + Math.max(s.overcredit, s.gapPositive, s.refundExcess),
+    0
+  );
+  const totGap = suspects.reduce((a, s) => a + s.gapPositive, 0);
   const totF5 = suspects.reduce((a, s) => a + s.refundExcess, 0);
   console.log("\n==> Totais (suspeitos)");
-  console.log(`  soma drift positivo: ${money(totDrift)}`);
+  console.log(`  contas a corrigir: ${suspects.length}`);
+  console.log(`  soma a debitar (max overcredit/buraco/F5): ${money(totCorrigir)}`);
   console.log(`  soma buracos positivos: ${money(totGap)}`);
   console.log(`  soma F5 excess: ${money(totF5)}`);
   console.log(
-    "\n  Próximo: cronologia individual EMAIL=... ou ID_PREFIX=... node scripts/vps-saldo-cronologia.mjs"
-  );
-  console.log(
-    "  Overcredit F5 global: node scripts/vps-audit-fix-overcredit-all.mjs"
+    "\n  Cronologia: FROM=2026-07-15 ID_PREFIX=........ node /opt/arbishield/scripts/vps-saldo-cronologia.mjs"
   );
   console.log("OK");
 }
