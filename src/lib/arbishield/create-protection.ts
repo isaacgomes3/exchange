@@ -336,7 +336,7 @@ export async function createProtection(
   await admin.from("wallet_transactions").insert({
     user_id: input.userId,
     type: "protection_lock",
-    amount_cents: amountCents,
+    amount_cents: -amountCents,
     balance_before_cents: balanceBefore,
     balance_after_cents: balanceAfter,
     ref: protectionId,

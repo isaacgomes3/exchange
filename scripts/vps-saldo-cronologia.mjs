@@ -80,6 +80,24 @@ function pad(s, w) {
   return s.length >= w ? s.slice(0, w) : s + " ".repeat(w - s.length);
 }
 
+/** Tipos que debitam carteira — no ledger às vezes gravados com sinal + (bug). */
+const DEBIT_TYPES = new Set([
+  "protection_lock",
+  "anchor_lock",
+  "protection_fee",
+  "withdraw",
+  "withdrawal",
+  "admin_adjustment_debit",
+]);
+
+/** Normaliza amount para cronologia: locks/fees sempre negativos. */
+function signedAmount(t) {
+  const raw = n(t.amount_cents);
+  const ty = String(t.type || "").toLowerCase();
+  if (DEBIT_TYPES.has(ty) && raw > 0) return -raw;
+  return raw;
+}
+
 function periodBounds() {
   const fromIso = new Date(`${FROM}T00:00:00-03:00`).toISOString();
   const toIso = TO
@@ -244,7 +262,7 @@ async function main() {
     opening = n(lastBefore.balance_after_cents);
     openingSource = `balance_after da tx ${lastBefore.created_at} (${lastBefore.type})`;
   } else {
-    const periodNet = txs.reduce((a, t) => a + n(t.amount_cents), 0);
+    const periodNet = txs.reduce((a, t) => a + signedAmount(t), 0);
     opening = n(p[BUCKET]) - periodNet;
     openingSource = `retrocalculado: ${BUCKET} atual (${money(p[BUCKET])}) − net período (${money(periodNet)})`;
   }
@@ -292,9 +310,15 @@ async function main() {
   let running = opening;
   let day = "";
   const byDay = new Map();
+  const gaps = [];
+  let prevAfter = opening;
+  let prevWhen = FROM + " 00:00";
+  let flippedLocks = 0;
 
   for (const t of txs) {
-    const amt = n(t.amount_cents);
+    const rawAmt = n(t.amount_cents);
+    const amt = signedAmount(t);
+    if (amt !== rawAmt) flippedLocks += 1;
     running += amt;
     const when = String(t.created_at || "");
     const d = when.slice(0, 10);
@@ -316,6 +340,28 @@ async function main() {
       Math.abs(n(t.balance_after_cents) - running) > 1
         ? `⚠ dif ${money(n(t.balance_after_cents) - running)}`
         : "";
+
+    // Buraco no saldo_tx: salto que o ledger não explica
+    if (t.balance_after_cents != null) {
+      const after = n(t.balance_after_cents);
+      const expectedAfter = prevAfter + amt;
+      const gap = after - expectedAfter;
+      if (Math.abs(gap) > 100) {
+        // > R$ 1,00
+        gaps.push({
+          when,
+          type: t.type,
+          gap,
+          prevAfter,
+          after,
+          amt,
+          prevWhen,
+        });
+      }
+      prevAfter = after;
+      prevWhen = when;
+    }
+
     const metaFull =
       t.metadata != null
         ? JSON.stringify(t.metadata)
@@ -323,6 +369,7 @@ async function main() {
           ? String(t.ref)
           : "";
     const metaShort = metaFull.slice(0, 48);
+    const signNote = amt !== rawAmt ? " [sinal corr.]" : "";
     const mov = (amt > 0 ? "+" : "") + money(amt);
     console.log(
       pad(when.replace("T", " ").slice(0, 19), 25) +
@@ -330,9 +377,8 @@ async function main() {
         pad(mov, 14) +
         pad(money(running), 14) +
         pad(afterStored, 14) +
-        `${mismatch} ${metaShort}`.trim()
+        `${mismatch}${signNote} ${metaShort}`.trim()
     );
-    // Ajustes admin: metadata completo (quem/motivo/source)
     if (
       String(t.type || "").includes("admin_adjustment") &&
       metaFull.length > 48
@@ -357,10 +403,32 @@ async function main() {
       `\n⚠ Divergência: saldo calc ${money(running)} vs ${BUCKET} atual ${money(p[BUCKET])} → diff ${money(drift)}`
     );
     console.log(
-      "  (pode ser movimento fora do ledger, bucket diferente, ou tx sem amount no período)"
+      "  (crédito sem wallet_tx, bucket diferente, ou saldo alterado fora do ledger)"
     );
   } else {
     console.log(`\n✓ Cronologia fecha com ${BUCKET} atual (${money(p[BUCKET])})`);
+  }
+
+  if (flippedLocks) {
+    console.log(
+      `\nℹ ${flippedLocks} lançamento(s) de lock/fee tinham amount positivo no DB — tratados como débito na cronologia.`
+    );
+  }
+
+  console.log("\n==> Buracos no saldo_tx (injeção / sumiço sem lançamento)");
+  if (!gaps.length) {
+    console.log("  nenhum salto material entre balance_after consecutivos");
+  } else {
+    for (const g of gaps) {
+      console.log(
+        `  ⚠ ${g.when.replace("T", " ").slice(0, 19)}  ${g.type}  buraco ${money(g.gap)}`
+      );
+      console.log(
+        `     antes ${money(g.prevAfter)} (${g.prevWhen.replace("T", " ").slice(0, 19)}) + mov ${money(g.amt)} ⇒ esperado ${money(g.prevAfter + g.amt)} | gravado ${money(g.after)}`
+      );
+    }
+    const gapSum = gaps.reduce((a, g) => a + g.gap, 0);
+    console.log(`  SOMA dos buracos: ${money(gapSum)}`);
   }
 
   console.log("\n==> Resumo por dia");
@@ -369,10 +437,22 @@ async function main() {
       `  ${d}  entradas ${money(ag.in)}  saídas ${money(ag.out)}  net ${money(ag.net)}  (${ag.n} lanç.)`
     );
   }
-  const totIn = txs.filter((t) => n(t.amount_cents) > 0).reduce((a, t) => a + n(t.amount_cents), 0);
-  const totOut = txs.filter((t) => n(t.amount_cents) < 0).reduce((a, t) => a + n(t.amount_cents), 0);
+  const totIn = txs
+    .map(signedAmount)
+    .filter((a) => a > 0)
+    .reduce((a, b) => a + b, 0);
+  const totOut = txs
+    .map(signedAmount)
+    .filter((a) => a < 0)
+    .reduce((a, b) => a + b, 0);
   console.log(
     `\n  TOTAL período: entradas ${money(totIn)} | saídas ${money(totOut)} | net ${money(totIn + totOut)} | lançamentos ${txs.length}`
+  );
+  console.log(
+    `\n==> Saldo sugerido (abertura + net com sinais corrigidos): ${money(running)}`
+  );
+  console.log(
+    `    ${BUCKET} atual: ${money(p[BUCKET])} · overcredit aparente: ${money(Math.max(0, n(p[BUCKET]) - running))}`
   );
   console.log("OK");
 }
