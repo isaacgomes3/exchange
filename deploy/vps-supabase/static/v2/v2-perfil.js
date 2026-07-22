@@ -329,25 +329,24 @@
     return raw.indexOf("+") === 0 ? raw : d;
   }
 
+  function rlsRecursionHint(msg) {
+    if (!/infinite recursion/i.test(String(msg || ""))) return "";
+    return "Não foi possível salvar: erro de permissão no banco (RLS em profiles). Rode o hotfix vps-hotfix-perfil-editar.sh na VPS e tente de novo.";
+  }
+
   async function rpcOrPatch(supa, rpcName, args, patch) {
     var rpc = await supa.rpc(rpcName, args);
     if (!rpc.error) return;
     var msg = String((rpc.error && rpc.error.message) || "");
-    if (/infinite recursion/i.test(msg)) {
-      throw new Error(
-        "Erro de permissão no banco (RLS em profiles). Peça ao admin para rodar vps-hotfix-perfil-editar.sh na VPS."
-      );
-    }
+    var hint = rlsRecursionHint(msg);
+    if (hint) throw new Error(hint);
     // fallback se RPC não existir na VPS
     if (/function|does not exist|404|PGRST202/i.test(msg) && patch) {
       var up = await supa.from("profiles").update(patch).eq("id", state.user.id);
       if (up.error) {
         var um = String((up.error && up.error.message) || "");
-        if (/infinite recursion/i.test(um)) {
-          throw new Error(
-            "Erro de permissão no banco (RLS em profiles). Peça ao admin para rodar vps-hotfix-perfil-editar.sh na VPS."
-          );
-        }
+        var uh = rlsRecursionHint(um);
+        if (uh) throw new Error(uh);
         throw up.error;
       }
       return;
@@ -356,8 +355,12 @@
   }
 
   async function saveModal(supa) {
+    if (state.busy) return;
     var data = readForm();
+    // preserva o que o usuário digitou (paint() recria o modal a partir de state.form)
+    state.form = Object.assign({}, state.form, data);
     state.busy = true;
+    showErr("");
     paint();
     try {
       if (state.modal === "personal") {
@@ -430,9 +433,15 @@
         showOk("Senha atualizada.");
       }
       state.modal = null;
+      state.form = {};
       await load(supa);
     } catch (ex) {
       showErr((ex && ex.message) || "Erro ao salvar");
+      try {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } catch (e0) {
+        /* ignore */
+      }
       state.busy = false;
       paint();
     } finally {

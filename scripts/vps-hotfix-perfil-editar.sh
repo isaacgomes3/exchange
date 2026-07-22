@@ -67,13 +67,19 @@ grep -q 'v2-perfil.js' "$WEB/app-perfil.html" || die "app-perfil sem v2-perfil.j
 grep -q 'update_own_profile' "$WEB/v2-perfil.js" || die "v2-perfil sem update_own_profile"
 grep -q 'pf-card' "$WEB/v2.css" || die "v2.css sem estilos pf-"
 
-log "2/3 — SQL RLS + RPCs (obrigatório para PIX)"
+log "2/3 — SQL RLS + RPCs (obrigatório para salvar dados/PIX)"
 # Migration completa: helper sem recursão + policies + RPCs com row_security=off
-apply_sql "profiles_rls_no_recursion" \
-  "$RAW/supabase/migrations/20260722_profiles_rls_no_recursion.sql" \
-  || apply_sql "profile_own_rpcs" \
-  "$RAW/supabase/migrations/20260722_profile_own_rpcs.sql" \
-  || echo "  AVISO: sem SQL — cadastro PIX pode falhar com infinite recursion"
+SQL_OK=0
+if apply_sql "profiles_rls_no_recursion" \
+  "$RAW/supabase/migrations/20260722_profiles_rls_no_recursion.sql"; then
+  SQL_OK=1
+elif apply_sql "profile_own_rpcs" \
+  "$RAW/supabase/migrations/20260722_profile_own_rpcs.sql"; then
+  SQL_OK=1
+fi
+if [[ "$SQL_OK" -ne 1 ]]; then
+  die "SQL não aplicado — sem isso, Salvar dados pessoais / PIX falha com infinite recursion em profiles"
+fi
 
 log "3/3 — bucket avatars (best-effort)"
 SK=""
