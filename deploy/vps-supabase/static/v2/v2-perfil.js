@@ -142,7 +142,7 @@
       "</div>" +
       '<div class="pf-actions">' +
       '<button type="button" class="btn btn-ghost btn-sm" id="pfEditPass">Alterar senha</button>' +
-      '<button type="button" class="btn btn-primary btn-sm" id="pf2fa" type="button">Ativar 2FA</button>' +
+      '<button type="button" class="btn btn-primary btn-sm" id="pf2fa">Ativar 2FA</button>' +
       "</div></section>" +
       '<section class="pf-card pf-span-2">' +
       '<div class="pf-card-head"><div><h2>Chaves PIX para recebimento</h2>' +
