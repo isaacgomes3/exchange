@@ -316,12 +316,13 @@ async function main() {
       Math.abs(n(t.balance_after_cents) - running) > 1
         ? `⚠ dif ${money(n(t.balance_after_cents) - running)}`
         : "";
-    const meta =
+    const metaFull =
       t.metadata != null
-        ? JSON.stringify(t.metadata).slice(0, 36)
+        ? JSON.stringify(t.metadata)
         : t.ref
-          ? String(t.ref).slice(0, 36)
+          ? String(t.ref)
           : "";
+    const metaShort = metaFull.slice(0, 48);
     const mov = (amt > 0 ? "+" : "") + money(amt);
     console.log(
       pad(when.replace("T", " ").slice(0, 19), 25) +
@@ -329,8 +330,15 @@ async function main() {
         pad(mov, 14) +
         pad(money(running), 14) +
         pad(afterStored, 14) +
-        `${mismatch} ${meta}`.trim()
+        `${mismatch} ${metaShort}`.trim()
     );
+    // Ajustes admin: metadata completo (quem/motivo/source)
+    if (
+      String(t.type || "").includes("admin_adjustment") &&
+      metaFull.length > 48
+    ) {
+      console.log(`    metadata: ${metaFull}`);
+    }
   }
 
   console.log("-".repeat(100));
