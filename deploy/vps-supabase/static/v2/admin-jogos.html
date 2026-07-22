@@ -520,7 +520,7 @@
         <div id="settleOutcomeBox" style="display:grid;gap:10px;margin-top:8px">
           <button type="button" class="btn btn-ghost" id="btnOutcomeArbi" data-outcome="arbishield" style="justify-content:flex-start;text-align:left;padding:14px 16px;border-color:rgba(201,242,35,0.45)">
             <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU ARBISHIELD</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Cobertura · devolve stake ao saldo reutilizável (Apostador)</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Cobertura · devolve stake ao saldo real (Apostador) na hora</span>
             <span id="settleRefundHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">A creditar: —</span>
           </button>
           <button type="button" class="btn btn-ghost" id="btnOutcomeExch" data-outcome="exchange" style="justify-content:flex-start;text-align:left;padding:14px 16px">
@@ -2308,7 +2308,7 @@
           money(stake);
         if ($("settleRefundHint")) {
           $("settleRefundHint").textContent =
-            "A creditar (reutilizável): " + money(refund) + "  ·  stake/responsabilidade";
+            "A creditar (saldo real): " + money(refund) + "  ·  stake/responsabilidade";
         }
         if ($("settleDeductHint")) {
           $("settleDeductHint").textContent =
@@ -2424,7 +2424,7 @@
               money(data.refundedCents || 0) +
               (data.repaired ? " (reparo de crédito)" : "") +
               (outcome === "arbishield"
-                ? " → saldo reutilizável (Apostador)"
+                ? " → saldo real (Apostador)"
                 : " → saldo real (stake − taxa)")
           );
           $("settleModal").classList.remove("show");

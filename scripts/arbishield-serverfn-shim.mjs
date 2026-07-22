@@ -3355,12 +3355,12 @@ async function creditWalletForSettlement(row, outcome, now) {
   if (!p) throw new Error(`Perfil ${row.user_id} não encontrado para crédito`);
 
   const locked = Math.max(0, n(p.locked_balance_cents) - amount);
-  const patch = { locked_balance_cents: locked };
-  if (wonArbi) {
-    patch.reusable_balance_cents = n(p.reusable_balance_cents) + credit;
-  } else {
-    patch.balance_cents = n(p.balance_cents) + credit;
-  }
+  // ArbiShield e Exchange → saldo real (balance_cents). Antes ArbiShield
+  // creditava reusable_balance_cents e o cliente não via reembolso na hora.
+  const patch = {
+    locked_balance_cents: locked,
+    balance_cents: n(p.balance_cents) + credit,
+  };
 
   let creditedOk = false;
   let lastErr = null;
@@ -3396,8 +3396,8 @@ async function creditWalletForSettlement(row, outcome, now) {
           outcome: String(outcome).toLowerCase(),
           stake_cents: amount,
           fee_cents: wonArbi ? 0 : settlementDeductionCents(row),
-          bucket: wonArbi ? "reusable_balance_cents" : "balance_cents",
-          fix: "settle-credito-carteira-v1",
+          bucket: "balance_cents",
+          fix: "settle-arbishield-saldo-real-v1",
         },
       },
     });

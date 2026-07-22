@@ -958,16 +958,13 @@ async function creditWalletForSettlement(row, outcome, now) {
   if (!p) throw new Error(`Perfil ${row.user_id} não encontrado para crédito`);
 
   const locked = Math.max(0, nCents(p.locked_balance_cents) - amount);
+  // Sempre saldo real (balance_cents): ArbiShield devolve stake integral;
+  // Exchange devolve stake − taxa. Antes ArbiShield ia para reusable e o
+  // cliente não via reembolso imediato no saldo Apostador/carteira.
   const patch = {
     locked_balance_cents: locked,
+    balance_cents: nCents(p.balance_cents) + credit,
   };
-  if (wonArbi) {
-    // Legado: cobertura → saldo reutilizável (aparece em Apostador)
-    patch.reusable_balance_cents = nCents(p.reusable_balance_cents) + credit;
-  } else {
-    // Exchange: capital (− taxa) → saldo real
-    patch.balance_cents = nCents(p.balance_cents) + credit;
-  }
 
   let creditedOk = false;
   let lastErr = null;
@@ -1003,8 +1000,8 @@ async function creditWalletForSettlement(row, outcome, now) {
           outcome: String(outcome).toLowerCase(),
           stake_cents: amount,
           fee_cents: wonArbi ? 0 : settlementDeductionCents(row),
-          bucket: wonArbi ? "reusable_balance_cents" : "balance_cents",
-          fix: "settle-credito-carteira-v1",
+          bucket: "balance_cents",
+          fix: "settle-arbishield-saldo-real-v1",
         },
       },
     });
