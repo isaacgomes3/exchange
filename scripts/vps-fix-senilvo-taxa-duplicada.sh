@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Senilvo — creditar R$ 6,01 (taxa debitada em dobro: 188,37 → 194,38)
 #
-#   FIX=1 bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-fix-senilvo-taxa-duplicada.sh")
+#   FIX=1 bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/3e4b496/scripts/vps-fix-senilvo-taxa-duplicada.sh")
 set -euo pipefail
-REF="${ARBISHIELD_REF:-cursor/fix-senilvo-taxa-duplicada-723d}"
+REF="${ARBISHIELD_REF:-3e4b496}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
