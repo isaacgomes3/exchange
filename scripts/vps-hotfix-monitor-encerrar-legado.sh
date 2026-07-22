@@ -2,10 +2,10 @@
 # Hotfix: Monitor proteções — Encerrar sem estorno como no site antigo
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-monitor-encerrar-legado.sh")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/b55753a/scripts/vps-hotfix-monitor-encerrar-legado.sh")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/fix-monitor-encerrar-legado-723d}"
+REF="${ARBISHIELD_REF:-b55753a}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
