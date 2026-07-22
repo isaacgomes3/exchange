@@ -386,21 +386,6 @@
       footHtml;
 
     var collapseBtn = document.getElementById("v2CollapseBtn");
-    if (collapseBtn) {
-      collapseBtn.addEventListener("click", function () {
-        body.classList.toggle("v2-sidebar-collapsed");
-        try {
-          var key =
-            shell === "admin"
-              ? "arbishield.adminSidebarCollapsed"
-              : "arbishield.sidebarCollapsed";
-          localStorage.setItem(
-            key,
-            body.classList.contains("v2-sidebar-collapsed") ? "1" : "0"
-          );
-        } catch (e2) {}
-      });
-    }
 
     if (!document.querySelector('link[data-v2-favicon]')) {
       var fav = document.createElement("link");
@@ -428,21 +413,56 @@
     function closeNav() {
       body.classList.remove("v2-nav-open");
     }
+    function toggleNav() {
+      body.classList.toggle("v2-nav-open");
+    }
+    function isMobileShell() {
+      return window.matchMedia && window.matchMedia("(max-width: 960px)").matches;
+    }
     backdrop.addEventListener("click", closeNav);
     function bindMenu(el) {
       if (!el) return;
       el.addEventListener("click", function () {
-        body.classList.toggle("v2-nav-open");
+        toggleNav();
       });
     }
     bindMenu(document.getElementById("v2MenuBtn"));
     bindMenu(document.getElementById("v2MenuBtnHeader"));
+
+    // Fecha o drawer ao navegar / Escape (cliente + ADM)
+    sidebar.querySelectorAll("a.v2-nav-link, a.v2-sidebar-brand, #v2LogoutLink, #v2AdminLogout").forEach(function (a) {
+      a.addEventListener("click", closeNav);
+    });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape") closeNav();
+    });
+    window.addEventListener("resize", function () {
+      if (!isMobileShell()) closeNav();
+    });
+
+    if (collapseBtn) {
+      collapseBtn.addEventListener("click", function () {
+        if (isMobileShell()) return;
+        body.classList.toggle("v2-sidebar-collapsed");
+        try {
+          var key =
+            shell === "admin"
+              ? "arbishield.adminSidebarCollapsed"
+              : "arbishield.sidebarCollapsed";
+          localStorage.setItem(
+            key,
+            body.classList.contains("v2-sidebar-collapsed") ? "1" : "0"
+          );
+        } catch (e2) {}
+      });
+    }
 
     if (shell === "app") {
       var bottomNav = document.getElementById("v2BottomNav");
       if (bottomNav) {
         bottomNav.querySelectorAll("a[data-nav]").forEach(function (a) {
           if (a.getAttribute("data-nav") === active) a.classList.add("is-active");
+          a.addEventListener("click", closeNav);
         });
       }
     }

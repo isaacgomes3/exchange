@@ -6,8 +6,8 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta name="arbishield-vps-page" content="jogos" />
   <title>Gestão de Jogos — ArbiShield v2</title>
-  <link rel="stylesheet" href="/v2.css?v=ui-cards-23" />
-  <script src="/v2-shell.js?v=ui-cards-23" defer></script>
+  <link rel="stylesheet" href="/v2.css?v=responsivo-26" />
+  <script src="/v2-shell.js?v=responsivo-26" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -225,8 +225,19 @@
       text-transform: uppercase; font-size: 10px;
     }
     .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    @media (max-width: 900px) {
+      .toolbar { flex-direction: column; align-items: stretch; }
+      .search { min-width: 0; width: 100%; flex: 1 1 auto; }
+      .tabs { width: 100%; }
+      .runners { grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); }
+    }
     @media (max-width: 720px) {
       .stats { grid-template-columns: 1fr; }
+      .row-main { flex-direction: column; align-items: stretch; }
+      .drawer { width: 100%; border-left: 0; }
+      .page-head { flex-direction: column; align-items: stretch; gap: 10px; }
+      .page-head .actions { width: 100%; }
+      .page-head .actions .btn { width: 100%; }
     }
     .empty, .loading, .error {
       border: 1px dashed var(--border); border-radius: 16px;

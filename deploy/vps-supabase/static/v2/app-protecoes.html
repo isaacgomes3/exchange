@@ -12,8 +12,15 @@
   <script src="/v2.js"></script>
   <script src="/v2-shell.js" defer></script>
   <style>
-    .prot-layout { display: grid; grid-template-columns: 1fr minmax(280px, 360px); gap: 16px; align-items: start; }
-    @media (max-width: 960px) { .prot-layout { grid-template-columns: 1fr; } }
+    .prot-layout { display: grid; grid-template-columns: 1fr minmax(min(100%, 280px), 360px); gap: 16px; align-items: start; }
+    @media (max-width: 960px) {
+      .prot-layout { grid-template-columns: 1fr; }
+      .prot-detail { position: static; }
+    }
+    @media (max-width: 560px) {
+      .prot-kv, .type-grid { grid-template-columns: 1fr; }
+      .prot-card .row { flex-direction: column; }
+    }
     .prot-list { display: flex; flex-direction: column; gap: 10px; }
     .prot-card {
       border: 1px solid rgba(255,255,255,0.08); border-radius: 14px;
