@@ -258,10 +258,25 @@ async function main() {
   const matchMap = {};
   if (matchIds.length) {
     const chunk = matchIds.slice(0, 80);
-    const ms = await sb(
-      `/rest/v1/matches?select=id,home_team,away_team,league,starts_at,status,final_score&id=in.(${chunk.map((id) => `"${id}"`).join(",")})`
-    );
-    for (const m of Array.isArray(ms) ? ms : []) matchMap[m.id] = m;
+    const inList = chunk.map((id) => `"${id}"`).join(",");
+    const selects = [
+      "id,home_team,away_team,league,starts_at,status,final_score",
+      "id,home_team,away_team,league,starts_at,status",
+    ];
+    let loaded = false;
+    for (const sel of selects) {
+      try {
+        const ms = await sb(
+          `/rest/v1/matches?select=${sel}&id=in.(${inList})`
+        );
+        for (const m of Array.isArray(ms) ? ms : []) matchMap[m.id] = m;
+        loaded = true;
+        break;
+      } catch (e) {
+        console.warn("  matches select falhou:", e.message || e);
+      }
+    }
+    if (!loaded) console.warn("  ⚠ sem metadados de partidas — seguindo só com proteções");
   }
 
   console.log(`\n==> Proteções últimos ${DAYS}d: ${rows.length}`);
