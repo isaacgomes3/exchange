@@ -307,12 +307,11 @@
     <header>
       <div>
         <h1>Gestão de <span>Jogos</span></h1>
-        <p class="sub">Cockpit de Eventos e Risco · Catálogo Pré-Live BetBra</p>
+        <p class="sub">Cockpit de Eventos e Risco</p>
       </div>
       <div class="actions">
         <a class="btn btn-ghost" href="/v2/admin.html">← Hub v2</a>
-        <button class="btn btn-primary" id="btnAddMatch" type="button">+ Lançar jogo (BetBra)</button>
-        <button class="btn btn-ghost" id="btnManualMatch" type="button">Lançar manual</button>
+        <button class="btn btn-primary" id="btnAddMatch" type="button">+ Lançar jogo</button>
         <button class="btn btn-ghost" id="btnRefresh" type="button">Atualizar</button>
       </div>
     </header>
@@ -320,29 +319,10 @@
     <div class="stats" id="stats"></div>
 
     <div class="toolbar">
-      <div class="tabs" id="viewTabs">
-        <button class="tab active" data-view="prelive" type="button">Próximos jogos</button>
-        <button class="tab" data-view="platform" type="button">Eventos ArbiShield</button>
-      </div>
       <input class="search" id="search" type="search" placeholder="Buscar time ou liga…" />
     </div>
 
-    <section class="panel" id="prelivePanel">
-      <div class="panel-head">
-        <div>
-          <h2>Próximos jogos (BetBra)</h2>
-          <div class="breadcrumb" id="breadcrumb">
-            <span>Lista do dia</span>
-          </div>
-        </div>
-        <span class="hint" id="preliveMeta">—</span>
-      </div>
-      <div id="preliveContent">
-        <div class="loading">Carregando jogos da API BetBra…</div>
-      </div>
-    </section>
-
-    <section class="panel platform-list" id="platformPanel" hidden>
+    <section class="panel platform-list" id="platformPanel">
       <div class="panel-head">
         <h2>Eventos cadastrados na plataforma</h2>
         <span class="hint" id="platformMeta">—</span>
@@ -359,26 +339,10 @@
     </section>
   </div>
 
-  <div class="modal-backdrop" id="createModal">
-    <div class="modal">
-      <h3>Lançar evento na plataforma</h3>
-      <p>O mercado selecionado da BetBra será incluído na ArbiShield. Marque publicar para o cliente ver em Proteger Aposta.</p>
-      <div class="grid" id="createSummary"></div>
-      <label class="publish-opt" style="display:flex;gap:10px;align-items:flex-start;margin:0 0 16px;font-size:12px;line-height:1.4;cursor:pointer">
-        <input type="checkbox" id="publishNow" checked style="margin-top:2px;accent-color:var(--lime)" />
-        <span><strong>Publicar agora</strong> — aparece na conta do cliente (Proteger Aposta). Desmarque só se quiser deixar em rascunho.</span>
-      </label>
-      <div class="modal-actions">
-        <button class="btn btn-ghost btn-sm" id="btnCancelCreate" type="button">Cancelar</button>
-        <button class="btn btn-primary btn-sm" id="btnConfirmCreate" type="button">Confirmar lançamento</button>
-      </div>
-    </div>
-  </div>
-
   <div class="drawer-backdrop" id="manualDrawer">
     <div class="drawer">
       <h3>Lançar evento <span>manual</span></h3>
-      <p class="hint">Só para jogos que não estão na BetBra. Fluxo normal = botão “Lançar jogo (BetBra)”. Isto não cria Desafio.</p>
+      <p class="hint">Formulário para lançar eventos na plataforma ArbiShield. Isto não cria Desafio.</p>
 
       <div class="toggle-row">
         <div>
@@ -492,11 +456,6 @@
       });
 
       var auth = null;
-      var view = "prelive";
-      var preliveEvents = [];
-      var selectedEvent = null;
-      var selectedMarket = null;
-      var selectedRunner = null;
       var platformMatches = [];
       var platformFilter = "fila";
       var platformLoaded = false;
@@ -644,13 +603,11 @@
       }
 
       function renderStats() {
-        var pre = preliveEvents.length;
         var plat = platformMatches.length;
         var liq = platformMatches.reduce(function (a, m) {
           return a + Math.max(0, Number(m.max_protection_cents || 0) - Number(m.used_protection_cents || 0));
         }, 0);
         var items = [
-          ["Pré-live hoje", pre, ""],
           ["Na plataforma", plat, "lime"],
           ["Liquidez", money(liq), "lime"],
         ];
@@ -658,203 +615,6 @@
           return '<div class="stat"><div class="l">' + it[0] + '</div><div class="v' +
             (it[2] ? " " + it[2] : "") + '">' + it[1] + "</div></div>";
         }).join("");
-      }
-
-      function setBreadcrumb(parts) {
-        $("breadcrumb").innerHTML = parts.map(function (p, i) {
-          if (i === parts.length - 1) return "<span>" + p.label + "</span>";
-          return '<button type="button" data-step="' + p.step + '">' + p.label + "</button><span>›</span>";
-        }).join("");
-        $("breadcrumb").querySelectorAll("button").forEach(function (btn) {
-          btn.addEventListener("click", function () {
-            var step = btn.getAttribute("data-step");
-            if (step === "list") {
-              selectedEvent = null;
-              selectedMarket = null;
-              renderPreliveList();
-            } else if (step === "event") {
-              selectedMarket = null;
-              renderMarkets(selectedEvent);
-            }
-          });
-        });
-      }
-
-      function renderPreliveList() {
-        setBreadcrumb([{ label: "Lista do dia", step: "list" }]);
-        var filtered = preliveEvents.filter(filterText);
-        $("preliveMeta").textContent = filtered.length + " jogos · BetBra";
-
-        if (!filtered.length) {
-          $("preliveContent").innerHTML = '<div class="empty">Nenhum jogo pré-live encontrado para hoje</div>';
-          return;
-        }
-
-        $("preliveContent").innerHTML = '<div class="list">' + filtered.map(function (ev) {
-          return (
-            '<div class="row" data-event="' + ev.eventId + '">' +
-              '<div><div class="teams">' + ev.homeTeam + " vs " + ev.awayTeam + '</div>' +
-              '<div class="meta">' + (ev.league || "—") + '</div></div>' +
-              '<div class="time"><div class="kick">em ' + ev.minutesToKickoff + " min</div>" +
-              '<div class="when">' + fmtDate(ev.startsAt) + "</div></div></div>"
-          );
-        }).join("") + "</div>";
-
-        $("preliveContent").querySelectorAll(".row[data-event]").forEach(function (row) {
-          row.addEventListener("click", function () {
-            var id = row.getAttribute("data-event");
-            var ev = preliveEvents.find(function (e) { return e.eventId === id; });
-            if (ev) loadMarkets(ev);
-          });
-        });
-      }
-
-      async function loadMarkets(ev) {
-        selectedEvent = ev;
-        $("preliveContent").innerHTML = '<div class="loading">Carregando mercados…</div>';
-        setBreadcrumb([
-          { label: "Lista do dia", step: "list" },
-          { label: ev.homeTeam + " vs " + ev.awayTeam, step: "event" },
-        ]);
-        try {
-          var data = await apiGet(
-            "/api/arbishield/prelive-events?eventId=" +
-            encodeURIComponent(ev.eventId) +
-            "&sportId=" + encodeURIComponent(ev.sportId)
-          );
-          renderMarkets(data);
-        } catch (err) {
-          $("preliveContent").innerHTML = '<div class="error">' + err.message + "</div>";
-        }
-      }
-
-      function renderMarkets(data) {
-        selectedEvent = data.event;
-        var markets = data.markets || [];
-        $("preliveMeta").textContent = markets.length + " mercados";
-
-        if (!markets.length) {
-          $("preliveContent").innerHTML = '<div class="empty">Nenhum mercado disponível</div>';
-          return;
-        }
-
-        $("preliveContent").innerHTML = markets.map(function (market) {
-          var runners = (market.runners || []).map(function (runner) {
-            var odd = runner.odd != null ? runner.odd.toFixed(2) : "—";
-            return (
-              '<div class="runner">' +
-                '<span class="name">' + runner.name + '</span>' +
-                '<span class="odd">@ ' + odd + '</span>' +
-                '<button class="btn btn-primary btn-sm" type="button" data-market="' + market.marketId + '" data-runner="' + runner.runnerId + '">Lançar evento</button>' +
-              "</div>"
-            );
-          }).join("");
-          return (
-            '<div class="row market-row">' +
-              '<div class="market-title">' + market.name + '</div>' +
-              '<div class="runners">' + runners + "</div></div>"
-          );
-        }).join("");
-
-        $("preliveContent").querySelectorAll("button[data-market]").forEach(function (btn) {
-          btn.addEventListener("click", function (e) {
-            e.stopPropagation();
-            var marketId = btn.getAttribute("data-market");
-            var runnerId = btn.getAttribute("data-runner");
-            var market = markets.find(function (m) { return m.marketId === marketId; });
-            var runner = market && (market.runners || []).find(function (r) { return r.runnerId === runnerId; });
-            if (market && runner) {
-              if (!auth) {
-                showAuthBanner(true);
-                alert("Faça login admin para incluir eventos.");
-                return;
-              }
-              openCreateModal(market, runner);
-            }
-          });
-        });
-      }
-
-      function openCreateModal(market, runner) {
-        selectedMarket = market;
-        selectedRunner = runner;
-        var ev = selectedEvent;
-        var link = ev.betbraLink + "/market/" + market.marketId;
-        $("createSummary").innerHTML = [
-          ["Jogo", ev.homeTeam + " vs " + ev.awayTeam],
-          ["Liga", ev.league || "—"],
-          ["Horário", fmtDate(ev.startsAt)],
-          ["Mercado", market.name],
-          ["Seleção", runner.name],
-          ["Odd", runner.odd != null ? runner.odd.toFixed(2) : "—"],
-        ].map(function (row) {
-          return "<div><span>" + row[0] + "</span><span>" + row[1] + "</span></div>";
-        }).join("");
-        $("createModal").classList.add("show");
-        $("btnConfirmCreate").onclick = function () {
-          confirmCreate(link);
-        };
-      }
-
-      async function confirmCreate(betbraLink) {
-        if (!auth) {
-          alert("Faça login admin para incluir eventos.");
-          showAuthBanner(true);
-          return;
-        }
-        var ev = selectedEvent;
-        var market = selectedMarket;
-        var runner = selectedRunner;
-        $("btnConfirmCreate").disabled = true;
-        $("btnConfirmCreate").textContent = "Criando…";
-        var publishNow = !($("publishNow") && !$("publishNow").checked);
-        try {
-          var result = await apiPost("/api/arbishield/matches", {
-            eventId: ev.eventId,
-            sportId: ev.sportId,
-            homeTeam: ev.homeTeam,
-            awayTeam: ev.awayTeam,
-            league: ev.league,
-            startsAt: ev.startsAt,
-            marketId: market.marketId,
-            marketName: market.name,
-            runnerId: runner.runnerId,
-            runnerName: runner.name,
-            odd: runner.odd,
-            betbraLink: betbraLink,
-            isPublished: publishNow,
-          });
-          $("createModal").classList.remove("show");
-          var msg =
-            result.action === "market_added"
-              ? "Entrada adicionada ao jogo existente (" +
-                (result.match && result.match.home_team) +
-                " vs " +
-                (result.match && result.match.away_team) +
-                ")" +
-                (result.marketsCount
-                  ? " · " + result.marketsCount + " entrada(s) no total."
-                  : ".")
-              : publishNow
-                ? "Evento publicado! Já aparece em Proteger Aposta para o cliente."
-                : "Evento criado como rascunho. Publique na aba Rascunhos para o cliente ver.";
-          alert(msg);
-          platformLoaded = false;
-          await loadPlatformMatches({ force: true });
-          setView("platform");
-          if (!publishNow) {
-            platformFilter = "draft";
-            document.querySelectorAll("#platformFilters .chip").forEach(function (c) {
-              c.classList.toggle("is-on", c.getAttribute("data-pf") === "draft");
-            });
-            renderPlatformList();
-          }
-        } catch (err) {
-          alert(err.message || "Erro ao criar evento");
-        } finally {
-          $("btnConfirmCreate").disabled = false;
-          $("btnConfirmCreate").textContent = "Confirmar lançamento";
-        }
       }
 
       function matchBucket(m) {
@@ -1015,25 +775,6 @@
             btn.textContent = "Publicar";
           }
         }
-      }
-
-      async function loadPrelive() {
-        $("preliveContent").innerHTML = '<div class="loading">Consultando BetBra…</div>';
-        try {
-          var data = await apiGet("/api/arbishield/prelive-events");
-          preliveEvents = data.events || [];
-          $("preliveMeta").textContent = (data.total || 0) + " jogos · janela até " + fmtDate(data.window && data.window.to);
-          if (selectedEvent) {
-            var still = preliveEvents.find(function (e) { return e.eventId === selectedEvent.eventId; });
-            if (still) loadMarkets(still);
-            else { selectedEvent = null; renderPreliveList(); }
-          } else {
-            renderPreliveList();
-          }
-        } catch (err) {
-          $("preliveContent").innerHTML = '<div class="error">' + err.message + "</div>";
-        }
-        renderStats();
       }
 
       async function loadPlatformMatches(options) {
@@ -1274,7 +1015,6 @@
           );
           platformLoaded = false;
           await loadPlatformMatches({ force: true });
-          setView("platform");
           platformFilter = result.match && result.match.is_published ? "fila" : "draft";
           document.querySelectorAll("#platformFilters .chip").forEach(function (c) {
             c.classList.toggle("is-on", c.getAttribute("data-pf") === platformFilter);
@@ -1288,34 +1028,10 @@
         }
       }
 
-      function setView(next) {
-        view = next;
-        document.querySelectorAll("#viewTabs .tab").forEach(function (tab) {
-          tab.classList.toggle("active", tab.getAttribute("data-view") === next);
-        });
-        $("prelivePanel").hidden = next !== "prelive";
-        $("platformPanel").hidden = next !== "platform";
-        if (next === "platform") renderPlatformList();
-        else if (!selectedEvent) renderPreliveList();
-      }
-
-      /** Fluxo normal de cadastro: catálogo BetBra (não drawer manual / não desafio). */
-      function openNormalLaunch() {
-        closeManualDrawer();
-        selectedEvent = null;
-        setView("prelive");
-        if (!preliveEvents.length) loadPrelive();
-        else renderPreliveList();
-        try {
-          $("prelivePanel").scrollIntoView({ behavior: "smooth", block: "start" });
-        } catch (e) {}
-      }
-
       async function boot() {
         showAppShell();
 
         $("btnRefresh").addEventListener("click", function () {
-          loadPrelive();
           resolveAuth(false).then(function (next) {
             auth = next;
             showAuthBanner(!auth);
@@ -1324,23 +1040,7 @@
         });
         $("search").addEventListener("input", function (e) {
           searchTerm = e.target.value.trim();
-          if (view === "prelive" && !selectedEvent) renderPreliveList();
-          else if (view === "platform") renderPlatformList();
-        });
-        document.querySelectorAll("#viewTabs .tab").forEach(function (tab) {
-          tab.addEventListener("click", function () {
-            var next = tab.getAttribute("data-view");
-            setView(next);
-            if (next === "platform" && auth && !platformLoaded) {
-              loadPlatformMatches();
-            }
-          });
-        });
-        $("btnCancelCreate").addEventListener("click", function () {
-          $("createModal").classList.remove("show");
-        });
-        $("createModal").addEventListener("click", function (e) {
-          if (e.target === $("createModal")) $("createModal").classList.remove("show");
+          renderPlatformList();
         });
         document.querySelectorAll("#platformFilters .chip").forEach(function (chip) {
           chip.addEventListener("click", function () {
@@ -1357,10 +1057,7 @@
         bindSwitch("manPublish");
         bindSwitch("manScoreSync");
         bindSwitch("manLive");
-        $("btnAddMatch").addEventListener("click", openNormalLaunch);
-        if ($("btnManualMatch")) {
-          $("btnManualMatch").addEventListener("click", openManualDrawer);
-        }
+        $("btnAddMatch").addEventListener("click", openManualDrawer);
         $("btnCancelManual").addEventListener("click", closeManualDrawer);
         $("btnSaveManual").addEventListener("click", saveManualMatch);
         $("btnAddMarket").addEventListener("click", function () {
@@ -1379,7 +1076,6 @@
           if (e.target === $("manualDrawer")) closeManualDrawer();
         });
 
-await loadPrelive();
         auth = await resolveAuth();
         showAuthBanner(!auth);
         await loadPlatformMatches();
@@ -1387,7 +1083,7 @@ await loadPrelive();
 
       boot().catch(function (err) {
         showAppShell();
-        $("preliveContent").innerHTML = '<div class="error">' + (err.message || "Erro ao iniciar") + "</div>";
+        $("platformContent").innerHTML = '<div class="error">' + (err.message || "Erro ao iniciar") + "</div>";
       });
 
       window.addEventListener("pageshow", function (ev) {
