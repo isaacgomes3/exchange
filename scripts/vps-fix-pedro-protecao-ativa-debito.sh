@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Debita proteção ativa do Pedro do saldo real
 #
-#   FIX=1 bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/caa240d/scripts/vps-fix-pedro-protecao-ativa-debito.sh")
+#   FIX=1 bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/6db4948/scripts/vps-fix-pedro-protecao-ativa-debito.sh")
 set -euo pipefail
 
 # Preferir SHA do commit (evita CDN raw da branch com blob vazio em cache)
-REF="${ARBISHIELD_REF:-caa240d}"
+REF="${ARBISHIELD_REF:-6db4948}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
