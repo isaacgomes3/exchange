@@ -2,13 +2,13 @@
 # Senilvo — debitar taxa Exchange R$ 6,01 que não saiu na liquidação de R$ 200
 #
 # Relatório:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-fix-senilvo-taxa-exchange.sh")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/8fa9fcd/scripts/vps-fix-senilvo-taxa-exchange.sh")
 # Aplicar:
-#   FIX=1 bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-fix-senilvo-taxa-exchange.sh")
+#   FIX=1 bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/8fa9fcd/scripts/vps-fix-senilvo-taxa-exchange.sh")
 set -euo pipefail
 
 # Após o push, o README do PR usa o SHA do commit. Fallback: branch com bust.
-REF="${ARBISHIELD_REF:-cursor/fix-senilvo-taxa-exchange-723d}"
+REF="${ARBISHIELD_REF:-8fa9fcd}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
