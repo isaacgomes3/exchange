@@ -5,7 +5,7 @@
 
 ## Tabelas usadas pelo sistema
 
-- `profiles`
+- `profiles` — **mesma tabela do site antigo** (dump Cloud→VPS). Campos de cliente no Meu Perfil v2: `full_name`, `phone`, `location`, `cpf`, `pix_key`, `pix_priority_type`, `pix_bank`, `pix_account`, `pix_account_holder`, `avatar_url`, `created_at` (+ e-mail em `auth.users`). Auditoria: `scripts/vps-audit-profiles-migration.sh`.
 - `user_roles`
 - `protections`
 - `matches`

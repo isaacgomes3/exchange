@@ -66,6 +66,31 @@
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   }
 
+  /** Fotos migradas do Cloud/localhost → same-origin (arbishield.app). */
+  function publicAvatar(url) {
+    if (!url) return "";
+    try {
+      var u = new URL(String(url), location.origin);
+      var oldHost =
+        /\.supabase\.co$/i.test(u.host) ||
+        u.host === "127.0.0.1:8000" ||
+        u.host === "localhost:8000";
+      if (!oldHost) return String(url);
+      var m = u.pathname.match(
+        /\/storage\/v1\/object\/(?:public|sign|authenticated)\/(.+)$/
+      );
+      if (!m) return String(url);
+      return (
+        location.origin +
+        "/storage/v1/object/public/" +
+        m[1] +
+        (u.search || "")
+      );
+    } catch (e) {
+      return String(url);
+    }
+  }
+
   function infoCell(label, value, mono) {
     return (
       '<div class="pf-info">' +
@@ -113,7 +138,7 @@
       '<div class="pf-hero">' +
       '<div class="pf-avatar" id="pfAvatarBtn" title="Trocar foto">' +
       (p.avatar_url
-        ? '<img src="' + esc(p.avatar_url) + '" alt="" />'
+        ? '<img src="' + esc(publicAvatar(p.avatar_url)) + '" alt="" />'
         : "<span>" + esc(initials(name)) + "</span>") +
       '<input type="file" id="pfAvatarInput" accept="image/jpeg,image/png,image/webp" hidden />' +
       "</div>" +
