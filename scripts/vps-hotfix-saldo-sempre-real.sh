@@ -62,7 +62,7 @@ chmod 0644 "$AUDIT_DST"
 grep -q 'MOVE_ALL_REUSABLE\|final_score\|sem metadados de partidas' "$AUDIT_DST" \
   || die "script de auditoria incompleto"
 
-FIX=1 MOVE_ALL_REUSABLE=1 ID_PREFIX=24037bdf DAYS=21 \
+FIX=1 MOVE_ALL_REUSABLE=1 CREDIT_MISSING=0 ID_PREFIX=24037bdf DAYS=21 \
   node "$AUDIT_DST"
 
 echo

@@ -20,6 +20,9 @@ const MOVE_ALL_REUSABLE =
   process.env.MOVE_ALL_REUSABLE === "1" ||
   process.env.MOVE_ALL_REUSABLE === "true" ||
   (FIX && process.env.MOVE_ALL_REUSABLE !== "0");
+/** Só credita settlements sem ledger se CREDIT_MISSING=1 (default: NÃO — evita overcredit). */
+const CREDIT_MISSING =
+  process.env.CREDIT_MISSING === "1" || process.env.CREDIT_MISSING === "true";
 const NAME = String(
   process.env.NAME || "PEDRO IURI TEIXEIRA DOS SANTOS"
 ).trim();
@@ -215,6 +218,10 @@ async function main() {
   console.log(
     "    MOVE_ALL_REUSABLE:",
     MOVE_ALL_REUSABLE ? "SIM (tudo → saldo real)" : "não"
+  );
+  console.log(
+    "    CREDIT_MISSING:",
+    CREDIT_MISSING ? "SIM (perigoso se já tinha reusable)" : "não (seguro)"
   );
 
   const user = await resolveUser();
@@ -443,6 +450,15 @@ async function main() {
   for (const item of actions.creditMissing) {
     const pay = item.amount;
     if (!(pay > 0)) continue;
+    if (!CREDIT_MISSING) {
+      console.log(
+        "\n  ⏭ pulando crédito faltante",
+        money(pay),
+        item.jogo,
+        "(use CREDIT_MISSING=1 se realmente faltar)"
+      );
+      continue;
+    }
     console.log("\n==> Creditando faltante", money(pay), item.jogo, item.row.id.slice(0, 8));
     bal += pay;
     const locked = Math.max(
