@@ -2959,8 +2959,8 @@ body.dep-open { overflow: hidden; }
 }
 .term-table-head {
   display: none;
-  grid-template-columns: 88px minmax(0, 1.2fr) 110px 88px 180px 130px;
-  gap: 14px;
+  grid-template-columns: 88px minmax(0, 1.1fr) minmax(120px, 0.7fr) 110px 88px 160px 120px;
+  gap: 12px;
   align-items: center;
   padding: 14px 20px;
   margin: 0 2px 12px;
@@ -2985,8 +2985,8 @@ body.dep-open { overflow: hidden; }
 }
 .term-row {
   display: grid;
-  grid-template-columns: 88px minmax(0, 1.2fr) 110px 88px 180px 130px;
-  gap: 14px;
+  grid-template-columns: 88px minmax(0, 1.1fr) minmax(120px, 0.7fr) 110px 88px 160px 120px;
+  gap: 12px;
   align-items: center;
   padding: 18px 20px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -3049,14 +3049,19 @@ body.dep-open { overflow: hidden; }
   line-height: 1.35;
 }
 .term-col-match strong span { color: rgba(255, 255, 255, 0.35); font-weight: 700; }
+.term-col-comp {
+  min-width: 0;
+}
 .term-comp {
-  display: inline;
-  margin-left: 8px;
+  display: block;
   font-style: normal;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.02em;
-  color: rgba(255, 255, 255, 0.48);
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  color: rgba(255, 255, 255, 0.55);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .term-col-match small {
@@ -3298,8 +3303,8 @@ body.dep-open { overflow: hidden; }
   .term-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .term-row,
   .term-table-head {
-    grid-template-columns: 72px minmax(0, 1fr) 96px 72px 140px 120px;
-    gap: 10px;
+    grid-template-columns: 72px minmax(0, 1fr) minmax(100px, 0.8fr) 96px 72px 120px 110px;
+    gap: 8px;
   }
 }
 @media (max-width: 720px) {
@@ -3311,6 +3316,7 @@ body.dep-open { overflow: hidden; }
   }
   .term-col-time { grid-column: 1 / -1; }
   .term-col-match { grid-column: 1 / -1; }
+  .term-col-comp { grid-column: 1 / -1; }
   .term-col-sides,
   .term-col-market {
     display: flex;
@@ -3321,11 +3327,7 @@ body.dep-open { overflow: hidden; }
   .term-col-action { grid-column: 2; grid-row: auto; }
   .term-ghost-btn { display: none; }
   .term-col-match strong { font-size: 15px; }
-  .term-comp {
-    display: block;
-    margin: 4px 0 0;
-    white-space: normal;
-  }
+  .term-comp { white-space: normal; }
   .term-time { font-size: 15px; }
 }
 

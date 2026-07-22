@@ -27,10 +27,11 @@ for f in v2.css app-proteger.html v2-shell.js; do
 done
 
 grep -q 'term-col-market' "$WEB/app-proteger.html" || { echo "ERRO: sem coluna mercado"; exit 1; }
-grep -q 'term-comp' "$WEB/app-proteger.html" || { echo "ERRO: sem competição no confronto"; exit 1; }
+grep -q 'term-col-comp' "$WEB/app-proteger.html" || { echo "ERRO: sem coluna competição"; exit 1; }
+grep -q 'Competição' "$WEB/app-proteger.html" || { echo "ERRO: sem header Competição"; exit 1; }
 grep -q 'term-side.lay' "$WEB/v2.css" || { echo "ERRO: CSS sem .term-side.lay"; exit 1; }
 grep -q '#f0b8c8' "$WEB/v2.css" || { echo "ERRO: LAY sem rosa pastel"; exit 1; }
 grep -q '#a8c8e8' "$WEB/v2.css" || { echo "ERRO: BACK sem azul pastel"; exit 1; }
-grep -q 'jogos-mercado-24' "$WEB/app-proteger.html" || { echo "ERRO: cache bust ausente"; exit 1; }
+grep -q 'jogos-mercado-25' "$WEB/app-proteger.html" || { echo "ERRO: cache bust ausente"; exit 1; }
 
 echo "OK — Ctrl+Shift+R em https://arbishield.app/app-proteger.html"
