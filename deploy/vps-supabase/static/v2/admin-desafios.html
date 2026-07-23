@@ -1139,6 +1139,13 @@
             subtitle: row.subtitle || "",
             initial_balance_reais: centsToReaisInput(row.initial_balance_cents || 20000),
             is_active: true,
+            steps: steps.length ? steps : [emptyStep(1)],
+          });
+        });
+      });
+    }
+
+    async function load() {
       $("list").innerHTML = `<div class="loading">Carregando desafios…</div>`;
       $("meta").textContent = "Buscando…";
       try {
