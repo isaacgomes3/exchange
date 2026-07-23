@@ -101,6 +101,20 @@
         return n.toFixed(2).replace(".", ",");
       }
 
+      /** Lucro % sobre o stake (ex.: +142,8%). */
+      function fmtReturnPct(stakeCents, recebeCents) {
+        var stake = Math.max(0, Number(stakeCents) || 0);
+        var recebe = Math.max(0, Number(recebeCents) || 0);
+        if (!(stake > 0)) return "—";
+        var pct = ((recebe - stake) / stake) * 100;
+        if (!Number.isFinite(pct)) return "—";
+        var rounded = Math.round(pct * 10) / 10;
+        var body = String(rounded).replace(".", ",");
+        if (rounded > 0) return "+" + body + "%";
+        if (rounded < 0) return body + "%";
+        return "0%";
+      }
+
       function calcSides(item, stakeCents) {
         var Sz = Math.max(0, Math.round(Number(stakeCents) || 0));
         var arbiOdd = Number(item.arbiOdd);
@@ -394,8 +408,7 @@
 
         var defaultStake = item.entradaCents || MIN_ACCESS_CENTS;
         var sides = calcSides(item, defaultStake);
-        var lucro = Math.max(0, sides.recebeArbiCents - sides.stakeCents);
-        var retorno = sides.recebeArbiCents;
+        var retornoPctLabel = fmtReturnPct(sides.stakeCents, sides.recebeArbiCents);
 
         var liq = phase !== "live" && phase !== "done" ? liquidityShown(item, now) : null;
         var liqHtml = "";
@@ -530,10 +543,8 @@
           "</div></div>" +
           liqHtml +
           '<div class="dz-v2-retorno">Retorno estimado ' +
-          money(retorno) +
-          " (+" +
-          money(lucro) +
-          ")</div></article>"
+          esc(retornoPctLabel) +
+          "</div></article>"
         );
       }
 
@@ -579,9 +590,8 @@
           if (elArbi) elArbi.textContent = money(sides.recebeArbiCents);
           if (elCasaRec) elCasaRec.textContent = money(sides.recebeCasaCents);
           if (elRet) {
-            var lucro = Math.max(0, sides.recebeArbiCents - sides.stakeCents);
             elRet.textContent =
-              "Retorno estimado " + money(sides.recebeArbiCents) + " (+" + money(lucro) + ")";
+              "Retorno estimado " + fmtReturnPct(sides.stakeCents, sides.recebeArbiCents);
           }
           return { item: item, sides: sides };
         }
