@@ -163,15 +163,23 @@
           .toUpperCase() || "?";
       }
 
-      function teamBlock(name, logo) {
+      function teamBlock(name, logo, sideClass) {
         var avatar = logo
-          ? '<img class="dz-logo" src="' + esc(logo) + '" alt="' + esc(name) + '" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'" />' +
-            '<div class="dz-logo-fallback" style="display:none">' + esc(initials(name)) + "</div>"
-          : '<div class="dz-logo-fallback">' + esc(initials(name)) + "</div>";
+          ? '<img class="dz-v2-logo" width="72" height="72" src="' +
+            esc(logo) +
+            '" alt="' +
+            esc(name) +
+            '" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'" />' +
+            '<div class="dz-v2-logo-fallback" style="display:none">' +
+            esc(initials(name)) +
+            "</div>"
+          : '<div class="dz-v2-logo-fallback">' + esc(initials(name)) + "</div>";
         return (
-          '<div class="dz-team">' +
+          '<div class="dz-v2-side ' +
+          esc(sideClass || "") +
+          '">' +
           avatar +
-          '<span class="dz-team-name">' +
+          '<span class="dz-v2-team-name">' +
           esc(name) +
           "</span></div>"
         );
@@ -306,11 +314,6 @@
 
       function cardHtml(item, now) {
         var phase = phaseOf(item, now);
-        var locked =
-          phase === "soon" ||
-          phase === "live" ||
-          phase === "done" ||
-          !item.isActiveDesafio;
         var lucro = item.guaranteedProfitCents || 0;
         var retorno = (item.entradaCents || 0) + lucro;
         var unlockMs =
@@ -319,114 +322,136 @@
             : null;
         var waitMs = unlockMs != null ? unlockMs - now : null;
         var waiting = phase === "soon" && waitMs != null && waitMs > 0;
+        var jornadaHref =
+          "/app-desafio-jornada.html?etapa=" +
+          encodeURIComponent(item.stepIndex || 1) +
+          (item.desafioId ? "&desafioId=" + encodeURIComponent(item.desafioId) : "");
 
-        var badge;
-        if (phase === "done") {
-          badge = '<span class="dz-badge muted">Finalizado</span>';
-        } else if (phase === "live") {
-          badge = '<span class="dz-badge live"><span class="dz-dot"></span>Ao vivo</span>';
-        } else if (!item.isActiveDesafio) {
-          badge = '<span class="dz-badge muted">Em breve</span>';
-        } else if (item.isNew && phase !== "soon") {
-          badge = '<span class="dz-badge on">Nova</span>';
-        } else if (phase === "soon") {
-          badge = '<span class="dz-badge muted">Em breve</span>';
-        } else {
-          badge = '<span class="dz-badge on">Nova</span>';
-        }
-
-        var liq = phase !== "live" ? liquidityShown(item, now) : null;
+        var liq = phase !== "live" && phase !== "done" ? liquidityShown(item, now) : null;
         var liqHtml = "";
         if (liq && liq.total > 0) {
           var pctLeft = Math.round(Math.max(0, Math.min(1, liq.shown / liq.total)) * 100);
           var barClass = pctLeft < 20 ? "low" : pctLeft < 50 ? "mid" : "ok";
           liqHtml =
-            '<div class="dz-liq">' +
-            '<div class="dz-liq-top"><span>Liquidez</span><span>Inicial ' +
+            '<div class="dz-v2-liq">' +
+            '<div class="dz-v2-liq-top"><span>Liquidez · Inicial ' +
             money(liq.total) +
-            "</span></div>" +
-            '<div class="dz-liq-mid"><span>Disponível agora</span><strong class="' +
-            barClass +
-            '">' +
+            "</span><span>Disponível " +
             money(liq.shown) +
-            "</strong></div>" +
-            '<div class="dz-liq-bar"><i class="' +
+            "</span></div>" +
+            '<div class="dz-v2-liq-bar"><i class="' +
             barClass +
             '" style="width:' +
             pctLeft +
-            '%"></i></div>' +
-            '<div class="dz-liq-pct">' +
-            pctLeft +
-            "% restante</div></div>";
+            '%"></i></div></div>';
         }
 
-        var cta;
-        if (waiting) {
-          cta =
-            '<button type="button" class="dz-cta wait" disabled>' +
-            '<span class="dz-cta-label">Disponível em</span>' +
-            '<span class="dz-cta-time" data-countdown="' +
-            esc(unlockMs) +
-            '">' +
-            esc(fmtCountdown(waitMs)) +
-            "</span></button>";
-        } else if (phase === "done") {
-          cta = '<button type="button" class="dz-cta muted" disabled>Finalizado</button>';
-        } else if (phase === "live") {
-          cta = '<button type="button" class="dz-cta muted" disabled>Jogo ao vivo</button>';
-        } else if (!item.isActiveDesafio) {
-          cta = '<button type="button" class="dz-cta muted" disabled>Em breve</button>';
-        } else {
-          cta =
-            '<a class="dz-cta" href="/app-desafio-jornada.html?etapa=' +
-            encodeURIComponent(item.stepIndex || 1) +
-            (item.desafioId ? '&desafioId=' + encodeURIComponent(item.desafioId) : '') +
-            '">Iniciar desafio</a>';
+        function panelCta(kind) {
+          var cls = "dz-v2-cta " + kind;
+          if (waiting) {
+            return (
+              '<button type="button" class="' +
+              cls +
+              ' wait" disabled><span>Disponível em</span>' +
+              '<span class="dz-v2-cta-time" data-countdown="' +
+              esc(unlockMs) +
+              '">' +
+              esc(fmtCountdown(waitMs)) +
+              "</span></button>"
+            );
+          }
+          if (phase === "done") {
+            return (
+              '<button type="button" class="' +
+              cls +
+              ' is-disabled" disabled>Finalizado</button>'
+            );
+          }
+          if (phase === "live") {
+            return (
+              '<button type="button" class="' +
+              cls +
+              ' is-disabled" disabled>Jogo ao vivo</button>'
+            );
+          }
+          if (!item.isActiveDesafio) {
+            return (
+              '<button type="button" class="' +
+              cls +
+              ' is-disabled" disabled>Em breve</button>'
+            );
+          }
+          var label = kind === "arbi" ? "Iniciar desafio" : "Ver sinal casa";
+          return (
+            '<a class="' +
+            cls +
+            '" href="' +
+            esc(jornadaHref) +
+            '"><span class="ico">→</span>' +
+            label +
+            "</a>"
+          );
         }
+
+        var clockSvg =
+          '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
         return (
           '<article class="dz-card" data-card="' +
           esc(item.id) +
           '">' +
-          '<div class="dz-card-top">' +
-          badge +
-          '<span class="dz-kick">' +
+          '<div class="dz-v2-head">' +
+          '<div class="dz-v2-brand"><img src="/brand/favicon-192.png" alt="" width="22" height="22" />ArbiShield</div>' +
+          '<div class="dz-v2-etapa">Etapa ' +
+          esc(item.stepIndex || 1) +
+          "</div></div>" +
+          '<div class="dz-v2-match">' +
+          teamBlock(item.homeTeam, item.homeLogo, "is-home") +
+          '<div class="dz-v2-center"><div class="dz-v2-x">×</div>' +
+          '<div class="dz-v2-when">' +
+          clockSvg +
           esc(fmtKick(item.startsAt)) +
-          " ★</span></div>" +
-          '<div class="dz-match">' +
-          teamBlock(item.homeTeam, item.homeLogo) +
-          '<span class="dz-vs">×</span>' +
-          teamBlock(item.awayTeam, item.awayLogo) +
+          "</div></div>" +
+          teamBlock(item.awayTeam, item.awayLogo, "is-away") +
           "</div>" +
-          '<div class="dz-market">' +
+          '<div class="dz-v2-panel-market">' +
           esc(item.market) +
           "</div>" +
-          '<div class="dz-meta">' +
-          '<div><span class="l">Entrada</span><span class="v">' +
+          '<div class="dz-v2-compare">' +
+          '<div class="dz-v2-panel arbi">' +
+          '<div class="dz-v2-panel-top"><div class="dz-v2-panel-brand"><img src="/brand/favicon-192.png" alt="" width="20" height="20" />ArbiShield</div>' +
+          '<span class="dz-v2-chip arbi">Zebra</span></div>' +
+          '<div class="dz-v2-row"><span class="l">Entrada</span><span class="v">' +
           money(item.entradaCents) +
           "</span></div>" +
-          '<div><span class="l">Lucro</span><span class="v lime">+' +
+          '<div class="dz-v2-row"><span class="l">Se bater na ArbiShield</span><span class="v accent">+' +
+          money(item.profitArbiCents) +
+          "</span></div>" +
+          '<div class="dz-v2-row"><span class="l">Lucro</span><span class="v sm">+' +
           esc(item.lucroMaxPct) +
           "%</span></div>" +
-          '<div><span class="l">Etapas</span><span class="v">' +
-          esc(item.totalSteps) +
-          "</span></div></div>" +
-          '<div class="dz-legs">' +
-          '<div class="dz-leg arbi"><div class="l">Se bater na ArbiShield</div><div class="v">+' +
-          money(item.profitArbiCents) +
-          "</div></div>" +
-          '<div class="dz-leg casa"><div class="l">Se bater na Casa Externa</div><div class="v">+' +
+          panelCta("arbi") +
+          "</div>" +
+          '<div class="dz-v2-panel casa">' +
+          '<div class="dz-v2-panel-top"><div class="dz-v2-panel-brand">Casa externa</div>' +
+          '<span class="dz-v2-chip casa">Favorito</span></div>' +
+          '<div class="dz-v2-row"><span class="l">Entrada</span><span class="v">' +
+          money(item.entradaCents) +
+          "</span></div>" +
+          '<div class="dz-v2-row"><span class="l">Se bater na Casa</span><span class="v accent">+' +
           money(item.profitCasaCents) +
-          "</div></div></div>" +
-          '<div class="dz-return"><span>↗ Retorno estimado</span><strong>' +
-          money(retorno) +
-          ' <small>(+' +
-          money(lucro) +
-          ")</small></strong></div>" +
+          "</span></div>" +
+          '<div class="dz-v2-row"><span class="l">Lucro</span><span class="v sm">+' +
+          esc(item.lucroMaxPct) +
+          "%</span></div>" +
+          panelCta("casa") +
+          "</div></div>" +
           liqHtml +
-          '<div class="dz-foot">' +
-          cta +
-          "</div></article>"
+          '<div class="dz-v2-retorno">Retorno estimado ' +
+          money(retorno) +
+          " (+" +
+          money(lucro) +
+          ")</div></article>"
         );
       }
 
