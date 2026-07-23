@@ -482,16 +482,40 @@
       return "upcoming";
     }
 
+    function stepIsClosed(e) {
+      if (!e) return false;
+      const st = String(e.status || "").toLowerCase();
+      if (st === "done" || st === "settled" || st === "closed" || st === "cancelled") {
+        return true;
+      }
+      if (e.settled_at) return true;
+      const res = String(e.result || "").toLowerCase();
+      return res === "win" || res === "zebra_protected" || res === "lost";
+    }
+
     /** Desafio com todas as etapas encerradas (não deve poluir "Ativos"). */
     function isDesafioClosed(d) {
-      const s = (d && d.desafio_steps) || [];
+      if (!d) return false;
+      const dst = String(d.status || "").toLowerCase();
+      if (dst === "completed" || dst === "closed" || dst === "finished") return true;
+      const s = d.desafio_steps || [];
       if (!s.length) return false;
-      return s.every((e) => String(e.status || "").toLowerCase() === "done");
+      return s.every(stepIsClosed);
     }
 
     /** Publicado e ainda com etapa em aberto. */
     function isDesafioActiveOpen(d) {
       return Boolean(d && d.is_active) && !isDesafioClosed(d);
+    }
+
+    function desafioBadge(d) {
+      if (isDesafioClosed(d)) {
+        return { cls: "", label: "Encerrado" };
+      }
+      if (d && d.is_active) {
+        return { cls: "on", label: "Ativo · Publicado" };
+      }
+      return { cls: "", label: "Rascunho" };
     }
 
     function totals(rows) {
@@ -1060,13 +1084,7 @@
           return `<article class="card">
             <div class="card-top">
               <div class="title">${esc(d.title || "Desafio")} <span style="color:var(--muted);font-weight:700">#${String(d.number ?? "—").padStart(3, "0")}</span></div>
-              <span class="badge ${isDesafioClosed(d) ? "" : d.is_active ? "on" : ""}">${
-                isDesafioClosed(d)
-                  ? "Encerrado"
-                  : d.is_active
-                    ? "Ativo · Publicado"
-                    : "Rascunho"
-              }</span>
+              <span class="badge ${desafioBadge(d).cls}">${esc(desafioBadge(d).label)}</span>
             </div>
             <div class="steps">${esc(d.subtitle || "Complete os desafios seguidos e fature o saldo final com lucro.")}</div>
             <div class="mini-grid">
@@ -1120,6 +1138,9 @@
             const forfeits = (data.forfeits || []).filter((f) => f.forfeited);
             alert(
               "Etapa encerrada." +
+                (data.desafioDeactivated
+                  ? "\nDesafio marcado como Encerrado (sai de Ativos)."
+                  : "") +
                 (forfeits.length
                   ? `\n${forfeits.length} circuito(s) liquidados para provedores.`
                   : "")
