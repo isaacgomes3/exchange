@@ -240,7 +240,7 @@
     </div>
     <header style="margin-bottom:22px">
       <h1 id="pageTitle">Lançar Novo <span>Desafio</span></h1>
-      <p class="sub" id="pageSub">Cadastre <strong>um evento</strong>. A etapa seguinte só existe para quem falhou na casa (venceu na ArbiShield) — não se cadastra um jogo por etapa.</p>
+      <p class="sub" id="pageSub">Lance <strong>um evento</strong> com times e logos. O card é gerado automaticamente. Etapas do circuito já estão definidas e avançam sozinhas conforme o cliente.</p>
     </header>
 
     <div class="panel">
@@ -263,37 +263,12 @@
         </div>
       </div>
 
-      <div class="field-row">
-        <div class="field">
-          <label for="fNumber">Número</label>
-          <input id="fNumber" type="number" min="1" placeholder="auto" />
-        </div>
-        <div class="field">
-          <label for="fTitle">Título</label>
-          <input id="fTitle" type="text" placeholder="DESAFIO #001" />
-        </div>
-      </div>
-      <div class="field">
-        <label for="fSubtitle">Subtítulo</label>
-        <input id="fSubtitle" type="text" placeholder="Complete os desafios seguidos…" />
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label for="fBalance">Saldo inicial ArbiShield (R$)</label>
-          <input id="fBalance" type="text" inputmode="decimal" placeholder="Ex.: 200,00" />
-        </div>
-        <div class="field">
-          <label for="fCircuitMax">Máx. etapas do circuito</label>
-          <input id="fCircuitMax" type="number" min="1" max="20" value="5" />
-          <p class="field-hint">Quantas falhas seguidas na casa o cliente pode tentar (automático). Não é quantidade de jogos a cadastrar agora.</p>
-        </div>
-      </div>
       <div class="toggle-row">
         <div>
           <strong>Publicar ao salvar</strong>
           <span>Se desligado, grava como rascunho</span>
         </div>
-        <input id="fActive" type="checkbox" />
+        <input id="fActive" type="checkbox" checked />
       </div>
 
       <div class="section-head">
@@ -358,13 +333,8 @@
 
     function emptyDraft() {
       return {
-        number: "",
-        title: "DESAFIO #001",
-        subtitle: "Complete os desafios seguidos e fature todo o saldo final com lucro!",
-        initial_balance_reais: "200,00",
-        circuit_max_steps: 5,
         target_profit_pct: 5,
-        is_active: false,
+        is_active: true,
         append_to_desafio_id: null,
         steps: [emptyStep(1)],
       };
@@ -407,16 +377,9 @@
       const arbiName = step.market_name_arbishield || step.arbi_team_name || "";
       const casaName = step.market_name_casa || step.market_name || step.casa_team_name || "";
       return {
-        number: "",
-        title: data.title || "DESAFIO #001",
-        subtitle: data.subtitle || "",
-        initial_balance_reais: centsToReaisInput(
-          data.initial_balance_cents ?? step.arbi_stake_cents ?? 20000
-        ),
-        circuit_max_steps: Number(data.total_steps || data.circuit_max_steps) || 5,
         target_profit_pct: Number(data.target_profit_pct) || 5,
         append_to_desafio_id: null,
-        is_active: Boolean(data.is_active),
+        is_active: true,
         steps: [
           {
             ...emptyStep(1),
@@ -490,18 +453,10 @@
     }
     if (!draft.steps || !draft.steps.length) draft.steps = [emptyStep(1)];
     draft.steps = [draft.steps[0]];
-    if (draft.circuit_max_steps == null) draft.circuit_max_steps = 5;
     if (draft.target_profit_pct == null) draft.target_profit_pct = 5;
+    if (draft.is_active == null) draft.is_active = true;
 
     function readFormIntoDraft() {
-      draft.number = $("fNumber").value.trim();
-      draft.title = $("fTitle").value.trim();
-      draft.subtitle = $("fSubtitle").value.trim();
-      draft.initial_balance_reais = $("fBalance").value.trim();
-      draft.circuit_max_steps = Math.max(
-        1,
-        Math.min(20, Number($("fCircuitMax") && $("fCircuitMax").value) || 5)
-      );
       draft.target_profit_pct = Number($("fProfitPct") && $("fProfitPct").value) || 0;
       draft.is_active = $("fActive").checked;
       const root = document.querySelector(`[data-step-idx="0"]`);
@@ -917,19 +872,11 @@
     }
 
     function fillHeaderFields() {
-      $("fNumber").value = draft.number ?? "";
-      $("fTitle").value = draft.title || "";
-      $("fSubtitle").value = draft.subtitle || "";
-      $("fBalance").value = draft.initial_balance_reais || "";
-      if ($("fCircuitMax")) {
-        $("fCircuitMax").value = String(draft.circuit_max_steps || 5);
-        $("fCircuitMax").disabled = Boolean(draft.append_to_desafio_id);
-      }
       if ($("fProfitPct")) {
         const pct = Number(draft.target_profit_pct) || 5;
         $("fProfitPct").value = String(pct);
       }
-      $("fActive").checked = Boolean(draft.is_active);
+      $("fActive").checked = draft.is_active !== false;
     }
 
     function syncPageChrome() {
@@ -939,14 +886,22 @@
         : "Lançar Novo <span>Desafio</span>";
       $("pageSub").innerHTML = append
         ? "Este jogo será a próxima etapa do circuito para quem <strong>já falhou na casa</strong> na etapa anterior."
-        : "Cadastre <strong>um evento</strong>. A etapa seguinte só existe para quem falhou na casa (venceu na ArbiShield) — não se cadastra um jogo por etapa.";
+        : "Lance <strong>um evento</strong> com times e logos. O card é gerado automaticamente. Etapas já estão definidas e avançam sozinhas conforme o cliente.";
+    }
+
+    const DEFAULT_CIRCUIT_STEPS = 5;
+
+    function defaultEventTitle(step) {
+      const label = String(step && step.match_label || "").trim();
+      if (label) return label;
+      const home = String(step && step.home_team || "").trim();
+      const away = String(step && step.away_team || "").trim();
+      if (home && away) return home + " x " + away;
+      return "Desafio ArbiShield";
     }
 
     function buildPayload() {
       readFormIntoDraft();
-      if (!draft.title && !draft.append_to_desafio_id) {
-        throw new Error("Informe o título do desafio.");
-      }
       const profitPct = Number(draft.target_profit_pct);
       if (!Number.isFinite(profitPct) || profitPct <= 0) {
         throw new Error("Selecione o lucro líquido do evento antes de lançar.");
@@ -977,7 +932,7 @@
         throw new Error("Informe o link da casa externa.");
       }
 
-      const initialCents = reaisToCents(draft.initial_balance_reais);
+      const eventTitle = defaultEventTitle(a);
       const arbiOdd = Number(String(a.arbi_odd).replace(",", "."));
       const casaOdd = Number(String(a.casa_odd).replace(",", "."));
       const labelParts = String(a.match_label || "")
@@ -1030,13 +985,12 @@
         };
       }
 
+      // Título padrão do evento; número e saldo vêm da API / carteira Desafio
       return {
-        number: draft.number ? Number(draft.number) : undefined,
-        title: draft.title,
-        subtitle: draft.subtitle || null,
-        total_steps: Number(draft.circuit_max_steps) || 5,
+        title: eventTitle,
+        subtitle: null,
+        total_steps: DEFAULT_CIRCUIT_STEPS,
         target_profit_pct: profitPct,
-        initial_balance_cents: initialCents || 20000,
         is_active: Boolean(draft.is_active),
         status: draft.is_active ? "active" : "draft",
         auto_link_matches: true,
@@ -1083,9 +1037,7 @@
         alert(
           body.append_to_desafio_id
             ? "Próximo jogo lançado! Quem falhou na etapa anterior entra automaticamente nesta."
-            : "Desafio criado" +
-                (data.desafio && data.desafio.number != null ? " #" + data.desafio.number : "") +
-                " com 1 evento. Etapas seguintes = falha do cliente na casa."
+            : "Evento lançado. O card usa o jogo com logos; etapas avançam sozinhas conforme o cliente."
         );
         location.href = "/admin-desafios.html";
       } catch (err) {

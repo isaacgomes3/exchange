@@ -2,7 +2,7 @@
 # Hotfix: visual Desafios + lançamento 1 evento (etapa = falha do cliente)
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=8")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=9")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -52,12 +52,17 @@ chmod 0644 "$WEB/admin-desafios.html"
 grep -q 'Sugestão de Desafio' "$WEB/admin-desafios.html" && die "botão Sugestão de Desafio ainda presente"
 grep -q 'Adicionar Etapa' "$WEB/admin-desafios.html" && die "botão Adicionar Etapa ainda presente"
 grep -q 'admin-desafio-lancar.html' "$WEB/admin-desafios.html" || die "admin sem link para página de lançamento"
+grep -q 'Saldo inicial' "$WEB/admin-desafios.html" && die "admin ainda mostra Saldo inicial (saldo é da carteira Desafio)"
 
-log "admin-desafio-lancar.html (página dedicada)"
+log "admin-desafio-lancar.html (página dedicada — sem número/título/saldo/etapas manuais)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-desafio-lancar.html" -o "$WEB/admin-desafio-lancar.html"
 chmod 0644 "$WEB/admin-desafio-lancar.html"
-grep -q 'fCircuitMax' "$WEB/admin-desafio-lancar.html" || die "página de lançamento sem Máx. etapas"
+if grep -Eq 'fCircuitMax|id="fNumber"|id="fTitle"|id="fSubtitle"|id="fBalance"|Saldo inicial ArbiShield|Máx\. etapas' "$WEB/admin-desafio-lancar.html"; then
+  die "página de lançamento ainda tem campos manuais removidos"
+fi
 grep -q 'Adicionar Etapa' "$WEB/admin-desafio-lancar.html" && die "página de lançamento ainda tem Adicionar Etapa"
+grep -q 'defaultEventTitle' "$WEB/admin-desafio-lancar.html" || die "página sem título automático do evento"
+grep -q 'DEFAULT_CIRCUIT_STEPS' "$WEB/admin-desafio-lancar.html" || die "página sem etapas padrão do circuito"
 grep -q 'casaSuggest' "$WEB/admin-desafio-lancar.html" || die "página sem busca na Entrada Casa Externa"
 grep -q 'arbiSuggest' "$WEB/admin-desafio-lancar.html" || die "página sem busca na Entrada ArbiShield"
 grep -q 'fProfitPct' "$WEB/admin-desafio-lancar.html" || die "página sem lucro líquido do evento"
@@ -78,10 +83,7 @@ if [[ -f /opt/arbishield/arbishield-prelive-events.mjs ]] || [[ -f "${ARBISHIELD
   curl -fsSL "$RAW/scripts/arbishield-prelive-events.mjs" -o "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
   chmod 0755 "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
   grep -q 'appendDesafioGame' "$SCRIPTS_DIR/arbishield-prelive-events.mjs" || die "prelive sem appendDesafioGame"
-  systemctl restart arbishield-prelive-events.service 2>/dev/null || true
 fi
 
-echo
-echo "OK — Lançar Desafio = 1 evento; etapa 2+ = falha do cliente na casa"
-echo "  https://arbishield.app/app-desafio.html  (Ctrl+F5)"
-echo "  https://arbishield.app/admin-desafios.html  (Ctrl+F5)"
+log "OK — hotfix desafio visual aplicado (v9: form sem número/título/saldo/etapas manuais)"
+echo "Reinicie o serviço prelive se o script foi atualizado, e faça Ctrl+F5 no browser."

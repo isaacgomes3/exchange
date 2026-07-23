@@ -258,12 +258,8 @@
 
     function emptyDraft() {
       return {
-        number: "",
-        title: "DESAFIO #001",
-        subtitle: "Complete os desafios seguidos e fature todo o saldo final com lucro!",
-        initial_balance_reais: "200,00",
-        circuit_max_steps: 5,
-        is_active: false,
+        target_profit_pct: 5,
+        is_active: true,
         append_to_desafio_id: null,
         steps: [emptyStep(1)],
       };
@@ -345,15 +341,9 @@
       const arbiName = step.market_name_arbishield || step.arbi_team_name || "";
       const casaName = step.market_name_casa || step.market_name || step.casa_team_name || "";
       return {
-        number: "",
-        title: data.title || "DESAFIO #001",
-        subtitle: data.subtitle || "",
-        initial_balance_reais: centsToReaisInput(
-          data.initial_balance_cents ?? step.arbi_stake_cents ?? 20000
-        ),
-        circuit_max_steps: Number(data.total_steps || data.circuit_max_steps) || 5,
+        target_profit_pct: Number(data.target_profit_pct) || 5,
         append_to_desafio_id: null,
-        is_active: Boolean(data.is_active),
+        is_active: data.is_active !== false,
         steps: [
           {
             ...emptyStep(1),
@@ -477,17 +467,17 @@
             Boolean(d.is_active) && !d.deleted_at && steps.length < circuitMax;
           return `<article class="card">
             <div class="card-top">
-              <div class="title">${esc(d.title || "Desafio")} <span style="color:var(--muted);font-weight:700">#${String(d.number ?? "—").padStart(3, "0")}</span></div>
+              <div class="title">${esc((steps[0] && (steps[0].match_label || [steps[0].home_team, steps[0].away_team].filter(Boolean).join(" x "))) || d.title || "Desafio")}</div>
               <span class="badge ${d.is_active ? "on" : ""}">${d.is_active ? "Ativo · Publicado" : "Rascunho"}</span>
             </div>
-            <div class="steps">${esc(d.subtitle || "Complete os desafios seguidos e fature o saldo final com lucro.")}</div>
+            <div class="steps">${esc(d.subtitle || "Saldo na carteira Desafio · etapas avançam por cliente")}</div>
             <div class="mini-grid">
               <div class="mini"><div class="l">Jogos lançados</div><div class="v">${steps.length}</div></div>
               <div class="mini"><div class="l">Circuito até</div><div class="v">${circuitMax}</div></div>
               <div class="mini"><div class="l">Agendadas</div><div class="v">${upcoming}</div></div>
               <div class="mini"><div class="l">Ao Vivo</div><div class="v ${live ? "lime" : ""}">${live}</div></div>
               <div class="mini"><div class="l">Pendente</div><div class="v">${pending}</div></div>
-              <div class="mini"><div class="l">Saldo inicial</div><div class="v lime">${money(d.initial_balance_cents)}</div></div>
+              <div class="mini"><div class="l">Lucro líquido</div><div class="v lime">${Number(d.target_profit_pct) || 5}%</div></div>
             </div>
             ${stepBlocks || '<div class="steps">Sem jogos</div>'}
             <div class="card-actions">
@@ -509,10 +499,7 @@
           if (!d) return;
           goLaunch({
             ...emptyDraft(),
-            title: d.title || "DESAFIO",
-            subtitle: d.subtitle || "",
-            initial_balance_reais: centsToReaisInput(d.initial_balance_cents),
-            circuit_max_steps: Number(d.total_steps) || 5,
+            target_profit_pct: Number(d.target_profit_pct) || 5,
             is_active: true,
             append_to_desafio_id: d.id,
             steps: [emptyStep(1)],
@@ -574,13 +561,9 @@
           const s = first || {};
           goLaunch({
             ...emptyDraft(),
-            number: "",
-            title: (row.title || "DESAFIO") + " (cópia)",
-            subtitle: row.subtitle || "",
-            initial_balance_reais: centsToReaisInput(row.initial_balance_cents || 20000),
-            circuit_max_steps: Number(row.total_steps) || 5,
+            target_profit_pct: Number(row.target_profit_pct) || 5,
             append_to_desafio_id: null,
-            is_active: false,
+            is_active: true,
             steps: [
               {
                 ...emptyStep(1),
@@ -693,15 +676,13 @@
       }
       const step = (data.steps && data.steps[0]) || data.step || {};
       const rows = [
-        ["Título", data.title],
-        ["Subtítulo", data.subtitle],
         ["Partida", step.match_label || [step.home_team, step.away_team].filter(Boolean).join(" x ")],
         ["Mercado casa", step.market_name_casa || step.market_name],
         ["Odd casa", step.casa_odd],
         ["Mercado Arbi", step.market_name_arbishield],
         ["Odd Arbi", step.arbi_odd],
         ["Stake casa", money(step.casa_stake_cents)],
-        ["Stake Arbi", money(data.initial_balance_cents ?? step.arbi_stake_cents)],
+        ["Lucro líquido", (data.target_profit_pct != null ? data.target_profit_pct + "%" : "")],
         ["Liquidez", money(step.liquidity_cents)],
         ["Início", step.starts_at],
       ];
