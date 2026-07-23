@@ -3629,10 +3629,11 @@ body.dep-open { overflow: hidden; }
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
   margin: 0 0 18px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid #c9f223;
   border-radius: 14px;
-  background: #0b231e;
+  background: #000;
   overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(201, 242, 35, 0.12);
 }
 .dz-wallet-cell {
   display: flex;
@@ -3640,8 +3641,9 @@ body.dep-open { overflow: hidden; }
   gap: 12px;
   padding: 18px 16px;
   min-width: 0;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid rgba(201, 242, 35, 0.35);
   position: relative;
+  background: #000;
 }
 .dz-wallet-cell:last-child { border-right: 0; }
 .dz-wallet-ico {
@@ -3651,18 +3653,19 @@ body.dep-open { overflow: hidden; }
   border-radius: 10px;
   display: grid;
   place-items: center;
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.8);
+  background: rgba(201, 242, 35, 0.08);
+  border: 1px solid rgba(201, 242, 35, 0.35);
+  color: #c9f223;
   font-size: 16px;
   font-weight: 900;
 }
-.dz-wallet-ico.lime { color: #c6ff00; }
+.dz-wallet-ico.lime { color: #c9f223; }
 .dz-wallet-l {
   font-size: 10px;
   font-weight: 900;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.55);
 }
 .dz-wallet-v {
   margin-top: 6px;
@@ -3672,12 +3675,18 @@ body.dep-open { overflow: hidden; }
   color: #fff;
   line-height: 1.1;
 }
-.dz-wallet-v.sm { font-size: 1.05rem; margin-top: 8px; }
-.dz-wallet-v.lime { color: #c6ff00; }
+.dz-wallet-v.sm {
+  font-size: 1.05rem;
+  margin-top: 8px;
+  font-weight: 900;
+  color: #fff;
+}
+.dz-wallet-v.lime { color: #c9f223; font-weight: 900; }
 .dz-wallet-hint {
   margin: 6px 0 0;
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.45);
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.5);
   line-height: 1.35;
 }
 .dz-wallet-deposit {
@@ -3687,7 +3696,7 @@ body.dep-open { overflow: hidden; }
   border: 0;
   border-radius: 10px;
   padding: 10px 12px;
-  background: #c6ff00;
+  background: #c9f223;
   color: #000;
   font-size: 9px;
   font-weight: 900;
@@ -3708,15 +3717,15 @@ body.dep-open { overflow: hidden; }
   height: 10px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(201, 242, 35, 0.35);
 }
 .dz-wallet-steps span.done {
-  background: #c6ff00;
-  border-color: #c6ff00;
+  background: #c9f223;
+  border-color: #c9f223;
 }
 .dz-wallet-steps span.current {
   background: rgba(201, 242, 35, 0.25);
-  border-color: #c6ff00;
+  border-color: #c9f223;
   box-shadow: 0 0 0 3px rgba(201, 242, 35, 0.12);
 }
 .dz-wallet-steps span.lost {
@@ -3867,7 +3876,7 @@ body.dep-open { overflow: hidden; }
   .dz-wallet-bar { grid-template-columns: 1fr; }
   .dz-wallet-cell {
     border-right: 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid rgba(201, 242, 35, 0.35);
   }
   .dz-wallet-cell:last-child { border-bottom: 0; }
   .dz-wallet-deposit { margin-left: 0; }
