@@ -448,15 +448,217 @@ async function upsertDesafio(token, body) {
 }
 
 async function deleteDesafio(token, body) {
-  const auth = token || SERVICE_KEY;
-  const id = body?.id;
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const id = String(body?.id || body?.desafioId || body?.desafio_id || "").trim();
   if (!id) throw new Error("id obrigatório");
+
+  const pending = await listPendingDesafioParticipations(id);
+  if (pending.length > 0) {
+    const err = new Error(
+      `Há ${pending.length} cliente(s) com entrada ativa. Use Cancelar para devolver o saldo à carteira Desafio.`
+    );
+    err.status = 409;
+    throw err;
+  }
+
   await sb(`/rest/v1/desafios?id=eq.${encodeURIComponent(id)}`, {
     method: "PATCH",
-    token: auth,
-    body: { deleted_at: new Date().toISOString() },
+    token: SERVICE_KEY,
+    body: {
+      deleted_at: new Date().toISOString(),
+      is_active: false,
+      status: "deleted",
+      updated_at: new Date().toISOString(),
+    },
   });
-  return { ok: true };
+  return { ok: true, deleted: true, id };
+}
+
+async function listPendingDesafioParticipations(desafioId) {
+  const rows = await sb(
+    `/rest/v1/desafio_participations?select=id,user_id,step_id,desafio_id,amount_cents,result,side&desafio_id=eq.${encodeURIComponent(desafioId)}&or=(result.eq.pending,result.is.null)&limit=2000`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  return (Array.isArray(rows) ? rows : []).filter((p) => {
+    const r = String(p.result || "pending").toLowerCase();
+    return r === "pending" || r === "" || r === "null";
+  });
+}
+
+async function cancelDesafio(token, body) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const id = String(body?.id || body?.desafioId || body?.desafio_id || "").trim();
+  if (!id) throw new Error("id obrigatório");
+
+  const desafioRows = await sb(
+    `/rest/v1/desafios?select=id,title,status,is_active,deleted_at&id=eq.${encodeURIComponent(id)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const desafio = Array.isArray(desafioRows) ? desafioRows[0] : null;
+  if (!desafio?.id) {
+    const err = new Error("Desafio não encontrado");
+    err.status = 404;
+    throw err;
+  }
+  if (desafio.deleted_at) {
+    throw new Error("Desafio já excluído");
+  }
+  if (String(desafio.status) === "cancelled") {
+    throw new Error("Desafio já cancelado");
+  }
+
+  const pending = await listPendingDesafioParticipations(id);
+  if (!pending.length) {
+    const err = new Error(
+      "Nenhum cliente ativo neste desafio. Use Excluir."
+    );
+    err.status = 409;
+    throw err;
+  }
+
+  let refundedCents = 0;
+  let refundedCount = 0;
+  const stepDelta = new Map();
+
+  for (const p of pending) {
+    const amount = Math.max(0, n(p.amount_cents));
+    const userId = String(p.user_id || "").trim();
+    if (!userId || !(amount > 0)) {
+      await sb(
+        `/rest/v1/desafio_participations?id=eq.${encodeURIComponent(p.id)}`,
+        {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: {
+            result: "cancelled",
+            profit_cents: 0,
+            updated_at: new Date().toISOString(),
+          },
+        }
+      ).catch(() => null);
+      continue;
+    }
+
+    const prof = await sb(
+      `/rest/v1/profiles?select=desafio_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    const profile = Array.isArray(prof) ? prof[0] : null;
+    const bal = n(profile?.desafio_balance_cents);
+
+    await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        desafio_balance_cents: bal + amount,
+        updated_at: new Date().toISOString(),
+      },
+    });
+
+    await sb(
+      `/rest/v1/desafio_participations?id=eq.${encodeURIComponent(p.id)}`,
+      {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          result: "cancelled",
+          profit_cents: 0,
+          updated_at: new Date().toISOString(),
+        },
+      }
+    );
+
+    try {
+      await sb("/rest/v1/wallet_transactions", {
+        method: "POST",
+        token: SERVICE_KEY,
+        body: {
+          user_id: userId,
+          type: "desafio_cancel_refund",
+          amount_cents: amount,
+          meta: {
+            desafio_id: id,
+            participation_id: p.id,
+            step_id: p.step_id || null,
+          },
+        },
+      });
+    } catch {
+      /* extrato opcional */
+    }
+
+    if (p.step_id) {
+      stepDelta.set(p.step_id, (stepDelta.get(p.step_id) || 0) + amount);
+    }
+    refundedCents += amount;
+    refundedCount += 1;
+  }
+
+  for (const [stepId, delta] of stepDelta.entries()) {
+    try {
+      const stepRows = await sb(
+        `/rest/v1/desafio_steps?select=id,used_liquidity_cents&id=eq.${encodeURIComponent(stepId)}&limit=1`,
+        { token: SERVICE_KEY }
+      );
+      const step = Array.isArray(stepRows) ? stepRows[0] : null;
+      if (!step) continue;
+      await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          used_liquidity_cents: Math.max(0, n(step.used_liquidity_cents) - delta),
+          updated_at: new Date().toISOString(),
+        },
+      });
+    } catch {
+      /* */
+    }
+  }
+
+  await sb(`/rest/v1/desafios?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: {
+      status: "cancelled",
+      is_active: false,
+      updated_at: new Date().toISOString(),
+    },
+  });
+
+  return {
+    ok: true,
+    cancelled: true,
+    id,
+    refundedCount,
+    refundedCents,
+  };
+}
+
+async function listDesafioPendingCounts(token, body) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const ids = Array.isArray(body?.desafioIds || body?.ids)
+    ? (body.desafioIds || body.ids).map((x) => String(x).trim()).filter(Boolean)
+    : [];
+  const counts = {};
+  if (!ids.length) return { counts };
+  for (const id of ids) counts[id] = 0;
+
+  // PostgREST in.() — lotes de 80
+  for (let i = 0; i < ids.length; i += 80) {
+    const chunk = ids.slice(i, i + 80);
+    const inList = chunk.map((id) => encodeURIComponent(id)).join(",");
+    const rows = await sb(
+      `/rest/v1/desafio_participations?select=desafio_id,result&desafio_id=in.(${chunk.join(",")})&or=(result.eq.pending,result.is.null)&limit=5000`,
+      { token: SERVICE_KEY }
+    ).catch(() => []);
+    for (const p of Array.isArray(rows) ? rows : []) {
+      const did = String(p.desafio_id || "");
+      if (!did || !(did in counts)) continue;
+      const r = String(p.result || "pending").toLowerCase();
+      if (r === "pending" || r === "" || r === "null") counts[did] += 1;
+    }
+  }
+  return { counts };
 }
 
 function extractServerFnData(rawBody) {
@@ -2954,6 +3156,69 @@ const server = createServer(async (req, res) => {
         body = {};
       }
       return sendJson(res, 200, await settleDesafioStep(token, body.data || body));
+    } catch (err) {
+      return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/desafio-delete" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      return sendJson(res, 200, await deleteDesafio(token, body.data || body));
+    } catch (err) {
+      const status = Number(err && err.status) || 400;
+      return sendJson(res, status, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/desafio-cancel" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      return sendJson(res, 200, await cancelDesafio(token, body.data || body));
+    } catch (err) {
+      const status = Number(err && err.status) || 400;
+      return sendJson(res, status, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (
+    url.pathname === "/api/arbishield/desafio-pending-counts" &&
+    req.method === "POST"
+  ) {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      return sendJson(
+        res,
+        200,
+        await listDesafioPendingCounts(token, body.data || body)
+      );
     } catch (err) {
       return sendJson(res, 400, {
         error: err instanceof Error ? err.message : String(err),
