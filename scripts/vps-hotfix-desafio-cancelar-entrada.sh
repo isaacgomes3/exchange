@@ -5,7 +5,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-desafio-cancelar-entrada.sh")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-PLACEHOLDER_SHA}"
+REF="${ARBISHIELD_REF:-d9ec82f}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
