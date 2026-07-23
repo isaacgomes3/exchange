@@ -3847,21 +3847,79 @@ body.dep-open { overflow: hidden; }
   margin-left: auto;
 }
 .dz-access-deposit {
+  --dz-orange: #ff6a00;
+  --dz-orange-deep: #e25500;
   appearance: none;
+  position: relative;
+  isolation: isolate;
   border: 0;
   cursor: pointer;
+  padding: 2px;
+  border-radius: 12px;
+  background: transparent;
+  color: #fff;
+  box-shadow:
+    0 10px 28px rgba(255, 106, 0, 0.55),
+    0 2px 0 rgba(255, 180, 80, 0.35) inset;
+}
+.dz-access-deposit::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 210deg,
+    rgba(255, 210, 140, 0.15) 230deg,
+    #ffe7c2 250deg,
+    #ffffff 265deg,
+    #ffb347 280deg,
+    rgba(255, 106, 0, 0.35) 300deg,
+    transparent 320deg 360deg
+  );
+  animation: dz-deposit-orbit 2.2s linear infinite;
+  z-index: 0;
+}
+.dz-access-deposit::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
   border-radius: 10px;
-  padding: 11px 18px;
+  background: linear-gradient(180deg, #ff7a1a 0%, var(--dz-orange) 48%, var(--dz-orange-deep) 100%);
+  z-index: 1;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+}
+.dz-access-deposit-label {
+  position: relative;
+  z-index: 2;
+  display: block;
+  padding: 11px 20px;
   font-size: 13px;
   font-weight: 900;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #1a0a00;
-  background: linear-gradient(180deg, #ff9a3c, #f97316);
-  box-shadow: 0 8px 20px rgba(249, 115, 22, 0.28);
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
 }
 .dz-access-deposit:hover {
-  filter: brightness(1.06);
+  filter: brightness(1.05);
+  box-shadow:
+    0 14px 34px rgba(255, 106, 0, 0.65),
+    0 2px 0 rgba(255, 180, 80, 0.4) inset;
+}
+.dz-access-deposit:hover::before {
+  animation-duration: 1.35s;
+}
+@keyframes dz-deposit-orbit {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dz-access-deposit::before {
+    animation: none;
+    background: linear-gradient(135deg, #ffb347, #ff6a00, #ffe7c2);
+  }
 }
 @media (max-width: 720px) {
   .dz-access-actions {
@@ -3870,6 +3928,9 @@ body.dep-open { overflow: hidden; }
   }
   .dz-access-deposit {
     width: 100%;
+  }
+  .dz-access-deposit-label {
+    text-align: center;
   }
   .dz-access-hint {
     border-radius: 12px;
