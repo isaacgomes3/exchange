@@ -105,25 +105,34 @@
       overflow: hidden;
     }
     .card-top {
-      display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-      align-items: center;
+      display: flex; justify-content: space-between; gap: 12px; flex-wrap: nowrap;
+      align-items: flex-start;
       padding: 14px 16px;
       cursor: pointer;
       user-select: none;
     }
     .card-top:hover { background: rgba(255,255,255,0.03); }
     .card-top .title-wrap { min-width: 0; flex: 1; }
-    .card-top .league {
-      font-size: 10px; font-weight: 800; letter-spacing: 0.12em;
-      text-transform: uppercase; color: var(--muted);
+    /* Linha fechada = mesmo padrão do evento em Gestão de Jogos (proteção). */
+    .card-top .teams {
+      font-weight: 800; font-size: 17px; line-height: 1.25;
+      letter-spacing: -0.02em;
     }
-    .card-top .title {
-      margin-top: 4px;
-      font-weight: 900; font-size: 1.05rem; letter-spacing: -0.02em;
+    .card-top .teams .num {
+      color: var(--muted); font-weight: 700; font-size: 0.85em;
     }
-    .card-top .row-meta {
-      margin-top: 6px; font-size: 11px; color: var(--muted);
-      display: flex; flex-wrap: wrap; gap: 8px;
+    .card-top .meta {
+      margin: 4px 0 0; color: var(--muted); font-size: 12px; font-weight: 600;
+    }
+    .card-top .entries {
+      margin-top: 4px; font-size: 12px; color: var(--muted); font-weight: 600;
+    }
+    .card-top .side {
+      text-align: right; white-space: nowrap; flex-shrink: 0;
+      display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+    }
+    .card-top .when {
+      font-size: 11px; font-weight: 700; color: var(--muted);
     }
     .card-top .chev {
       flex-shrink: 0;
@@ -132,8 +141,13 @@
       display: inline-flex; align-items: center; justify-content: center;
       color: var(--muted); font-size: 12px; font-weight: 900;
       transition: transform 0.15s ease;
+      margin-top: 2px;
     }
     .card.is-open .card-top .chev { transform: rotate(180deg); color: var(--lime); border-color: rgba(201,242,35,0.35); }
+    @media (max-width: 640px) {
+      .card-top { flex-wrap: wrap; }
+      .card-top .side { width: 100%; flex-direction: row; justify-content: space-between; align-items: center; }
+    }
     .card-body {
       display: none;
       padding: 0 16px 16px;
@@ -1134,19 +1148,17 @@
             : "Horário a definir";
           const open = String(window.__desafioOpenId || "") === String(d.id);
           const badge = desafioBadge(d);
+          const teamsLabel = String(matchLabel || "Desafio").replace(/\s+x\s+/i, " vs ");
           return `<article class="card${open ? " is-open" : ""}" data-desafio-id="${esc(d.id)}">
             <div class="card-top" data-toggle-desafio="${esc(d.id)}" role="button" tabindex="0" aria-expanded="${open ? "true" : "false"}">
               <div class="title-wrap">
-                <div class="league">${esc(league)}</div>
-                <div class="title">${esc(matchLabel)} <span style="color:var(--muted);font-weight:700">#${String(d.number ?? "—").padStart(3, "0")}</span></div>
-                <div class="row-meta">
-                  <span>${esc(whenHint)}</span>
-                  <span>${steps.length} etapa(s)</span>
-                  <span>Saldo ${money(d.initial_balance_cents)}</span>
-                </div>
+                <div class="teams">${esc(teamsLabel)} <span class="num">#${String(d.number ?? "—").padStart(3, "0")}</span></div>
+                <div class="meta">${esc(league)}</div>
+                <div class="entries">${steps.length} etapa(s) · saldo ${money(d.initial_balance_cents)}</div>
               </div>
-              <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+              <div class="side">
                 <span class="badge ${badge.cls}">${esc(badge.label)}</span>
+                <div class="when">${esc(whenHint)}</div>
                 <span class="chev" aria-hidden="true">▼</span>
               </div>
             </div>

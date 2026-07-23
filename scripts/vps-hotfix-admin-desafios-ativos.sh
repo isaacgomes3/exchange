@@ -5,7 +5,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-admin-desafios-ativos.sh")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-5447ddc}"
+REF="df153562d521e9309b77b1cd1f5ebb27b51ab62a"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
@@ -22,7 +22,7 @@ dl() {
   curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 "$RAW/$1?v=$BUST" -o "$2"
 }
 
-log "1/2 UI — Ativos + badge Encerrado após Bateu"
+log "1/2 UI — lista compacta (só o jogo) + Ativos + Encerrado"
 dl "deploy/vps-supabase/static/v2/admin-desafios.html" "$WEB/admin-desafios.html"
 chmod 0644 "$WEB/admin-desafios.html"
 cp -f "$WEB/admin-desafios.html" "$WEB_ROOT/admin-desafios.html" 2>/dev/null || true
