@@ -2,10 +2,10 @@
 # Cria 1 desafio de teste publicado (Flamengo x Palmeiras) para ver o card no app.
 #
 # Na VPS:
-#   ENV_FILE=/opt/arbishield/deploy/vps-supabase/.env bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-seed-desafio-teste.sh?v=1")
+#   ENV_FILE=/opt/arbishield/deploy/vps-supabase/.env bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-seed-desafio-teste.sh?v=2")
 set -euo pipefail
 
-echo "==> seed-desafio-teste v1"
+echo "==> seed-desafio-teste v2"
 ENV_FILE="${ENV_FILE:-/opt/arbishield/deploy/vps-supabase/.env}"
 [[ -f "$ENV_FILE" ]] || { echo "ERRO: sem $ENV_FILE"; exit 1; }
 
@@ -72,16 +72,42 @@ def req(method, path, body=None):
     except urllib.error.HTTPError as e:
         raise SystemExit(f"HTTP {e.code} {path}: {e.read().decode()}") from e
 
+# Logos públicos TheSportsDB (Flamengo / Palmeiras) — badges atuais
+home_logo = "https://r2.thesportsdb.com/images/media/team/badge/syptwx1473538074.png"
+away_logo = "https://r2.thesportsdb.com/images/media/team/badge/vsqwqp1473538105.png"
+
+# Se já existe Flamengo x Palmeiras ativo, só corrige as logos
+existing = req(
+    "GET",
+    "/rest/v1/desafios?select=id,desafio_steps(id)&title=eq.Flamengo x Palmeiras&deleted_at=is.null&is_active=eq.true&limit=1",
+) or []
+if existing:
+    did = existing[0]["id"]
+    steps = existing[0].get("desafio_steps") or []
+    print(f"==> já existe ativo: {did} — atualizando logos")
+    if steps:
+        sid = steps[0]["id"]
+        req(
+            "PATCH",
+            f"/rest/v1/desafio_steps?id=eq.{sid}",
+            {
+                "home_logo_url": home_logo,
+                "away_logo_url": away_logo,
+                "home_team": "Flamengo",
+                "away_team": "Palmeiras",
+                "match_label": "Flamengo x Palmeiras",
+            },
+        )
+        print(f"==> logos atualizadas no jogo {sid}")
+    print("OK — Ctrl+F5 em /app-desafio.html")
+    raise SystemExit(0)
+
 # Próximo número
 rows = req("GET", "/rest/v1/desafios?select=number&order=number.desc&limit=1") or []
 nxt = (int(rows[0]["number"]) + 1) if rows and rows[0].get("number") is not None else 1
 
 kickoff = (datetime.now(timezone.utc) + timedelta(hours=3)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-# Logos públicos TheSportsDB (Flamengo / Palmeiras)
-home_logo = "https://r2.thesportsdb.com/images/media/team/badge/9r2f5j1546000274.png"
-away_logo = "https://r2.thesportsdb.com/images/media/team/badge/vxyvxv1473504268.png"
 
 casa_odd = 1.85
 profit_pct = 10

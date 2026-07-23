@@ -2,7 +2,7 @@
 # Hotfix: visual Desafios + lançamento 1 evento (etapa = falha do cliente)
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=14")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=15")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -26,6 +26,8 @@ grep -q 'Maior retorno' "$WEB/app-desafio.html" || die "HTML sem Maior retorno"
 grep -q 'resolveTeamLogo' "$WEB/app-desafio.html" || die "HTML sem resolveTeamLogo"
 grep -q 'searchFootballTeams' "$WEB/app-desafio.html" || die "HTML sem searchFootballTeams"
 grep -q 'personalProgress' "$WEB/app-desafio.html" || die "HTML sem personalProgress (etapa = falha do cliente)"
+# enrichLogos deve sobrescrever URL quebrada com TheSportsDB
+grep -q 'Sempre tenta TheSportsDB' "$WEB/app-desafio.html" || die "app-desafio sem enrichLogos reforçado"
 
 log "v2.js (busca de times + fallback TheSportsDB)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/v2.js" -o "$WEB/v2.js"
@@ -253,5 +255,5 @@ echo "  resposta: $SMOKE"
 echo "$SMOKE" | grep -q 'not_found' && die "shim ainda responde not_found — serviço não reiniciou com o arquivo novo"
 echo "$SMOKE" | grep -Eqi 'Acesso negado|id obrigatório|ok' || die "resposta inesperada do shim: $SMOKE"
 
-log "OK — hotfix desafio visual aplicado (v14: rotas Excluir/Cancelar no nginx+shim)"
-echo "Faça Ctrl+F5 no admin de Desafios e tente Excluir de novo."
+log "OK — hotfix desafio visual aplicado (v15: logos no card via TheSportsDB)"
+echo "Faça Ctrl+F5 no app Desafio. Se o teste ainda tiver URL 404, rode o seed v2."

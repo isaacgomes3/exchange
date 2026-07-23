@@ -551,8 +551,11 @@
       async function enrichLogos(list) {
         await Promise.all(
           list.map(async function (item) {
-            if (!item.homeLogo) item.homeLogo = await resolveTeamLogo(item.homeTeam);
-            if (!item.awayLogo) item.awayLogo = await resolveTeamLogo(item.awayTeam);
+            // Sempre tenta TheSportsDB/API — sobrescreve URL quebrada do cadastro
+            var resolvedHome = await resolveTeamLogo(item.homeTeam);
+            var resolvedAway = await resolveTeamLogo(item.awayTeam);
+            if (resolvedHome) item.homeLogo = resolvedHome;
+            if (resolvedAway) item.awayLogo = resolvedAway;
           })
         );
       }
