@@ -118,14 +118,6 @@
     </div>
   </section>
 
-  <div class="dz-filters" id="filters" role="tablist">
-    <button type="button" class="dz-filter is-on" data-f="Todos">Todos</button>
-    <button type="button" class="dz-filter" data-f="Futebol">Futebol</button>
-    <button type="button" class="dz-filter" data-f="Hoje">Hoje</button>
-    <button type="button" class="dz-filter" data-f="Amanhã">Amanhã</button>
-    <button type="button" class="dz-filter" data-f="Alta">Alta</button>
-  </div>
-
   <div class="section-label"><span class="dot" style="background:#c6ff00"></span>Desafios disponíveis</div>
   <p class="app-desafio-lead">Cada desafio nasce com um evento. A “etapa 2” não é cadastrada no lançamento — ela abre automaticamente para quem falhou na casa na etapa anterior. Objetivo: bater na casa; se só vencer na ArbiShield até o fim do circuito, o acumulado vai aos provedores.</p>
   <div id="list" class="app-desafio-grid"><div class="ops-empty">Carregando…</div></div>
@@ -166,7 +158,6 @@
       var user = await ArbiV2.requireUser(supa);
       if (!user) return;
 
-      var filter = "Todos";
       var items = [];
       var tickTimer = null;
       var waitingNextGame = false;
@@ -965,24 +956,9 @@
         );
       }
 
-      function applyFilter(list) {
-        var now = new Date();
-        var tomorrow = new Date(now);
-        tomorrow.setDate(now.getDate() + 1);
-        return list.filter(function (it) {
-          if (filter === "Todos" || filter === "Futebol") return true;
-          if (!it.startsAtMs) return filter !== "Hoje" && filter !== "Amanhã";
-          var d = new Date(it.startsAtMs);
-          if (filter === "Hoje") return d.toDateString() === now.toDateString();
-          if (filter === "Amanhã") return d.toDateString() === tomorrow.toDateString();
-          if (filter === "Alta") return Number(it.lucroMaxPct) >= 15;
-          return true;
-        });
-      }
-
       function render() {
         var now = Date.now();
-        var visible = applyFilter(items);
+        var visible = items;
         var host = document.getElementById("list");
         if (!visible.length) {
           host.innerHTML = waitingNextGame
@@ -1117,17 +1093,6 @@
           el.textContent = fmtCountdown(left);
         });
       }
-
-      document.querySelectorAll(".dz-filter").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          document.querySelectorAll(".dz-filter").forEach(function (b) {
-            b.classList.remove("is-on");
-          });
-          btn.classList.add("is-on");
-          filter = btn.getAttribute("data-f") || "Todos";
-          render();
-        });
-      });
 
       function paintDesafioBanner(imageUrl, title, ctaUrl, useBrandWebp) {
         var host = document.getElementById("desafioBanner");
