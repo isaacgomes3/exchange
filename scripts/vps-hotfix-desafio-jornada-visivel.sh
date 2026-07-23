@@ -50,6 +50,8 @@ grep -q 'j-map\|Mapa do desafio\|aria-label="Mapa do desafio"' \
   "$WEB/app-desafio-jornada.html" \
   || die "app-desafio-jornada.html sem mapa de jornada"
 grep -q 'fActive' "$WEB/admin-desafios.html" || die "admin-desafios ausente"
+grep -q 'async function load()' "$WEB/admin-desafios.html" || die "admin-desafios sem load()"
+! grep -q 'is_active: true,\s*$("list")' "$WEB/admin-desafios.html" || die "admin-desafios ainda com JS corrompido"
 ! grep -qi 'Abrir painel de sinais' "$WEB/app-desafio.html" || die "lista ainda tem botão de sinais"
 ! grep -qi 'Abrir painel de sinais' "$WEB/app-desafio-jornada.html" || die "jornada ainda tem botão de sinais"
 grep -qi 'Iniciar desafio' "$WEB/app-desafio.html" || die "lista sem CTA Iniciar desafio → jornada"
