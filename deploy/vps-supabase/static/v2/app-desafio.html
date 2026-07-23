@@ -622,6 +622,278 @@
           .replace(/"/g, "&quot;");
       }
 
+
+      function whenLabelFrom(startsAt) {
+        if (!startsAt) return "A definir";
+        var d = new Date(startsAt);
+        if (isNaN(d.getTime())) return "A definir";
+        var now = new Date();
+        var tomorrow = new Date(now);
+        tomorrow.setDate(now.getDate() + 1);
+        var time = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+        if (d.toDateString() === now.toDateString()) return "Hoje " + time;
+        if (d.toDateString() === tomorrow.toDateString()) return "Amanhã " + time;
+        return (
+          d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) +
+          " " +
+          time
+        );
+      }
+
+      function payoutCents(stake, odd) {
+        var s = Math.max(0, Math.round(Number(stake) || 0));
+        var o = Number(odd);
+        if (!(s > 0) || !(o > 1)) return s;
+        return Math.round(s * o);
+      }
+
+      /** Monta a jornada a partir do desafio lançado manualmente no admin (sem API jornada). */
+      function buildJourneyFromManual(desafio, parts, bal) {
+        if (!desafio) {
+          return { ok: true, empty: true, stages: [], recovery: [], progress: null };
+        }
+        var steps = (desafio.desafio_steps || [])
+          .slice()
+          .sort(function (a, b) {
+            return (Number(a.step_index) || 0) - (Number(b.step_index) || 0);
+          });
+        var maxEntries = Math.min(
+          5,
+          Math.max(steps.length || 1, Number(desafio.total_steps) || steps.length || 5)
+        );
+        // Se admin lançou só 1 etapa, ainda mostramos até 5 slots no mapa
+        if (maxEntries < 5 && Number(desafio.total_steps) >= 5) maxEntries = 5;
+        if (maxEntries < 1) maxEntries = 5;
+
+        var byStep = {};
+        (parts || []).forEach(function (p) {
+          if (String(p.side || "").toLowerCase() !== "arbishield") return;
+          byStep[String(p.step_id)] = p;
+        });
+
+        var stages = [];
+        var accumulatedProfit = 0;
+        var foundCurrent = false;
+        var currentIndex = 1;
+        var entradaDefault = Number(desafio.initial_balance_cents) || 0;
+        var targetPct = Number(desafio.target_profit_pct) || 5;
+
+        for (var i = 0; i < maxEntries; i++) {
+          var step = steps[i] || null;
+          var stepIndex = i + 1;
+          var isFinal = stepIndex === maxEntries;
+          var part = step ? byStep[String(step.id)] : null;
+          var partResult = part ? String(part.result || "").toLowerCase() : "";
+          var stepStatus = step ? String(step.status || "").toLowerCase() : "";
+          var state = "locked";
+
+          if (partResult === "won") {
+            state = "won";
+            accumulatedProfit += Number(part.profit_cents) || 0;
+            currentIndex = Math.min(stepIndex + 1, maxEntries);
+          } else if (partResult === "lost") {
+            state = "won_external";
+            foundCurrent = true;
+            currentIndex = stepIndex;
+          } else if (partResult === "pending") {
+            state = "current";
+            foundCurrent = true;
+            currentIndex = stepIndex;
+          } else if (!foundCurrent) {
+            if (step && stepStatus !== "done") {
+              state = stepIndex === 1 || (stages[i - 1] && stages[i - 1].state === "won")
+                ? "current"
+                : i === 0
+                  ? "current"
+                  : "locked";
+              if (state === "current") {
+                foundCurrent = true;
+                currentIndex = stepIndex;
+              }
+            } else if (!step && i === 0) {
+              state = "waiting";
+              foundCurrent = true;
+              currentIndex = 1;
+            } else if (!step) {
+              // Slot futuro ainda sem lançamento manual
+              state = foundCurrent ? "locked" : "waiting";
+            } else {
+              state = "locked";
+            }
+          }
+
+          // Primeira etapa sem part e com jogo lançado = current
+          if (!foundCurrent && step && partResult === "" && stepStatus !== "done") {
+            if (i === 0 || (stages[i - 1] && stages[i - 1].state === "won")) {
+              state = "current";
+              foundCurrent = true;
+              currentIndex = stepIndex;
+            }
+          }
+
+          if (isFinal && state === "current") state = "final_ready";
+
+          var arbiOdd = step ? Number(step.arbi_odd != null ? step.arbi_odd : step.home_odd) : null;
+          var casaOdd = step ? Number(step.casa_odd != null ? step.casa_odd : step.away_odd) : null;
+          if (arbiOdd != null && !(arbiOdd > 1)) arbiOdd = null;
+          if (casaOdd != null && !(casaOdd > 1)) casaOdd = null;
+          var entrada = part ? Number(part.amount_cents) || entradaDefault : entradaDefault;
+          var retorno = payoutCents(entrada, arbiOdd);
+          if (!(retorno > entrada) && entrada > 0) {
+            retorno = Math.round(entrada * (1 + targetPct / 100));
+          }
+
+          var matchLabel = step
+            ? step.match_label ||
+              [step.home_team, step.away_team].filter(Boolean).join(" x ") ||
+              null
+            : null;
+
+          stages.push({
+            index: stepIndex,
+            isFinal: isFinal,
+            label: isFinal ? "Etapa Final" : "Etapa " + stepIndex,
+            state: state,
+            stepId: step && step.id ? step.id : null,
+            matchLabel: matchLabel,
+            homeTeam: step ? step.home_team || step.casa_team_name : null,
+            awayTeam: step ? step.away_team || step.arbi_team_name : null,
+            zebraTeam: step ? step.arbi_team_name || step.away_team : null,
+            favoriteTeam: step ? step.casa_team_name || step.home_team : null,
+            whenLabel: step ? whenLabelFrom(step.starts_at) : "Aguardando lançamento",
+            startsAt: step ? step.starts_at : null,
+            arbiOdd: arbiOdd,
+            casaOdd: casaOdd,
+            externalHouse: "Casa Externa",
+            externalBetLink: step ? step.external_bet_link : null,
+            recommendedCents: entrada,
+            returnCents: retorno,
+            profitCents:
+              partResult === "won"
+                ? Number(part.profit_cents) || 0
+                : Math.max(0, retorno - entrada),
+            participation: part
+              ? {
+                  id: part.id,
+                  result: partResult,
+                  amountCents: Number(part.amount_cents) || 0,
+                  profitCents: Number(part.profit_cents) || 0,
+                }
+              : null,
+            statusText:
+              state === "won"
+                ? "Vitória"
+                : state === "won_external"
+                  ? "Sucesso na casa externa"
+                  : state === "lost"
+                    ? "Derrota"
+                    : state === "current" || state === "final_ready"
+                      ? partResult === "pending"
+                        ? "Aguardando resultado"
+                        : step
+                          ? "Você está aqui"
+                          : "Aguardando lançamento manual"
+                      : state === "waiting"
+                        ? "Aguardando lançamento"
+                        : "Bloqueada",
+          });
+        }
+
+        var doneCount = stages.filter(function (s) {
+          return s.state === "won" || s.state === "won_external" || s.state === "protected";
+        }).length;
+        var progressPct = Math.round((doneCount / maxEntries) * 100);
+
+        return {
+          ok: true,
+          empty: false,
+          desafio: {
+            id: desafio.id,
+            title: desafio.title || "Desafio",
+            subtitle: desafio.subtitle,
+            number: desafio.number,
+            targetProfitPct: targetPct,
+            totalSteps: maxEntries,
+            initialBalanceCents: entradaDefault,
+          },
+          stages: stages,
+          recovery: [],
+          inRecovery: false,
+          failedAt: null,
+          progress: {
+            percent: progressPct,
+            currentStage: currentIndex,
+            totalStages: maxEntries,
+            accumulatedProfitCents: accumulatedProfit,
+            gamesRemaining: Math.max(0, maxEntries - doneCount),
+            protectionActive: Number(bal) > 0,
+            desafioBalanceCents: Number(bal) || 0,
+          },
+        };
+      }
+
+      async function loadManualJourney() {
+        var params = new URLSearchParams(location.search);
+        var wantId = params.get("desafioId") || "";
+
+        // 1) Desafios lançados manualmente no admin
+        var res = await fetch("/api/arbishield/desafios", {
+          cache: "no-store",
+          headers: { accept: "application/json" },
+        });
+        var data = await res.json().catch(function () { return []; });
+        if (!res.ok) {
+          // Fallback: Supabase direto
+          var sb = await supa
+            .from("desafios")
+            .select("*,desafio_steps(*)")
+            .is("deleted_at", null)
+            .order("updated_at", { ascending: false })
+            .limit(10);
+          if (sb.error) throw new Error(sb.error.message || "Falha ao carregar desafios");
+          data = sb.data || [];
+        }
+        var rows = Array.isArray(data) ? data : [];
+        var alive = rows.filter(function (d) { return !d.deleted_at; });
+        var desafio =
+          (wantId &&
+            alive.find(function (d) {
+              return String(d.id) === String(wantId);
+            })) ||
+          alive.find(function (d) {
+            return d.is_active;
+          }) ||
+          alive[0] ||
+          null;
+
+        // 2) Participações do usuário (Supabase) — opcional
+        var parts = [];
+        var bal = 0;
+        try {
+          var prof = await supa
+            .from("profiles")
+            .select("desafio_balance_cents")
+            .eq("id", user.id)
+            .maybeSingle();
+          bal = Number(prof.data && prof.data.desafio_balance_cents) || 0;
+        } catch (e) { /* */ }
+        if (desafio && desafio.id) {
+          try {
+            var pr = await supa
+              .from("desafio_participations")
+              .select("*")
+              .eq("user_id", user.id)
+              .eq("desafio_id", desafio.id)
+              .eq("side", "arbishield")
+              .order("created_at", { ascending: true })
+              .limit(50);
+            if (!pr.error && Array.isArray(pr.data)) parts = pr.data;
+          } catch (e) { /* */ }
+        }
+
+        return buildJourneyFromManual(desafio, parts, bal);
+      }
+
       function iconFor(stage) {
         if (stage.isFinal || stage.state === "final_ready") return "👑";
         if (stage.state === "won" || stage.state === "won_external") return "🏆";
@@ -641,21 +913,6 @@
         return "locked";
       }
 
-      async function api(path, body) {
-        var session = await supa.auth.getSession();
-        var token = session.data.session && session.data.session.access_token;
-        var res = await fetch(path, {
-          method: "POST",
-          headers: {
-            Authorization: "Bearer " + token,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(body || {}),
-        });
-        var data = await res.json().catch(function () { return {}; });
-        if (!res.ok) throw new Error(data.error || "Falha na API");
-        return data;
-      }
 
       function renderPath(host, stages, opts) {
         opts = opts || {};
@@ -940,13 +1197,11 @@
 
       try {
         $("layout").hidden = false;
+        showErr("");
         await loadDesafioBanner();
-        var params = new URLSearchParams(location.search);
-        journey = await api("/api/arbishield/desafio-jornada", {
-          desafioId: params.get("desafioId") || undefined,
-        });
+        journey = await loadManualJourney();
         paint();
-        // Deep-link etapa
+        var params = new URLSearchParams(location.search);
         var stageQ = params.get("etapa") || params.get("stage");
         if (stageQ && journey.stages) {
           var st = journey.stages.find(function (s) {
@@ -955,13 +1210,14 @@
           if (st) setTimeout(function () { openDrawer(st); }, 400);
         }
       } catch (ex) {
-        showErr(ex.message || "Erro ao carregar jornada");
+        console.warn("[jornada]", ex);
+        showErr("");
         $("layout").hidden = false;
         $("empty").hidden = true;
-        if ($("mainPath") && !$("mainPath").innerHTML.trim()) {
-          $("mainPath").innerHTML =
-            '<p class="j-empty" style="padding:28px 12px">Não foi possível carregar as etapas. O banner permanece acima.</p>';
-        }
+        $("mapTitle").textContent = "Desafio";
+        $("mainPath").innerHTML =
+          '<p class="j-empty" style="padding:28px 12px">Aguardando lançamento manual de um desafio no admin.</p>';
+        try { paintProgress(); } catch (e2) { /* */ }
       }
     })();
   </script>
