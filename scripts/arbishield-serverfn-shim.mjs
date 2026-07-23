@@ -2138,6 +2138,9 @@ async function settleDesafioStep(token, body) {
 
   for (const p of list) {
     const side = String(p.side || "").toLowerCase();
+    const prevResult = String(p.result || "").toLowerCase();
+    // Já encerrado — não regrava (evita erro de constraint em retries)
+    if (prevResult && !isPendingResult(prevResult)) continue;
     const won = side === winningSide;
     let profit = 0;
     if (won) {
@@ -2164,18 +2167,46 @@ async function settleDesafioStep(token, body) {
         );
       }
     }
-    await sb(
-      `/rest/v1/desafio_participations?id=eq.${encodeURIComponent(p.id)}`,
-      {
-        method: "PATCH",
-        token: SERVICE_KEY,
-        body: {
-          result: won ? "won" : "lost",
-          profit_cents: won ? profit : 0,
-          updated_at: new Date().toISOString(),
-        },
+    const resultValue = won ? "won" : "lost";
+    try {
+      await sb(
+        `/rest/v1/desafio_participations?id=eq.${encodeURIComponent(p.id)}`,
+        {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: {
+            result: resultValue,
+            profit_cents: won ? profit : 0,
+            updated_at: new Date().toISOString(),
+          },
+        }
+      );
+    } catch (ex) {
+      const msg = String(ex?.message || ex || "");
+      // Fallback se o CHECK antigo só aceitar win/lose
+      if (/desafio_participations_result_check/i.test(msg)) {
+        await sb(
+          `/rest/v1/desafio_participations?id=eq.${encodeURIComponent(p.id)}`,
+          {
+            method: "PATCH",
+            token: SERVICE_KEY,
+            body: {
+              result: won ? "win" : "lose",
+              profit_cents: won ? profit : 0,
+              updated_at: new Date().toISOString(),
+            },
+          }
+        );
+      } else {
+        const err = new Error(
+          msg.includes("result_check")
+            ? "Constraint de result no banco bloqueou o encerramento. Rode vps-fix-desafio-participations-result-check.sh na VPS."
+            : msg || "Falha ao atualizar participação"
+        );
+        err.status = 500;
+        throw err;
       }
-    );
+    }
     if (won && profit > 0 && p.user_id) {
       try {
         const pr = await sb(
@@ -2337,19 +2368,73 @@ async function registerDesafioEntry(token, body) {
     },
   });
 
-  const created = await sb("/rest/v1/desafio_participations", {
-    method: "POST",
-    token: SERVICE_KEY,
-    body: {
-      user_id: userId,
-      step_id: stepId,
-      desafio_id: step.desafio_id || step.desafios?.id || null,
-      side,
-      amount_cents: amountCents,
-      result: "pending",
-      profit_cents: 0,
-    },
-  });
+  let created;
+  try {
+    created = await sb("/rest/v1/desafio_participations", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        user_id: userId,
+        step_id: stepId,
+        desafio_id: step.desafio_id || step.desafios?.id || null,
+        side,
+        amount_cents: amountCents,
+        result: "pending",
+        profit_cents: 0,
+      },
+    });
+  } catch (ex) {
+    const msg = String(ex?.message || ex || "");
+    if (!/desafio_participations_result_check/i.test(msg)) {
+      // Estorna o débito da carteira se a participação falhou
+      try {
+        await sb(`/rest/v1/profiles?id=eq.${userId}`, {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: {
+            desafio_balance_cents: bal,
+            updated_at: new Date().toISOString(),
+          },
+        });
+      } catch {
+        /* */
+      }
+      throw ex;
+    }
+    // CHECK antigo: tenta sem result (NULL) ou com open
+    try {
+      created = await sb("/rest/v1/desafio_participations", {
+        method: "POST",
+        token: SERVICE_KEY,
+        body: {
+          user_id: userId,
+          step_id: stepId,
+          desafio_id: step.desafio_id || step.desafios?.id || null,
+          side,
+          amount_cents: amountCents,
+          profit_cents: 0,
+        },
+      });
+    } catch (ex2) {
+      try {
+        await sb(`/rest/v1/profiles?id=eq.${userId}`, {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: {
+            desafio_balance_cents: bal,
+            updated_at: new Date().toISOString(),
+          },
+        });
+      } catch {
+        /* */
+      }
+      const err = new Error(
+        "Constraint de result no banco bloqueou a entrada. Rode vps-fix-desafio-participations-result-check.sh na VPS."
+      );
+      err.status = 500;
+      throw err;
+    }
+  }
   const row = Array.isArray(created) ? created[0] : created;
 
   try {
