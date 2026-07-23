@@ -4232,11 +4232,11 @@ body[data-shell="app"] .dz-wallet-cell,
 .dz-v2-market {
   text-align: center;
   margin: 0 0 14px;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.42);
+  color: #fff;
 }
 
 .dz-v2-compare {
