@@ -498,6 +498,31 @@
       0% { transform: scale(0.85); opacity: 0; }
       100% { transform: scale(1); opacity: 1; }
     }
+
+    .j-map-banner {
+      margin: 0 16px 22px;
+    }
+    .j-map-banner .dz-banner { margin: 0; }
+    .j-map-banner .dz-banner-link,
+    .j-map-banner .dz-banner-placeholder {
+      border-radius: 14px;
+      aspect-ratio: 1922 / 818;
+      max-height: 280px;
+    }
+    .j-map-banner .dz-banner-link {
+      aspect-ratio: auto;
+      height: clamp(140px, 28vw, 260px);
+    }
+    .j-map-banner .dz-banner-link img {
+      object-fit: cover;
+      object-position: center;
+    }
+    .j-map-banner .dz-banner-placeholder {
+      aspect-ratio: auto;
+      height: clamp(120px, 24vw, 200px);
+      font-size: 10px;
+    }
+
     .j-node { animation: j-pop 0.45s ease backwards; }
     .j-node:nth-child(1) { animation-delay: 0.05s; }
     .j-node:nth-child(3) { animation-delay: 0.1s; }
@@ -519,6 +544,11 @@
       <section class="j-map" aria-label="Mapa do desafio">
         <div class="j-map-title" id="mapTitle">Desafio</div>
         <div class="j-map-rule"></div>
+        <div class="j-map-banner" id="desafioBannerWrap">
+          <div id="desafioBanner" class="dz-banner" aria-live="polite">
+            <div class="dz-banner-placeholder">Banner do Desafio · carregando…</div>
+          </div>
+        </div>
         <div class="j-path" id="mainPath"></div>
 
         <div class="j-recovery" id="recoveryBox" aria-live="polite">
@@ -803,6 +833,72 @@
         }
       }
 
+
+      function paintDesafioBanner(imageUrl, title, ctaUrl, useBrandWebp) {
+        var host = document.getElementById("desafioBanner");
+        if (!host || !imageUrl) return false;
+        var href = ctaUrl || "#";
+        var external = /^https?:\/\//i.test(href);
+        var media = useBrandWebp
+          ? '<picture><source type="image/webp" srcset="/brand/desafio-banner.webp" />' +
+            '<img src="' +
+            esc(imageUrl) +
+            '" alt="' +
+            esc(title || "Desafio ArbiShield") +
+            '" width="1600" height="680" loading="eager" decoding="async" fetchpriority="high" /></picture>'
+          : '<img src="' +
+            esc(imageUrl) +
+            '" alt="' +
+            esc(title || "Desafio ArbiShield") +
+            '" loading="eager" decoding="async" fetchpriority="high" />';
+        host.innerHTML =
+          '<a class="dz-banner-link" href="' +
+          esc(href) +
+          '"' +
+          (external ? ' target="_blank" rel="noreferrer"' : "") +
+          ">" +
+          media +
+          "</a>";
+        return true;
+      }
+
+      async function loadDesafioBanner() {
+        var host = document.getElementById("desafioBanner");
+        if (!host) return;
+        var FALLBACK = "/brand/desafio-banner.jpg";
+        try {
+          var ban = await supa
+            .from("banners")
+            .select("id,title,image_url,cta_url,variant,active,sort_order,created_at")
+            .eq("active", true)
+            .order("sort_order", { ascending: true })
+            .limit(20);
+          if (!ban.error && Array.isArray(ban.data)) {
+            var row =
+              ban.data.find(function (b) {
+                return String(b.variant || "").toLowerCase() === "desafio" && b.image_url;
+              }) || null;
+            if (row && paintDesafioBanner(row.image_url, row.title, row.cta_url, false)) {
+              return;
+            }
+          }
+        } catch (ex) {
+          console.warn("[jornada] banner", ex);
+        }
+        if (paintDesafioBanner(FALLBACK, "Desafio ArbiShield", "#", true)) {
+          var img = host.querySelector("img");
+          if (img) {
+            img.onerror = function () {
+              host.innerHTML =
+                '<div class="dz-banner-placeholder">Banner do Desafio · aguardando publicação</div>';
+            };
+          }
+          return;
+        }
+        host.innerHTML =
+          '<div class="dz-banner-placeholder">Banner do Desafio · aguardando publicação</div>';
+      }
+
       function closeDrawer() {
         $("drawer").classList.remove("open");
         $("drawerBg").classList.remove("open");
@@ -811,15 +907,17 @@
       }
 
       function paint() {
+        $("layout").hidden = false;
+        $("empty").hidden = true;
         if (!journey || journey.empty) {
-          $("layout").hidden = true;
-          $("empty").hidden = false;
+          $("mapTitle").textContent = "Desafio";
+          $("mainPath").innerHTML =
+            '<p class="j-empty" style="padding:28px 12px">Nenhuma etapa ativa ainda. O banner acima continua disponível; aguarde o lançamento.</p>';
+          paintProgress();
           return;
         }
-        $("empty").hidden = true;
-        $("layout").hidden = false;
         $("mapTitle").textContent =
-          (journey.desafio && journey.desafio.title) || "Desafio ArbiShield";
+          (journey.desafio && journey.desafio.title) || "Desafio";
         renderPath($("mainPath"), journey.stages || []);
         if (journey.recovery && journey.recovery.length) {
           $("recoveryBox").classList.add("show");
@@ -841,6 +939,8 @@
       });
 
       try {
+        $("layout").hidden = false;
+        await loadDesafioBanner();
         var params = new URLSearchParams(location.search);
         journey = await api("/api/arbishield/desafio-jornada", {
           desafioId: params.get("desafioId") || undefined,
@@ -856,7 +956,12 @@
         }
       } catch (ex) {
         showErr(ex.message || "Erro ao carregar jornada");
-        $("empty").hidden = false;
+        $("layout").hidden = false;
+        $("empty").hidden = true;
+        if ($("mainPath") && !$("mainPath").innerHTML.trim()) {
+          $("mainPath").innerHTML =
+            '<p class="j-empty" style="padding:28px 12px">Não foi possível carregar as etapas. O banner permanece acima.</p>';
+        }
       }
     })();
   </script>
