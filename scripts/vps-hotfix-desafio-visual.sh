@@ -53,6 +53,10 @@ grep -q 'Sugestão de Desafio' "$WEB/admin-desafios.html" && die "botão Sugest�
 grep -q 'Adicionar Etapa' "$WEB/admin-desafios.html" && die "botão Adicionar Etapa ainda presente"
 grep -q 'admin-desafio-lancar.html' "$WEB/admin-desafios.html" || die "admin sem link para página de lançamento"
 grep -q 'Saldo inicial' "$WEB/admin-desafios.html" && die "admin ainda mostra Saldo inicial (saldo é da carteira Desafio)"
+grep -q 'desafio-delete' "$WEB/admin-desafios.html" || die "admin sem Excluir (desafio-delete)"
+grep -q 'desafio-cancel' "$WEB/admin-desafios.html" || die "admin sem Cancelar (desafio-cancel)"
+grep -q 'data-delete' "$WEB/admin-desafios.html" || die "admin sem botão Excluir"
+grep -q 'data-cancel' "$WEB/admin-desafios.html" || die "admin sem botão Cancelar"
 
 log "admin-desafio-lancar.html (página dedicada — sem número/título/saldo/etapas manuais)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-desafio-lancar.html" -o "$WEB/admin-desafio-lancar.html"
@@ -91,13 +95,45 @@ cp -f "$WEB/v2-shell.js" "$WEB_ROOT/v2-shell.js" 2>/dev/null || true
 grep -q 'admin-desafio-lancar' "$WEB/v2-shell.js" || die "shell sem rota admin-desafio-lancar"
 
 # Sempre atualiza prelive (createDesafio = 1 step + appendDesafioGame)
-if [[ -f /opt/arbishield/arbishield-prelive-events.mjs ]] || [[ -f "${ARBISHIELD_SCRIPTS:-/opt/arbishield}/arbishield-prelive-events.mjs" ]]; then
-  SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield}"
+SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield}"
+if [[ -f /opt/arbishield/arbishield-prelive-events.mjs ]] || [[ -f "$SCRIPTS_DIR/arbishield-prelive-events.mjs" ]]; then
   log "Atualizando prelive (1 evento no create + append próximo jogo)"
   curl -fsSL "$RAW/scripts/arbishield-prelive-events.mjs" -o "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
   chmod 0755 "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
   grep -q 'appendDesafioGame' "$SCRIPTS_DIR/arbishield-prelive-events.mjs" || die "prelive sem appendDesafioGame"
 fi
 
-log "OK — hotfix desafio visual aplicado (v12: busca de mercado 100% local no HTML)"
+# Shim :3101 — excluir / cancelar desafio (devolver saldo)
+SHIM_DIR="${ARBISHIELD_SHIM:-$SCRIPTS_DIR}"
+if [[ -f "$SHIM_DIR/arbishield-serverfn-shim.mjs" ]] || [[ -f /opt/arbishield/arbishield-serverfn-shim.mjs ]]; then
+  SHIM_DIR="$(dirname "$(ls -1 /opt/arbishield/arbishield-serverfn-shim.mjs "$SHIM_DIR/arbishield-serverfn-shim.mjs" 2>/dev/null | head -1)")"
+  log "Atualizando shim (desafio-delete / desafio-cancel)"
+  curl -fsSL "$RAW/scripts/arbishield-serverfn-shim.mjs" -o "$SHIM_DIR/arbishield-serverfn-shim.mjs"
+  chmod 0644 "$SHIM_DIR/arbishield-serverfn-shim.mjs"
+  grep -q 'cancelDesafio' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || die "shim sem cancelDesafio"
+  grep -q 'desafio-delete' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || die "shim sem rota desafio-delete"
+  grep -q 'desafio_cancel_refund' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || die "shim sem reembolso carteira Desafio"
+  if systemctl list-unit-files 2>/dev/null | grep -q arbishield-serverfn-shim; then
+    systemctl restart arbishield-serverfn-shim.service || true
+  fi
+fi
+
+# Nginx — proxy das novas rotas para :3101
+for conf in /etc/nginx/sites-enabled/*arbishield* /etc/nginx/conf.d/*arbishield* /etc/nginx/sites-available/*arbishield*; do
+  [[ -f "$conf" ]] || continue
+  if grep -q 'desafio-settle' "$conf" && ! grep -q 'desafio-delete' "$conf"; then
+    log "Atualizando nginx ($conf) com desafio-delete/cancel"
+    cp -a "$conf" "$conf.bak.desafio-cancel-$(date +%s)" || true
+    sed -i -E 's#desafio-participations\|#desafio-participations|desafio-delete|desafio-cancel|desafio-pending-counts|#g' "$conf" || true
+    if ! grep -q 'desafio-delete' "$conf"; then
+      sed -i -E 's#(desafio-register\|desafio-settle\|desafio-participations)#\1|desafio-delete|desafio-cancel|desafio-pending-counts#g' "$conf" || true
+    fi
+    grep -q 'desafio-delete' "$conf" || die "falha ao inserir desafio-delete em $conf"
+  fi
+done
+if command -v nginx >/dev/null && nginx -t 2>/dev/null; then
+  systemctl reload nginx 2>/dev/null || true
+fi
+
+log "OK — hotfix desafio visual aplicado (v13: Excluir + Cancelar com devolução à carteira Desafio)"
 echo "Reinicie o serviço prelive se o script foi atualizado, e faça Ctrl+F5 no browser."
