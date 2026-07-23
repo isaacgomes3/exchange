@@ -419,6 +419,36 @@
       width: 22px; height: 22px; object-fit: contain; border-radius: 4px;
       background: #fff;
     }
+    .market-pick { position: relative; }
+    .market-suggest {
+      position: absolute; left: 0; right: 0; top: calc(100% + 4px);
+      z-index: 30; max-height: 260px; overflow: auto;
+      border: 1px solid var(--border); border-radius: 12px;
+      background: #111; box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+      display: none;
+    }
+    .market-suggest.show { display: block; }
+    .market-suggest-item {
+      display: flex; flex-direction: column; gap: 2px;
+      width: 100%; border: 0; background: transparent; color: var(--text);
+      text-align: left; padding: 10px 12px; cursor: pointer;
+      border-bottom: 1px solid var(--border);
+    }
+    .market-suggest-item:last-child { border-bottom: 0; }
+    .market-suggest-item:hover, .market-suggest-item:focus {
+      background: rgba(201,242,35,0.08); outline: none;
+    }
+    .market-suggest-item .name {
+      font-size: 13px; font-weight: 800; line-height: 1.2;
+    }
+    .market-suggest-item .sub {
+      font-size: 10px; color: var(--muted); font-weight: 700;
+      letter-spacing: 0.04em; text-transform: uppercase;
+    }
+    .market-suggest-empty {
+      padding: 12px; color: var(--muted); font-size: 11px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
   </style>
 </head>
 <body data-shell="admin" data-active="jogos" data-vps-page="jogos" data-arbishield-v2="1">
@@ -666,6 +696,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/market-catalog.js"></script>
   <script>
     (function () {
       var ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzg0NDc5OTk4LCJleHAiOjE5NDIxNTk5OTh9.mxLqs20sCUNn58jWlsD0sznclCOr8rbksjTEAuQee3s";
@@ -1666,6 +1697,182 @@
         return Number.isFinite(n) ? n : null;
       }
 
+      function marketCatalog() {
+        return Array.isArray(window.ARBISHIELD_MARKET_CATALOG)
+          ? window.ARBISHIELD_MARKET_CATALOG
+          : [];
+      }
+
+      function flattenMarketCatalog() {
+        var out = [];
+        marketCatalog().forEach(function (g) {
+          (g.options || []).forEach(function (opt) {
+            out.push({ name: opt, group: g.label || "" });
+          });
+        });
+        return out;
+      }
+
+      function inferMarketType(name) {
+        var n = String(name || "").trim().toLowerCase();
+        if (/^back\b/.test(n)) return "BACK";
+        if (/^lay\b/.test(n)) return "LAY";
+        return null;
+      }
+
+      function filterMarketCatalog(query) {
+        var q = String(query || "").trim().toLowerCase();
+        var all = flattenMarketCatalog();
+        if (!q) return all.slice(0, 40);
+        var scored = [];
+        all.forEach(function (item) {
+          var name = String(item.name || "").toLowerCase();
+          var group = String(item.group || "").toLowerCase();
+          var idx = name.indexOf(q);
+          var gidx = group.indexOf(q);
+          if (idx < 0 && gidx < 0) return;
+          var score = idx === 0 ? 0 : idx > 0 ? 1 : 2;
+          if (gidx === 0) score = Math.min(score, 1);
+          scored.push({ item: item, score: score, idx: idx < 0 ? 99 : idx });
+        });
+        scored.sort(function (a, b) {
+          if (a.score !== b.score) return a.score - b.score;
+          if (a.idx !== b.idx) return a.idx - b.idx;
+          return a.item.name.localeCompare(b.item.name, "pt-BR");
+        });
+        return scored.slice(0, 40).map(function (x) { return x.item; });
+      }
+
+      function hideMarketSuggest(card) {
+        var el = card && card.querySelector(".market-suggest");
+        if (!el) return;
+        el.classList.remove("show");
+        el.hidden = true;
+        el.innerHTML = "";
+      }
+
+      function showMarketSuggest(card, html) {
+        var el = card && card.querySelector(".market-suggest");
+        if (!el) return;
+        el.innerHTML = html;
+        el.hidden = false;
+        el.classList.add("show");
+      }
+
+      function selectCatalogMarket(card, item) {
+        var nameEl = card.querySelector('[data-f="name"]');
+        var typeEl = card.querySelector('[data-f="market_type"]');
+        if (nameEl) nameEl.value = item.name || "";
+        var inferred = inferMarketType(item.name);
+        if (typeEl && inferred) typeEl.value = inferred;
+        hideMarketSuggest(card);
+        syncManualMarketsFromDom();
+      }
+
+      function searchCatalogMarkets(card, query) {
+        var q = String(query || "").trim();
+        if (q.length < 1) {
+          hideMarketSuggest(card);
+          return;
+        }
+        var matches = filterMarketCatalog(q);
+        if (!matches.length) {
+          showMarketSuggest(
+            card,
+            '<div class="market-suggest-empty">Nenhum mercado no catálogo — digite manualmente</div>'
+          );
+          return;
+        }
+        showMarketSuggest(
+          card,
+          matches
+            .map(function (t, idx) {
+              return (
+                '<button type="button" class="market-suggest-item" data-idx="' +
+                idx +
+                '" role="option">' +
+                '<span class="name">' +
+                escHtml(t.name) +
+                "</span>" +
+                (t.group
+                  ? '<span class="sub">' + escHtml(t.group) + "</span>"
+                  : "") +
+                "</button>"
+              );
+            })
+            .join("")
+        );
+        var box = card.querySelector(".market-suggest");
+        box.querySelectorAll(".market-suggest-item").forEach(function (btn) {
+          btn.addEventListener("mousedown", function (ev) {
+            ev.preventDefault();
+            var i = Number(btn.getAttribute("data-idx"));
+            if (Number.isFinite(i) && matches[i]) selectCatalogMarket(card, matches[i]);
+          });
+        });
+      }
+
+      function bindMarketNamePicker(card) {
+        var nameEl = card.querySelector('[data-f="name"]');
+        if (!nameEl || nameEl.dataset.marketBound === "1") return;
+        nameEl.dataset.marketBound = "1";
+        var timer = null;
+        nameEl.addEventListener("input", function () {
+          clearTimeout(timer);
+          // sync type if user types Lay/Back
+          var inferred = inferMarketType(nameEl.value);
+          var typeEl = card.querySelector('[data-f="market_type"]');
+          if (inferred && typeEl) typeEl.value = inferred;
+          timer = setTimeout(function () {
+            searchCatalogMarkets(card, nameEl.value);
+          }, 120);
+        });
+        nameEl.addEventListener("focus", function () {
+          if (String(nameEl.value || "").trim().length >= 1) {
+            searchCatalogMarkets(card, nameEl.value);
+          } else {
+            // mostra primeiros do catálogo ao focar vazio
+            var matches = flattenMarketCatalog().slice(0, 30);
+            if (!matches.length) return;
+            showMarketSuggest(
+              card,
+              matches
+                .map(function (t, idx) {
+                  return (
+                    '<button type="button" class="market-suggest-item" data-idx="' +
+                    idx +
+                    '" role="option">' +
+                    '<span class="name">' +
+                    escHtml(t.name) +
+                    "</span>" +
+                    (t.group
+                      ? '<span class="sub">' + escHtml(t.group) + "</span>"
+                      : "") +
+                    "</button>"
+                  );
+                })
+                .join("")
+            );
+            var box = card.querySelector(".market-suggest");
+            box.querySelectorAll(".market-suggest-item").forEach(function (btn) {
+              btn.addEventListener("mousedown", function (ev) {
+                ev.preventDefault();
+                var i = Number(btn.getAttribute("data-idx"));
+                if (Number.isFinite(i) && matches[i]) selectCatalogMarket(card, matches[i]);
+              });
+            });
+          }
+        });
+        nameEl.addEventListener("blur", function () {
+          setTimeout(function () {
+            hideMarketSuggest(card);
+          }, 180);
+        });
+        nameEl.addEventListener("keydown", function (ev) {
+          if (ev.key === "Escape") hideMarketSuggest(card);
+        });
+      }
+
       function renderManualMarkets() {
         var host = $("manMarkets");
         if (!host) return;
@@ -1684,8 +1891,10 @@
               '<option value="LAY"' + (m.market_type === "LAY" ? " selected" : "") + ">LAY</option>" +
               '<option value="BACK"' + (m.market_type === "BACK" ? " selected" : "") + ">BACK</option>" +
               "</select></div>" +
-              '<div class="field"><label>Nome do mercado</label>' +
-              '<input data-f="name" value="' + String(m.name || "").replace(/"/g, "&quot;") + '" placeholder="Digite o mercado (ex.: LAY HOME)" /></div>' +
+              '<div class="field market-pick"><label>Nome do mercado</label>' +
+              '<input data-f="name" value="' + String(m.name || "").replace(/"/g, "&quot;") +
+              '" placeholder="Buscar mercado… Ex: Lay Casa / Mais 2.5 gols" autocomplete="off" />' +
+              '<div class="market-suggest" hidden></div></div>' +
               '</div><div class="grid2">' +
               '<div class="field"><label>ID externo</label>' +
               '<input data-f="external_id" value="' + String(m.external_id || "").replace(/"/g, "&quot;") + '" placeholder="Ex: 1.22456" /></div>' +
@@ -1711,6 +1920,9 @@
         host.querySelectorAll("[data-f]").forEach(function (input) {
           input.addEventListener("change", syncManualMarketsFromDom);
           input.addEventListener("input", syncManualMarketsFromDom);
+        });
+        host.querySelectorAll(".market-card").forEach(function (card) {
+          bindMarketNamePicker(card);
         });
       }
 

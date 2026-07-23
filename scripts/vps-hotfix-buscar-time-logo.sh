@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Corrige Buscar time + logo no Lançar Evento Manual
+# Corrige Buscar time + logo + autocomplete de mercados no Lançar Evento Manual
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-buscar-time-logo.sh")
 set -euo pipefail
 REF="${ARBISHIELD_REF:-bdb12eb}"
@@ -19,8 +19,8 @@ dl() {
   curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 "$RAW/$1?v=$BUST" -o "$2"
 }
 
-log "1/3 UI admin-jogos (Buscar time + logo)"
-for f in admin-jogos.html; do
+log "1/3 UI admin-jogos (Buscar time + logo + catálogo mercados)"
+for f in admin-jogos.html market-catalog.js; do
   dl "deploy/vps-supabase/static/v2/$f" "$WEB/$f"
   chmod 0644 "$WEB/$f"
   cp -f "$WEB/$f" "$WEB_ROOT/$f" 2>/dev/null || true
@@ -31,6 +31,10 @@ if [[ -d "$WEB_ROOT" ]]; then
 fi
 grep -q 'football-teams\|bindTeamPicker\|Buscar time' "$WEB/admin-jogos.html" \
   || die "admin-jogos sem busca de time"
+grep -q 'bindMarketNamePicker\|market-suggest\|ARBISHIELD_MARKET_CATALOG' "$WEB/admin-jogos.html" \
+  || die "admin-jogos sem autocomplete de mercados"
+grep -q 'ARBISHIELD_MARKET_CATALOG' "$WEB/market-catalog.js" \
+  || die "market-catalog.js ausente"
 
 log "2/3 Backend prelive (API /football-teams)"
 PRELIVE_DST="$SCRIPTS_DIR/arbishield-prelive-events.mjs"
@@ -76,6 +80,6 @@ if command -v nginx >/dev/null && nginx -t 2>/dev/null; then
 fi
 
 echo
-echo "OK — Buscar time com logo no Lançar Evento Manual"
+echo "OK — Buscar time/logo + autocomplete de mercados"
 echo "  Teste: https://arbishield.app/api/arbishield/football-teams?q=Flamengo"
 echo "  Admin: https://arbishield.app/admin/matches  (Ctrl+Shift+R)"
