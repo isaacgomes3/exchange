@@ -720,6 +720,50 @@
         });
       });
 
+      $("list").querySelectorAll("[data-open-clients]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const id = btn.getAttribute("data-open-clients");
+          if (!id) return;
+          window.__desafioClientsOpen = window.__desafioClientsOpen || {};
+          window.__desafioActiveClients = window.__desafioActiveClients || {};
+          window.__desafioClientsLoading = window.__desafioClientsLoading || {};
+          const willOpen = !window.__desafioClientsOpen[id];
+          window.__desafioClientsOpen[id] = willOpen;
+          if (!willOpen) {
+            if (window.__desafioRows) render(window.__desafioRows);
+            return;
+          }
+          // Já em cache → só abre
+          if (Object.prototype.hasOwnProperty.call(window.__desafioActiveClients, id)) {
+            if (window.__desafioRows) render(window.__desafioRows);
+            return;
+          }
+          window.__desafioClientsLoading[id] = true;
+          if (window.__desafioRows) render(window.__desafioRows);
+          try {
+            const res = await fetch("/api/arbishield/desafio-active-clients", {
+              method: "POST",
+              headers: await authHeaders(),
+              body: JSON.stringify({ desafioIds: [id] }),
+              signal: AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined,
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data && data.byDesafio) {
+              window.__desafioActiveClients[id] = data.byDesafio[id] || [];
+            } else {
+              window.__desafioActiveClients[id] = [];
+              console.warn("desafio-active-clients", data && data.error);
+            }
+          } catch (err) {
+            window.__desafioActiveClients[id] = [];
+            console.warn("desafio-active-clients", err);
+          } finally {
+            window.__desafioClientsLoading[id] = false;
+            if (window.__desafioRows) render(window.__desafioRows);
+          }
+        });
+      });
+
       $("list").querySelectorAll("[data-settle]").forEach((btn) => {
         btn.addEventListener("click", async () => {
           const stepId = btn.getAttribute("data-settle");
@@ -938,34 +982,6 @@
       return {};
     }
 
-    async function loadActiveClients(rows) {
-      const ids = (rows || [])
-        .filter(
-          (x) =>
-            !x.deleted_at &&
-            String(x.status) !== "cancelled" &&
-            x.is_active
-        )
-        .map((x) => x.id)
-        .filter(Boolean);
-      window.__desafioActiveClients = {};
-      if (!ids.length) return {};
-      try {
-        const res = await fetch("/api/arbishield/desafio-active-clients", {
-          method: "POST",
-          headers: await authHeaders(),
-          body: JSON.stringify({ desafioIds: ids }),
-          signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined,
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok && data && data.byDesafio) {
-          window.__desafioActiveClients = data.byDesafio;
-          return data.byDesafio;
-        }
-      } catch {}
-      return {};
-    }
-
     async function load() {
       $("list").innerHTML = `<div class="loading">Carregando desafios…</div>`;
       $("meta").textContent = "Buscando…";
@@ -984,15 +1000,11 @@
         if (!res.ok) throw new Error((data && data.error) || "HTTP " + res.status);
         if (!Array.isArray(data)) throw new Error("Resposta inválida da API");
         window.__desafioRows = data;
+        window.__desafioActiveClients = window.__desafioActiveClients || {};
+        window.__desafioClientsOpen = window.__desafioClientsOpen || {};
+        window.__desafioClientsLoading = {};
         await loadPendingCounts(data);
-        // Renderiza na hora; clientes ativos vêm em seguida (não trava a lista)
-        window.__desafioActiveClients = {};
         render(data);
-        loadActiveClients(data)
-          .then(() => {
-            if (window.__desafioRows) render(window.__desafioRows);
-          })
-          .catch(() => {});
       } catch (err) {
         $("stats").innerHTML = "";
         $("meta").textContent = "";
