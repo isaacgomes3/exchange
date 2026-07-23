@@ -4424,6 +4424,104 @@ body.dep-open { overflow: hidden; }
   .dz-v2-row .v { font-size: 1.2rem; }
 }
 
+
+/* Painéis Apostar / Entrar com (layout SPA — Maior retorno) */
+.dz-sb-market {
+  margin: 10px 0 12px;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+  line-height: 1.25;
+}
+.dz-sb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.dz-sb-field .l {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+.dz-sb-odd {
+  font-size: 1.55rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.dz-sb-odd.arbi { color: #c9f223; }
+.dz-sb-odd.casa { color: #60a5fa; }
+.dz-sb-recebe {
+  font-size: 1.35rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+.dz-sb-recebe.arbi { color: #c9f223; }
+.dz-sb-recebe.casa { color: #60a5fa; }
+.dz-sb-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dz-sb-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 44px;
+  border-radius: 10px;
+  border: 1px solid rgba(201, 242, 35, 0.55);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font: inherit;
+  font-size: 1.15rem;
+  font-weight: 800;
+  padding: 0 12px;
+}
+.dz-v2-panel.casa .dz-sb-input {
+  border-color: rgba(96, 165, 250, 0.55);
+}
+.dz-sb-max,
+.dz-sb-copy {
+  flex-shrink: 0;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 0;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.dz-sb-max {
+  background: #c9f223;
+  color: #000;
+}
+.dz-sb-copy {
+  background: #2563eb;
+  color: #fff;
+}
+.dz-sb-max:disabled,
+.dz-sb-copy:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.dz-sb-exact {
+  flex: 1 1 auto;
+  font-size: 1.2rem;
+  font-weight: 900;
+  color: #fff;
+}
+.dz-v2-chip.arbi {
+  background: #c9f223 !important;
+  color: #000 !important;
+  border-color: #c9f223 !important;
+}
+
 /* fallback: se HTML antigo com .dz-logo voltar, não estoura o card */
 .dz-logo,
 .dz-logo-fallback {

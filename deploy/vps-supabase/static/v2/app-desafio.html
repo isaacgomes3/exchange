@@ -6,9 +6,10 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css" />
+  <link rel="stylesheet" href="/v2.css?v=dz-apostar-2" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
+  <script src="/desafio-ciclo-math.js?v=dz-apostar-2"></script>
   <script src="/v2-shell.js" defer></script>
 </head>
 <body data-shell="app" data-active="desafio">
@@ -71,7 +72,63 @@
       var filter = "Todos";
       var items = [];
       var tickTimer = null;
+      var desafioBalCents = 0;
       var MIN_ACCESS_CENTS = 20000; // R$ 200 — entrada típica do ciclo
+      var Ciclo = window.ArbiDesafioCiclo || null;
+
+      function casaBrandFromLink(url) {
+        var u = String(url || "").toLowerCase();
+        if (u.indexOf("betbra") >= 0) return "Betbra";
+        if (u.indexOf("bet365") >= 0) return "Bet365";
+        if (u.indexOf("betano") >= 0) return "Betano";
+        return "Casa externa";
+      }
+
+      function fmtOdd(v) {
+        var n = Number(v);
+        if (!(n > 1)) return "—";
+        return n.toFixed(3).replace(".", ",");
+      }
+
+      function reaisToCents(raw) {
+        var s = String(raw || "").trim().replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+        var n = parseFloat(s);
+        if (!Number.isFinite(n) || n <= 0) return 0;
+        return Math.round(n * 100);
+      }
+
+      function centsToInput(cents) {
+        var n = Math.max(0, Number(cents) || 0) / 100;
+        return n.toFixed(2).replace(".", ",");
+      }
+
+      function calcSides(item, stakeCents) {
+        var Sz = Math.max(0, Math.round(Number(stakeCents) || 0));
+        var arbiOdd = Number(item.arbiOdd);
+        var casaOdd = Number(item.casaOdd);
+        var arbiFee = Number(item.arbiCommissionPct) || 0;
+        var casaFee = Number(item.casaCommissionPct) || 0;
+        var Sc = 0;
+        var recebeArbi = 0;
+        if (Ciclo && Ciclo.calcCasaStakeFromZebra) {
+          Sc = Ciclo.calcCasaStakeFromZebra(Sz, arbiOdd, casaOdd, arbiFee, casaFee);
+          recebeArbi = Ciclo.calcZebraPayoutCents
+            ? Ciclo.calcZebraPayoutCents(Sz, arbiOdd, arbiFee)
+            : Math.round(Sz * arbiOdd);
+        } else {
+          if (arbiOdd > 1 && casaOdd > 1 && Sz > 0) {
+            Sc = Math.round((Sz * arbiOdd) / casaOdd);
+          }
+          recebeArbi = arbiOdd > 1 ? Math.round(Sz * arbiOdd) : 0;
+        }
+        var recebeCasa = casaOdd > 1 ? Math.round(Sc * casaOdd) : 0;
+        return {
+          stakeCents: Sz,
+          casaStakeCents: Sc,
+          recebeArbiCents: recebeArbi,
+          recebeCasaCents: recebeCasa,
+        };
+      }
 
       async function refreshAccessBar() {
         var titleEl = document.getElementById("dzAccessTitle");
@@ -85,6 +142,7 @@
             .eq("id", user.id)
             .maybeSingle();
           var cents = Number(prof.data && prof.data.desafio_balance_cents) || 0;
+          desafioBalCents = cents;
           if (balEl) balEl.textContent = money(cents);
           var unlocked = cents >= MIN_ACCESS_CENTS;
           if (titleEl) {
@@ -271,12 +329,15 @@
         var startsAt = step.starts_at || null;
         var startsAtMs = startsAt ? new Date(startsAt).getTime() : null;
         if (startsAtMs != null && isNaN(startsAtMs)) startsAtMs = null;
-        var market =
+        var marketArbi =
+          step.market_name_arbishield ||
+          step.market_name ||
+          "Mercado ArbiShield";
+        var marketCasa =
           step.market_name_casa ||
           step.market_name ||
-          step.market_name_arbishield ||
-          step.casa_team_name ||
-          "Resultado Final";
+          "Mercado casa";
+        var external = step.external_bet_link || "";
 
         return {
           id: desafio.id + ":" + (step.id || step.step_index || 1),
@@ -288,7 +349,9 @@
           awayTeam: teams.away,
           homeLogo: step.home_logo_url || step.casa_team_logo_url || null,
           awayLogo: step.away_logo_url || step.arbi_team_logo_url || null,
-          market: market,
+          market: marketCasa,
+          marketArbi: marketArbi,
+          marketCasa: marketCasa,
           startsAt: startsAt,
           startsAtMs: startsAtMs,
           releaseMinutesBefore: Number(step.release_minutes_before) || 0,
@@ -307,25 +370,33 @@
           guaranteedProfitCents: lucro,
           profitArbiCents: lucro,
           profitCasaCents: lucro,
-          arbiOdd: step.arbi_odd,
-          casaOdd: step.casa_odd,
+          arbiOdd: step.arbi_odd != null ? Number(step.arbi_odd) : Number(step.home_odd),
+          casaOdd: step.casa_odd != null ? Number(step.casa_odd) : Number(step.away_odd),
+          arbiCommissionPct: Number(step.arbi_commission_pct) || 0,
+          casaCommissionPct: Number(step.casa_commission_pct) || 0,
+          externalBetLink: external,
+          casaBrand: casaBrandFromLink(external),
         };
       }
 
       function cardHtml(item, now) {
         var phase = phaseOf(item, now);
-        var lucro = item.guaranteedProfitCents || 0;
-        var retorno = (item.entradaCents || 0) + lucro;
         var unlockMs =
           item.startsAtMs != null
             ? item.startsAtMs - (item.releaseMinutesBefore || 0) * 6e4
             : null;
         var waitMs = unlockMs != null ? unlockMs - now : null;
         var waiting = phase === "soon" && waitMs != null && waitMs > 0;
-        var jornadaHref =
-          "/app-desafio-jornada.html?etapa=" +
-          encodeURIComponent(item.stepIndex || 1) +
-          (item.desafioId ? "&desafioId=" + encodeURIComponent(item.desafioId) : "");
+        var canPlay =
+          !waiting &&
+          phase !== "done" &&
+          phase !== "live" &&
+          !!item.isActiveDesafio;
+
+        var defaultStake = item.entradaCents || MIN_ACCESS_CENTS;
+        var sides = calcSides(item, defaultStake);
+        var lucro = Math.max(0, sides.recebeArbiCents - sides.stakeCents);
+        var retorno = sides.recebeArbiCents;
 
         var liq = phase !== "live" && phase !== "done" ? liquidityShown(item, now) : null;
         var liqHtml = "";
@@ -346,51 +417,45 @@
             '%"></i></div></div>';
         }
 
-        function panelCta(kind) {
-          var cls = "dz-v2-cta " + kind;
-          if (waiting) {
-            return (
-              '<button type="button" class="' +
-              cls +
-              ' wait" disabled><span>Disponível em</span>' +
-              '<span class="dz-v2-cta-time" data-countdown="' +
-              esc(unlockMs) +
-              '">' +
-              esc(fmtCountdown(waitMs)) +
-              "</span></button>"
-            );
-          }
-          if (phase === "done") {
-            return (
-              '<button type="button" class="' +
-              cls +
-              ' is-disabled" disabled>Finalizado</button>'
-            );
-          }
-          if (phase === "live") {
-            return (
-              '<button type="button" class="' +
-              cls +
-              ' is-disabled" disabled>Jogo ao vivo</button>'
-            );
-          }
-          if (!item.isActiveDesafio) {
-            return (
-              '<button type="button" class="' +
-              cls +
-              ' is-disabled" disabled>Em breve</button>'
-            );
-          }
-          var label = kind === "arbi" ? "Iniciar desafio" : "Ver sinal casa";
-          return (
-            '<a class="' +
-            cls +
-            '" href="' +
-            esc(jornadaHref) +
-            '"><span class="ico">→</span>' +
-            label +
-            "</a>"
-          );
+        var arbiCta;
+        var casaCta;
+        if (waiting) {
+          arbiCta =
+            '<button type="button" class="dz-v2-cta arbi wait" disabled><span>Disponível em</span>' +
+            '<span class="dz-v2-cta-time" data-countdown="' +
+            esc(unlockMs) +
+            '">' +
+            esc(fmtCountdown(waitMs)) +
+            "</span></button>";
+          casaCta =
+            '<button type="button" class="dz-v2-cta casa wait is-disabled" disabled>Aguardando</button>';
+        } else if (!canPlay) {
+          var blocked =
+            phase === "done"
+              ? "Finalizado"
+              : phase === "live"
+                ? "Jogo ao vivo"
+                : "Em breve";
+          arbiCta =
+            '<button type="button" class="dz-v2-cta arbi is-disabled" disabled>' +
+            blocked +
+            "</button>";
+          casaCta =
+            '<button type="button" class="dz-v2-cta casa is-disabled" disabled>' +
+            blocked +
+            "</button>";
+        } else {
+          arbiCta =
+            '<button type="button" class="dz-v2-cta arbi" data-apostar="' +
+            esc(item.id) +
+            '">Apostar na ArbiShield →</button>';
+          casaCta = item.externalBetLink
+            ? '<a class="dz-v2-cta casa" href="' +
+              esc(item.externalBetLink) +
+              '" target="_blank" rel="noopener">Abrir ' +
+              esc(item.casaBrand) +
+              "</a>"
+            : '<button type="button" class="dz-v2-cta casa is-disabled" disabled>Sem link da casa</button>';
         }
 
         var clockSvg =
@@ -399,6 +464,8 @@
         return (
           '<article class="dz-card" data-card="' +
           esc(item.id) +
+          '" data-step-id="' +
+          esc(item.stepId || "") +
           '">' +
           '<div class="dz-v2-head">' +
           '<div class="dz-v2-brand"><img src="/brand/favicon-192.png" alt="" width="22" height="22" />ArbiShield</div>' +
@@ -414,37 +481,53 @@
           "</div></div>" +
           teamBlock(item.awayTeam, item.awayLogo, "is-away") +
           "</div>" +
-          '<div class="dz-v2-panel-market">' +
-          esc(item.market) +
-          "</div>" +
           '<div class="dz-v2-compare">' +
-          '<div class="dz-v2-panel arbi">' +
+          '<div class="dz-v2-panel arbi" data-side="arbi">' +
           '<div class="dz-v2-panel-top"><div class="dz-v2-panel-brand"><img src="/brand/favicon-192.png" alt="" width="20" height="20" />ArbiShield</div>' +
-          '<span class="dz-v2-chip arbi">Zebra</span></div>' +
-          '<div class="dz-v2-row"><span class="l">Entrada</span><span class="v">' +
-          money(item.entradaCents) +
-          "</span></div>" +
-          '<div class="dz-v2-row"><span class="l">Se bater na ArbiShield</span><span class="v accent">+' +
-          money(item.profitArbiCents) +
-          "</span></div>" +
-          '<div class="dz-v2-row"><span class="l">Lucro</span><span class="v sm">+' +
-          esc(item.lucroMaxPct) +
-          "%</span></div>" +
-          panelCta("arbi") +
+          '<span class="dz-v2-chip arbi">Maior retorno</span></div>' +
+          '<div class="dz-sb-market">' +
+          esc(item.marketArbi) +
           "</div>" +
-          '<div class="dz-v2-panel casa">' +
-          '<div class="dz-v2-panel-top"><div class="dz-v2-panel-brand">Casa externa</div>' +
-          '<span class="dz-v2-chip casa">Favorito</span></div>' +
-          '<div class="dz-v2-row"><span class="l">Entrada</span><span class="v">' +
-          money(item.entradaCents) +
-          "</span></div>" +
-          '<div class="dz-v2-row"><span class="l">Se bater na Casa</span><span class="v accent">+' +
-          money(item.profitCasaCents) +
-          "</span></div>" +
-          '<div class="dz-v2-row"><span class="l">Lucro</span><span class="v sm">+' +
-          esc(item.lucroMaxPct) +
-          "%</span></div>" +
-          panelCta("casa") +
+          '<div class="dz-sb-field"><span class="l">Odd</span><strong class="dz-sb-odd arbi" data-arbi-odd>' +
+          esc(fmtOdd(item.arbiOdd)) +
+          "</strong></div>" +
+          '<div class="dz-sb-field"><span class="l">Entrar com</span>' +
+          '<div class="dz-sb-input-row">' +
+          '<input class="dz-sb-input" data-stake-input inputmode="decimal" ' +
+          (canPlay ? "" : "disabled ") +
+          'value="' +
+          esc(centsToInput(defaultStake)) +
+          '" />' +
+          '<button type="button" class="dz-sb-max" data-stake-max ' +
+          (canPlay ? "" : "disabled ") +
+          ">MAX</button></div></div>" +
+          '<div class="dz-sb-field"><span class="l">Você recebe</span><strong class="dz-sb-recebe arbi" data-recebe-arbi>' +
+          money(sides.recebeArbiCents) +
+          "</strong></div>" +
+          arbiCta +
+          "</div>" +
+          '<div class="dz-v2-panel casa" data-side="casa">' +
+          '<div class="dz-v2-panel-top"><div class="dz-v2-panel-brand">' +
+          esc(item.casaBrand) +
+          '</div><span class="dz-v2-chip casa">Casa de aposta</span></div>' +
+          '<div class="dz-sb-market">' +
+          esc(item.marketCasa) +
+          "</div>" +
+          '<div class="dz-sb-field"><span class="l">Odd</span><strong class="dz-sb-odd casa">' +
+          esc(fmtOdd(item.casaOdd)) +
+          "</strong></div>" +
+          '<div class="dz-sb-field"><span class="l">Aposte exatamente</span>' +
+          '<div class="dz-sb-input-row">' +
+          '<strong class="dz-sb-exact" data-casa-stake>' +
+          money(sides.casaStakeCents) +
+          "</strong>" +
+          '<button type="button" class="dz-sb-copy" data-casa-copy ' +
+          (canPlay ? "" : "disabled ") +
+          ">Copiar</button></div></div>" +
+          '<div class="dz-sb-field"><span class="l">Você recebe</span><strong class="dz-sb-recebe casa" data-recebe-casa>' +
+          money(sides.recebeCasaCents) +
+          "</strong></div>" +
+          casaCta +
           "</div></div>" +
           liqHtml +
           '<div class="dz-v2-retorno">Retorno estimado ' +
@@ -480,16 +563,84 @@
           return;
         }
         host.innerHTML = visible.map(function (it) { return cardHtml(it, now); }).join("");
-        host.querySelectorAll("[data-participate]").forEach(function (btn) {
+
+        function refreshCardMath(card) {
+          var id = card.getAttribute("data-card");
+          var item = items.find(function (x) { return String(x.id) === String(id); });
+          if (!item) return null;
+          var input = card.querySelector("[data-stake-input]");
+          var stake = reaisToCents(input && input.value);
+          if (!(stake > 0)) stake = item.entradaCents || MIN_ACCESS_CENTS;
+          var sides = calcSides(item, stake);
+          var elCasa = card.querySelector("[data-casa-stake]");
+          var elArbi = card.querySelector("[data-recebe-arbi]");
+          var elCasaRec = card.querySelector("[data-recebe-casa]");
+          var elRet = card.querySelector(".dz-v2-retorno");
+          if (elCasa) elCasa.textContent = money(sides.casaStakeCents);
+          if (elArbi) elArbi.textContent = money(sides.recebeArbiCents);
+          if (elCasaRec) elCasaRec.textContent = money(sides.recebeCasaCents);
+          if (elRet) {
+            var lucro = Math.max(0, sides.recebeArbiCents - sides.stakeCents);
+            elRet.textContent =
+              "Retorno estimado " + money(sides.recebeArbiCents) + " (+" + money(lucro) + ")";
+          }
+          return { item: item, sides: sides };
+        }
+
+        host.querySelectorAll("[data-stake-input]").forEach(function (input) {
+          input.addEventListener("input", function () {
+            refreshCardMath(input.closest(".dz-card"));
+          });
+        });
+        host.querySelectorAll("[data-stake-max]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var card = btn.closest(".dz-card");
+            var id = card && card.getAttribute("data-card");
+            var item = items.find(function (x) { return String(x.id) === String(id); });
+            if (!card || !item) return;
+            var maxCents = desafioBalCents > 0
+              ? Math.min(desafioBalCents, item.entradaCents || desafioBalCents)
+              : item.entradaCents || MIN_ACCESS_CENTS;
+            if (!(maxCents > 0)) maxCents = item.entradaCents || MIN_ACCESS_CENTS;
+            var input = card.querySelector("[data-stake-input]");
+            if (input) input.value = centsToInput(maxCents);
+            refreshCardMath(card);
+          });
+        });
+        host.querySelectorAll("[data-casa-copy]").forEach(function (btn) {
           btn.addEventListener("click", async function () {
-            var stepId = btn.getAttribute("data-participate");
-            var item = items.find(function (x) {
-              return String(x.id) === String(stepId);
-            });
-            if (!item) return;
+            var card = btn.closest(".dz-card");
+            var state = refreshCardMath(card);
+            if (!state) return;
+            var reais = (state.sides.casaStakeCents / 100).toFixed(2).replace(".", ",");
+            try {
+              await navigator.clipboard.writeText(reais);
+              btn.textContent = "Copiado";
+              setTimeout(function () { btn.textContent = "Copiar"; }, 1200);
+            } catch (ex) {
+              window.prompt("Copie o valor da casa:", reais);
+            }
+          });
+        });
+        host.querySelectorAll("[data-apostar]").forEach(function (btn) {
+          btn.addEventListener("click", async function () {
+            var card = btn.closest(".dz-card");
+            var state = refreshCardMath(card);
+            if (!state || !state.item) return;
+            var item = state.item;
+            var amountCents = state.sides.stakeCents;
+            if (!(amountCents > 0)) {
+              alert("Informe o valor da entrada.");
+              return;
+            }
             if (
               !confirm(
-                "Registrar entrada no lado ArbiShield?\n\nCircuito: se ganhar só na ArbiShield até o fim das etapas sem bater na casa, o valor acumulado vai para os provedores de liquidez."
+                "Apostar " +
+                  money(amountCents) +
+                  " na ArbiShield?\n\nOdd " +
+                  fmtOdd(item.arbiOdd) +
+                  " · Você recebe " +
+                  money(state.sides.recebeArbiCents)
               )
             ) {
               return;
@@ -505,29 +656,32 @@
                   "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                  stepId: stepId,
+                  stepId: item.stepId,
                   side: "arbishield",
-                  amountCents: item.entradaCents,
+                  amountCents: amountCents,
                 }),
               });
               var data = await res.json().catch(function () {
                 return {};
               });
               if (!res.ok) {
-                var msg = data.error || "Falha ao participar";
+                var msg = data.error || "Falha ao apostar";
                 if (String(msg).indexOf("already registered") >= 0) {
                   msg = "Você já registrou entrada nesta etapa.";
                 } else if (String(msg).indexOf("insufficient") >= 0) {
-                  msg = "Saldo do Desafio insuficiente. Deposite ou transfira na Carteira (saldo congelado/retido do ciclo não conta).";
+                  msg = "Saldo do Desafio insuficiente. Deposite via PIX na barra acima.";
                 } else if (String(msg).indexOf("Sem saldo retido") >= 0) {
-                  msg = "Sem saldo retido do ciclo para esta entrada. Aguarde o green na zebra da etapa anterior.";
+                  msg = "Sem saldo retido do ciclo para esta entrada.";
                 }
                 throw new Error(msg);
               }
-              alert("Entrada registrada no Desafio!");
-              location.reload();
+              alert("Aposta registrada na ArbiShield!");
+              location.href =
+                "/app-desafio-jornada.html?etapa=" +
+                encodeURIComponent(item.stepIndex || 1) +
+                (item.desafioId ? "&desafioId=" + encodeURIComponent(item.desafioId) : "");
             } catch (ex) {
-              alert((ex && ex.message) || "Erro ao participar");
+              alert((ex && ex.message) || "Erro ao apostar");
               btn.disabled = false;
             }
           });
