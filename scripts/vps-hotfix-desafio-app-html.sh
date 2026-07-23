@@ -3,7 +3,7 @@
 # Usa jsDelivr + SHA do tip para evitar HTML antigo em cache.
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=28")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=29")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -105,8 +105,10 @@ cp -f "$WEB/admin-desafios.html" "$WEB_ROOT/admin-desafios.html" 2>/dev/null || 
 grep -q 'desafio-active-clients' "$WEB/admin-desafios.html" || die "admin-desafios sem API clientes ativos"
 grep -q 'data-open-clients' "$WEB/admin-desafios.html" || die "admin-desafios sem clique em clientes ativos"
 grep -q 'fallback\|desafio_participations' "$WEB/admin-desafios.html" || die "admin-desafios sem fallback de clientes"
-grep -q 'waitingNextGame\|hasOpenGame' "$WEB/admin-desafios.html" || die "admin-desafios sem filtro pós-encerrar"
-grep -q 'data-f="active".*is-on\|__desafioFilter = "active"' "$WEB/admin-desafios.html" || grep -q '__desafioFilter = "active"' "$WEB/admin-desafios.html" || die "admin-desafios sem Ativos primeiro"
+grep -q 'hasOpenGame' "$WEB/admin-desafios.html" || die "admin-desafios sem hasOpenGame"
+grep -q 'waitingNextGame' "$WEB/admin-desafios.html" && die "admin-desafios ainda trata sequência no evento" || true
+grep -q 'Lançar novo jogo' "$WEB/admin-desafios.html" || die "admin-desafios sem Lançar novo jogo"
+grep -q '__desafioFilter = "active"' "$WEB/admin-desafios.html" || die "admin-desafios sem Ativos primeiro"
 
 log "v2-deposit.js (Desafio só PIX)"
 fetch "deploy/vps-supabase/static/v2/v2-deposit.js" "$WEB/v2-deposit.js"

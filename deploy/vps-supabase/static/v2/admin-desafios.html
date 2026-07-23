@@ -390,16 +390,6 @@
       return (d.desafio_steps || []).some(isStepOpen);
     }
 
-    /** Publicado, todos os jogos lançados já encerrados, mas ainda cabe próximo no circuito. */
-    function waitingNextGame(d) {
-      if (!d?.is_active || d.deleted_at) return false;
-      const steps = d.desafio_steps || [];
-      if (!steps.length) return false;
-      if (steps.some(isStepOpen)) return false;
-      const circuitMax = Number(d.total_steps) || Math.max(steps.length, 5);
-      return steps.length < circuitMax;
-    }
-
     function totals(rows) {
       const alive = rows.filter((x) => !x.deleted_at);
       const steps = alive.flatMap((x) => x.desafio_steps || []);
@@ -410,15 +400,13 @@
       };
       return {
         total: alive.length,
-        // Ativos = publicados COM jogo aberto (não encerrado)
-        active: alive.filter((x) => x.is_active && hasOpenGame(x)).length,
+        // Ativos = publicados (a sequência do circuito é do cliente, não do evento)
+        active: alive.filter((x) => x.is_active).length,
         drafts: alive.filter((x) => !x.is_active && !closed(x)).length,
         upcoming: steps.filter((x) => stepState(x) === "upcoming").length,
         live: steps.filter((x) => stepState(x) === "live").length,
-        // Pendente = settle atrasado OU aguardando lançar próximo jogo
-        pending:
-          steps.filter((x) => stepState(x) === "pending").length +
-          alive.filter(waitingNextGame).length,
+        // Pendente = só settle atrasado (jogo acabou, falta liquidar)
+        pending: steps.filter((x) => stepState(x) === "pending").length,
         closed: alive.filter(closed).length,
         deleted: rows.filter((x) => x.deleted_at).length,
       };
@@ -596,15 +584,13 @@
           return tb - ta;
         });
       if (filter === "active") {
-        // Só desafios com jogo ainda aberto (não encerrado)
-        visible = visible.filter((x) => x.is_active && hasOpenGame(x));
+        // Publicados — admin pode ter vários jogos/eventos; sequência é do cliente
+        visible = visible.filter((x) => x.is_active);
       }
       if (filter === "draft") visible = visible.filter((x) => !x.is_active);
       if (filter === "pending") {
-        visible = visible.filter(
-          (x) =>
-            waitingNextGame(x) ||
-            (x.desafio_steps || []).some((s) => stepState(s) === "pending")
+        visible = visible.filter((x) =>
+          (x.desafio_steps || []).some((s) => stepState(s) === "pending")
         );
       }
       if (q) {
@@ -679,26 +665,19 @@
           );
           const canDelete = !d.deleted_at && !isCancelled && pendingClients === 0;
           const canCancel = !d.deleted_at && !isCancelled && pendingClients > 0;
-          const waitNext = waitingNextGame(d);
-          const badgeClass = isCancelled ? "" : waitNext ? "amber" : d.is_active && hasOpenGame(d) ? "on" : d.is_active ? "" : "";
+          const badgeClass = isCancelled ? "" : d.is_active ? "on" : "";
           const badgeLabel = isCancelled
             ? "Cancelado"
-            : waitNext
-              ? "Aguardando próximo jogo"
-              : d.is_active && hasOpenGame(d)
-                ? "Ativo · Publicado"
-                : d.is_active
-                  ? "Publicado · sem jogo aberto"
-                  : "Rascunho";
+            : d.is_active
+              ? "Ativo · Publicado"
+              : "Rascunho";
           return `<article class="card">
             <div class="card-top">
               <div class="title">${esc((steps[0] && (steps[0].match_label || [steps[0].home_team, steps[0].away_team].filter(Boolean).join(" x "))) || d.title || "Desafio")}</div>
               <span class="badge ${badgeClass}" style="${
                 isCancelled
                   ? "border-color:rgba(245,158,11,0.5);color:#fcd34d"
-                  : waitNext
-                    ? "border-color:rgba(251,191,36,0.55);color:#fbbf24"
-                    : ""
+                  : ""
               }">${badgeLabel}</span>
             </div>
             <div class="steps">${esc(
@@ -728,7 +707,7 @@
             <div class="card-actions">
               ${
                 canAppend
-                  ? `<button class="btn btn-primary" type="button" data-next-game="${esc(d.id)}">Lançar próximo jogo</button>`
+                  ? `<button class="btn btn-primary" type="button" data-next-game="${esc(d.id)}">Lançar novo jogo</button>`
                   : ""
               }
               <button class="btn btn-ghost" type="button" data-clone="${esc(d.id)}">Usar como base</button>
