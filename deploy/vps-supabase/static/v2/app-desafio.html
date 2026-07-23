@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=dz-retorno-lime-1" />
+  <link rel="stylesheet" href="/v2.css?v=dz-stage2-compound-1" />
   <style>
     /* Barra Desafio: preto + borda limão (inline p/ não depender de cache do v2.css) */
     body[data-shell="app"] .dz-wallet-bar {
@@ -895,13 +895,30 @@
         });
       }
 
-      /** Arb: stake casa para igualar o retorno da ArbiShield */
-      function calcSideStakes(entradaCents, arbiOdd, casaOdd) {
+      /** Arb: retorno / stake casa.
+       * Etapa 1: receive = stake × odd Arbi (surebet clássica).
+       * Etapa 2+: lucro = stake + (stake × %), receive = stake + lucro
+       *   ex.: saldo/stake R$100 + 5% = R$5 + R$100 stake → lucro R$105 → recebe R$205 (odd ~2,05).
+       */
+      function calcSideStakes(entradaCents, arbiOdd, casaOdd, opts) {
+        opts = opts || {};
         var entrada = Math.max(0, Number(entradaCents) || 0);
         var ao = Number(arbiOdd);
         var co = Number(casaOdd);
-        var receive =
-          Number.isFinite(ao) && ao > 0 ? Math.round(entrada * ao) : entrada;
+        var stepIndex = Math.max(1, Number(opts.stepIndex) || 1);
+        var pct = Number(opts.profitPct);
+        if (!Number.isFinite(pct) || pct < 0) pct = 0;
+        var receive;
+        var lucroCents = 0;
+        if (stepIndex > 1 && pct > 0 && entrada > 0) {
+          var pctGain = Math.round((entrada * pct) / 100);
+          lucroCents = entrada + pctGain;
+          receive = entrada + lucroCents;
+        } else {
+          receive =
+            Number.isFinite(ao) && ao > 0 ? Math.round(entrada * ao) : entrada;
+          lucroCents = Math.max(0, receive - entrada);
+        }
         var casaStake =
           Number.isFinite(co) && co > 0 ? Math.round(receive / co) : 0;
         var casaReceive =
@@ -909,8 +926,16 @@
         return {
           entradaCents: entrada,
           receiveCents: receive,
+          lucroCents: lucroCents,
           casaStakeCents: casaStake,
           casaReceiveCents: casaReceive,
+        };
+      }
+
+      function stakeCalcOpts(item) {
+        return {
+          stepIndex: item && item.stepIndex,
+          profitPct: item && item.lucroMaxPct,
         };
       }
 
@@ -921,8 +946,14 @@
         if (maxWallet > 0 && capped > maxWallet) capped = maxWallet;
         stakeEdits[item.id] = capped;
         item.entradaCents = capped;
-        var calc = calcSideStakes(capped, item.arbiOdd, item.casaOdd);
+        var calc = calcSideStakes(
+          capped,
+          item.arbiOdd,
+          item.casaOdd,
+          stakeCalcOpts(item)
+        );
         item.receiveCents = calc.receiveCents;
+        item.lucroCents = calc.lucroCents;
         item.casaStakeCents = calc.casaStakeCents;
         item.casaReceiveCents = calc.casaReceiveCents;
         var inp = cardEl.querySelector("[data-stake-input]");
@@ -930,9 +961,11 @@
           inp.value = centsToInput(capped);
         }
         var arbiRecv = cardEl.querySelector("[data-arbi-receive]");
+        var arbiLucro = cardEl.querySelector("[data-arbi-lucro]");
         var casaStakeEl = cardEl.querySelector("[data-casa-stake]");
         var casaRecv = cardEl.querySelector("[data-casa-receive]");
         if (arbiRecv) arbiRecv.textContent = money(calc.receiveCents);
+        if (arbiLucro) arbiLucro.textContent = money(calc.lucroCents);
         if (casaStakeEl) casaStakeEl.textContent = money(calc.casaStakeCents);
         if (casaRecv) casaRecv.textContent = money(calc.casaReceiveCents);
         var copyBtn = cardEl.querySelector("[data-casa-copy]");
@@ -1034,7 +1067,12 @@
 
       function toCardItem(desafio, step) {
         var teams = splitTeams(step || {});
-        var defaultEntrada = Number(desafio.initial_balance_cents) || 20000;
+        var stepIndex = Number(step.step_index) || 1;
+        var initialEntrada = Number(desafio.initial_balance_cents) || 20000;
+        var walletEntrada = Math.max(0, Number(walletState.desafioWalletCents) || 0);
+        // Etapa 2+: entrada padrão = saldo atual do desafio (após ganho na ArbiShield)
+        var defaultEntrada =
+          stepIndex > 1 && walletEntrada > 0 ? walletEntrada : initialEntrada;
         var pct = Number(desafio.target_profit_pct);
         if (!Number.isFinite(pct) || pct <= 0) pct = 5;
         var startsAt = step.starts_at || null;
@@ -1048,7 +1086,13 @@
         var cardId = desafio.id + ":" + (step.id || step.step_index || 1);
         var entrada =
           stakeEdits[cardId] != null ? Number(stakeEdits[cardId]) : defaultEntrada;
-        var calc = calcSideStakes(entrada, arbiOdd, casaOdd);
+        if (stepIndex > 1 && walletEntrada > 0 && entrada > walletEntrada) {
+          entrada = walletEntrada;
+        }
+        var calc = calcSideStakes(entrada, arbiOdd, casaOdd, {
+          stepIndex: stepIndex,
+          profitPct: pct,
+        });
         var externalLink = String(step.external_bet_link || "").trim();
 
         return {
@@ -1056,7 +1100,7 @@
           desafioId: desafio.id,
           desafioTitle: desafio.title || "Desafio",
           desafioNumber: desafio.number,
-          stepIndex: step.step_index || 1,
+          stepIndex: stepIndex,
           homeTeam: teams.home,
           awayTeam: teams.away,
           homeLogo:
@@ -1078,6 +1122,7 @@
           entradaCents: calc.entradaCents,
           defaultEntradaCents: defaultEntrada,
           receiveCents: calc.receiveCents,
+          lucroCents: calc.lucroCents,
           casaStakeCents: calc.casaStakeCents,
           casaReceiveCents: calc.casaReceiveCents,
           liquidityCents: Number(step.liquidity_cents) || 0,
@@ -1225,6 +1270,11 @@
           esc(item.id) +
           '">MAX</button>' +
           "</span></span></div>" +
+          (Number(item.stepIndex) > 1
+            ? '<div class="dz-v2-row"><span class="l">Lucro</span><span class="v accent" data-arbi-lucro>' +
+              money(item.lucroCents || 0) +
+              "</span></div>"
+            : "") +
           '<div class="dz-v2-row"><span class="l">Você recebe</span><span class="v accent" data-arbi-receive>' +
           money(item.receiveCents) +
           "</span></div>" +

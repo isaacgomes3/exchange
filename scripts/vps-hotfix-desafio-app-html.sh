@@ -3,7 +3,7 @@
 # Usa jsDelivr + SHA do tip para evitar HTML antigo em cache.
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=12")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=13")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -48,6 +48,7 @@ grep -q 'dz-v2-panel-market' "$DEST" || die "HTML sem mercado por painel (Arbi/C
 grep -q 'resolveSideMarkets' "$DEST" || die "HTML sem resolveSideMarkets"
 grep -q 'dz-v2-retorno' "$DEST" || die "HTML sem barra RETORNO CERTO"
 grep -q 'background: #c9f223' "$DEST" || die "HTML sem barra retorno em verde limão"
+grep -q 'desafioCompound\|stepIndex > 1\|Etapa 2+' "$DEST" || grep -q 'lucroCents' "$DEST" || die "HTML sem cálculo composto etapa 2+"
 grep -q 'desafio-no-filter-tabs' "$DEST" || die "HTML sem marcador sem-abas"
 grep -q 'dz-section-head' "$DEST" || die "HTML sem título Desafio Disponível/Em andamento"
 grep -q 'data-f="Todos"' "$DEST" && die "HTML ainda tem abas Todos"
@@ -87,4 +88,27 @@ done
 
 BYTES=$(wc -c < "$DEST" | tr -d ' ')
 log "OK instalado em $DEST ($BYTES bytes)"
+
+# Shim (lucro composto etapa 2+)
+SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
+EXEC_LINE="$(systemctl show -p ExecStart --value arbishield-serverfn-shim.service 2>/dev/null || true)"
+SHIM_PATH=""
+if [[ "$EXEC_LINE" == *arbishield-serverfn-shim.mjs* ]]; then
+  SHIM_PATH="$(echo "$EXEC_LINE" | grep -oE '/[^ ]+arbishield-serverfn-shim\.mjs' | head -1 || true)"
+fi
+if [[ -z "${SHIM_PATH:-}" ]]; then
+  for c in "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs" /opt/arbishield/arbishield-serverfn-shim.mjs /opt/arbishield/scripts/arbishield-serverfn-shim.mjs; do
+    [[ -f "$c" ]] && SHIM_PATH="$c" && break
+  done
+fi
+if [[ -n "${SHIM_PATH:-}" ]]; then
+  log "Atualizando shim (lucro composto etapa 2+) em $SHIM_PATH"
+  fetch "scripts/arbishield-serverfn-shim.mjs" "$SHIM_PATH"
+  chmod 0644 "$SHIM_PATH"
+  grep -q 'desafioCompoundProfitCents' "$SHIM_PATH" || die "shim sem desafioCompoundProfitCents"
+  systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
+else
+  log "aviso: shim não encontrado — lucro composto no settle só após atualizar o shim"
+fi
+
 log "Ctrl+F5 em https://arbishield.app/app-desafio.html"

@@ -1709,6 +1709,20 @@ function desafioProfitCents(amountCents, odd, commissionPct) {
   return Math.round(stake * (o - 1) * (1 - fee));
 }
 
+/**
+ * Etapa 2+: lucro = stake + (stake × target_profit_pct%)
+ * ex. R$100 + 5% = R$5 + R$100 stake → R$105 (equiv. odd 2,05).
+ */
+function desafioCompoundProfitCents(amountCents, profitPct, commissionPct) {
+  const stake = Math.max(0, Math.round(Number(amountCents) || 0));
+  const pct = Number(profitPct);
+  if (!(stake > 0) || !Number.isFinite(pct) || pct < 0) return 0;
+  const fee = Math.max(0, Math.min(100, Number(commissionPct) || 0)) / 100;
+  const pctGain = Math.round((stake * pct) / 100);
+  const lucro = stake + pctGain;
+  return Math.round(lucro * (1 - fee));
+}
+
 async function listDesafioParticipations(token, body) {
   if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
   const stepId = String(body?.stepId || body?.step_id || "").trim();
@@ -1912,7 +1926,7 @@ async function settleDesafioStep(token, body) {
   }
 
   const stepRows = await sb(
-    `/rest/v1/desafio_steps?select=*&id=eq.${encodeURIComponent(stepId)}&limit=1`,
+    `/rest/v1/desafio_steps?select=*,desafios(id,target_profit_pct,total_steps)&id=eq.${encodeURIComponent(stepId)}&limit=1`,
     { token: SERVICE_KEY }
   );
   const step = Array.isArray(stepRows) ? stepRows[0] : null;
@@ -1920,6 +1934,12 @@ async function settleDesafioStep(token, body) {
   if (String(step.status) === "done") {
     throw new Error("Etapa já encerrada");
   }
+
+  const stepIndex = Math.max(1, n(step.step_index) || 1);
+  const desafioMeta = step.desafios || {};
+  const targetProfitPct = Number(
+    desafioMeta.target_profit_pct ?? step.target_profit_pct ?? 5
+  );
 
   const parts = await sb(
     `/rest/v1/desafio_participations?select=*&step_id=eq.${encodeURIComponent(stepId)}&limit=2000`,
@@ -1940,11 +1960,20 @@ async function settleDesafioStep(token, body) {
     let profit = 0;
     if (won) {
       if (side === "arbishield") {
-        profit = desafioProfitCents(
-          p.amount_cents,
-          step.arbi_odd ?? step.home_odd,
-          step.arbi_commission_pct
-        );
+        // Etapa 2+: stake + (stake × %) — saldo composto após vitória ArbiShield
+        if (stepIndex > 1 && Number.isFinite(targetProfitPct) && targetProfitPct > 0) {
+          profit = desafioCompoundProfitCents(
+            p.amount_cents,
+            targetProfitPct,
+            step.arbi_commission_pct
+          );
+        } else {
+          profit = desafioProfitCents(
+            p.amount_cents,
+            step.arbi_odd ?? step.home_odd,
+            step.arbi_commission_pct
+          );
+        }
       } else {
         profit = desafioProfitCents(
           p.amount_cents,
