@@ -176,7 +176,8 @@
 
   function loadOpenSections(shell) {
     try {
-      var raw = localStorage.getItem("arbishield.navSections." + shell);
+      // v2: ignora estado antigo que abria todas as seções
+      var raw = localStorage.getItem("arbishield.navSections.v2." + shell);
       if (!raw) return null;
       var parsed = JSON.parse(raw);
       return parsed && typeof parsed === "object" ? parsed : null;
@@ -187,8 +188,35 @@
 
   function saveOpenSections(shell, map) {
     try {
-      localStorage.setItem("arbishield.navSections." + shell, JSON.stringify(map));
+      localStorage.setItem("arbishield.navSections.v2." + shell, JSON.stringify(map));
     } catch (e) {}
+  }
+
+  /** CSS crítico do acordeão — injetado no JS p/ não depender de cache do v2.css */
+  function ensureNavAccordionCss() {
+    if (document.querySelector("style[data-v2-nav-acc]")) return;
+    var st = document.createElement("style");
+    st.setAttribute("data-v2-nav-acc", "1");
+    st.textContent =
+      ".v2-nav-section{" +
+      "margin:14px 0 6px;padding:0 8px;display:flex;align-items:center;gap:8px;" +
+      "width:100%;border:0!important;background:transparent!important;" +
+      "appearance:none;-webkit-appearance:none;font:inherit;font-size:10px;" +
+      "font-weight:800;letter-spacing:.14em;text-transform:uppercase;" +
+      "color:var(--muted,#9ca3af);cursor:pointer;border-radius:0;text-align:left;" +
+      "box-shadow:none!important;outline:none}" +
+      ".v2-nav-section:hover,.v2-nav-section:focus-visible{color:#fff;background:transparent!important}" +
+      ".v2-nav-section .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}" +
+      ".v2-nav-section .sec-lbl{flex:1;min-width:0}" +
+      ".v2-nav-section .sec-chev{font-size:9px;opacity:.4;line-height:1;" +
+      "transition:transform .18s ease;transform:rotate(-90deg)}" +
+      ".v2-nav-group.is-open>.v2-nav-section .sec-chev{transform:rotate(0deg);opacity:.7}" +
+      ".v2-nav-links{display:none!important;padding:0 0 4px}" +
+      ".v2-nav-group.is-open>.v2-nav-links{display:block!important}" +
+      "body[data-shell=app] .v2-nav-section{margin:18px 0 8px;padding:0 10px;color:#9ca36a;letter-spacing:.18em}" +
+      "body[data-shell=admin] .v2-nav-link.is-active{" +
+      "background:rgba(198,255,0,.14);color:#e8ff8a;box-shadow:none}";
+    document.head.appendChild(st);
   }
 
   function renderSections(sections, active, opts) {
@@ -202,13 +230,12 @@
         var hasActive = sec.items.some(function (item) {
           return item.id === active;
         });
-        var isOpen =
-          hasActive ||
-          (saved ? !!saved[key] : shellKind === "app" ? true : hasActive);
-        // Admin: só abre a seção ativa por padrão; se saved existe, respeita saved (+ força ativa)
+        var isOpen;
+        // Admin: só a seção da página atual. App: todas abertas por padrão / localStorage.
         if (shellKind === "admin") {
-          if (saved) isOpen = hasActive || !!saved[key];
-          else isOpen = hasActive;
+          isOpen = hasActive;
+        } else {
+          isOpen = hasActive || (saved ? !!saved[key] : true);
         }
         var links = sec.items
           .map(function (item) {
@@ -274,6 +301,8 @@
     var body = document.body;
     var shell = body.getAttribute("data-shell");
     if (!shell || (shell !== "admin" && shell !== "app")) return;
+
+    ensureNavAccordionCss();
 
     var active = body.getAttribute("data-active") || "";
     if (!active) {
@@ -437,6 +466,11 @@
     (function bindSectionToggles() {
       var groups = sidebar.querySelectorAll(".v2-nav-group");
       if (!groups.length) return;
+      function setOpen(g, open) {
+        g.classList.toggle("is-open", open);
+        var b = g.querySelector(".v2-nav-section");
+        if (b) b.setAttribute("aria-expanded", open ? "true" : "false");
+      }
       function persist() {
         var map = {};
         groups.forEach(function (g) {
@@ -448,8 +482,14 @@
         var btn = g.querySelector(".v2-nav-section");
         if (!btn) return;
         btn.addEventListener("click", function () {
-          var open = g.classList.toggle("is-open");
-          btn.setAttribute("aria-expanded", open ? "true" : "false");
+          var willOpen = !g.classList.contains("is-open");
+          // Admin: acordeão — abre uma, fecha as outras
+          if (shell === "admin" && willOpen) {
+            groups.forEach(function (other) {
+              if (other !== g) setOpen(other, false);
+            });
+          }
+          setOpen(g, willOpen);
           persist();
         });
       });

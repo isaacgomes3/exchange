@@ -110,13 +110,15 @@ button, input, select { font: inherit; }
 }
 .v2-nav-section {
   margin: 14px 0 6px;
-  padding: 6px 8px;
+  padding: 0 8px;
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
   border: 0;
   background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
   font: inherit;
   font-size: 10px;
   font-weight: 800;
@@ -124,12 +126,14 @@ button, input, select { font: inherit; }
   text-transform: uppercase;
   color: var(--muted);
   cursor: pointer;
-  border-radius: 10px;
+  border-radius: 0;
   text-align: left;
+  box-shadow: none;
 }
-.v2-nav-section:hover {
+.v2-nav-section:hover,
+.v2-nav-section:focus-visible {
   color: #fff;
-  background: rgba(255, 255, 255, 0.04);
+  background: transparent;
 }
 .v2-nav-section .dot {
   width: 7px;
@@ -142,13 +146,15 @@ button, input, select { font: inherit; }
   min-width: 0;
 }
 .v2-nav-section .sec-chev {
-  font-size: 11px;
-  opacity: 0.65;
+  font-size: 9px;
+  opacity: 0.4;
+  line-height: 1;
   transition: transform 0.18s ease;
   transform: rotate(-90deg);
 }
 .v2-nav-group.is-open > .v2-nav-section .sec-chev {
   transform: rotate(0deg);
+  opacity: 0.7;
 }
 .v2-nav-group {
   margin: 0;
@@ -159,6 +165,11 @@ button, input, select { font: inherit; }
 }
 .v2-nav-group.is-open > .v2-nav-links {
   display: block;
+}
+body[data-shell="admin"] .v2-nav-link.is-active {
+  background: rgba(198, 255, 0, 0.14);
+  color: #e8ff8a;
+  box-shadow: none;
 }
 .v2-nav-link {
   display: flex;
@@ -1605,6 +1616,14 @@ body[data-shell="app"] .v2-nav-section {
   font-size: 10px;
 }
 body[data-shell="app"] .v2-nav-section .dot { display: none; }
+body[data-shell="app"].v2-sidebar-collapsed .v2-nav-section .sec-lbl,
+body[data-shell="app"].v2-sidebar-collapsed .v2-nav-section .sec-chev {
+  display: none;
+}
+body[data-shell="admin"].v2-sidebar-collapsed .v2-nav-section .sec-lbl,
+body[data-shell="admin"].v2-sidebar-collapsed .v2-nav-section .sec-chev {
+  display: none;
+}
 body[data-shell="app"] .v2-nav-link {
   gap: 12px;
   margin: 4px 0;
