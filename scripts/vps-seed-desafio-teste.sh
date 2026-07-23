@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Cria 1 desafio de teste publicado (Flamengo x Palmeiras) para ver o card no app.
+# Cria 1 desafio de teste NOVO e publicado (sempre cria outro; não reutiliza).
 #
-# Na VPS:
-#   ENV_FILE=/opt/arbishield/deploy/vps-supabase/.env bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-seed-desafio-teste.sh?v=2")
+# Na VPS (root):
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-seed-desafio-teste.sh?v=3")
 set -euo pipefail
 
-echo "==> seed-desafio-teste v2"
+echo "==> seed-desafio-teste v3 (sempre cria novo)"
 ENV_FILE="${ENV_FILE:-/opt/arbishield/deploy/vps-supabase/.env}"
 [[ -f "$ENV_FILE" ]] || { echo "ERRO: sem $ENV_FILE"; exit 1; }
 
@@ -72,51 +72,32 @@ def req(method, path, body=None):
     except urllib.error.HTTPError as e:
         raise SystemExit(f"HTTP {e.code} {path}: {e.read().decode()}") from e
 
-# Logos públicos TheSportsDB (Flamengo / Palmeiras) — badges atuais
-home_logo = "https://r2.thesportsdb.com/images/media/team/badge/syptwx1473538074.png"
-away_logo = "https://r2.thesportsdb.com/images/media/team/badge/vsqwqp1473538105.png"
+# Logos TheSportsDB — Botafogo / Santos
+home_logo = "https://r2.thesportsdb.com/images/media/team/badge/yvwvtr1420652851.png"
+away_logo = "https://r2.thesportsdb.com/images/media/team/badge/vyyvwt1420653033.png"
+home_team = "Botafogo"
+away_team = "Santos"
+match_label = f"{home_team} x {away_team}"
 
-# Se já existe Flamengo x Palmeiras ativo, só corrige as logos
-existing = req(
-    "GET",
-    "/rest/v1/desafios?select=id,desafio_steps(id)&title=eq.Flamengo x Palmeiras&deleted_at=is.null&is_active=eq.true&limit=1",
-) or []
-if existing:
-    did = existing[0]["id"]
-    steps = existing[0].get("desafio_steps") or []
-    print(f"==> já existe ativo: {did} — atualizando logos")
-    if steps:
-        sid = steps[0]["id"]
-        req(
-            "PATCH",
-            f"/rest/v1/desafio_steps?id=eq.{sid}",
-            {
-                "home_logo_url": home_logo,
-                "away_logo_url": away_logo,
-                "home_team": "Flamengo",
-                "away_team": "Palmeiras",
-                "match_label": "Flamengo x Palmeiras",
-            },
-        )
-        print(f"==> logos atualizadas no jogo {sid}")
-    print("OK — Ctrl+F5 em /app-desafio.html")
-    raise SystemExit(0)
-
-# Próximo número
 rows = req("GET", "/rest/v1/desafios?select=number&order=number.desc&limit=1") or []
 nxt = (int(rows[0]["number"]) + 1) if rows and rows[0].get("number") is not None else 1
 
-kickoff = (datetime.now(timezone.utc) + timedelta(hours=3)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+# Kickoff daqui a ~2h30 — entrada liberada (release 60 min → já disponível em ~1h30)
+kickoff_dt = datetime.now(timezone.utc) + timedelta(hours=2, minutes=30)
+kickoff = kickoff_dt.replace(microsecond=0).isoformat().replace("+00:00", "Z")
 now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+stamp = datetime.now(timezone.utc).strftime("%H:%M")
 
-casa_odd = 1.85
-profit_pct = 10
-arbi_odd = round(casa_odd * (1 + profit_pct / 100), 2)
+casa_odd = 1.90
+profit_pct = 5
+# Surebet: 1/casa + 1/arbi = 1/(1+%)  → arbi = 1 / (1/(1+p) - 1/casa)
+inv = 1.0 / (1.0 + profit_pct / 100.0)
+arbi_odd = round(1.0 / (inv - 1.0 / casa_odd), 3)
 
 desafio = {
     "number": nxt,
-    "title": "Flamengo x Palmeiras",
-    "subtitle": "Desafio teste — card visual",
+    "title": match_label,
+    "subtitle": f"Desafio teste · criado {stamp} UTC · etapas avançam por cliente",
     "total_steps": 5,
     "initial_balance_cents": 20000,
     "is_active": True,
@@ -130,43 +111,44 @@ desafio = {
 created = req("POST", "/rest/v1/desafios", desafio)
 row = created[0] if isinstance(created, list) else created
 did = row["id"]
-print(f"==> desafio criado: {did}  #{nxt}")
+print(f"==> desafio criado: {did}  #{nxt}  {match_label}")
 
 step = {
     "desafio_id": did,
     "step_index": 1,
-    "match_label": "Flamengo x Palmeiras",
+    "match_label": match_label,
     "league_name": "Brasileirão Série A",
-    "home_team": "Flamengo",
-    "away_team": "Palmeiras",
+    "home_team": home_team,
+    "away_team": away_team,
     "home_logo_url": home_logo,
     "away_logo_url": away_logo,
-    "market_name": "Mais 2.5 gols na partida",
-    "market_name_casa": "Mais 2.5 gols na partida",
-    "market_name_arbishield": "Menos 2.5 gols na partida",
+    "market_name": "Vitória do Santos",
+    "market_name_casa": "Vitória do Santos",
+    "market_name_arbishield": "Dupla chance Botafogo ou Empate",
     "home_odd": arbi_odd,
     "away_odd": casa_odd,
-    "arbi_team_name": "Menos 2.5",
-    "arbi_team_logo_url": None,
+    "arbi_team_name": home_team,
+    "arbi_team_logo_url": home_logo,
     "arbi_odd": arbi_odd,
-    "casa_team_name": "Mais 2.5",
-    "casa_team_logo_url": None,
+    "casa_team_name": away_team,
+    "casa_team_logo_url": away_logo,
     "casa_odd": casa_odd,
-    "casa_stake_cents": 10000,
+    "casa_stake_cents": 21053,
     "arbi_commission_pct": 0,
     "casa_commission_pct": 0,
-    "liquidity_cents": 1500000,
-    "display_liquidity_cents": 25000000,
+    "liquidity_cents": 800000,
+    "display_liquidity_cents": 800000,
+    "used_liquidity_cents": 0,
     "external_bet_link": "https://www.bet365.com/",
     "starts_at": kickoff,
-    "release_minutes_before": 60,
+    "release_minutes_before": 180,
     "status": "pending",
     "is_published": True,
 }
 step_out = req("POST", "/rest/v1/desafio_steps", step)
 sid = (step_out[0] if isinstance(step_out, list) else step_out)["id"]
-print(f"==> jogo criado: {sid}")
+print(f"==> jogo criado: {sid}  (etapa 1/5)")
 print(f"==> odd casa {casa_odd} → arbi {arbi_odd} (lucro {profit_pct}%)")
-print(f"==> kickoff UTC: {kickoff}")
-print("OK — abra /app-desafio.html (Ctrl+F5) e /admin-desafios.html")
+print(f"==> kickoff UTC: {kickoff}  (entrada já liberada — release 180 min)")
+print("OK — Ctrl+F5 em /app-desafio.html e /admin-desafios.html")
 PY
