@@ -1818,6 +1818,43 @@ async function settleDesafioStep(token, body) {
     },
   });
 
+  // Se não restar etapa aberta, tira o desafio da lista "ativos" do cliente
+  let desafioDeactivated = false;
+  if (step.desafio_id) {
+    try {
+      const allSteps = await sb(
+        `/rest/v1/desafio_steps?select=id,status,result,settled_at,deleted_at&desafio_id=eq.${encodeURIComponent(step.desafio_id)}`,
+        { token: SERVICE_KEY }
+      );
+      const open = (Array.isArray(allSteps) ? allSteps : []).filter((s) => {
+        if (s.deleted_at) return false;
+        const st = String(s.status || "").toLowerCase();
+        if (st === "done" || st === "settled" || st === "closed" || st === "cancelled") {
+          return false;
+        }
+        if (s.settled_at) return false;
+        const res = String(s.result || "").toLowerCase();
+        if (res === "win" || res === "zebra_protected" || res === "lost") return false;
+        return true;
+      });
+      if (!open.length) {
+        await sb(`/rest/v1/desafios?id=eq.${encodeURIComponent(step.desafio_id)}`, {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: {
+            is_active: false,
+            status: "completed",
+            completed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        });
+        desafioDeactivated = true;
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
+
   const forfeits = [];
   if (winningSide === "arbishield" && step.desafio_id) {
     const userIds = [...new Set(list.map((p) => p.user_id).filter(Boolean))];
@@ -1840,6 +1877,7 @@ async function settleDesafioStep(token, body) {
     retainedCents: retained,
     advances,
     forfeits,
+    desafioDeactivated,
     ciclo: "desafio-ciclo-sinais-v1",
   };
 }

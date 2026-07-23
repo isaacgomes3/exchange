@@ -206,7 +206,19 @@
         return pad(h) + ":" + pad(m) + ":" + pad(sec);
       }
 
+      function stepIsFinished(step) {
+        if (!step) return false;
+        var st = String(step.status || "").toLowerCase();
+        if (st === "done" || st === "settled" || st === "closed" || st === "cancelled") {
+          return true;
+        }
+        if (step.settled_at) return true;
+        var res = String(step.result || "").toLowerCase();
+        return res === "win" || res === "zebra_protected" || res === "lost" || res === "bateu";
+      }
+
       function phaseOf(item, now) {
+        if (item.isFinished) return "done";
         var start = item.startsAtMs;
         if (start == null) return "ativo";
         var unlock = start - (item.releaseMinutesBefore || 0) * 6e4;
@@ -278,6 +290,9 @@
           totalSteps: (desafio.desafio_steps || []).length || Number(desafio.total_steps) || 1,
           isNew: true,
           isActiveDesafio: !!desafio.is_active,
+          isFinished: stepIsFinished(step),
+          stepStatus: step.status || null,
+          stepResult: step.result || null,
           liquidityCents: Number(step.liquidity_cents) || 0,
           displayLiquidityCents: Number(step.display_liquidity_cents) || Number(step.liquidity_cents) || 0,
           usedLiquidityCents: Number(step.used_liquidity_cents) || 0,
@@ -291,7 +306,11 @@
 
       function cardHtml(item, now) {
         var phase = phaseOf(item, now);
-        var locked = phase === "soon" || phase === "live" || !item.isActiveDesafio;
+        var locked =
+          phase === "soon" ||
+          phase === "live" ||
+          phase === "done" ||
+          !item.isActiveDesafio;
         var lucro = item.guaranteedProfitCents || 0;
         var retorno = (item.entradaCents || 0) + lucro;
         var unlockMs =
@@ -302,7 +321,9 @@
         var waiting = phase === "soon" && waitMs != null && waitMs > 0;
 
         var badge;
-        if (phase === "live") {
+        if (phase === "done") {
+          badge = '<span class="dz-badge muted">Finalizado</span>';
+        } else if (phase === "live") {
           badge = '<span class="dz-badge live"><span class="dz-dot"></span>Ao vivo</span>';
         } else if (!item.isActiveDesafio) {
           badge = '<span class="dz-badge muted">Em breve</span>';
@@ -349,6 +370,8 @@
             '">' +
             esc(fmtCountdown(waitMs)) +
             "</span></button>";
+        } else if (phase === "done") {
+          cta = '<button type="button" class="dz-cta muted" disabled>Finalizado</button>';
         } else if (phase === "live") {
           cta = '<button type="button" class="dz-cta muted" disabled>Jogo ao vivo</button>';
         } else if (!item.isActiveDesafio) {
@@ -592,16 +615,17 @@
         var data = await res.json().catch(function () { return []; });
         if (!res.ok) throw new Error((data && data.error) || "Falha ao carregar desafios");
         var rows = Array.isArray(data) ? data : [];
-        var alive = rows.filter(function (d) { return !d.deleted_at; });
-        // Mostra ativos e também rascunhos que já têm etapas (lançamento manual)
-        var active = alive.filter(function (d) {
-          return d.is_active || (Array.isArray(d.desafio_steps) && d.desafio_steps.length);
+        var alive = rows.filter(function (d) {
+          return !d.deleted_at && String(d.status || "").toLowerCase() !== "deleted";
         });
+        // Cliente: só desafios publicados (ativos). Etapas encerradas (bateu) não entram.
+        var active = alive.filter(function (d) { return !!d.is_active; });
 
         items = [];
         active.forEach(function (d) {
           var steps = (d.desafio_steps || [])
             .slice()
+            .filter(function (s) { return !s.deleted_at && !stepIsFinished(s); })
             .sort(function (a, b) { return (a.step_index || 0) - (b.step_index || 0); });
           if (!steps.length) return;
           steps.forEach(function (s) {
@@ -611,8 +635,8 @@
 
         // Preferir jogos ainda jogáveis; ao vivo ficam no fim
         items.sort(function (a, b) {
-          var na = a.startsAtMs || 0;
-          var nb = b.startsAtMs || 0;
+          var na = a.startsAtMs || Number.MAX_SAFE_INTEGER;
+          var nb = b.startsAtMs || Number.MAX_SAFE_INTEGER;
           return na - nb;
         });
 
