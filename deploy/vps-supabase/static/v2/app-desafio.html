@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=dz-wallet-black-1" />
+  <link rel="stylesheet" href="/v2.css?v=dz-stadium-1" />
   <style>
     /* Barra Desafio: preto + borda limão (inline p/ não depender de cache do v2.css) */
     body[data-shell="app"] .dz-wallet-bar {
@@ -159,6 +159,48 @@
       0% { transform: scale(0.7); opacity: 0.55; }
       70% { transform: scale(1.85); opacity: 0; }
       100% { transform: scale(1.85); opacity: 0; }
+    }
+    /* Fundo estádio no card do desafio (mesmo asset da landing) */
+    .dz-card {
+      position: relative !important;
+      isolation: isolate !important;
+      overflow: hidden !important;
+      background: #050505 !important;
+    }
+    .dz-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -2;
+      background: url("/brand/stadium-hero.jpg") center / cover no-repeat;
+      transform: scale(1.02);
+    }
+    .dz-card::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      background:
+        linear-gradient(180deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.82) 45%, rgba(0, 0, 0, 0.9) 100%),
+        radial-gradient(720px 280px at 50% -10%, rgba(201, 242, 35, 0.12), transparent 55%);
+    }
+    .dz-v2-panel.arbi {
+      background:
+        linear-gradient(180deg, rgba(8, 12, 4, 0.88), rgba(5, 8, 2, 0.82)),
+        linear-gradient(180deg, rgba(201, 242, 35, 0.1), rgba(201, 242, 35, 0.03)) !important;
+      backdrop-filter: blur(6px);
+    }
+    .dz-v2-panel.casa {
+      background:
+        linear-gradient(180deg, rgba(4, 8, 16, 0.88), rgba(3, 6, 12, 0.82)),
+        linear-gradient(180deg, rgba(59, 130, 246, 0.12), rgba(59, 130, 246, 0.03)) !important;
+      backdrop-filter: blur(6px);
+    }
+    @media (max-width: 720px) {
+      .dz-card::before {
+        background-image: url("/brand/stadium-hero-sm.jpg");
+      }
     }
     @media (max-width: 860px) {
       body[data-shell="app"] .dz-wallet-cell {

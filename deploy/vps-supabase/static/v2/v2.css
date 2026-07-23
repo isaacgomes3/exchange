@@ -4011,18 +4011,43 @@ body[data-shell="app"] .dz-wallet-cell,
 
 /* Card desafio disponível — visual mockup (confronto + 2 painéis) */
 .dz-card {
+  position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   gap: 0;
-  background:
-    radial-gradient(720px 280px at 50% -10%, rgba(201, 242, 35, 0.08), transparent 55%),
-    #050505;
+  overflow: hidden;
+  background: #050505;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 20px;
   padding: 18px 18px 16px;
   transition: border-color 0.15s ease, transform 0.15s ease;
 }
+.dz-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background:
+    url("/brand/stadium-hero.jpg") center / cover no-repeat;
+  transform: scale(1.02);
+}
+.dz-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.82) 45%, rgba(0, 0, 0, 0.9) 100%),
+    radial-gradient(720px 280px at 50% -10%, rgba(201, 242, 35, 0.12), transparent 55%);
+  pointer-events: none;
+}
 .dz-card:hover { border-color: rgba(201, 242, 35, 0.22); }
+@media (max-width: 720px) {
+  .dz-card::before {
+    background-image: url("/brand/stadium-hero-sm.jpg");
+  }
+}
 
 .dz-v2-head {
   display: flex;
@@ -4165,12 +4190,16 @@ body[data-shell="app"] .dz-wallet-cell,
 .dz-v2-panel.arbi {
   border: 1px solid rgba(201, 242, 35, 0.28);
   background:
-    linear-gradient(180deg, rgba(201, 242, 35, 0.08), rgba(201, 242, 35, 0.02));
+    linear-gradient(180deg, rgba(8, 12, 4, 0.88), rgba(5, 8, 2, 0.82)),
+    linear-gradient(180deg, rgba(201, 242, 35, 0.1), rgba(201, 242, 35, 0.03));
+  backdrop-filter: blur(6px);
 }
 .dz-v2-panel.casa {
   border: 1px solid rgba(59, 130, 246, 0.28);
   background:
-    linear-gradient(180deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.02));
+    linear-gradient(180deg, rgba(4, 8, 16, 0.88), rgba(3, 6, 12, 0.82)),
+    linear-gradient(180deg, rgba(59, 130, 246, 0.12), rgba(59, 130, 246, 0.03));
+  backdrop-filter: blur(6px);
 }
 .dz-v2-panel-top {
   display: flex;
