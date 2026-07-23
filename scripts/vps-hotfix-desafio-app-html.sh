@@ -3,7 +3,7 @@
 # Usa jsDelivr + SHA do tip para evitar HTML antigo em cache.
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=10")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=11")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -46,6 +46,7 @@ grep -q 'dz-v2-row-stake' "$DEST" || die "HTML sem campo stake alinhado à esque
 grep -q '3.1rem' "$DEST" || die "HTML sem X/horário 2× maior"
 grep -q 'dz-v2-panel-market' "$DEST" || die "HTML sem mercado por painel (Arbi/Casa)"
 grep -q 'resolveSideMarkets' "$DEST" || die "HTML sem resolveSideMarkets"
+grep -q 'dz-v2-retorno' "$DEST" || die "HTML sem barra RETORNO CERTO"
 grep -q 'desafio-no-filter-tabs' "$DEST" || die "HTML sem marcador sem-abas"
 grep -q 'dz-section-head' "$DEST" || die "HTML sem título Desafio Disponível/Em andamento"
 grep -q 'data-f="Todos"' "$DEST" && die "HTML ainda tem abas Todos"

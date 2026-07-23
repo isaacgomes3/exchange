@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=dz-markets-sides-1" />
+  <link rel="stylesheet" href="/v2.css?v=dz-retorno-certo-1" />
   <style>
     /* Barra Desafio: preto + borda limão (inline p/ não depender de cache do v2.css) */
     body[data-shell="app"] .dz-wallet-bar {
@@ -227,7 +227,7 @@
       opacity: 1 !important;
       color: #fff !important;
     }
-    /* Mercado (ex.: Mais 2.5 gols) · por painel, branco negrito */
+    /* Mercado por painel */
     .dz-v2-panel-market {
       font-size: 15px !important;
       font-weight: 900 !important;
@@ -239,6 +239,34 @@
       margin: 0 0 12px !important;
     }
     .dz-v2-market { display: none !important; }
+    /* Barra retorno certo (lucro do lançamento admin) */
+    .dz-card {
+      padding-bottom: 0 !important;
+    }
+    .dz-v2-retorno {
+      position: relative !important;
+      margin: 14px -18px 0 !important;
+      padding: 11px 18px !important;
+      background: #30c895 !important;
+      color: #fff !important;
+      font-size: 13px !important;
+      font-weight: 900 !important;
+      letter-spacing: 0.1em !important;
+      text-transform: uppercase !important;
+      border-radius: 0 0 19px 19px !important;
+      line-height: 1.2 !important;
+    }
+    .dz-v2-retorno::before {
+      content: "" !important;
+      position: absolute !important;
+      top: -8px !important;
+      left: 22px !important;
+      width: 0 !important;
+      height: 0 !important;
+      border-left: 8px solid transparent !important;
+      border-right: 8px solid transparent !important;
+      border-bottom: 8px solid #30c895 !important;
+    }
     @media (max-width: 860px) {
       body[data-shell="app"] .dz-wallet-cell {
         border-bottom-color: rgba(201, 242, 35, 0.45) !important;
@@ -1133,6 +1161,19 @@
             '%"></i></div></div>';
         }
 
+        var profitPct = Number(item.lucroMaxPct);
+        var retornoHtml = "";
+        if (Number.isFinite(profitPct) && profitPct > 0) {
+          var profitLabel = profitPct.toLocaleString("pt-BR", {
+            minimumFractionDigits: profitPct % 1 === 0 ? 0 : 2,
+            maximumFractionDigits: 2,
+          });
+          retornoHtml =
+            '<div class="dz-v2-retorno" aria-label="Retorno certo do desafio">' +
+            esc(profitLabel) +
+            "% RETORNO CERTO</div>";
+        }
+
         return (
           '<article class="dz-card" data-card="' +
           esc(item.id) +
@@ -1218,6 +1259,7 @@
           casaCta +
           "</div></div>" +
           liqHtml +
+          retornoHtml +
           "</article>"
         );
       }

@@ -4434,6 +4434,34 @@ body[data-shell="app"] .dz-wallet-cell,
 .dz-v2-liq-bar i.low { background: #ef4444; }
 .dz-v2-liq-bar i.mid { background: #f59e0b; }
 
+.dz-card {
+  padding-bottom: 0;
+}
+.dz-v2-retorno {
+  position: relative;
+  margin: 14px -18px 0;
+  padding: 11px 18px;
+  background: #30c895;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: 0 0 19px 19px;
+  line-height: 1.2;
+}
+.dz-v2-retorno::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: 22px;
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 8px solid #30c895;
+}
+
 /* estilos antigos de card desafio substituídos pelo visual v2 */
 
 @media (max-width: 720px) {
