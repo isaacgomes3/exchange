@@ -3,25 +3,66 @@
 # - Entradas pending → devolve valor à carteira Desafio
 # - Soft-delete em todos (deleted_at)
 #
-# Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-wipe-desafios.sh?v=3")
-#   ENV_FILE=/opt/arbishield/deploy/vps-supabase/.env bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-wipe-desafios.sh?v=3")
+# Na VPS (root) — use o SHA para evitar cache do raw.githubusercontent:
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/6fdb049eb7647cfd9bada17fa87d5ec1282adfaf/scripts/vps-wipe-desafios.sh")
+# ou:
+#   ENV_FILE=/opt/arbishield/deploy/vps-supabase/.env bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-wipe-desafios.sh?v=4")
 set -euo pipefail
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
 
+echo "==> wipe-desafios v4"
+
+has_service_role() {
+  local f="$1"
+  [[ -f "$f" ]] || return 1
+  # Aceita export, espaços e CRLF
+  grep -qE '(^|[[:space:]])(export[[:space:]]+)?(ARBISHIELD_SERVICE_ROLE_KEY|SERVICE_ROLE_KEY|SUPABASE_SERVICE_ROLE_KEY)=' "$f" 2>/dev/null
+}
+
 load_env_file() {
   local f="$1"
   [[ -f "$f" ]] || return 1
-  set -a
-  # shellcheck disable=SC1090
-  source "$f" 2>/dev/null || true
-  set +a
+  # Parse seguro via python (evita source com CRLF / valores especiais)
+  eval "$(
+    python3 - "$f" <<'PY'
+import re, shlex, sys
+path = sys.argv[1]
+keys = {
+  "ARBISHIELD_SERVICE_ROLE_KEY",
+  "SERVICE_ROLE_KEY",
+  "SUPABASE_SERVICE_ROLE_KEY",
+  "ARBISHIELD_SUPABASE_URL",
+  "API_EXTERNAL_URL",
+  "SUPABASE_PUBLIC_URL",
+  "ANON_KEY",
+  "SUPABASE_ANON_KEY",
+}
+text = open(path, "rb").read().decode("utf-8", "replace").replace("\r\n", "\n").replace("\r", "\n")
+out = []
+for raw in text.splitlines():
+    line = raw.strip()
+    if not line or line.startswith("#"):
+        continue
+    if line.startswith("export "):
+        line = line[7:].strip()
+    if "=" not in line:
+        continue
+    k, v = line.split("=", 1)
+    k = k.strip()
+    if k not in keys:
+        continue
+    v = v.strip()
+    if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+        v = v[1:-1]
+    out.append(f"export {k}={shlex.quote(v)}")
+print("\n".join(out))
+PY
+  )"
   return 0
 }
 
-# Candidatos conhecidos na VPS ArbiShield
 CANDIDATES=(
   "${ENV_FILE:-}"
   /opt/arbishield/deploy/vps-supabase/.env
@@ -34,10 +75,8 @@ CANDIDATES=(
   /root/deploy/vps-supabase/.env
 )
 
-# EnvironmentFile dos serviços systemd
 if command -v systemctl >/dev/null 2>&1; then
   for svc in arbishield-serverfn-shim arbishield-prelive-events arbishield-desafio-suggestions; do
-    # systemctl show EnvironmentFiles= path (ignored=no)
     while IFS= read -r line; do
       f="$(echo "$line" | awk '{print $1}' | tr -d '\t')"
       [[ -n "$f" && -f "$f" ]] && CANDIDATES+=("$f")
@@ -45,59 +84,42 @@ if command -v systemctl >/dev/null 2>&1; then
   done
 fi
 
-# Busca ampla por arquivos .env com SERVICE_ROLE
 while IFS= read -r f; do
   [[ -n "$f" ]] && CANDIDATES+=("$f")
 done < <(
-  grep -rlE '^(SERVICE_ROLE_KEY|SUPABASE_SERVICE_ROLE_KEY|ARBISHIELD_SERVICE_ROLE_KEY)=' \
-    /opt/arbishield /var/www/arbishield /root 2>/dev/null | head -20 || true
+  grep -rlE 'SERVICE_ROLE_KEY=' /opt/arbishield /var/www/arbishield /root 2>/dev/null | head -30 || true
 )
 
-ENV_FILE=""
+FOUND=""
 for f in "${CANDIDATES[@]}"; do
-  [[ -f "$f" ]] || continue
-  if grep -qE '^(SERVICE_ROLE_KEY|SUPABASE_SERVICE_ROLE_KEY|ARBISHIELD_SERVICE_ROLE_KEY)=' "$f" 2>/dev/null; then
-    ENV_FILE="$f"
+  [[ -n "$f" && -f "$f" ]] || continue
+  if has_service_role "$f"; then
+    FOUND="$f"
     break
   fi
 done
 
-if [[ -n "$ENV_FILE" ]]; then
-  log "Carregando env: $ENV_FILE"
-  load_env_file "$ENV_FILE"
+if [[ -n "$FOUND" ]]; then
+  log "Carregando env: $FOUND"
+  load_env_file "$FOUND"
 else
-  log "Nenhum .env com SERVICE_ROLE encontrado — tentando ambiente do processo shim…"
+  log "Nenhum .env com SERVICE_ROLE — tentando processo shim/prelive…"
 fi
 
-# Fallback: ler variáveis do processo node do shim / prelive
 if [[ -z "${SERVICE_ROLE_KEY:-${SUPABASE_SERVICE_ROLE_KEY:-${ARBISHIELD_SERVICE_ROLE_KEY:-}}}" ]]; then
   for pat in arbishield-serverfn-shim arbishield-prelive-events; do
     PID="$(pgrep -f "$pat" | head -1 || true)"
     [[ -n "${PID:-}" && -r "/proc/$PID/environ" ]] || continue
-    # Extrai SERVICE_ROLE* do environ do processo
     EVAL_LINE="$(
       tr '\0' '\n' < "/proc/$PID/environ" \
         | grep -E '^(ARBISHIELD_SERVICE_ROLE_KEY|SERVICE_ROLE_KEY|SUPABASE_SERVICE_ROLE_KEY|ARBISHIELD_SUPABASE_URL|API_EXTERNAL_URL|SUPABASE_PUBLIC_URL)=' \
         || true
     )"
     if [[ -n "$EVAL_LINE" ]]; then
-      log "Usando env do processo PID $PID ($pat)"
-      # shellcheck disable=SC2086
-      export $EVAL_LINE
-      break
-    fi
-  done
-fi
-
-# Fallback: systemctl show Environment=
-if [[ -z "${SERVICE_ROLE_KEY:-${SUPABASE_SERVICE_ROLE_KEY:-${ARBISHIELD_SERVICE_ROLE_KEY:-}}}" ]] \
-  && command -v systemctl >/dev/null 2>&1; then
-  for svc in arbishield-serverfn-shim arbishield-prelive-events; do
-    ENV_BLOB="$(systemctl show -p Environment --value "${svc}.service" 2>/dev/null || true)"
-    if [[ "$ENV_BLOB" == *SERVICE_ROLE* ]]; then
-      log "Usando Environment= do systemd ($svc)"
-      # shellcheck disable=SC2086
-      export $ENV_BLOB
+      log "Usando env do PID $PID ($pat)"
+      while IFS= read -r line; do
+        export "$line"
+      done <<<"$EVAL_LINE"
       break
     fi
   done
@@ -107,18 +129,25 @@ SUPABASE_URL="${ARBISHIELD_SUPABASE_URL:-${API_EXTERNAL_URL:-${SUPABASE_PUBLIC_U
 SERVICE_KEY="${ARBISHIELD_SERVICE_ROLE_KEY:-${SERVICE_ROLE_KEY:-${SUPABASE_SERVICE_ROLE_KEY:-}}}"
 
 if [[ -z "$SERVICE_KEY" ]]; then
-  echo "Arquivos .env candidatos:" >&2
-  printf '  %s\n' "${CANDIDATES[@]}" >&2 || true
-  die "SERVICE_ROLE_KEY não encontrada. Confira /opt/arbishield/deploy/vps-supabase/.env"
+  echo "Candidatos testados:" >&2
+  for f in "${CANDIDATES[@]}"; do
+    [[ -n "$f" ]] || continue
+    if [[ -f "$f" ]]; then
+      echo "  [existe] $f" >&2
+    else
+      echo "  [ausente] $f" >&2
+    fi
+  done
+  die "SERVICE_ROLE_KEY não carregou (wipe v4). Confira /opt/arbishield/deploy/vps-supabase/.env"
 fi
 
 log "Supabase: $SUPABASE_URL"
 HDR=(-H "apikey: $SERVICE_KEY" -H "Authorization: Bearer $SERVICE_KEY" -H "Content-Type: application/json" -H "Prefer: return=representation")
 
-log "Listando desafios ativos (deleted_at nulo)…"
+log "Listando desafios (deleted_at nulo)…"
 ROWS="$(curl -fsS "${HDR[@]}" \
   "$SUPABASE_URL/rest/v1/desafios?select=id,title,status,is_active&deleted_at=is.null&limit=1000")" \
-  || die "Falha ao listar desafios (URL/chave inválidos?)"
+  || die "Falha ao listar desafios (URL/chave?)"
 COUNT="$(python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' <<<"$ROWS")"
 log "Encontrados: $COUNT"
 
@@ -187,10 +216,7 @@ for d in desafios:
             req(
                 "PATCH",
                 f"/rest/v1/profiles?id=eq.{uid}",
-                {
-                    "desafio_balance_cents": bal + amount,
-                    "updated_at": now,
-                },
+                {"desafio_balance_cents": bal + amount, "updated_at": now},
             )
             try:
                 req(
@@ -228,9 +254,7 @@ for d in desafios:
     deleted += 1
     print("   excluído")
 
-print(
-    f"\nOK — excluídos: {deleted} · reembolsos: {refunded_users} ({refunded_cents} cents)"
-)
+print(f"\nOK — excluídos: {deleted} · reembolsos: {refunded_users} ({refunded_cents} cents)")
 PY
 
 log "Conferido via API pública…"
@@ -243,4 +267,4 @@ except Exception:
   print("?")
 ' <<<"$LEFT")"
 echo "  desafios visíveis agora: $LEFT_N"
-log "Pronto. Ctrl+F5 no admin de Desafios."
+log "Pronto (wipe v4). Ctrl+F5 no admin."
