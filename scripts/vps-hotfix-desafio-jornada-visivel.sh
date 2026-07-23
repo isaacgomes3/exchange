@@ -5,7 +5,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-desafio-jornada-visivel.sh")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-3d516a8}"
+REF="${ARBISHIELD_REF:-d9d97c8}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
@@ -23,16 +23,14 @@ dl() {
 }
 
 log "1/4 Backend prelive (publicar desafio)"
-PRELIVE_DST="/opt/arbishield/scripts/arbishield-prelive-events.mjs"
-[[ -f "$PRELIVE_DST" ]] || PRELIVE_DST="/opt/arbishield/arbishield-prelive-events.mjs"
-[[ -f "$SCRIPTS_DIR/arbishield-prelive-events.mjs" ]] && PRELIVE_DST="$SCRIPTS_DIR/arbishield-prelive-events.mjs" || true
-# SCRIPTS_DIR may not exist in this script - use SHIM_DIR parent
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield}"
 PRELIVE_DST="$SCRIPTS_DIR/arbishield-prelive-events.mjs"
-[[ -f /opt/arbishield/scripts/arbishield-prelive-events.mjs ]] && PRELIVE_DST="/opt/arbishield/scripts/arbishield-prelive-events.mjs"
+[[ -f /opt/arbishield/scripts/arbishield-prelive-events.mjs ]] && \
+  PRELIVE_DST="/opt/arbishield/scripts/arbishield-prelive-events.mjs"
 dl "scripts/arbishield-prelive-events.mjs" "$PRELIVE_DST"
 chmod 0755 "$PRELIVE_DST"
-systemctl restart arbishield-prelive-events.service 2>/dev/null || systemctl restart arbishield-prelive.service 2>/dev/null || true
+systemctl restart arbishield-prelive-events.service 2>/dev/null || \
+  systemctl restart arbishield-prelive.service 2>/dev/null || true
 
 log "2/4 UI — jornada como /app-desafio.html"
 for f in app-desafio.html app-desafio-jornada.html app-desafio-lista.html app-desafio-sinais.html admin-desafios.html desafio-ciclo-math.js v2-shell.js; do
@@ -51,14 +49,14 @@ grep -q 'buildManualSinalState\|evento do Desafio\|fetchDesafios' "$WEB/app-desa
   || die "sinais ainda depende de API antiga"
 grep -q 'fActive' "$WEB/admin-desafios.html" || die "admin-desafios ausente"
 
-log "3/4 Backend jornada API"
+log "3/4 Backend shim (register/settle desafio)"
 dl "scripts/arbishield-serverfn-shim.mjs" "$SHIM_DIR/arbishield-serverfn-shim.mjs"
 chmod 0644 "$SHIM_DIR/arbishield-serverfn-shim.mjs"
-grep -q 'getDesafioJornada\|desafio-jornada' "$SHIM_DIR/arbishield-serverfn-shim.mjs" \
-  || die "shim sem getDesafioJornada"
+grep -q 'registerDesafioEntry\|desafio-register' "$SHIM_DIR/arbishield-serverfn-shim.mjs" \
+  || die "shim sem register desafio"
 systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 
-log "4/4 Nginx — /app/desafio → mapa + API jornada"
+log "4/4 Nginx — /app/desafio → mapa"
 for conf in /etc/nginx/sites-enabled/arbishield.app \
   /etc/nginx/conf.d/arbishield.app.conf \
   /etc/nginx/sites-available/arbishield.app; do
