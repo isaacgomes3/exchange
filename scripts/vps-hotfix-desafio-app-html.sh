@@ -98,6 +98,13 @@ grep -q 'casa_commission_pct: "0"' "$WEB/admin-desafio-lancar.html" || die "lan�
 grep -q 'invSum\|1 / (1 + p' "$WEB/admin-desafio-lancar.html" || die "lançar sem fórmula surebet"
 grep -q 'data-odd-mode' "$WEB/admin-desafio-lancar.html" || die "lançar sem toggle Auto/Manual"
 
+log "admin-desafios.html (listagem clientes ativos)"
+fetch "deploy/vps-supabase/static/v2/admin-desafios.html" "$WEB/admin-desafios.html"
+chmod 0644 "$WEB/admin-desafios.html"
+cp -f "$WEB/admin-desafios.html" "$WEB_ROOT/admin-desafios.html" 2>/dev/null || true
+grep -q 'desafio-active-clients' "$WEB/admin-desafios.html" || die "admin-desafios sem API clientes ativos"
+grep -q 'clients-box\|Clientes ativos no desafio' "$WEB/admin-desafios.html" || die "admin-desafios sem bloco de clientes"
+
 # Shim (lucro composto etapa 2+)
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
 EXEC_LINE="$(systemctl show -p ExecStart --value arbishield-serverfn-shim.service 2>/dev/null || true)"
@@ -115,18 +122,19 @@ if [[ -n "${SHIM_PATH:-}" ]]; then
   fetch "scripts/arbishield-serverfn-shim.mjs" "$SHIM_PATH"
   chmod 0644 "$SHIM_PATH"
   grep -q 'desafioCompoundProfitCents' "$SHIM_PATH" || die "shim sem desafioCompoundProfitCents"
-  # comissão casa default 0 no buildStepRow
-  python3 - "$SHIM_PATH" <<'PY' || true
-from pathlib import Path
-import sys
-p = Path(sys.argv[1])
-t = p.read_text(encoding="utf-8")
-if "casa_commission_pct" in t and ": 4.5" in t:
-    print("aviso: ainda há default 4.5 no shim — confira buildStepRow")
-PY
+  grep -q 'listDesafioActiveClients' "$SHIM_PATH" || die "shim sem listDesafioActiveClients"
+  grep -q 'desafio-active-clients' "$SHIM_PATH" || die "shim sem rota desafio-active-clients"
   systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 else
-  log "aviso: shim não encontrado — lucro composto no settle só após atualizar o shim"
+  log "aviso: shim não encontrado"
+fi
+
+# Nginx: libera rota desafio-active-clients
+NGX="${ARBISHIELD_NGINX:-/etc/nginx/sites-enabled/arbishield.app.conf}"
+if [[ -f "$NGX" ]] && ! grep -q 'desafio-active-clients' "$NGX"; then
+  log "Inserindo desafio-active-clients no nginx"
+  sed -i 's/desafio-pending-counts|/desafio-pending-counts|desafio-active-clients|/' "$NGX" || true
+  nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || log "aviso: reload nginx manual pode ser necessário"
 fi
 
 # prelive (append step) se existir no mesmo host
@@ -138,4 +146,4 @@ for PRE in /opt/arbishield/scripts/arbishield-prelive-events.mjs /opt/arbishield
   fi
 done
 
-log "Ctrl+F5 em https://arbishield.app/admin-desafio-lancar.html"
+log "Ctrl+F5 em https://arbishield.app/admin-desafios.html"
