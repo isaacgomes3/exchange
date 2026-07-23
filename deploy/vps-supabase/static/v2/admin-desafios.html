@@ -738,19 +738,86 @@
           window.__desafioClientsLoading[id] = true;
           if (window.__desafioRows) render(window.__desafioRows);
           try {
-            const res = await fetch("/api/arbishield/desafio-active-clients", {
-              method: "POST",
-              headers: await authHeaders(),
-              body: JSON.stringify({ desafioIds: [id] }),
-              signal: AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined,
-            });
-            const data = await res.json().catch(() => ({}));
-            if (res.ok && data && data.byDesafio) {
-              window.__desafioActiveClients[id] = data.byDesafio[id] || [];
-            } else {
-              window.__desafioActiveClients[id] = [];
-              console.warn("desafio-active-clients", data && data.error);
+            let loaded = null;
+            try {
+              const res = await fetch("/api/arbishield/desafio-active-clients", {
+                method: "POST",
+                headers: await authHeaders(),
+                body: JSON.stringify({ desafioIds: [id] }),
+                signal: AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined,
+              });
+              const data = await res.json().catch(() => ({}));
+              if (res.ok && data && data.byDesafio) {
+                loaded = data.byDesafio[id] || [];
+              }
+            } catch (apiErr) {
+              console.warn("desafio-active-clients api", apiErr);
             }
+            // Fallback: lê entradas pending direto no Supabase (mesmo critério do contador)
+            if (!Array.isArray(loaded) || (loaded.length === 0 && (window.__desafioPendingCounts || {})[id] > 0)) {
+              try {
+                const supa = ArbiV2.client();
+                const dRow = (window.__desafioRows || []).find((x) => String(x.id) === String(id));
+                const steps = ((dRow && dRow.desafio_steps) || [])
+                  .slice()
+                  .sort((a, b) => (a.step_index || 0) - (b.step_index || 0));
+                const stepById = {};
+                steps.forEach((s) => {
+                  stepById[String(s.id)] = s;
+                });
+                let q = await supa
+                  .from("desafio_participations")
+                  .select(
+                    "id,user_id,step_id,desafio_id,side,result,amount_cents,created_at,profiles(full_name,avatar_url)"
+                  )
+                  .eq("desafio_id", id)
+                  .or("result.eq.pending,result.is.null")
+                  .order("created_at", { ascending: false })
+                  .limit(500);
+                let rows = q.data || [];
+                if (q.error || !rows.length) {
+                  const stepIds = steps.map((s) => s.id).filter(Boolean);
+                  if (stepIds.length) {
+                    const q2 = await supa
+                      .from("desafio_participations")
+                      .select(
+                        "id,user_id,step_id,desafio_id,side,result,amount_cents,created_at,profiles(full_name,avatar_url)"
+                      )
+                      .in("step_id", stepIds)
+                      .or("result.eq.pending,result.is.null")
+                      .order("created_at", { ascending: false })
+                      .limit(500);
+                    rows = q2.data || [];
+                  }
+                }
+                const byUser = new Map();
+                for (const r of rows) {
+                  const uid = String(r.user_id || "");
+                  if (!uid || byUser.has(uid)) continue;
+                  const st = stepById[String(r.step_id)] || {};
+                  byUser.set(uid, {
+                    user_id: uid,
+                    full_name: (r.profiles && r.profiles.full_name) || null,
+                    amount_cents: Number(r.amount_cents) || 0,
+                    entered_at: r.created_at || null,
+                    step_index: Number(st.step_index) || 1,
+                    total_steps: Number(dRow && dRow.total_steps) || steps.length || 5,
+                    waiting_next_game: false,
+                    step_label:
+                      st.match_label ||
+                      [st.home_team, st.away_team].filter(Boolean).join(" x ") ||
+                      null,
+                  });
+                }
+                const fallback = Array.from(byUser.values());
+                if (!Array.isArray(loaded) || fallback.length > loaded.length) {
+                  loaded = fallback;
+                }
+              } catch (fbErr) {
+                console.warn("desafio clients fallback", fbErr);
+              }
+            }
+            window.__desafioActiveClients[id] = Array.isArray(loaded) ? loaded : [];
           } catch (err) {
             window.__desafioActiveClients[id] = [];
             console.warn("desafio-active-clients", err);

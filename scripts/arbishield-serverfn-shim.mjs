@@ -1593,76 +1593,13 @@ async function requestAffiliateWithdrawal(token, body) {
 }
 
 async function transferRealToDesafio(token, body) {
-  const userId = requireUserId(token);
-  const amountCents = Math.round(Number(body?.amountCents ?? body?.amount_cents ?? 0));
-  if (!Number.isFinite(amountCents) || amountCents <= 0) {
-    throw new Error("Valor inválido");
-  }
-  const rows = await sb(
-    `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,desafio_balance_cents&id=eq.${userId}&limit=1`,
-    { token: SERVICE_KEY }
+  // Fluxo primordial: saldo do Desafio só via PIX (depósito direto).
+  // Transferência da banca do apostador → desafio não é permitida.
+  const err = new Error(
+    "O Desafio só aceita depósito PIX direto. Transferência da banca não é permitida."
   );
-  const p = Array.isArray(rows) ? rows[0] : null;
-  if (!p) throw new Error("Perfil não encontrado");
-  const balance = n(p.balance_cents);
-  const reusable = n(p.reusable_balance_cents);
-  const desafio = n(p.desafio_balance_cents);
-  const banca = balance + reusable;
-  const maxTransfer = Math.floor(banca / 2);
-  if (amountCents > maxTransfer) {
-    throw new Error(
-      `Valor acima do limite de 50% do saldo da banca (máx. ${(maxTransfer / 100).toFixed(2)})`
-    );
-  }
-  if (amountCents > banca) throw new Error("Saldo insuficiente");
-
-  let nextBalance = balance;
-  let nextReusable = reusable;
-  let left = amountCents;
-  if (nextBalance >= left) {
-    nextBalance -= left;
-    left = 0;
-  } else {
-    left -= nextBalance;
-    nextBalance = 0;
-    nextReusable = Math.max(0, nextReusable - left);
-    left = 0;
-  }
-
-  await sb(`/rest/v1/profiles?id=eq.${userId}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: {
-      balance_cents: nextBalance,
-      reusable_balance_cents: nextReusable,
-      desafio_balance_cents: desafio + amountCents,
-      updated_at: new Date().toISOString(),
-    },
-  });
-
-  try {
-    await sb("/rest/v1/wallet_transactions", {
-      method: "POST",
-      token: SERVICE_KEY,
-      body: {
-        user_id: userId,
-        type: "transfer_to_desafio",
-        amount_cents: -amountCents,
-        balance_after_cents: nextBalance + nextReusable,
-        meta: { destino: "desafio", amount_cents: amountCents },
-      },
-    });
-  } catch {
-    /* extrato opcional */
-  }
-
-  return {
-    ok: true,
-    amountCents,
-    balance_cents: nextBalance,
-    reusable_balance_cents: nextReusable,
-    desafio_balance_cents: desafio + amountCents,
-  };
+  err.status = 403;
+  throw err;
 }
 
 /** Admin: lista depósitos Desafio (USDT + transferências banca→desafio) */
@@ -2338,6 +2275,28 @@ async function registerDesafioEntry(token, body) {
     throw new Error("already registered");
   }
 
+  // Saldo do Desafio só vale se houver crédito via depósito PIX (deposit_type=desafio).
+  // Transferência banca→desafio não conta para o circuito.
+  let pixCredits = 0;
+  try {
+    const deps = await sb(
+      `/rest/v1/manual_deposits?select=amount_cents,status,network,deposit_type&user_id=eq.${encodeURIComponent(userId)}&deposit_type=eq.desafio&status=eq.APPROVED&limit=500`,
+      { token: SERVICE_KEY }
+    );
+    for (const d of Array.isArray(deps) ? deps : []) {
+      const net = String(d.network || "").toUpperCase();
+      if (net && net !== "PIX") continue;
+      pixCredits += n(d.amount_cents);
+    }
+  } catch {
+    pixCredits = 0;
+  }
+  if (!(pixCredits > 0)) {
+    throw new Error(
+      "Desafio só aceita saldo de depósito PIX direto. Faça um depósito PIX em Desafio ArbiShield."
+    );
+  }
+
   const prof = await sb(
     `/rest/v1/profiles?select=desafio_balance_cents&id=eq.${userId}&limit=1`,
     { token: SERVICE_KEY }
@@ -2345,6 +2304,29 @@ async function registerDesafioEntry(token, body) {
   const profile = Array.isArray(prof) ? prof[0] : null;
   const bal = n(profile?.desafio_balance_cents);
   if (bal < amountCents) throw new Error("insufficient");
+  // Não permitir stake maior que o que veio de PIX (lucros de etapas anteriores + PIX)
+  // — se o saldo atual veio sobretudo de transferência, bloqueia.
+  let transferredIn = 0;
+  try {
+    const txs = await sb(
+      `/rest/v1/wallet_transactions?select=amount_cents,meta,type&user_id=eq.${encodeURIComponent(userId)}&type=eq.transfer_to_desafio&limit=500`,
+      { token: SERVICE_KEY }
+    );
+    for (const t of Array.isArray(txs) ? txs : []) {
+      const meta = t.meta || {};
+      transferredIn += Math.abs(n(meta.amount_cents) || n(t.amount_cents));
+    }
+  } catch {
+    transferredIn = 0;
+  }
+  // Saldo “elegível” ≈ max(0, desafio_balance - transferências líquidas ainda no caixa)
+  // Se transferiu 400 e saldo é 400 sem PIX, elegível = 0.
+  const eligible = Math.max(0, bal - transferredIn);
+  if (eligible < amountCents) {
+    throw new Error(
+      "Este saldo do Desafio não veio de PIX. Deposite via PIX para participar."
+    );
+  }
 
   await sb(`/rest/v1/profiles?id=eq.${userId}`, {
     method: "PATCH",

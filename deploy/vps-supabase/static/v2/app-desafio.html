@@ -318,8 +318,9 @@
       <div>
         <div class="dz-wallet-l">Saldo da banca</div>
         <div class="dz-wallet-v" id="dzWalletBanca">—</div>
+        <p class="dz-wallet-hint" style="margin-top:8px">Desafio só via PIX — sem transferência da banca.</p>
       </div>
-      <button type="button" class="dz-wallet-deposit" id="dzDepositBtn">Depositar Desafio</button>
+      <button type="button" class="dz-wallet-deposit" id="dzDepositBtn" data-open-deposit="1" data-deposit-dest="desafio">Depositar PIX Desafio</button>
     </div>
     <div class="dz-wallet-cell dz-wallet-cell-progress">
       <div class="dz-wallet-progress-stack">
@@ -346,34 +347,7 @@
   </div>
   <div id="list" class="app-desafio-grid"><div class="ops-empty">Carregando…</div></div>
 
-  <div class="dz-modal" id="dzTransferModal" aria-hidden="true">
-    <div class="dz-modal-backdrop" data-dz-close="1"></div>
-    <div class="dz-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="dzTransferTitle">
-      <header class="dz-modal-head">
-        <div>
-          <p class="dz-modal-kicker">Transferência interna</p>
-          <h2 id="dzTransferTitle">Depositar no Desafio</h2>
-        </div>
-        <button type="button" class="dz-modal-x" data-dz-close="1" aria-label="Fechar">×</button>
-      </header>
-      <div class="dz-modal-body">
-        <p class="dz-modal-note">Mova até 50% do saldo da banca (real + reutilizável) para o saldo do Desafio ArbiShield.</p>
-        <div class="dz-transfer-meta">
-          <div><span class="l">Disponível na banca</span><strong id="dzTransferAvail">—</strong></div>
-          <div><span class="l">Máximo (50%)</span><strong id="dzTransferMax">—</strong></div>
-        </div>
-        <label class="dz-field">
-          <span>Valor (R$)</span>
-          <input id="dzTransferAmount" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" />
-        </label>
-        <p class="dz-modal-err" id="dzTransferErr" hidden></p>
-        <div class="dz-modal-actions">
-          <button type="button" class="dz-btn ghost" data-dz-close="1">Cancelar</button>
-          <button type="button" class="dz-btn primary" id="dzTransferSubmit">Confirmar</button>
-        </div>
-      </div>
-    </div>
-  </div>
+  <!-- Modal de transferência banca→desafio removido: Desafio só aceita PIX direto -->
 
   <script>
     (async function () {
@@ -466,63 +440,15 @@
         }
       }
 
-      function openTransferModal() {
-        var modal = document.getElementById("dzTransferModal");
-        var max = Math.floor(walletState.bancaCents / 2);
-        setTxt("dzTransferAvail", money(walletState.bancaCents));
-        setTxt("dzTransferMax", money(max));
-        document.getElementById("dzTransferAmount").value = "";
-        var err = document.getElementById("dzTransferErr");
-        err.hidden = true;
-        err.textContent = "";
-        modal.classList.add("open");
-        modal.setAttribute("aria-hidden", "false");
-      }
-
-      function closeTransferModal() {
-        var modal = document.getElementById("dzTransferModal");
-        modal.classList.remove("open");
-        modal.setAttribute("aria-hidden", "true");
-      }
-
-      async function submitTransfer() {
-        var err = document.getElementById("dzTransferErr");
-        var raw = document.getElementById("dzTransferAmount").value || "";
-        var normalized = raw.replace(/\./g, "").replace(",", ".");
-        var reais = parseFloat(normalized);
-        var cents = Math.round((reais || 0) * 100);
-        if (!cents || cents <= 0) {
-          err.textContent = "Informe um valor válido.";
-          err.hidden = false;
+      function openDesafioPixDeposit() {
+        if (window.ArbiV2Deposit && typeof window.ArbiV2Deposit.open === "function") {
+          window.ArbiV2Deposit.open({ dest: "desafio" });
           return;
         }
-        var btn = document.getElementById("dzTransferSubmit");
-        btn.disabled = true;
-        try {
-          var session = await supa.auth.getSession();
-          var token =
-            session.data.session && session.data.session.access_token;
-          if (!token) throw new Error("Sessão expirada");
-          var res = await fetch("/api/arbishield/transfer-desafio", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: "Bearer " + token,
-            },
-            body: JSON.stringify({ amountCents: cents }),
-          });
-          var data = await res.json().catch(function () {
-            return {};
-          });
-          if (!res.ok) throw new Error(data.error || "Falha na transferência");
-          closeTransferModal();
-          location.reload();
-        } catch (ex) {
-          err.textContent = ex.message || "Erro";
-          err.hidden = false;
-        } finally {
-          btn.disabled = false;
-        }
+        setTimeout(function () {
+          if (window.ArbiV2Deposit) window.ArbiV2Deposit.open({ dest: "desafio" });
+          else alert("Abra o depósito pelo menu e escolha Desafio ArbiShield (somente PIX).");
+        }, 300);
       }
 
       /** Progresso pessoal: etapa 2+ = falhou na casa (venceu ArbiShield) na anterior — não é cadastro prévio. */
@@ -715,10 +641,9 @@
         renderWalletBar();
       }
 
-      document.getElementById("dzDepositBtn").addEventListener("click", openTransferModal);
-      document.getElementById("dzTransferSubmit").addEventListener("click", submitTransfer);
-      document.querySelectorAll("[data-dz-close]").forEach(function (el) {
-        el.addEventListener("click", closeTransferModal);
+      document.getElementById("dzDepositBtn").addEventListener("click", function (ev) {
+        ev.preventDefault();
+        openDesafioPixDeposit();
       });
 
       function esc(v) {

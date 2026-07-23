@@ -267,7 +267,22 @@
         '<button type="button" class="dep-btn ghost" data-act="back-instructions">Voltar</button>';
     } else if (state.step === "network") {
       html += '<p class="dep-sub center">Selecione a rede para depósito</p><div class="dep-nets">';
-      NETWORKS.forEach(function (n) {
+      var nets =
+        state.dest === "desafio"
+          ? NETWORKS.filter(function (n) {
+              return n.id === "PIX";
+            })
+          : NETWORKS;
+      if (state.dest === "desafio" && !nets.length) {
+        nets = [{ id: "PIX", label: "PIX (Banco Inter)", tone: "pix" }];
+      }
+      if (state.dest === "desafio") {
+        html =
+          '<div class="dep-center"><h3>Desafio · só <em>PIX</em></h3>' +
+          '<p class="dep-sub">O saldo do Desafio só é creditado via depósito PIX direto (sem transferência da banca).</p></div>' +
+          html;
+      }
+      nets.forEach(function (n) {
         html +=
           '<button type="button" class="dep-net ' +
           n.tone +

@@ -3,7 +3,7 @@
 # Usa jsDelivr + SHA do tip para evitar HTML antigo em cache.
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=20")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=21")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -104,6 +104,19 @@ chmod 0644 "$WEB/admin-desafios.html"
 cp -f "$WEB/admin-desafios.html" "$WEB_ROOT/admin-desafios.html" 2>/dev/null || true
 grep -q 'desafio-active-clients' "$WEB/admin-desafios.html" || die "admin-desafios sem API clientes ativos"
 grep -q 'data-open-clients' "$WEB/admin-desafios.html" || die "admin-desafios sem clique em clientes ativos"
+grep -q 'fallback\|desafio_participations' "$WEB/admin-desafios.html" || die "admin-desafios sem fallback de clientes"
+
+log "v2-deposit.js (Desafio só PIX)"
+fetch "deploy/vps-supabase/static/v2/v2-deposit.js" "$WEB/v2-deposit.js"
+chmod 0644 "$WEB/v2-deposit.js"
+cp -f "$WEB/v2-deposit.js" "$WEB_ROOT/v2-deposit.js" 2>/dev/null || true
+grep -q 'dest === "desafio"' "$WEB/v2-deposit.js" || die "deposit sem restrição PIX no Desafio"
+
+log "app-desafio.html (Depositar PIX Desafio)"
+# já baixado acima no DEST — revalida
+grep -q 'Depositar PIX Desafio\|deposit-dest="desafio"' "$DEST" || die "app-desafio sem depósito PIX Desafio"
+grep -q 'transfer-desafio' "$DEST" && die "app-desafio ainda chama transfer-desafio" || true
+
 
 # Shim (lucro composto etapa 2+)
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
@@ -124,6 +137,7 @@ if [[ -n "${SHIM_PATH:-}" ]]; then
   grep -q 'desafioCompoundProfitCents' "$SHIM_PATH" || die "shim sem desafioCompoundProfitCents"
   grep -q 'listDesafioActiveClients' "$SHIM_PATH" || die "shim sem listDesafioActiveClients"
   grep -q 'desafio-active-clients' "$SHIM_PATH" || die "shim sem rota desafio-active-clients"
+  grep -q 'só aceita depósito PIX\|Transferência da banca não é permitida' "$SHIM_PATH" || die "shim sem bloqueio transfer→desafio"
   systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 else
   log "aviso: shim não encontrado"
