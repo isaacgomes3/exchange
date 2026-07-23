@@ -109,35 +109,43 @@ button, input, select { font: inherit; }
   flex: 1;
 }
 .v2-nav-section {
-  margin: 14px 0 6px;
-  padding: 0 8px;
+  margin: 8px 0;
+  padding: 12px 14px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  border: 0;
-  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
   appearance: none;
   -webkit-appearance: none;
   font: inherit;
-  font-size: 10px;
+  font-size: 20px;
   font-weight: 800;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.88);
   cursor: pointer;
-  border-radius: 0;
+  border-radius: 12px;
   text-align: left;
   box-shadow: none;
+  outline: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 .v2-nav-section:hover,
 .v2-nav-section:focus-visible {
   color: #fff;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+.v2-nav-group.is-open > .v2-nav-section {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(198, 255, 0, 0.28);
 }
 .v2-nav-section .dot {
-  width: 7px;
-  height: 7px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -146,22 +154,22 @@ button, input, select { font: inherit; }
   min-width: 0;
 }
 .v2-nav-section .sec-chev {
-  font-size: 9px;
-  opacity: 0.4;
+  font-size: 16px;
+  opacity: 0.55;
   line-height: 1;
   transition: transform 0.18s ease;
   transform: rotate(-90deg);
 }
 .v2-nav-group.is-open > .v2-nav-section .sec-chev {
   transform: rotate(0deg);
-  opacity: 0.7;
+  opacity: 0.85;
 }
 .v2-nav-group {
   margin: 0;
 }
 .v2-nav-links {
   display: none;
-  padding: 0 0 4px;
+  padding: 4px 0 8px;
 }
 .v2-nav-group.is-open > .v2-nav-links {
   display: block;
@@ -1609,11 +1617,13 @@ body[data-shell="app"] .v2-sidebar-scroll {
   padding: 14px 12px 20px;
 }
 body[data-shell="app"] .v2-nav-section {
-  margin: 18px 0 8px;
-  padding: 0 10px;
-  color: #9ca36a;
-  letter-spacing: 0.18em;
-  font-size: 10px;
+  margin: 8px 0;
+  padding: 12px 14px;
+  color: #c5d67a;
+  letter-spacing: 0.06em;
+  font-size: 20px;
+  border-color: rgba(198, 255, 0, 0.18);
+  background: rgba(198, 255, 0, 0.04);
 }
 body[data-shell="app"] .v2-nav-section .dot { display: none; }
 body[data-shell="app"].v2-sidebar-collapsed .v2-nav-section .sec-lbl,

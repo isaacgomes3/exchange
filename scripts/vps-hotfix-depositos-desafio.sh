@@ -2,7 +2,7 @@
 # Hotfix: admin Depósitos Desafio (Financeiro)
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-depositos-desafio.sh?v=3")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-depositos-desafio.sh?v=4")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -59,11 +59,11 @@ chmod 0644 "$WEB/em-breve.html" 2>/dev/null || true
 # Reaplica cache-bust após todos os HTML
 log "cache-bust final v2-shell.js / v2.css"
 find "$WEB" -maxdepth 1 -name '*.html' -type f -print0 \
-  | xargs -0 sed -i -E 's|/v2-shell\.js(\?[^"]*)?|/v2-shell.js?v=nav-acc-2|g' || true
+  | xargs -0 sed -i -E 's|/v2-shell\.js(\?[^"]*)?|/v2-shell.js?v=nav-acc-3|g' || true
 find "$WEB" -maxdepth 1 -name 'admin*.html' -type f -print0 \
-  | xargs -0 sed -i -E 's|/v2\.css(\?[^"]*)?|/v2.css?v=nav-acc-2|g' || true
+  | xargs -0 sed -i -E 's|/v2\.css(\?[^"]*)?|/v2.css?v=nav-acc-3|g' || true
 find "$WEB_ROOT" -maxdepth 1 -name '*.html' -type f -print0 2>/dev/null \
-  | xargs -0 -r sed -i -E 's|/v2-shell\.js(\?[^"]*)?|/v2-shell.js?v=nav-acc-2|g' || true
+  | xargs -0 -r sed -i -E 's|/v2-shell\.js(\?[^"]*)?|/v2-shell.js?v=nav-acc-3|g' || true
 
 # Shim
 EXEC_LINE="$(systemctl show -p ExecStart --value arbishield-serverfn-shim.service 2>/dev/null || true)"
