@@ -133,8 +133,7 @@
       </div>
       <div class="actions">
         <a class="btn btn-ghost" href="/admin">← Admin</a>
-        <a class="btn btn-lime-outline" href="/desafio-sugestoes.html">Sugestão de Desafio</a>
-        <button class="btn btn-primary" id="btnRefresh" type="button">Atualizar</button>
+                <button class="btn btn-primary" id="btnRefresh" type="button">Atualizar</button>
       </div>
     </header>
 
@@ -143,8 +142,7 @@
       <p class="hint">Dados vindos de “Usar no lançamento”. Revise e use no formulário de criação quando disponível.</p>
       <div class="grid" id="suggestGrid"></div>
       <div class="actions">
-        <a class="btn btn-lime-outline" id="suggestBetbra" href="#" target="_blank" rel="noopener">Abrir BetBra</a>
-        <button class="btn btn-ghost" id="suggestClear" type="button">Descartar sugestão</button>
+                <button class="btn btn-ghost" id="suggestClear" type="button">Descartar sugestão</button>
         <button class="btn btn-primary" id="suggestCopy" type="button">Copiar resumo</button>
       </div>
     </section>
@@ -338,8 +336,10 @@
         .join("");
       const link = step.external_bet_link || data.betbraLink || "#";
       const a = $("suggestBetbra");
-      a.href = link;
-      a.style.display = link && link !== "#" ? "inline-flex" : "none";
+      if (a) {
+        a.href = link;
+        a.style.display = link && link !== "#" ? "inline-flex" : "none";
+      }
       panel.classList.add("show");
       clearSuggestionQuery();
     }

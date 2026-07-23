@@ -48,7 +48,7 @@ chmod 0644 "$WEB/admin-jogos.html"
 cp -f "$WEB/admin-jogos.html" "$WEB_ROOT/admin-jogos.html" 2>/dev/null || true
 
 # Layout correto de proteção (não desafio)
-grep -q 'Lançar jogo (BetBra)' "$WEB/admin-jogos.html" || die "HTML sem botão BetBra principal"
+grep -q 'Lançar jogo' "$WEB/admin-jogos.html" || die "HTML sem botão Lançar jogo"
 grep -q 'não.*Desafio\|nao.*Desafio\|não</em> é Desafio\|não</em> é Desafio' "$WEB/admin-jogos.html" || \
   grep -q 'Isso <em>não</em> é Desafio' "$WEB/admin-jogos.html" || die "HTML sem aviso ≠ Desafio"
 grep -q 'data-pf="upcoming"' "$WEB/admin-jogos.html" || die "HTML sem aba Agendados (layout revertido)"
@@ -62,4 +62,4 @@ echo
 echo "OK — Crédito + layout Jogos (proteção, não desafio)"
 echo "  curl -s http://127.0.0.1:3098/health   # settle-credito-carteira-v1"
 echo "  https://arbishield.app/admin-jogos.html  (Ctrl+F5)"
-echo "  Abas: Agendados / Ao vivo / Pendente · botão + Lançar jogo (BetBra)"
+echo "  Abas: Agendados / Ao vivo / Pendente · botão + Lançar jogo (manual)"

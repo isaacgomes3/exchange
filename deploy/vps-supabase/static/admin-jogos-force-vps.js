@@ -1,6 +1,6 @@
 /**
  * Gestão de Jogos: bloqueia layout SPA (Novo Evento manual).
- * Sempre recarrega /admin/matches para servir admin-jogos-vps.html (BetBra).
+ * Sempre recarrega /admin/matches para servir admin-jogos-vps.html.
  */
 (function () {
   var JOGOS = "/admin/matches";

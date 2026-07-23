@@ -145,7 +145,7 @@ export default function V2AdminPage() {
           Usuários
         </Link>
         <Link href="/v2/admin/jogos" className="v2-btn v2-btn-ghost">
-          Jogos BetBra
+          Gestão de Jogos
         </Link>
       </div>
     </div>

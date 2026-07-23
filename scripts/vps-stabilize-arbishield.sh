@@ -37,10 +37,9 @@ download() {
 
 log "Sincronizando código (curl, sem depender de git)"
 download "scripts/arbishield-prelive-events.mjs" "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
-download "scripts/arbishield-desafio-suggestions.mjs" "$SCRIPTS_DIR/arbishield-desafio-suggestions.mjs"
 download "scripts/arbishield-serverfn-shim.mjs" "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs"
 download "scripts/arbishield-fix-csr-boot.py" "$SCRIPTS_DIR/arbishield-fix-csr-boot.py"
-chmod 755 "$SCRIPTS_DIR/arbishield-prelive-events.mjs" "$SCRIPTS_DIR/arbishield-desafio-suggestions.mjs"
+chmod 755 "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
 chmod 755 "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs" "$SCRIPTS_DIR/arbishield-fix-csr-boot.py"
 
 if command -v git >/dev/null 2>&1; then
@@ -130,10 +129,10 @@ else
   die "serverfn-shim ausente — SPA trava sem dados dinâmicos"
 fi
 
-log "Workers admin :3098 / :3099"
+log "Worker admin :3098"
 cat > /etc/systemd/system/arbishield-prelive-events.service <<EOF
 [Unit]
-Description=ArbiShield admin API (jogos, desafios, prelive) :3098
+Description=ArbiShield admin API (jogos, desafios, settle) :3098
 After=network.target docker.service
 Wants=docker.service
 
@@ -150,27 +149,13 @@ RestartSec=3
 WantedBy=multi-user.target
 EOF
 
-cat > /etc/systemd/system/arbishield-desafio-suggestions.service <<EOF
-[Unit]
-Description=ArbiShield sugestões desafio :3099
-After=network.target
-
-[Service]
-Type=simple
-EnvironmentFile=-$ENV_FILE
-EnvironmentFile=-/opt/arbishield/.arbishield-odds-sync.env
-Environment=ARBISHIELD_SUPABASE_URL=http://127.0.0.1:8000
-ExecStart=/usr/bin/node $SCRIPTS_DIR/arbishield-desafio-suggestions.mjs --serve
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-EOF
 
 systemctl daemon-reload
-systemctl enable arbishield-prelive-events.service arbishield-desafio-suggestions.service
-systemctl restart arbishield-prelive-events.service arbishield-desafio-suggestions.service
+systemctl disable --now arbishield-desafio-suggestions.service 2>/dev/null || true
+rm -f /etc/systemd/system/arbishield-desafio-suggestions.service
+systemctl daemon-reload
+systemctl enable arbishield-prelive-events.service
+systemctl restart arbishield-prelive-events.service
 
 nginx -t
 systemctl reload nginx
@@ -208,9 +193,8 @@ check() {
 
 check "Kong auth" "http://127.0.0.1:8000/auth/v1/health"
 check "Worker :3098 health" "http://127.0.0.1:3098/health"
-check "Worker :3099 health" "http://127.0.0.1:3099/health"
 check "API desafios" "http://127.0.0.1:3098/api/arbishield/desafios"
-check "API prelive" "http://127.0.0.1:3098/api/arbishield/prelive-events"
+check "API matches health" "http://127.0.0.1:3098/health"
 check "HTTPS desafios" "https://arbishield.app/api/arbishield/desafios"
 check "HTTPS admin SPA" "https://arbishield.app/admin"
 check "HTTPS app usuario" "https://arbishield.app/app"
@@ -227,7 +211,6 @@ echo
 if [[ "$FAIL" -ne 0 ]]; then
   warn "Alguns checks falharam."
   echo "Logs: journalctl -u arbishield-prelive-events -n 50 --no-pager"
-  echo "      journalctl -u arbishield-desafio-suggestions -n 30 --no-pager"
   exit 1
 fi
 

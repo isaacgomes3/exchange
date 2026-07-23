@@ -1,5 +1,5 @@
 /**
- * Gestão de Jogos: força HTML VPS (BetBra) e bloqueia layout SPA manual.
+ * Gestão de Jogos: força HTML VPS e bloqueia layout SPA legado.
  * Não depende do script $_TSR (ele se remove após o boot).
  */
 (function () {
