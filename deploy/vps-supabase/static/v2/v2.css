@@ -4441,8 +4441,8 @@ body[data-shell="app"] .dz-wallet-cell,
   position: relative;
   margin: 14px -18px 0;
   padding: 11px 18px;
-  background: #30c895;
-  color: #fff;
+  background: #c9f223;
+  color: #000;
   font-size: 13px;
   font-weight: 900;
   letter-spacing: 0.1em;
@@ -4459,7 +4459,7 @@ body[data-shell="app"] .dz-wallet-cell,
   height: 0;
   border-left: 8px solid transparent;
   border-right: 8px solid transparent;
-  border-bottom: 8px solid #30c895;
+  border-bottom: 8px solid #c9f223;
 }
 
 /* estilos antigos de card desafio substituídos pelo visual v2 */
