@@ -603,8 +603,7 @@
         <div class="j-stat"><span class="k">Proteção</span><span class="v amber" id="stProt">—</span></div>
         <div class="j-stat"><span class="k">Saldo Desafio</span><span class="v" id="stBal">—</span></div>
         <div class="j-actions">
-          <a class="primary" id="ctaSinal" href="/app-desafio-sinais.html">Abrir painel de sinais</a>
-          <a class="ghost" href="/app-desafio-lista.html">Lista de desafios</a>
+          <a class="primary" href="/app-desafio-lista.html">Lista de desafios</a>
         </div>
       </aside>
     </div>
@@ -1023,13 +1022,6 @@
         $("stLeft").textContent = String(p.gamesRemaining != null ? p.gamesRemaining : "—");
         $("stProt").textContent = p.protectionActive ? "Ativa" : "—";
         $("stBal").textContent = money(p.desafioBalanceCents || 0);
-        var cur = (journey.stages || []).find(function (s) {
-          return s.state === "current" || s.state === "final_ready";
-        });
-        if (cur && cur.stepId) {
-          $("ctaSinal").href =
-            "/app-desafio-sinais.html?stepId=" + encodeURIComponent(cur.stepId);
-        }
       }
 
       function openDrawer(stage) {
@@ -1064,17 +1056,12 @@
         }
 
         var ctas = "";
-        if (stage.stepId && (stage.state === "current" || stage.state === "final_ready" || stage.state === "waiting")) {
+        if (stage.externalBetLink && (stage.state === "current" || stage.state === "final_ready" || stage.state === "waiting" || stage.state === "won")) {
           ctas =
             '<div class="j-drawer-cta">' +
-            '<a class="primary" href="/app-desafio-sinais.html?stepId=' +
-            encodeURIComponent(stage.stepId) +
-            '">Abrir sinal desta etapa</a>' +
-            (stage.externalBetLink
-              ? '<a class="ghost" href="' +
-                esc(stage.externalBetLink) +
-                '" target="_blank" rel="noopener">Abrir casa externa</a>'
-              : "") +
+            '<a class="primary" href="' +
+            esc(stage.externalBetLink) +
+            '" target="_blank" rel="noopener">Abrir casa externa</a>' +
             "</div>";
         }
 

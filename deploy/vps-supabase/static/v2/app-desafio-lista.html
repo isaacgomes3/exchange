@@ -299,9 +299,10 @@
           cta = '<button type="button" class="dz-cta muted" disabled>Em breve</button>';
         } else {
           cta =
-            '<a class="dz-cta" href="/app-desafio-sinais.html?stepId=' +
-            encodeURIComponent(item.stepId || item.id) +
-            '">Abrir sinal</a>';
+            '<a class="dz-cta" href="/app-desafio.html?etapa=' +
+            encodeURIComponent(item.stepIndex || 1) +
+            (item.desafioId ? '&desafioId=' + encodeURIComponent(item.desafioId) : '') +
+            '">Ver na jornada</a>';
         }
 
         return (
