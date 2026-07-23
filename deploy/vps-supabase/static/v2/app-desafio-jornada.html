@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Jornada do Desafio · ArbiShield</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js"></script>
+  <script src="/v2-shell.js" defer></script>
+  <style>
+    :root {
+      --j-bg: #050505;
+      --j-panel: #0a1210;
+      --j-graphite: #141a18;
+      --j-line: rgba(201, 242, 35, 0.22);
+      --j-line-dim: rgba(255, 255, 255, 0.08);
+      --j-lime: #c9f223;
+      --j-lime-soft: rgba(201, 242, 35, 0.15);
+      --j-amber: #fbbf24;
+      --j-red: #f87171;
+      --j-blue: #60a5fa;
+      --j-muted: #8b9690;
+    }
+
+    .j-page { max-width: 1100px; margin: 0 auto; padding-bottom: 48px; }
+    .j-hero {
+      text-align: center;
+      margin: 8px 0 28px;
+      position: relative;
+    }
+    .j-hero::before {
+      content: "";
+      position: absolute;
+      inset: -40px 10% auto;
+      height: 120px;
+      background: radial-gradient(ellipse, rgba(201,242,35,0.12), transparent 70%);
+      pointer-events: none;
+    }
+    .j-hero h1 {
+      margin: 0;
+      font-size: clamp(1.6rem, 4vw, 2.4rem);
+      font-weight: 900;
+      font-style: italic;
+      letter-spacing: -0.04em;
+      text-transform: uppercase;
+    }
+    .j-hero h1 span { color: var(--j-lime); }
+    .j-hero .sub {
+      margin: 10px auto 0;
+      max-width: 420px;
+      color: var(--j-muted);
+      font-size: 0.78rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .j-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 280px;
+      gap: 22px;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .j-layout { grid-template-columns: 1fr; }
+    }
+
+    /* —— Mapa de campanha —— */
+    .j-map {
+      position: relative;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 20px;
+      background:
+        radial-gradient(1200px 400px at 50% -10%, rgba(201,242,35,0.07), transparent 55%),
+        linear-gradient(180deg, #07140f 0%, #050505 40%, #080808 100%);
+      padding: 28px 16px 36px;
+      overflow: hidden;
+      min-height: 640px;
+    }
+    .j-map-title {
+      text-align: center;
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      font-weight: 800;
+      color: var(--j-lime);
+      margin-bottom: 8px;
+    }
+    .j-map-rule {
+      width: min(320px, 70%);
+      height: 1px;
+      margin: 0 auto 28px;
+      background: linear-gradient(90deg, transparent, var(--j-line), transparent);
+    }
+
+    .j-path {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+      max-width: 360px;
+      margin: 0 auto;
+    }
+
+    .j-node {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      padding: 0;
+      font: inherit;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .j-node:focus-visible .j-badge {
+      outline: 2px solid var(--j-lime);
+      outline-offset: 4px;
+    }
+
+    .j-badge {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 22px;
+      position: relative;
+      border: 2px solid rgba(255,255,255,0.12);
+      background: var(--j-graphite);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+      transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+    }
+    .j-node:hover .j-badge { transform: scale(1.06); }
+
+    .j-node.is-won .j-badge {
+      border-color: var(--j-lime);
+      background: radial-gradient(circle at 30% 30%, #1a2e14, #0c160c);
+      box-shadow: 0 0 24px rgba(201,242,35,0.35), 0 8px 24px rgba(0,0,0,0.45);
+      animation: j-glow 2.4s ease-in-out infinite;
+    }
+    .j-node.is-current .j-badge {
+      border-color: var(--j-blue);
+      background: radial-gradient(circle at 30% 30%, #16304a, #0a1420);
+      box-shadow: 0 0 28px rgba(96,165,250,0.4);
+      animation: j-pulse 1.8s ease-in-out infinite;
+    }
+    .j-node.is-final_ready .j-badge,
+    .j-node.is-final.is-current .j-badge {
+      border-color: #fbbf24;
+      background: radial-gradient(circle at 30% 30%, #3a2a0a, #1a1408);
+      box-shadow: 0 0 28px rgba(251,191,36,0.35);
+      animation: j-pulse 1.8s ease-in-out infinite;
+    }
+    .j-node.is-waiting .j-badge {
+      border-color: var(--j-amber);
+      box-shadow: 0 0 16px rgba(251,191,36,0.2);
+    }
+    .j-node.is-lost .j-badge {
+      border-color: var(--j-red);
+      background: radial-gradient(circle at 30% 30%, #3a1515, #1a0808);
+    }
+    .j-node.is-protected .j-badge {
+      border-color: #a78bfa;
+      box-shadow: 0 0 20px rgba(167,139,250,0.3);
+    }
+    .j-node.is-won_external .j-badge {
+      border-color: var(--j-lime);
+      box-shadow: 0 0 24px rgba(201,242,35,0.45);
+    }
+    .j-node.is-locked .j-badge {
+      opacity: 0.45;
+      filter: grayscale(0.4);
+    }
+
+    .j-label {
+      margin-top: 10px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #d7e0da;
+    }
+    .j-node.is-locked .j-label { color: var(--j-muted); }
+    .j-node.is-current .j-label { color: var(--j-blue); }
+    .j-node.is-won .j-label { color: var(--j-lime); }
+    .j-hint {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--j-muted);
+      font-weight: 600;
+    }
+    .j-node.is-current .j-hint { color: var(--j-blue); }
+
+    .j-connector {
+      width: 3px;
+      height: 42px;
+      border-radius: 99px;
+      background: var(--j-line-dim);
+      position: relative;
+      overflow: hidden;
+      z-index: 1;
+    }
+    .j-connector.is-lit {
+      background: linear-gradient(180deg, var(--j-lime), rgba(201,242,35,0.25));
+      box-shadow: 0 0 12px rgba(201,242,35,0.35);
+    }
+    .j-connector.is-lit::after {
+      content: "";
+      position: absolute;
+      left: 0; right: 0;
+      height: 40%;
+      background: linear-gradient(180deg, transparent, #fff, transparent);
+      animation: j-flow 1.6s linear infinite;
+      opacity: 0.55;
+    }
+
+    /* Recovery branch */
+    .j-recovery {
+      margin: 28px auto 0;
+      max-width: 420px;
+      padding: 18px 16px 8px;
+      border-radius: 16px;
+      border: 1px dashed rgba(167,139,250,0.45);
+      background: rgba(88, 40, 160, 0.08);
+      display: none;
+    }
+    .j-recovery.show { display: block; animation: j-fade-in 0.5s ease; }
+    .j-recovery-title {
+      text-align: center;
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      font-weight: 800;
+      color: #c4b5fd;
+      margin-bottom: 14px;
+    }
+    .j-recovery .j-path { max-width: 280px; }
+    .j-shield {
+      width: 56px; height: 56px; border-radius: 14px;
+      display: grid; place-items: center;
+      font-size: 22px;
+      border: 2px solid #a78bfa;
+      background: rgba(88,40,160,0.25);
+      margin: 0 auto 8px;
+      animation: j-pulse 2s ease-in-out infinite;
+    }
+
+    /* Progress rail */
+    .j-progress {
+      position: sticky;
+      top: 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,0.07);
+      background: linear-gradient(165deg, rgba(12,28,24,0.95), rgba(8,12,11,0.98));
+      padding: 18px 16px;
+    }
+    .j-progress h2 {
+      margin: 0 0 14px;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--j-lime);
+      font-weight: 800;
+    }
+    .j-bar {
+      height: 10px;
+      border-radius: 99px;
+      background: rgba(255,255,255,0.06);
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+    .j-bar > span {
+      display: block;
+      height: 100%;
+      width: 0%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #84cc16, var(--j-lime));
+      box-shadow: 0 0 12px rgba(201,242,35,0.5);
+      transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .j-pct {
+      font-size: 28px;
+      font-weight: 900;
+      color: #fff;
+      margin-bottom: 16px;
+    }
+    .j-stat {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 0;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      font-size: 13px;
+    }
+    .j-stat .k { color: var(--j-muted); font-weight: 600; }
+    .j-stat .v { color: #fff; font-weight: 800; }
+    .j-stat .v.lime { color: var(--j-lime); }
+    .j-stat .v.amber { color: var(--j-amber); }
+    .j-actions { display: grid; gap: 8px; margin-top: 16px; }
+    .j-actions a, .j-actions button {
+      text-align: center;
+      text-decoration: none;
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-weight: 800;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .j-actions .primary { background: var(--j-lime); color: #04140f; }
+    .j-actions .ghost {
+      background: transparent;
+      color: #d7e0da;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+
+    /* Side drawer */
+    .j-drawer-bg {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(4px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+      z-index: 80;
+    }
+    .j-drawer-bg.open { opacity: 1; pointer-events: auto; }
+    .j-drawer {
+      position: fixed;
+      top: 0; right: 0; bottom: 0;
+      width: min(400px, 100%);
+      background: linear-gradient(180deg, #0c1613, #070a09);
+      border-left: 1px solid rgba(201,242,35,0.15);
+      transform: translateX(105%);
+      transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+      z-index: 90;
+      display: flex;
+      flex-direction: column;
+      box-shadow: -20px 0 60px rgba(0,0,0,0.5);
+    }
+    .j-drawer.open { transform: translateX(0); }
+    .j-drawer-head {
+      padding: 20px 20px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .j-drawer-head h3 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 900;
+      font-style: italic;
+      text-transform: uppercase;
+      letter-spacing: -0.02em;
+    }
+    .j-drawer-head h3 span { color: var(--j-lime); }
+    .j-drawer-close {
+      border: 0;
+      background: rgba(255,255,255,0.06);
+      color: #fff;
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 18px;
+    }
+    .j-drawer-body {
+      padding: 18px 20px 28px;
+      overflow: auto;
+      flex: 1;
+    }
+    .j-match {
+      font-size: 1.25rem;
+      font-weight: 800;
+      margin: 0 0 6px;
+      line-height: 1.3;
+    }
+    .j-when { color: var(--j-muted); font-size: 13px; font-weight: 600; margin-bottom: 18px; }
+    .j-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .j-card {
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.07);
+      background: rgba(255,255,255,0.03);
+      padding: 12px;
+    }
+    .j-card .l {
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--j-muted);
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .j-card .v {
+      font-size: 1.15rem;
+      font-weight: 900;
+      color: #fff;
+    }
+    .j-card .v.lime { color: var(--j-lime); }
+    .j-status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 800;
+      margin: 8px 0 16px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .j-status-pill.won { color: var(--j-lime); border-color: rgba(201,242,35,0.35); }
+    .j-status-pill.lost { color: var(--j-red); border-color: rgba(248,113,113,0.35); }
+    .j-status-pill.current { color: var(--j-blue); border-color: rgba(96,165,250,0.35); }
+    .j-status-pill.waiting { color: var(--j-amber); border-color: rgba(251,191,36,0.35); }
+    .j-status-pill.locked { color: var(--j-muted); }
+    .j-status-pill.protected { color: #c4b5fd; border-color: rgba(167,139,250,0.4); }
+    .j-drawer-cta {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .j-drawer-cta a, .j-drawer-cta button {
+      border: 0;
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-weight: 800;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      text-align: center;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .j-drawer-cta .primary { background: var(--j-lime); color: #04140f; }
+    .j-drawer-cta .ghost {
+      background: transparent;
+      color: #d7e0da;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .j-empty {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--j-muted);
+    }
+    .j-empty h2 { color: #fff; margin: 0 0 8px; }
+    .j-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 14px;
+      justify-content: center;
+      margin-top: 22px;
+      font-size: 11px;
+      color: var(--j-muted);
+      font-weight: 600;
+    }
+    .j-legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .j-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      display: inline-block;
+    }
+
+    @keyframes j-pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.07); }
+    }
+    @keyframes j-glow {
+      0%, 100% { box-shadow: 0 0 16px rgba(201,242,35,0.25), 0 8px 24px rgba(0,0,0,0.45); }
+      50% { box-shadow: 0 0 32px rgba(201,242,35,0.5), 0 8px 24px rgba(0,0,0,0.45); }
+    }
+    @keyframes j-flow {
+      0% { top: -40%; }
+      100% { top: 100%; }
+    }
+    @keyframes j-fade-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes j-pop {
+      0% { transform: scale(0.85); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .j-node { animation: j-pop 0.45s ease backwards; }
+    .j-node:nth-child(1) { animation-delay: 0.05s; }
+    .j-node:nth-child(3) { animation-delay: 0.1s; }
+    .j-node:nth-child(5) { animation-delay: 0.15s; }
+    .j-node:nth-child(7) { animation-delay: 0.2s; }
+    .j-node:nth-child(9) { animation-delay: 0.25s; }
+  </style>
+</head>
+<body data-shell="app" data-active="desafio">
+  <div class="j-page">
+    <div class="j-hero">
+      <h1>Desafio <span>ArbiShield</span></h1>
+      <p class="sub">Jornada · mapa de campanha · até 5 etapas</p>
+    </div>
+
+    <div id="err" class="err"></div>
+
+    <div class="j-layout" id="layout" hidden>
+      <section class="j-map" aria-label="Mapa do desafio">
+        <div class="j-map-title" id="mapTitle">Desafio</div>
+        <div class="j-map-rule"></div>
+        <div class="j-path" id="mainPath"></div>
+
+        <div class="j-recovery" id="recoveryBox" aria-live="polite">
+          <div class="j-recovery-title">Circuito de recuperação</div>
+          <div class="j-shield" title="Proteção">🛡</div>
+          <div class="j-path" id="recoveryPath"></div>
+        </div>
+
+        <div class="j-legend">
+          <span><i class="j-dot" style="background:#8b9690"></i> Aguardando</span>
+          <span><i class="j-dot" style="background:#60a5fa"></i> Você está aqui</span>
+          <span><i class="j-dot" style="background:#c9f223"></i> Concluída</span>
+          <span><i class="j-dot" style="background:#f87171"></i> Falhou</span>
+          <span><i class="j-dot" style="background:#a78bfa"></i> Proteção</span>
+          <span><i class="j-dot" style="background:#fbbf24"></i> Final</span>
+        </div>
+      </section>
+
+      <aside class="j-progress" id="progressPanel">
+        <h2>Progresso</h2>
+        <div class="j-bar"><span id="barFill"></span></div>
+        <div class="j-pct" id="pctLabel">0%</div>
+        <div class="j-stat"><span class="k">Etapa atual</span><span class="v" id="stCurrent">—</span></div>
+        <div class="j-stat"><span class="k">Lucro acumulado</span><span class="v lime" id="stProfit">—</span></div>
+        <div class="j-stat"><span class="k">Jogos restantes</span><span class="v" id="stLeft">—</span></div>
+        <div class="j-stat"><span class="k">Proteção</span><span class="v amber" id="stProt">—</span></div>
+        <div class="j-stat"><span class="k">Saldo Desafio</span><span class="v" id="stBal">—</span></div>
+        <div class="j-actions">
+          <a class="primary" id="ctaSinal" href="/app-desafio-sinais.html">Abrir painel de sinais</a>
+          <a class="ghost" href="/app-desafio.html">Lista de desafios</a>
+        </div>
+      </aside>
+    </div>
+
+    <div class="j-empty" id="empty" hidden>
+      <h2>Nenhum desafio ativo</h2>
+      <p>Quando a equipe publicar um desafio, sua jornada aparece aqui.</p>
+      <p style="margin-top:16px"><a class="btn btn-primary" href="/app-desafio.html">Ver desafios</a></p>
+    </div>
+  </div>
+
+  <div class="j-drawer-bg" id="drawerBg"></div>
+  <aside class="j-drawer" id="drawer" aria-hidden="true">
+    <div class="j-drawer-head">
+      <h3 id="drawerTitle">Etapa <span>1</span></h3>
+      <button type="button" class="j-drawer-close" id="drawerClose" aria-label="Fechar">×</button>
+    </div>
+    <div class="j-drawer-body" id="drawerBody"></div>
+  </aside>
+
+  <script>
+    (async function () {
+      var money = ArbiV2.money;
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+
+      var journey = null;
+      var selected = null;
+
+      function $(id) { return document.getElementById(id); }
+      function showErr(msg) {
+        var el = $("err");
+        el.textContent = msg || "";
+        el.classList.toggle("show", !!msg);
+      }
+      function esc(v) {
+        return String(v == null ? "" : v)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function iconFor(stage) {
+        if (stage.isFinal || stage.state === "final_ready") return "👑";
+        if (stage.state === "won" || stage.state === "won_external") return "🏆";
+        if (stage.state === "lost") return "❌";
+        if (stage.state === "protected") return "🛡";
+        if (stage.state === "current") return "🔵";
+        if (stage.state === "waiting") return "🟡";
+        return "⚪";
+      }
+
+      function statusClass(state) {
+        if (state === "won" || state === "won_external") return "won";
+        if (state === "lost") return "lost";
+        if (state === "current" || state === "final_ready") return "current";
+        if (state === "waiting") return "waiting";
+        if (state === "protected") return "protected";
+        return "locked";
+      }
+
+      async function api(path, body) {
+        var session = await supa.auth.getSession();
+        var token = session.data.session && session.data.session.access_token;
+        var res = await fetch(path, {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body || {}),
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok) throw new Error(data.error || "Falha na API");
+        return data;
+      }
+
+      function renderPath(host, stages, opts) {
+        opts = opts || {};
+        var html = "";
+        stages.forEach(function (stage, i) {
+          var cls = "j-node is-" + stage.state + (stage.isFinal ? " is-final" : "");
+          var hint =
+            stage.state === "current" || stage.state === "final_ready"
+              ? "Você está aqui"
+              : stage.state === "won"
+                ? "Concluída"
+                : stage.state === "won_external"
+                  ? "Sucesso externo"
+                  : stage.state === "lost"
+                    ? "Falhou aqui"
+                    : stage.state === "waiting"
+                      ? "Aguardando"
+                      : stage.state === "protected"
+                        ? "Protegida"
+                        : "Bloqueada";
+          html +=
+            '<button type="button" class="' +
+            cls +
+            '" data-stage="' +
+            esc(stage.index) +
+            '" data-recovery="' +
+            (opts.recovery ? "1" : "0") +
+            '" style="animation-delay:' +
+            (0.05 + i * 0.06) +
+            's">' +
+            '<div class="j-badge" aria-hidden="true">' +
+            iconFor(stage) +
+            "</div>" +
+            '<div class="j-label">' +
+            esc(stage.label) +
+            "</div>" +
+            '<div class="j-hint">' +
+            esc(hint) +
+            "</div></button>";
+          if (i < stages.length - 1) {
+            var lit =
+              stage.state === "won" ||
+              stage.state === "won_external" ||
+              stage.state === "protected";
+            html +=
+              '<div class="j-connector' +
+              (lit ? " is-lit" : "") +
+              '" aria-hidden="true"></div>';
+          }
+        });
+        host.innerHTML = html;
+        host.querySelectorAll("[data-stage]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var idx = btn.getAttribute("data-stage");
+            var isRec = btn.getAttribute("data-recovery") === "1";
+            var list = isRec ? journey.recovery : journey.stages;
+            var stage = list.find(function (s) {
+              return String(s.index) === String(idx);
+            });
+            if (stage) openDrawer(stage);
+          });
+        });
+      }
+
+      function paintProgress() {
+        var p = journey.progress || {};
+        var pct = Number(p.percent) || 0;
+        $("barFill").style.width = pct + "%";
+        $("pctLabel").textContent = pct + "%";
+        $("stCurrent").textContent =
+          (p.currentStage || "—") + " de " + (p.totalStages || 5);
+        $("stProfit").textContent = money(p.accumulatedProfitCents || 0);
+        $("stLeft").textContent = String(p.gamesRemaining != null ? p.gamesRemaining : "—");
+        $("stProt").textContent = p.protectionActive ? "Ativa" : "—";
+        $("stBal").textContent = money(p.desafioBalanceCents || 0);
+        var cur = (journey.stages || []).find(function (s) {
+          return s.state === "current" || s.state === "final_ready";
+        });
+        if (cur && cur.stepId) {
+          $("ctaSinal").href =
+            "/app-desafio-sinais.html?stepId=" + encodeURIComponent(cur.stepId);
+        }
+      }
+
+      function openDrawer(stage) {
+        selected = stage;
+        $("drawerTitle").innerHTML =
+          esc(stage.label || "Etapa") +
+          (stage.isFinal ? ' <span>👑</span>' : "");
+        var pillCls = statusClass(stage.state);
+        var resultBlock = "";
+        if (stage.participation && stage.participation.result === "won") {
+          resultBlock =
+            '<div class="j-status-pill won">✅ Vitória</div>' +
+            '<div class="j-card" style="margin-bottom:14px"><div class="l">Lucro</div>' +
+            '<div class="v lime">+' +
+            esc(money(stage.participation.profitCents || stage.profitCents || 0)) +
+            "</div></div>" +
+            '<p style="color:#8b9690;font-size:13px;margin:0 0 14px">Próxima etapa liberada.</p>';
+        } else if (stage.participation && stage.participation.result === "lost") {
+          resultBlock =
+            '<div class="j-status-pill lost">❌ Derrota / resultado externo</div>' +
+            '<p style="color:#8b9690;font-size:13px;margin:0 0 14px">Se houver proteção, o circuito de recuperação aparece no mapa.</p>' +
+            '<div class="j-drawer-cta"><button type="button" class="ghost" id="btnShowRecovery">Ver circuito de recuperação</button></div>';
+        } else if (stage.state === "current" || stage.state === "final_ready") {
+          resultBlock =
+            '<div class="j-status-pill current">⏳ ' +
+            esc(stage.statusText || "Aguardando início") +
+            "</div>";
+        } else if (stage.state === "locked") {
+          resultBlock = '<div class="j-status-pill locked">○ Bloqueada</div>';
+        } else if (stage.state === "waiting") {
+          resultBlock = '<div class="j-status-pill waiting">🟡 Aguardando início</div>';
+        }
+
+        var ctas = "";
+        if (stage.stepId && (stage.state === "current" || stage.state === "final_ready" || stage.state === "waiting")) {
+          ctas =
+            '<div class="j-drawer-cta">' +
+            '<a class="primary" href="/app-desafio-sinais.html?stepId=' +
+            encodeURIComponent(stage.stepId) +
+            '">Abrir sinal desta etapa</a>' +
+            (stage.externalBetLink
+              ? '<a class="ghost" href="' +
+                esc(stage.externalBetLink) +
+                '" target="_blank" rel="noopener">Abrir casa externa</a>'
+              : "") +
+            "</div>";
+        }
+
+        $("drawerBody").innerHTML =
+          '<p class="j-match">' +
+          esc(
+            stage.matchLabel ||
+              (stage.homeTeam && stage.awayTeam
+                ? stage.homeTeam + " x " + stage.awayTeam
+                : "Jogo a definir")
+          ) +
+          "</p>" +
+          '<p class="j-when">Data: ' +
+          esc(stage.whenLabel || "A definir") +
+          "</p>" +
+          '<div class="j-grid">' +
+          '<div class="j-card"><div class="l">Odd ArbiShield</div><div class="v lime">' +
+          esc(stage.arbiOdd != null ? stage.arbiOdd : "—") +
+          "</div></div>" +
+          '<div class="j-card"><div class="l">Casa Externa</div><div class="v">' +
+          esc(stage.casaOdd != null ? stage.casaOdd : "—") +
+          "</div></div>" +
+          '<div class="j-card"><div class="l">Valor recomendado</div><div class="v">' +
+          esc(money(stage.recommendedCents || 0)) +
+          "</div></div>" +
+          '<div class="j-card"><div class="l">Retorno</div><div class="v lime">' +
+          esc(money(stage.returnCents || 0)) +
+          "</div></div></div>" +
+          '<div class="j-card" style="margin-bottom:14px"><div class="l">Status</div><div class="v" style="font-size:1rem">' +
+          esc(stage.statusText || "—") +
+          "</div></div>" +
+          resultBlock +
+          ctas;
+
+        $("drawer").classList.add("open");
+        $("drawerBg").classList.add("open");
+        $("drawer").setAttribute("aria-hidden", "false");
+        document.body.style.overflow = "hidden";
+
+        var btnRec = $("btnShowRecovery");
+        if (btnRec) {
+          btnRec.addEventListener("click", function () {
+            closeDrawer();
+            var box = $("recoveryBox");
+            box.classList.add("show");
+            box.scrollIntoView({ behavior: "smooth", block: "center" });
+          });
+        }
+      }
+
+      function closeDrawer() {
+        $("drawer").classList.remove("open");
+        $("drawerBg").classList.remove("open");
+        $("drawer").setAttribute("aria-hidden", "true");
+        document.body.style.overflow = "";
+      }
+
+      function paint() {
+        if (!journey || journey.empty) {
+          $("layout").hidden = true;
+          $("empty").hidden = false;
+          return;
+        }
+        $("empty").hidden = true;
+        $("layout").hidden = false;
+        $("mapTitle").textContent =
+          (journey.desafio && journey.desafio.title) || "Desafio ArbiShield";
+        renderPath($("mainPath"), journey.stages || []);
+        if (journey.recovery && journey.recovery.length) {
+          $("recoveryBox").classList.add("show");
+          renderPath($("recoveryPath"), journey.recovery, { recovery: true });
+        } else if (journey.inRecovery) {
+          $("recoveryBox").classList.add("show");
+          $("recoveryPath").innerHTML =
+            '<p style="text-align:center;color:#c4b5fd;font-size:13px;font-weight:700">Proteção acionada — aguarde o novo caminho.</p>';
+        } else {
+          $("recoveryBox").classList.remove("show");
+        }
+        paintProgress();
+      }
+
+      $("drawerClose").addEventListener("click", closeDrawer);
+      $("drawerBg").addEventListener("click", closeDrawer);
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") closeDrawer();
+      });
+
+      try {
+        var params = new URLSearchParams(location.search);
+        journey = await api("/api/arbishield/desafio-jornada", {
+          desafioId: params.get("desafioId") || undefined,
+        });
+        paint();
+        // Deep-link etapa
+        var stageQ = params.get("etapa") || params.get("stage");
+        if (stageQ && journey.stages) {
+          var st = journey.stages.find(function (s) {
+            return String(s.index) === String(stageQ);
+          });
+          if (st) setTimeout(function () { openDrawer(st); }, 400);
+        }
+      } catch (ex) {
+        showErr(ex.message || "Erro ao carregar jornada");
+        $("empty").hidden = false;
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -141,7 +141,7 @@
         p("home", "Visão Geral", "/app.html"),
         p("proteger", "Proteger Aposta", "/app-proteger.html"),
         p("protecoes", "Minhas Proteções", "/app-protecoes.html"),
-        p("desafio", "Desafio", "/app-desafio.html", { badge: "Sinais", glow: true }),
+        p("desafio", "Desafio", "/app-desafio-jornada.html", { badge: "Jornada", glow: true }),
         p("carteira", "Financeiro", "/app-carteira.html"),
         p("suporte", "Atendimento", "/app-suporte.html"),
       ],

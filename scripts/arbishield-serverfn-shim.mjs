@@ -1957,6 +1957,288 @@ async function registerDesafioEntry(token, body) {
   };
 }
 
+
+async function getDesafioJornada(token, body) {
+  const userId = requireUserId(token);
+  let desafioId = String(body?.desafioId || body?.desafio_id || "").trim();
+
+  // Desafio ativo mais recente (ou o informado)
+  let desafio = null;
+  if (desafioId) {
+    const rows = await sb(
+      `/rest/v1/desafios?select=*,desafio_steps(*)&id=eq.${encodeURIComponent(desafioId)}&deleted_at=is.null&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    desafio = Array.isArray(rows) ? rows[0] : null;
+  } else {
+    const rows = await sb(
+      `/rest/v1/desafios?select=*,desafio_steps(*)&is_active=eq.true&deleted_at=is.null&order=updated_at.desc&limit=5`,
+      { token: SERVICE_KEY }
+    );
+    const list = Array.isArray(rows) ? rows : [];
+    desafio = list[0] || null;
+  }
+  if (!desafio) {
+    return { ok: true, empty: true, stages: [], progress: null };
+  }
+  desafioId = desafio.id;
+
+  const steps = (Array.isArray(desafio.desafio_steps) ? desafio.desafio_steps : [])
+    .slice()
+    .sort((a, b) => n(a.step_index) - n(b.step_index));
+  const maxEntries = Math.min(5, Math.max(steps.length || 5, n(desafio.total_steps) || 5));
+
+  const parts = await sb(
+    `/rest/v1/desafio_participations?select=*&user_id=eq.${encodeURIComponent(userId)}&desafio_id=eq.${encodeURIComponent(desafioId)}&side=eq.arbishield&order=created_at.asc&limit=50`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  const partList = Array.isArray(parts) ? parts : [];
+  const byStep = new Map();
+  for (const p of partList) {
+    byStep.set(String(p.step_id), p);
+  }
+
+  const prof = await sb(
+    `/rest/v1/profiles?select=desafio_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const bal = n(Array.isArray(prof) ? prof[0]?.desafio_balance_cents : 0);
+
+  let accumulatedProfit = 0;
+  let currentIndex = 1;
+  let foundCurrent = false;
+  let inRecovery = false;
+  let failedAt = null;
+
+  const stages = [];
+  for (let i = 0; i < maxEntries; i++) {
+    const step = steps[i] || null;
+    const stepIndex = i + 1;
+    const isFinal = stepIndex === maxEntries;
+    const part = step ? byStep.get(String(step.id)) : null;
+    const partResult = part ? String(part.result || "").toLowerCase() : "";
+    const stepStatus = step ? String(step.status || "").toLowerCase() : "pending";
+    const stepResult = step ? String(step.result || "").toLowerCase() : "";
+
+    let state = "locked"; // locked | waiting | current | won | lost | protected | final_ready
+    let label = isFinal ? "Etapa Final" : `Etapa ${stepIndex}`;
+
+    if (partResult === "won") {
+      state = "won";
+      accumulatedProfit += n(part.profit_cents);
+      currentIndex = Math.min(stepIndex + 1, maxEntries);
+    } else if (partResult === "lost") {
+      // Zebra perdeu = green na casa externa = sucesso do ciclo (fora)
+      // Mas no mapa do cliente "derrota" na zebra abre recuperação se for falha de proteção
+      // Wilson: green favorito = sucesso ciclo; green zebra = avança
+      // Aqui part lost no lado arbishield = casa bateu = ciclo sucesso externo
+      state = "won_external"; // sucesso fora
+      accumulatedProfit += 0;
+      foundCurrent = true;
+      currentIndex = stepIndex;
+    } else if (partResult === "pending") {
+      state = "current";
+      foundCurrent = true;
+      currentIndex = stepIndex;
+    } else if (!foundCurrent) {
+      // Sem participação ainda
+      if (step && (stepStatus === "current" || stepStatus === "pending" || step.is_published)) {
+        // primeira etapa disponível sem part
+        if (i === 0 || (stages[i - 1] && (stages[i - 1].state === "won" || stages[i - 1].state === "protected"))) {
+          state = "current";
+          foundCurrent = true;
+          currentIndex = stepIndex;
+        } else if (i === 0) {
+          state = "current";
+          foundCurrent = true;
+          currentIndex = 1;
+        } else {
+          state = "locked";
+        }
+      } else if (!step && i === 0) {
+        state = "waiting";
+        foundCurrent = true;
+        currentIndex = 1;
+      } else {
+        state = "locked";
+      }
+    } else {
+      state = "locked";
+    }
+
+    // Se etapa anterior foi lost no sentido de "precisa proteção" — 
+    // No modelo Wilson, lost na zebra (casa won) encerra com sucesso.
+    // Recuperação: quando admin marca zebra_protected vs necessidade de recovery path
+    // Usamos step.result === 'zebra_protected' com part won como vitória;
+    // recovery branch: se houver steps com step_index tipo 3.1 ou metadata recovery
+    if (stepResult === "zebra_protected" && partResult === "won") {
+      state = "won";
+    }
+
+    if (isFinal && state === "current") state = "final_ready";
+
+    const startsAt = step?.starts_at || null;
+    let whenLabel = "A definir";
+    if (startsAt) {
+      const d = new Date(startsAt);
+      if (!Number.isNaN(d.getTime())) {
+        const now = new Date();
+        const tomorrow = new Date(now);
+        tomorrow.setDate(now.getDate() + 1);
+        const time = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+        if (d.toDateString() === now.toDateString()) whenLabel = `Hoje ${time}`;
+        else if (d.toDateString() === tomorrow.toDateString()) whenLabel = `Amanhã ${time}`;
+        else {
+          whenLabel =
+            d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) +
+            " " +
+            time;
+        }
+      }
+    }
+
+    const arbiOdd = Number(step?.arbi_odd ?? step?.home_odd) || null;
+    const casaOdd = Number(step?.casa_odd ?? step?.away_odd) || null;
+    const entrada =
+      n(part?.amount_cents) ||
+      n(desafio.initial_balance_cents) ||
+      0;
+    const retorno =
+      arbiOdd && entrada
+        ? calcZebraPayoutCents(entrada, arbiOdd, step?.arbi_commission_pct)
+        : Math.round(entrada * (1 + (Number(desafio.target_profit_pct) || 5) / 100));
+    const lucro = Math.max(0, retorno - entrada);
+
+    stages.push({
+      index: stepIndex,
+      isFinal,
+      label,
+      state,
+      stepId: step?.id || null,
+      matchLabel:
+        step?.match_label ||
+        [step?.home_team, step?.away_team].filter(Boolean).join(" x ") ||
+        null,
+      homeTeam: step?.home_team || step?.casa_team_name || null,
+      awayTeam: step?.away_team || step?.arbi_team_name || null,
+      zebraTeam: step?.arbi_team_name || step?.away_team || null,
+      favoriteTeam: step?.casa_team_name || step?.home_team || null,
+      whenLabel,
+      startsAt,
+      arbiOdd,
+      casaOdd,
+      externalHouse: "Casa Externa",
+      externalBetLink: step?.external_bet_link || null,
+      recommendedCents: entrada,
+      returnCents: retorno,
+      profitCents: partResult === "won" ? n(part?.profit_cents) : lucro,
+      participation: part
+        ? {
+            id: part.id,
+            result: partResult,
+            amountCents: n(part.amount_cents),
+            profitCents: n(part.profit_cents),
+          }
+        : null,
+      statusText:
+        state === "won"
+          ? "Vitória"
+          : state === "won_external"
+            ? "Sucesso na casa externa"
+            : state === "lost"
+              ? "Derrota"
+              : state === "protected"
+                ? "Proteção acionada"
+                : state === "current" || state === "final_ready"
+                  ? partResult === "pending"
+                    ? "Aguardando resultado"
+                    : "Você está aqui"
+                  : state === "waiting"
+                    ? "Aguardando início"
+                    : "Bloqueada",
+    });
+  }
+
+  // Trilha de recuperação: etapas extras com metadata/source recovery ou step_index > max e label A
+  const recoverySteps = steps.filter((s) => {
+    const meta = s.metadata && typeof s.metadata === "object" ? s.metadata : {};
+    return (
+      meta.recovery === true ||
+      meta.path === "recovery" ||
+      String(s.market_name_arbishield || "").toLowerCase().includes("recupera") ||
+      String(s.match_label || "").toLowerCase().includes("recupera")
+    );
+  });
+  const recovery = recoverySteps.map((step, idx) => {
+    const part = byStep.get(String(step.id));
+    const partResult = part ? String(part.result || "").toLowerCase() : "";
+    let state = "locked";
+    if (partResult === "won") state = "won";
+    else if (partResult === "lost") state = "lost";
+    else if (partResult === "pending") state = "current";
+    else if (idx === 0) state = "current";
+    return {
+      index: `R${idx + 1}`,
+      label: idx === recoverySteps.length - 1 ? "Final (Recuperação)" : `Etapa ${step.step_index}A`,
+      state,
+      stepId: step.id,
+      matchLabel: step.match_label,
+      arbiOdd: Number(step.arbi_odd) || null,
+      whenLabel: step.starts_at || null,
+      participation: part
+        ? {
+            result: partResult,
+            amountCents: n(part.amount_cents),
+            profitCents: n(part.profit_cents),
+          }
+        : null,
+    };
+  });
+
+  // Detecta falha que abre proteção: participação lost onde step.result não é win (casa)
+  // No fluxo atual lost = casa bateu = sucesso. Para UI demo de recuperação:
+  // se houver recovery steps e algum stage lost, marca inRecovery
+  const lostStage = stages.find((s) => s.state === "lost");
+  if (lostStage || recovery.length) {
+    inRecovery = recovery.length > 0;
+    failedAt = lostStage?.index || null;
+  }
+
+  const doneCount = stages.filter((s) =>
+    ["won", "won_external", "protected"].includes(s.state)
+  ).length;
+  const progressPct = Math.round((doneCount / maxEntries) * 100);
+  const remaining = Math.max(0, maxEntries - doneCount);
+
+  return {
+    ok: true,
+    empty: false,
+    ciclo: "desafio-jornada-v1",
+    desafio: {
+      id: desafio.id,
+      title: desafio.title,
+      subtitle: desafio.subtitle,
+      number: desafio.number,
+      targetProfitPct: Number(desafio.target_profit_pct) || 5,
+      totalSteps: maxEntries,
+      initialBalanceCents: n(desafio.initial_balance_cents),
+    },
+    stages,
+    recovery,
+    inRecovery,
+    failedAt,
+    progress: {
+      percent: progressPct,
+      currentStage: currentIndex,
+      totalStages: maxEntries,
+      accumulatedProfitCents: accumulatedProfit,
+      gamesRemaining: remaining,
+      protectionActive: inRecovery || bal > 0,
+      desafioBalanceCents: bal,
+    },
+  };
+}
+
 async function previewDesafioSinal(token, body) {
   const userId = requireUserId(token);
   const stepId = await resolveDesafioStepId(body?.stepId || body?.step_id);
@@ -5000,6 +5282,28 @@ const server = createServer(async (req, res) => {
       }
       const data = await requestAffiliateWithdrawal(token, body.data || body);
       return sendJson(res, 200, data);
+    } catch (err) {
+      return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (
+    (url.pathname === "/api/arbishield/desafio-jornada" ||
+      url.pathname === "/api/arbishield/desafio-journey") &&
+    req.method === "POST"
+  ) {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      return sendJson(res, 200, await getDesafioJornada(token, body.data || body));
     } catch (err) {
       return sendJson(res, 400, {
         error: err instanceof Error ? err.message : String(err),
