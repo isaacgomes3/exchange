@@ -32,7 +32,9 @@ grep -q 'data-apostar' "$WEB/app-desafio.html" || die "app-desafio sem botão Ap
 grep -q 'data-stake-input' "$WEB/app-desafio.html" || die "app-desafio sem campo Entrar com"
 grep -q 'Maior retorno' "$WEB/app-desafio.html" || die "app-desafio sem badge Maior retorno"
 grep -q 'stepIsFinished' "$WEB/app-desafio.html" || die "app-desafio sem filtro finalizados"
-grep -q 'app-desafio-lead' "$WEB/app-desafio.html" && die "app-desafio ainda tem texto lead"
+if grep -q 'app-desafio-lead' "$WEB/app-desafio.html"; then
+  die "app-desafio ainda tem texto lead"
+fi
 grep -q 'dz-sb-input' "$WEB/v2.css" || die "v2.css sem estilos dz-sb-input"
 grep -q 'calcCasaStakeFromZebra' "$WEB/desafio-ciclo-math.js" || die "desafio-ciclo-math ausente"
 
