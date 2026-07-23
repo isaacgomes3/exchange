@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <title>ArbiShield — Entrar</title>
+  <script>
+    /* limpa SW/cache ANTES de qualquer UI — evita travamento */
+    (function () {
+      try {
+        if ("serviceWorker" in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function (regs) {
+            regs.forEach(function (r) { r.unregister(); });
+          });
+        }
+      } catch (e) {}
+      try {
+        if (window.caches) {
+          caches.keys().then(function (keys) {
+            keys.forEach(function (k) { caches.delete(k); });
+          });
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <style>
+    :root {
+      --bg: #020806;
+      --panel: #041a14;
+      --field: #06251d;
+      --border: rgba(180, 255, 0, 0.12);
+      --text: #f5f5f7;
+      --muted: #8a9a92;
+      --lime: #d7ff1f;
+      --danger: #f87171;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+    .shell {
+      min-height: 100vh;
+      display: flex;
+      flex-wrap: wrap;
+    }
+    .hero, .panel-wrap { flex: 1 1 340px; padding: 28px 22px; }
+    .hero { display: flex; flex-direction: column; justify-content: space-between; }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-mark {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: var(--lime); color: #04140f;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 900;
+    }
+    .brand strong { letter-spacing: 0.06em; font-size: 16px; }
+    .brand small { display: block; color: var(--muted); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
+    h1 {
+      margin: 36px 0 12px; font-size: clamp(1.8rem, 4vw, 2.8rem);
+      line-height: 1; text-transform: uppercase; max-width: 12ch;
+    }
+    h1 span { color: var(--lime); }
+    .hero > p { color: var(--muted); max-width: 40ch; line-height: 1.5; font-size: 14px; }
+    .stats { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+    .stat {
+      flex: 1 1 120px; background: var(--panel); border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px; padding: 12px;
+    }
+    .stat b { display: block; font-size: 1.2rem; }
+    .stat span { color: var(--muted); font-size: 12px; }
+    .copy { color: var(--muted); font-size: 12px; margin-top: 24px; }
+    .panel-wrap { display: flex; align-items: center; justify-content: center; }
+    .card {
+      width: min(420px, 100%);
+      background: var(--panel);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 22px;
+      padding: 24px 20px;
+    }
+    .card h2 { margin: 0 0 6px; font-size: 1.8rem; text-transform: uppercase; }
+    .sub { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
+    label {
+      display: block; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      color: var(--muted); margin: 0 0 6px;
+    }
+    input[type="email"], input[type="password"] {
+      width: 100%; height: 52px; border-radius: 14px;
+      border: 1px solid var(--border); background: var(--field);
+      color: var(--text); padding: 0 14px; margin-bottom: 12px;
+      font: inherit;
+    }
+    input:focus { outline: 2px solid rgba(215,255,31,0.35); border-color: transparent; }
+    .monitor {
+      border: 1px solid rgba(215,255,31,0.25);
+      background: rgba(215,255,31,0.05);
+      border-radius: 12px; padding: 10px 12px;
+      font-size: 11px; color: #cfe8a8; margin: 0 0 14px; line-height: 1.4;
+    }
+    .monitor strong { color: var(--lime); display: block; margin-bottom: 2px; }
+    .row {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 8px; margin-bottom: 14px; font-size: 13px;
+    }
+    .row label { display: flex; gap: 8px; align-items: center; text-transform: none; letter-spacing: 0; margin: 0; color: var(--text); font-weight: 500; }
+    .row a { color: var(--muted); text-decoration: none; }
+    .btn {
+      width: 100%; height: 52px; border: 0; border-radius: 14px;
+      background: var(--lime); color: #000; font-weight: 800;
+      letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; font-size: 13px;
+    }
+    .btn:disabled { opacity: 0.65; cursor: wait; }
+    .msg { display: none; margin-bottom: 12px; padding: 10px; border-radius: 10px; font-size: 13px; }
+    .msg.show { display: block; }
+    .msg.err { border: 1px solid rgba(248,113,113,0.4); color: var(--danger); background: rgba(248,113,113,0.08); }
+    .msg.ok { border: 1px solid rgba(215,255,31,0.35); color: var(--lime); background: rgba(215,255,31,0.08); }
+    .divider { text-align: center; color: var(--muted); font-size: 12px; margin: 16px 0 12px; }
+    .social { display: flex; gap: 10px; }
+    .social button {
+      flex: 1; height: 44px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);
+      background: #0a1f19; color: var(--text); font-weight: 700; cursor: pointer;
+    }
+    .social .google { background: #fff; color: #111; }
+    .foot { margin-top: 16px; text-align: center; font-size: 13px; color: var(--muted); }
+    .foot a { color: var(--lime); font-weight: 700; text-decoration: none; }
+    .back { display: block; margin-top: 10px; text-align: center; color: var(--muted); font-size: 12px; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <div>
+        <div class="brand">
+          <div class="brand-mark">A</div>
+          <div>
+            <strong>ARBISHIELD</strong>
+            <small>Líder global em proteção de apostas</small>
+          </div>
+        </div>
+        <h1>Proteção inteligente para o mercado <span>esportivo</span></h1>
+        <p>Tecnologia de proteção esportiva com liquidez auditada, reembolsos rastreáveis e gestão profissional de operações.</p>
+        <div class="stats">
+          <div class="stat"><b>+15.000</b><span>Operações processadas</span></div>
+          <div class="stat"><b>98,7%</b><span>Taxa de sucesso</span></div>
+          <div class="stat"><b>24h</b><span>Monitoramento</span></div>
+        </div>
+      </div>
+      <div class="copy">© Arbishield · Security Protocol v5</div>
+    </section>
+
+    <section class="panel-wrap">
+      <div class="card">
+        <h2>Entrar</h2>
+        <p class="sub">Acesse sua conta para continuar.</p>
+        <div class="msg err" id="err"></div>
+        <div class="msg ok" id="ok"></div>
+        <form id="form" autocomplete="on">
+          <label for="email">E-mail de acesso</label>
+          <input id="email" name="email" type="email" autocomplete="username" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" required placeholder="seu@email.com" />
+          <label for="password">Chave de segurança (senha)</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="••••••••" />
+          <div class="monitor">
+            <strong>Acesso monitorado</strong>
+            Sua conexão está sendo auditada pelo ArbiShield Security Protocol.
+          </div>
+          <div class="row">
+            <label><input type="checkbox" id="remember" /> Lembrar acesso</label>
+            <a href="#" id="forgot">Esqueci minha senha</a>
+          </div>
+          <button class="btn" id="btn" type="submit">Entrar →</button>
+        </form>
+        <div class="divider">ou continue com</div>
+        <div class="social">
+          <button type="button" class="google" id="googleBtn">Google</button>
+          <button type="button" id="telegramBtn">Telegram</button>
+        </div>
+        <div class="foot">Não possui conta? <a href="/auth?mode=signup">Criar conta</a></div>
+        <a class="back" href="/admin/login">Acesso admin</a>
+        <a class="back" href="/recuperar">Site travou? Recuperar</a>
+        <a class="back" href="/">Voltar</a>
+      </div>
+    </section>
+  </div>
+
+  <script src="/blocked-emails.js?v=1"></script>
+  <script>
+    (function () {
+      var ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzg0NDc5OTk4LCJleHAiOjE5NDIxNTk5OTh9.mxLqs20sCUNn58jWlsD0sznclCOr8rbksjTEAuQee3s";
+      var STORAGE_KEY = "sb-arbishield-auth-token";
+      var params = new URLSearchParams(location.search);
+      var redirectTo = params.get("redirect") || "/app";
+      if (!redirectTo.startsWith("/") || redirectTo.startsWith("//") || redirectTo === "/auth") redirectTo = "/app";
+
+      var errEl = document.getElementById("err");
+      var okEl = document.getElementById("ok");
+      var btn = document.getElementById("btn");
+
+      function show(el, msg) {
+        errEl.classList.remove("show");
+        okEl.classList.remove("show");
+        el.textContent = msg;
+        el.classList.add("show");
+      }
+
+      document.getElementById("form").addEventListener("submit", function (e) {
+        e.preventDefault();
+        btn.disabled = true;
+        btn.textContent = "Entrando…";
+        var email = document.getElementById("email").value.trim();
+        var password = document.getElementById("password").value;
+        if (window.ArbiIsBlockedEmail && ArbiIsBlockedEmail(email)) {
+          show(errEl, "Esta conta está bloqueada. Contate o suporte.");
+          btn.disabled = false;
+          btn.textContent = "Entrar";
+          return;
+        }
+        fetch("/auth/v1/token?grant_type=password", {
+          method: "POST",
+          headers: {
+            apikey: ANON,
+            Authorization: "Bearer " + ANON,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email: email, password: password }),
+        })
+          .then(function (res) {
+            return res.json().then(function (data) {
+              return { res: res, data: data };
+            });
+          })
+          .then(function (out) {
+            if (!out.res.ok) {
+              var msg = out.data.error_description || out.data.msg || out.data.error || "Falha no login";
+              if (/banned/i.test(msg)) msg = "Esta conta está bloqueada. Contate o suporte.";
+              else if (/invalid/i.test(msg)) msg = "E-mail ou senha inválidos.";
+              throw new Error(msg);
+            }
+            var data = out.data;
+            var session = {
+              access_token: data.access_token,
+              refresh_token: data.refresh_token,
+              expires_in: data.expires_in,
+              expires_at: data.expires_at || Math.floor(Date.now() / 1000) + (data.expires_in || 3600),
+              token_type: data.token_type || "bearer",
+              user: data.user,
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+            localStorage.setItem("auth_login_pending_until", String(Date.now() + 15000));
+            show(okEl, "Acesso autorizado. Abrindo…");
+            location.replace(redirectTo);
+          })
+          .catch(function (err) {
+            show(errEl, err.message || String(err));
+            btn.disabled = false;
+            btn.textContent = "Entrar →";
+          });
+      });
+
+      document.getElementById("forgot").addEventListener("click", function (e) {
+        e.preventDefault();
+        var email = document.getElementById("email").value.trim();
+        if (!email) {
+          show(errEl, "Informe o e-mail para recuperar a senha.");
+          return;
+        }
+        fetch("/auth/v1/recover", {
+          method: "POST",
+          headers: {
+            apikey: ANON,
+            Authorization: "Bearer " + ANON,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email: email }),
+        }).then(function (res) {
+          if (!res.ok) throw new Error("Falha ao enviar recuperação");
+          show(okEl, "Se o e-mail existir, enviamos o link de recuperação.");
+        }).catch(function (err) {
+          show(errEl, err.message || String(err));
+        });
+      });
+
+      function soon(name) {
+        show(errEl, "Login com " + name + " indisponível aqui. Use e-mail e senha.");
+      }
+      document.getElementById("googleBtn").onclick = function () { soon("Google"); };
+      document.getElementById("telegramBtn").onclick = function () { soon("Telegram"); };
+    })();
+  </script>
+</body>
+</html>

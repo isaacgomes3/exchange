@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>ArbiShield — Entrar</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/blocked-emails.js?v=1"></script>
+  <script src="/v2.js?v=block-jeff-1"></script>
+</head>
+<body>
+  <div class="auth-shell">
+    <section class="auth-hero">
+      <a class="brand" href="/" aria-label="ArbiShield">
+        <img class="brand-logo lg" src="/brand/logo.png" srcset="/brand/logo.png 1x, /brand/logo@2x.png 2x" width="180" height="42" alt="ArbiShield" decoding="async" />
+      </a>
+      <div>
+        <h1>Proteção <span>inteligente</span></h1>
+        <p>Entre com a mesma conta do arbishield.app. Sessão compartilhada com o app e o admin.</p>
+      </div>
+      <p class="meta" style="margin:0">Sistema novo · isolado do SPA</p>
+    </section>
+    <section class="auth-panel">
+      <div class="auth-card">
+        <h2>Entrar</h2>
+        <p class="sub">Use e-mail e senha da plataforma</p>
+        <div id="err" class="err"></div>
+        <form id="form">
+          <label for="email">E-mail</label>
+          <input id="email" name="email" type="email" required autocomplete="username" />
+          <label for="password">Senha</label>
+          <input id="password" name="password" type="password" required autocomplete="current-password" />
+          <button class="btn btn-primary" type="submit">Entrar</button>
+        </form>
+        <div class="actions" style="margin-top:16px">
+          <a class="btn btn-ghost" href="/app.html">Área do membro</a>
+          <a class="btn btn-ghost" href="/admin.html">Admin</a>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+    (async function () {
+      var supa = ArbiV2.client();
+      var session = await supa.auth.getSession();
+      if (session.data.session) location.replace("/app.html");
+
+      document.getElementById("form").addEventListener("submit", async function (e) {
+        e.preventDefault();
+        var err = document.getElementById("err");
+        err.classList.remove("show");
+        var email = document.getElementById("email").value.trim();
+        var password = document.getElementById("password").value;
+        var btn = e.target.querySelector("button");
+        btn.disabled = true;
+        try {
+          if (window.ArbiIsBlockedEmail && ArbiIsBlockedEmail(email)) {
+            throw new Error("Esta conta está bloqueada. Contate o suporte.");
+          }
+          var res = await supa.auth.signInWithPassword({ email: email, password: password });
+          if (res.error) throw res.error;
+          if (res.data && res.data.user && ArbiV2.isBlockedEmail(res.data.user.email)) {
+            await supa.auth.signOut();
+            throw new Error("Esta conta está bloqueada. Contate o suporte.");
+          }
+          location.replace("/app.html");
+        } catch (ex) {
+          err.textContent = ex.message || "Falha no login";
+          err.classList.add("show");
+          btn.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,1383 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lançar Desafio — ArbiShield v2</title>
+  <meta name="arbishield-layout" content="full-bleed-left-v8-market-local" />
+  <link rel="stylesheet" href="/v2.css?v=desafio-lancar-left-1" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js"></script>
+  <script src="/v2-shell.js" defer></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #050505;
+      --panel: #0a0a0a;
+      --border: #1f1f1f;
+      --text: #f5f5f7;
+      --muted: #8a8a8f;
+      --lime: #c9f223;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      color: var(--text);
+    }
+    .wrap {
+      width: 100% !important;
+      max-width: none !important;
+      margin: 0 !important;
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+      padding: 0 0 64px;
+      text-align: left;
+    }
+    .wrap > header,
+    .wrap > .page-nav,
+    .wrap > .panel {
+      width: 100%;
+      max-width: none;
+      margin-left: 0;
+      margin-right: 0;
+      text-align: left;
+    }
+    .panel {
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: var(--panel);
+      padding: 22px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .page-nav {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; flex-wrap: wrap; margin-bottom: 18px;
+    }
+    h1 {
+      margin: 0; font-size: clamp(1.5rem, 3vw, 2.1rem);
+      font-weight: 900; font-style: italic;
+      letter-spacing: -0.04em; text-transform: uppercase;
+    }
+    h1 span { color: var(--lime); }
+    .sub {
+      margin: 6px 0 0; color: var(--muted); font-size: 0.8rem;
+      line-height: 1.45; font-weight: 500; letter-spacing: 0;
+      text-transform: none; max-width: 52ch;
+    }
+    .btn {
+      border: 0; border-radius: 12px; padding: 12px 16px;
+      font-weight: 800; font-size: 10px; letter-spacing: 0.12em;
+      text-transform: uppercase; cursor: pointer; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn-primary {
+      background: var(--lime); color: #000;
+      box-shadow: 0 0 20px rgba(201,242,35,0.25);
+    }
+    .btn-ghost {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .field { margin-bottom: 12px; }
+    .field label {
+      display: block; font-size: 9px; font-weight: 800;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 6px;
+    }
+    .field input, .field select, .field textarea {
+      width: 100%; border-radius: 12px; border: 1px solid var(--border);
+      background: #050505; color: var(--text); padding: 11px 12px;
+      font: inherit; font-size: 13px;
+    }
+    .field-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    }
+    @media (max-width: 560px) {
+      .field-row { grid-template-columns: 1fr; }
+    }
+    .field-hint {
+      color: var(--muted); font-size: 12px; margin: 6px 0 0; line-height: 1.4;
+    }
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; padding: 14px; border-radius: 14px;
+      background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+    .toggle-row strong { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
+    .toggle-row span { color: var(--muted); font-size: 12px; }
+    .step-card {
+      background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+      border-radius: 14px; padding: 14px; margin-bottom: 12px;
+    }
+    .step-card .step-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; margin-bottom: 12px;
+    }
+    .step-card .step-head b {
+      font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+    }
+    .leg-title {
+      font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
+      text-transform: uppercase; margin: 8px 0 8px;
+    }
+    .leg-title.arbi { color: var(--lime); }
+    .leg-title.casa { color: #93c5fd; }
+    .section-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; margin: 18px 0 10px;
+    }
+    .section-head h3 {
+      margin: 0; font-size: 11px; letter-spacing: 0.14em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .form-error {
+      display: none; margin: 0 0 12px; padding: 10px 12px;
+      border-radius: 12px; border: 1px solid rgba(239,68,68,0.35);
+      background: rgba(239,68,68,0.1); color: #fca5a5; font-size: 13px;
+    }
+    .form-error.show { display: block; }
+    .page-footer {
+      display: flex; gap: 10px; justify-content: flex-end;
+      flex-wrap: wrap; padding-top: 18px; margin-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+    .team-pick { position: relative; }
+    .team-pick-row {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 10px;
+      align-items: start;
+    }
+    .team-logo-box {
+      width: 44px; height: 44px; border-radius: 12px;
+      border: 1px solid var(--border); background: rgba(255,255,255,0.04);
+      display: grid; place-items: center; overflow: hidden; flex-shrink: 0;
+    }
+    .team-logo-box img {
+      width: 100%; height: 100%; object-fit: contain; display: block;
+      background: #fff;
+    }
+    .team-logo-box .ph {
+      font-size: 10px; font-weight: 800; color: var(--muted);
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .team-suggest {
+      position: absolute; left: 0; right: 0; top: calc(100% + 4px);
+      z-index: 30; max-height: 240px; overflow: auto;
+      border: 1px solid var(--border); border-radius: 12px;
+      background: #111; box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+      display: none;
+    }
+    .team-suggest.show { display: block; }
+    .team-suggest-item {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; border: 0; background: transparent; color: var(--text);
+      text-align: left; padding: 10px 12px; cursor: pointer;
+      border-bottom: 1px solid var(--border);
+    }
+    .team-suggest-item:last-child { border-bottom: 0; }
+    .team-suggest-item:hover, .team-suggest-item:focus {
+      background: rgba(201,242,35,0.08); outline: none;
+    }
+    .team-suggest-item img {
+      width: 28px; height: 28px; object-fit: contain; border-radius: 6px;
+      background: #fff; flex-shrink: 0;
+    }
+    .team-suggest-item .meta { min-width: 0; }
+    .team-suggest-item .name {
+      font-size: 13px; font-weight: 800; line-height: 1.2;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .team-suggest-item .sub {
+      margin-top: 2px; font-size: 10px; color: var(--muted); font-weight: 700;
+      letter-spacing: 0.04em; text-transform: uppercase;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .team-suggest-empty, .team-suggest-loading {
+      padding: 12px; color: var(--muted); font-size: 11px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .profit-box {
+      border: 1px solid rgba(201,242,35,0.45);
+      background: rgba(201,242,35,0.08);
+      border-radius: 16px;
+      padding: 16px;
+      margin: 0 0 18px;
+    }
+    .profit-box strong {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--lime);
+      margin-bottom: 8px;
+    }
+    .profit-box .field { margin-bottom: 0; }
+    .odd-auto-hint {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    input[data-f="arbi_odd"][readonly] {
+      opacity: 0.92;
+      border-color: rgba(201,242,35,0.35);
+      color: var(--lime);
+      font-weight: 800;
+    }
+    .odd-mode-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .odd-mode-row label { margin: 0; }
+    .odd-mode-toggle {
+      display: inline-flex;
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 999px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .odd-mode-toggle button {
+      border: 0;
+      background: transparent;
+      color: rgba(255,255,255,0.55);
+      font: inherit;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    .odd-mode-toggle button.is-on {
+      background: #c9f223;
+      color: #000;
+    }
+    input[data-f="arbi_odd"]:not([readonly]) {
+      border-color: rgba(201,242,35,0.55);
+      color: #fff;
+      font-weight: 800;
+    }
+  </style>
+</head>
+<body data-shell="admin" data-active="desafios">
+  <div class="wrap">
+    <div class="page-nav">
+      <a class="btn btn-ghost" href="/admin-desafios.html">← Voltar à gestão</a>
+    </div>
+    <header style="margin-bottom:22px">
+      <h1 id="pageTitle">Lançar Novo <span>Desafio</span></h1>
+      <p class="sub" id="pageSub">Lance <strong>um evento</strong> com times e logos. O card é gerado automaticamente. Etapas do circuito já estão definidas e avançam sozinhas conforme o cliente.</p>
+    </header>
+
+    <div class="panel">
+      <div class="form-error" id="formError"></div>
+
+      <div class="profit-box">
+        <strong>Lucro líquido do evento</strong>
+        <div class="field">
+          <label for="fProfitPct">Percentual (obrigatório antes de lançar)</label>
+          <select id="fProfitPct">
+            <option value="">Selecione o lucro líquido…</option>
+            <option value="3">3%</option>
+            <option value="5" selected>5%</option>
+            <option value="7">7%</option>
+            <option value="10">10%</option>
+            <option value="12">12%</option>
+            <option value="15">15%</option>
+          </select>
+          <p class="field-hint">Lucro surebet nos <strong>dois</strong> lados (ex.: total R$100 → ~R$5 de lucro em qualquer resultado). Odd ArbiShield é calculada automaticamente; dá para trocar para manual.</p>
+        </div>
+      </div>
+
+      <div class="toggle-row">
+        <div>
+          <strong>Publicar ao salvar</strong>
+          <span>Se desligado, grava como rascunho</span>
+        </div>
+        <input id="fActive" type="checkbox" checked />
+      </div>
+
+      <div class="section-head">
+        <h3>Evento do jogo</h3>
+      </div>
+      <div id="stepsEditor"></div>
+
+      <div class="page-footer">
+        <a class="btn btn-ghost" href="/admin-desafios.html">Cancelar</a>
+        <button class="btn btn-primary" type="button" id="btnSaveDraft">Salvar e Liberar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const DRAFT_KEY = "arbishield_desafio_launch_draft";
+
+    function reaisToCents(v) {
+      if (v == null || v === "") return 0;
+      const u = String(v).replace(/\s|R\$/gi, "").replace(/\./g, "").replace(",", ".");
+      const n = Number(u);
+      return Number.isFinite(n) ? Math.round(n * 100) : 0;
+    }
+
+    function centsToReaisInput(c) {
+      if (c == null || c === "" || Number.isNaN(Number(c))) return "";
+      return (Number(c) / 100).toLocaleString("pt-BR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    }
+
+    function emptyStep(i) {
+      return {
+        step_index: i,
+        match_label: "",
+        league_name: "",
+        market_name_arbishield: "",
+        market_name_casa: "",
+        home_team: "",
+        away_team: "",
+        home_logo_url: "",
+        away_logo_url: "",
+        arbi_team_name: "",
+        arbi_team_logo_url: "",
+        arbi_odd: "",
+        arbi_odd_manual: false,
+        casa_team_name: "",
+        casa_team_logo_url: "",
+        casa_odd: "",
+        casa_stake_cents: "",
+        arbi_commission_pct: "0",
+        casa_commission_pct: "0",
+        external_bet_link: "",
+        liquidity_cents: "",
+        display_liquidity_cents: "",
+        starts_at: "",
+        release_minutes_before: 60,
+        status: "pending",
+      };
+    }
+
+    function emptyDraft() {
+      return {
+        target_profit_pct: 5,
+        is_active: true,
+        append_to_desafio_id: null,
+        steps: [emptyStep(1)],
+      };
+    }
+
+    function toLocalInput(iso) {
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return "";
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function fromLocalInput(v) {
+      if (!v) return null;
+      const d = new Date(v);
+      return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    }
+
+    function esc(v) {
+      return String(v ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;");
+    }
+
+    function setFormError(msg) {
+      const el = $("formError");
+      if (!msg) {
+        el.classList.remove("show");
+        el.textContent = "";
+        return;
+      }
+      el.textContent = msg;
+      el.classList.add("show");
+    }
+
+    function suggestionToDraft(data) {
+      const step = (data.steps && data.steps[0]) || data.step || {};
+      const arbiName = step.market_name_arbishield || step.arbi_team_name || "";
+      const casaName = step.market_name_casa || step.market_name || step.casa_team_name || "";
+      return {
+        target_profit_pct: Number(data.target_profit_pct) || 5,
+        append_to_desafio_id: null,
+        is_active: true,
+        steps: [
+          {
+            ...emptyStep(1),
+            match_label:
+              step.match_label ||
+              [step.home_team, step.away_team].filter(Boolean).join(" x ") ||
+              "",
+            league_name: step.league_name || "",
+            home_team: step.home_team || "",
+            away_team: step.away_team || "",
+            home_logo_url: step.home_logo_url || step.home_logo || "",
+            away_logo_url: step.away_logo_url || step.away_logo || "",
+            arbi_team_name: arbiName,
+            arbi_team_logo_url: step.arbi_team_logo_url || "",
+            arbi_odd: step.arbi_odd != null ? String(step.arbi_odd) : "",
+            arbi_odd_manual: !!step.arbi_odd_manual,
+            market_name_arbishield: step.market_name_arbishield || arbiName,
+            arbi_commission_pct:
+              step.arbi_commission_pct != null ? String(step.arbi_commission_pct) : "0",
+            casa_team_name: casaName,
+            casa_team_logo_url: step.casa_team_logo_url || "",
+            casa_odd: step.casa_odd != null ? String(step.casa_odd) : "",
+            market_name_casa: step.market_name_casa || casaName,
+            casa_commission_pct:
+              step.casa_commission_pct != null ? String(step.casa_commission_pct) : "0",
+            casa_stake_cents: centsToReaisInput(step.casa_stake_cents),
+            external_bet_link: step.external_bet_link || data.betbraLink || "",
+            liquidity_cents: centsToReaisInput(step.liquidity_cents),
+            display_liquidity_cents: centsToReaisInput(
+              step.display_liquidity_cents ?? step.liquidity_cents
+            ),
+            starts_at: toLocalInput(step.starts_at),
+            release_minutes_before: step.release_minutes_before ?? 30,
+            status: step.status || "pending",
+          },
+        ],
+      };
+    }
+
+    function readDraftFromStorage() {
+      try {
+        const raw = sessionStorage.getItem(DRAFT_KEY);
+        if (!raw) return null;
+        sessionStorage.removeItem(DRAFT_KEY);
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    }
+
+    function readSuggestion() {
+      const want =
+        new URLSearchParams(location.search).get("sugestao") === "1" ||
+        Boolean(localStorage.getItem("arbishield_desafio_suggestion"));
+      if (!want) return null;
+      const raw = localStorage.getItem("arbishield_desafio_suggestion");
+      if (!raw) return null;
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    }
+
+    let draft = emptyDraft();
+    const stored = readDraftFromStorage();
+    if (stored) {
+      draft = stored;
+    } else {
+      const sug = readSuggestion();
+      if (sug) draft = suggestionToDraft(sug);
+    }
+    if (!draft.steps || !draft.steps.length) draft.steps = [emptyStep(1)];
+    draft.steps = [draft.steps[0]];
+    if (draft.target_profit_pct == null) draft.target_profit_pct = 5;
+    if (draft.is_active == null) draft.is_active = true;
+
+    function readFormIntoDraft() {
+      draft.target_profit_pct = Number($("fProfitPct") && $("fProfitPct").value) || 0;
+      draft.is_active = $("fActive").checked;
+      const root = document.querySelector(`[data-step-idx="0"]`);
+      const base = draft.steps[0] || emptyStep(1);
+      if (!root) {
+        draft.steps = [{ ...base, step_index: 1 }];
+        return;
+      }
+      const g = (name) => {
+        const el = root.querySelector(`[data-f="${name}"]`);
+        return el ? el.value : "";
+      };
+      draft.steps = [
+        {
+          ...base,
+          step_index: 1,
+          status: g("status") || "pending",
+          match_label: g("match_label"),
+          league_name: g("league_name"),
+          home_team: g("home_team"),
+          away_team: g("away_team"),
+          home_logo_url: g("home_logo_url"),
+          away_logo_url: g("away_logo_url"),
+          arbi_team_name: g("arbi_team_name"),
+          arbi_team_logo_url: g("arbi_team_logo_url"),
+          arbi_odd: g("arbi_odd"),
+          arbi_odd_manual: !!(base && base.arbi_odd_manual),
+          market_name_arbishield: g("market_name_arbishield"),
+          arbi_commission_pct: g("arbi_commission_pct"),
+          casa_team_name: g("casa_team_name"),
+          casa_team_logo_url: g("casa_team_logo_url"),
+          casa_odd: g("casa_odd"),
+          market_name_casa: g("market_name_casa"),
+          casa_commission_pct: g("casa_commission_pct"),
+          casa_stake_cents: g("casa_stake_cents"),
+          external_bet_link: g("external_bet_link"),
+          liquidity_cents: g("liquidity_cents"),
+          display_liquidity_cents: g("display_liquidity_cents"),
+          starts_at: g("starts_at"),
+          release_minutes_before: Number(g("release_minutes_before") || 60),
+        },
+      ];
+    }
+
+    function logoPreviewHtml(url) {
+      const src = String(url || "").trim();
+      if (!src) return '<span class="ph">logo</span>';
+      return `<img src="${esc(src)}" alt="" onerror="this.parentNode.innerHTML='<span class=ph>logo</span>'" />`;
+    }
+
+    function syncMatchLabelFromTeams() {
+      const root = document.querySelector(`[data-step-idx="0"]`);
+      if (!root) return;
+      const home = root.querySelector(`[data-f="home_team"]`);
+      const away = root.querySelector(`[data-f="away_team"]`);
+      const label = root.querySelector(`[data-f="match_label"]`);
+      if (!home || !away || !label) return;
+      const h = String(home.value || "").trim();
+      const a = String(away.value || "").trim();
+      if (h && a) label.value = h + " x " + a;
+      else if (h) label.value = h;
+      else if (a) label.value = a;
+    }
+
+    const TEAM_PICKERS = {
+      home: {
+        nameField: "home_team",
+        logoField: "home_logo_url",
+        suggestId: "homeSuggest",
+        prevId: "homeLogoPrev",
+        syncMatch: true,
+        fillLeague: true,
+      },
+      away: {
+        nameField: "away_team",
+        logoField: "away_logo_url",
+        suggestId: "awaySuggest",
+        prevId: "awayLogoPrev",
+        syncMatch: true,
+        fillLeague: true,
+      },
+      arbi: {
+        nameField: "arbi_team_name",
+        logoField: "arbi_team_logo_url",
+        suggestId: "arbiSuggest",
+        prevId: "arbiLogoPrev",
+        syncMatch: false,
+        fillLeague: false,
+      },
+      casa: {
+        nameField: "casa_team_name",
+        logoField: "casa_team_logo_url",
+        suggestId: "casaSuggest",
+        prevId: "casaLogoPrev",
+        syncMatch: false,
+        fillLeague: false,
+      },
+    };
+
+    const teamSearchTimers = { home: null, away: null, arbi: null, casa: null };
+    const teamSearchSeq = { home: 0, away: 0, arbi: 0, casa: 0 };
+
+    function hideTeamSuggest(side) {
+      const cfg = TEAM_PICKERS[side];
+      if (!cfg) return;
+      const el = document.getElementById(cfg.suggestId);
+      if (!el) return;
+      el.classList.remove("show");
+      el.hidden = true;
+      el.innerHTML = "";
+    }
+
+    function showTeamSuggest(side, html) {
+      const cfg = TEAM_PICKERS[side];
+      if (!cfg) return;
+      const el = document.getElementById(cfg.suggestId);
+      if (!el) return;
+      el.innerHTML = html;
+      el.hidden = false;
+      el.classList.add("show");
+    }
+
+    function setTeamLogoPreview(side, url) {
+      const cfg = TEAM_PICKERS[side];
+      if (!cfg) return;
+      const box = document.getElementById(cfg.prevId);
+      if (box) box.innerHTML = logoPreviewHtml(url);
+    }
+
+    function selectFootballTeam(side, team) {
+      const cfg = TEAM_PICKERS[side];
+      const root = document.querySelector(`[data-step-idx="0"]`);
+      if (!cfg || !root) return;
+      const nameEl = root.querySelector(`[data-f="${cfg.nameField}"]`);
+      const logoEl = root.querySelector(`[data-f="${cfg.logoField}"]`);
+      const leagueEl = root.querySelector(`[data-f="league_name"]`);
+      if (nameEl) nameEl.value = team.name || "";
+      const logo = team.logo || team.logoSvg || team.logoPng || "";
+      if (logoEl) logoEl.value = logo;
+      setTeamLogoPreview(side, logo);
+      hideTeamSuggest(side);
+      if (cfg.fillLeague && leagueEl && !(leagueEl.value || "").trim() && team.league) {
+        leagueEl.value = team.league;
+      }
+      if (cfg.syncMatch) syncMatchLabelFromTeams();
+    }
+
+    async function searchFootballTeams(side, query) {
+      const cfg = TEAM_PICKERS[side];
+      if (!cfg) return;
+      const q = String(query || "").trim();
+      const seq = ++teamSearchSeq[side];
+      if (q.length < 2) {
+        hideTeamSuggest(side);
+        return;
+      }
+      showTeamSuggest(side, '<div class="team-suggest-loading">Buscando times…</div>');
+      try {
+        let teams = [];
+        if (window.ArbiV2 && typeof ArbiV2.searchFootballTeams === "function") {
+          teams = await ArbiV2.searchFootballTeams(q);
+        } else {
+          const res = await fetch(
+            "/api/arbishield/football-teams?q=" + encodeURIComponent(q),
+            { cache: "no-store" }
+          );
+          const data = await res.json().catch(() => ({}));
+          teams = Array.isArray(data.teams) ? data.teams : [];
+        }
+        if (seq !== teamSearchSeq[side]) return;
+        if (!teams.length) {
+          showTeamSuggest(
+            side,
+            '<div class="team-suggest-empty">Nenhum time encontrado — digite o nome manualmente</div>'
+          );
+          return;
+        }
+        showTeamSuggest(
+          side,
+          teams
+            .map((t, idx) => {
+              const sub = [t.country, t.league].filter(Boolean).join(" · ");
+              return (
+                `<button type="button" class="team-suggest-item" data-idx="${idx}" role="option">` +
+                (t.logo ? `<img src="${esc(t.logo)}" alt="" />` : "") +
+                `<span class="meta"><span class="name">${esc(t.name)}</span>` +
+                (sub ? `<span class="sub">${esc(sub)}</span>` : "") +
+                `</span></button>`
+              );
+            })
+            .join("")
+        );
+        const box = document.getElementById(cfg.suggestId);
+        box.querySelectorAll(".team-suggest-item").forEach((btn) => {
+          btn.addEventListener("mousedown", (ev) => {
+            ev.preventDefault();
+            const i = Number(btn.getAttribute("data-idx"));
+            if (Number.isFinite(i) && teams[i]) selectFootballTeam(side, teams[i]);
+          });
+        });
+      } catch (err) {
+        if (seq !== teamSearchSeq[side]) return;
+        showTeamSuggest(
+          side,
+          `<div class="team-suggest-empty">${esc(err.message || "Falha na busca")}</div>`
+        );
+      }
+    }
+
+    function bindTeamPicker(side) {
+      const cfg = TEAM_PICKERS[side];
+      const root = document.querySelector(`[data-step-idx="0"]`);
+      if (!cfg || !root) return;
+      const nameEl = root.querySelector(`[data-f="${cfg.nameField}"]`);
+      const logoEl = root.querySelector(`[data-f="${cfg.logoField}"]`);
+      if (!nameEl) return;
+      nameEl.addEventListener("input", () => {
+        if (cfg.syncMatch) syncMatchLabelFromTeams();
+        clearTimeout(teamSearchTimers[side]);
+        teamSearchTimers[side] = setTimeout(() => {
+          searchFootballTeams(side, nameEl.value);
+        }, 280);
+      });
+      nameEl.addEventListener("focus", () => {
+        if (String(nameEl.value || "").trim().length >= 2) {
+          searchFootballTeams(side, nameEl.value);
+        }
+      });
+      nameEl.addEventListener("blur", () => {
+        setTimeout(() => hideTeamSuggest(side), 180);
+      });
+      if (logoEl) {
+        logoEl.addEventListener("input", () => setTeamLogoPreview(side, logoEl.value));
+      }
+    }
+
+    function bindTeamPickers() {
+      Object.keys(TEAM_PICKERS).forEach(bindTeamPicker);
+    }
+
+    // Catálogo local (mesmo script da página — sem dependência externa)
+    const DESAFIO_MARKET_GROUPS = [
+      ["Total de Gols", [
+        "Mais 0.5 gols na partida","Mais 1.5 gols na partida","Mais 2.5 gols na partida","Mais 3.5 gols na partida","Mais 4.5 gols na partida","Mais 5.5 gols na partida",
+        "Menos 0.5 gols na partida","Menos 1.5 gols na partida","Menos 2.5 gols na partida","Menos 3.5 gols na partida","Menos 4.5 gols na partida","Menos 5.5 gols na partida"
+      ]],
+      ["Ambas Equipes Marcam", ["Ambas equipes marcam SIM","Ambas equipes marcam NÃO"]],
+      ["1° Tempo - Total de Gols", [
+        "Mais 0.5 gols no primeiro tempo","Mais 1.5 gols no primeiro tempo","Mais 2.5 gols no primeiro tempo",
+        "Menos 0.5 gols no primeiro tempo","Menos 1.5 gols no primeiro tempo","Menos 2.5 gols no primeiro tempo"
+      ]],
+      ["Resultado da Partida", ["Back Casa","Back Empate","Back Visitante","Lay Casa","Lay Empate","Lay Visitante"]],
+      ["Resultado no 1° Tempo", [
+        "Back Casa no primeiro tempo","Back Empate no primeiro tempo","Back Visitante no primeiro tempo",
+        "Lay Casa no primeiro tempo","Lay Empate no primeiro tempo","Lay Visitante no primeiro tempo"
+      ]],
+      ["Total de Escanteios", [
+        "Mais 5.5 escanteios","Mais 6.5 escanteios","Mais 7.5 escanteios","Mais 8.5 escanteios","Mais 9.5 escanteios","Mais 10.5 escanteios",
+        "Mais 11.5 escanteios","Mais 12.5 escanteios","Mais 13.5 escanteios","Mais 14.5 escanteios","Mais 15.5 escanteios",
+        "Menos 6.5 escanteios","Menos 7.5 escanteios","Menos 8.5 escanteios","Menos 9.5 escanteios","Menos 10.5 escanteios",
+        "Menos 11.5 escanteios","Menos 12.5 escanteios","Menos 13.5 escanteios","Menos 14.5 escanteios","Menos 15.5 escanteios"
+      ]],
+      ["1° Tempo - Total de Escanteios", [
+        "Mais 1.5 escanteios no primeiro tempo","Mais 2.5 escanteios no primeiro tempo","Mais 3.5 escanteios no primeiro tempo","Mais 4.5 escanteios no primeiro tempo",
+        "Menos 1.5 escanteios no primeiro tempo","Menos 2.5 escanteios no primeiro tempo","Menos 3.5 escanteios no primeiro tempo","Menos 4.5 escanteios no primeiro tempo"
+      ]],
+      ["Total de Cartões", [
+        "Mais 2.5 cartões na partida","Mais 3.5 cartões na partida","Mais 4.5 cartões na partida","Mais 5.5 cartões na partida","Mais 6.5 cartões na partida",
+        "Menos 2.5 cartões na partida","Menos 3.5 cartões na partida","Menos 4.5 cartões na partida","Menos 5.5 cartões na partida","Menos 6.5 cartões na partida"
+      ]],
+      ["1° Tempo - Total de Cartões", [
+        "Menos 1.5 cartões no primeiro tempo","Menos 2.5 cartões no primeiro tempo","Menos 3.5 cartões no primeiro tempo","Menos 4.5 cartões no primeiro tempo"
+      ]],
+    ];
+
+    const DESAFIO_MARKET_FLAT = DESAFIO_MARKET_GROUPS.flatMap(([group, options]) =>
+      options.map((name) => ({ name, group }))
+    );
+
+    function normMarket(s) {
+      return String(s || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+    }
+
+    function oppositeMarketName(name) {
+      const s = String(name || "").trim();
+      if (!s) return "";
+      if (/^Mais\b/i.test(s)) return s.replace(/^Mais\b/i, "Menos");
+      if (/^Menos\b/i.test(s)) return s.replace(/^Menos\b/i, "Mais");
+      if (/marcam SIM$/i.test(s)) return s.replace(/SIM$/i, "NÃO");
+      if (/marcam NÃO$/i.test(s)) return s.replace(/NÃO$/i, "SIM");
+      if (/^Back\b/i.test(s)) return s.replace(/^Back\b/i, "Lay");
+      if (/^Lay\b/i.test(s)) return s.replace(/^Lay\b/i, "Back");
+      return "";
+    }
+
+    function filterLocalMarkets(query, limit) {
+      const q = normMarket(query);
+      const max = Math.max(1, Math.min(40, Number(limit) || 18));
+      if (!q) {
+        const goals = DESAFIO_MARKET_FLAT.filter((x) => x.group === "Total de Gols");
+        const rest = DESAFIO_MARKET_FLAT.filter((x) => x.group !== "Total de Gols");
+        return goals.concat(rest).slice(0, max);
+      }
+      const scored = [];
+      for (const item of DESAFIO_MARKET_FLAT) {
+        const n = normMarket(item.name);
+        const g = normMarket(item.group);
+        let score = 0;
+        if (n === q) score = 100;
+        else if (n.startsWith(q + " ")) score = 90;
+        else if (n.startsWith(q)) score = 80;
+        else if (n.includes(q)) score = 60;
+        else if (g.includes(q)) score = 30;
+        else {
+          const tokens = q.split(/\s+/).filter(Boolean);
+          if (tokens.length && tokens.every((t) => n.includes(t) || g.includes(t))) score = 40;
+        }
+        if (score <= 0) continue;
+        if (/\b2\.5\b/.test(n) && /gols/.test(n)) score += 12;
+        else if (/gols na partida/.test(n)) score += 8;
+        else if (item.group === "Total de Gols") score += 4;
+        scored.push({ ...item, score });
+      }
+      scored.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "pt-BR"));
+      return scored.slice(0, max).map(({ name, group }) => ({ name, group }));
+    }
+
+    const MARKET_PICKERS = {
+      casa: {
+        field: "market_name_casa",
+        suggestId: "casaMarketSuggest",
+        pairField: "market_name_arbishield",
+      },
+      arbi: {
+        field: "market_name_arbishield",
+        suggestId: "arbiMarketSuggest",
+        pairField: "market_name_casa",
+      },
+    };
+
+    function hideMarketSuggest(side) {
+      const cfg = MARKET_PICKERS[side];
+      if (!cfg) return;
+      const el = document.getElementById(cfg.suggestId);
+      if (!el) return;
+      el.classList.remove("show");
+      el.hidden = true;
+      el.innerHTML = "";
+    }
+
+    function showMarketSuggest(side, html) {
+      const cfg = MARKET_PICKERS[side];
+      if (!cfg) return;
+      const el = document.getElementById(cfg.suggestId);
+      if (!el) return;
+      el.innerHTML = html;
+      el.hidden = false;
+      el.classList.add("show");
+    }
+
+    function selectMarket(side, name) {
+      const cfg = MARKET_PICKERS[side];
+      const root = document.querySelector(`[data-step-idx="0"]`);
+      if (!cfg || !root || !name) return;
+      const el = root.querySelector(`[data-f="${cfg.field}"]`);
+      if (el) el.value = name;
+      hideMarketSuggest(side);
+      const pairEl = root.querySelector(`[data-f="${cfg.pairField}"]`);
+      if (pairEl && !(pairEl.value || "").trim()) {
+        const opposite = oppositeMarketName(name);
+        if (opposite) pairEl.value = opposite;
+      }
+    }
+
+    function searchMarkets(side, query) {
+      const cfg = MARKET_PICKERS[side];
+      if (!cfg) return;
+      const items = filterLocalMarkets(query, 18);
+      if (!items.length) {
+        showMarketSuggest(
+          side,
+          '<div class="team-suggest-empty">Nenhum mercado — digite manualmente</div>'
+        );
+        return;
+      }
+      showMarketSuggest(
+        side,
+        items
+          .map((item, idx) => {
+            return (
+              `<button type="button" class="team-suggest-item" data-idx="${idx}" role="option">` +
+              `<span class="meta"><span class="name">${esc(item.name)}</span>` +
+              (item.group ? `<span class="sub">${esc(item.group)}</span>` : "") +
+              `</span></button>`
+            );
+          })
+          .join("")
+      );
+      const box = document.getElementById(cfg.suggestId);
+      box.querySelectorAll(".team-suggest-item").forEach((btn) => {
+        btn.addEventListener("mousedown", (ev) => {
+          ev.preventDefault();
+          const i = Number(btn.getAttribute("data-idx"));
+          if (Number.isFinite(i) && items[i]) selectMarket(side, items[i].name);
+        });
+      });
+    }
+
+    function bindMarketPicker(side) {
+      const cfg = MARKET_PICKERS[side];
+      const root = document.querySelector(`[data-step-idx="0"]`);
+      if (!cfg || !root) return;
+      const el = root.querySelector(`[data-f="${cfg.field}"]`);
+      if (!el) return;
+      el.addEventListener("input", () => {
+        searchMarkets(side, el.value);
+      });
+      el.addEventListener("focus", () => {
+        searchMarkets(side, el.value);
+      });
+      el.addEventListener("blur", () => {
+        setTimeout(() => hideMarketSuggest(side), 180);
+      });
+      el.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape") hideMarketSuggest(side);
+      });
+    }
+
+    function bindMarketPickers() {
+      Object.keys(MARKET_PICKERS).forEach(bindMarketPicker);
+    }
+
+    function renderStepsEditor() {
+      if (!draft.steps || !draft.steps.length) draft.steps = [emptyStep(1)];
+      draft.steps = [draft.steps[0]];
+      const s = draft.steps[0];
+      const append = Boolean(draft.append_to_desafio_id);
+      $("stepsEditor").innerHTML = `
+        <div class="step-card" data-step-idx="0">
+          <div class="step-head">
+            <b>${append ? "Próximo jogo do circuito" : "Evento do jogo"}</b>
+            <div style="display:flex;gap:8px;align-items:center">
+              <select data-f="status" style="border-radius:8px;border:1px solid var(--border);background:#050505;color:var(--text);padding:6px 8px;font-size:11px;font-weight:800;text-transform:uppercase">
+                <option value="pending" ${s.status === "pending" ? "selected" : ""}>Pendente</option>
+                <option value="current" ${s.status === "current" ? "selected" : ""}>Atual</option>
+                <option value="done" ${s.status === "done" ? "selected" : ""}>Encerrada</option>
+              </select>
+            </div>
+          </div>
+          <div class="field team-pick" data-side="home">
+            <label>Time de casa</label>
+            <div class="team-pick-row">
+              <div class="team-logo-box" id="homeLogoPrev">${logoPreviewHtml(s.home_logo_url)}</div>
+              <div style="min-width:0;position:relative">
+                <input data-f="home_team" value="${esc(s.home_team)}" placeholder="Buscar time… Ex: Vasco" autocomplete="off" />
+                <div class="team-suggest" id="homeSuggest" role="listbox" hidden></div>
+              </div>
+            </div>
+            <input type="hidden" data-f="home_logo_url" value="${esc(s.home_logo_url || "")}" />
+          </div>
+          <div class="field team-pick" data-side="away">
+            <label>Time de fora</label>
+            <div class="team-pick-row">
+              <div class="team-logo-box" id="awayLogoPrev">${logoPreviewHtml(s.away_logo_url)}</div>
+              <div style="min-width:0;position:relative">
+                <input data-f="away_team" value="${esc(s.away_team)}" placeholder="Buscar time… Ex: Flamengo" autocomplete="off" />
+                <div class="team-suggest" id="awaySuggest" role="listbox" hidden></div>
+              </div>
+            </div>
+            <input type="hidden" data-f="away_logo_url" value="${esc(s.away_logo_url || "")}" />
+          </div>
+          <div class="field">
+            <label>Nome do Jogo</label>
+            <input data-f="match_label" value="${esc(s.match_label)}" placeholder="Preenchido ao escolher os times" />
+          </div>
+          <div class="field">
+            <label>Liga / Campeonato</label>
+            <input data-f="league_name" value="${esc(s.league_name)}" placeholder="Ex.: Brasileirão Série A" />
+          </div>
+
+          <div class="leg-title casa">Entrada Casa Externa</div>
+          <div class="field team-pick" data-side="casa">
+            <label>Time / Seleção</label>
+            <div class="team-pick-row">
+              <div class="team-logo-box" id="casaLogoPrev">${logoPreviewHtml(s.casa_team_logo_url)}</div>
+              <div style="min-width:0;position:relative">
+                <input data-f="casa_team_name" value="${esc(s.casa_team_name)}" placeholder="Buscar time… Ex: Vitória" autocomplete="off" />
+                <div class="team-suggest" id="casaSuggest" role="listbox" hidden></div>
+              </div>
+            </div>
+            <input type="hidden" data-f="casa_team_logo_url" value="${esc(s.casa_team_logo_url || "")}" />
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Odd externa</label>
+              <input data-f="casa_odd" value="${esc(s.casa_odd)}" placeholder="1.85" inputmode="decimal" />
+              <p class="odd-auto-hint">Ao informar a odd, a odd ArbiShield surebet é gerada com o lucro % (nos dois lados).</p>
+            </div>
+            <div class="field">
+              <label>Comissão (%)</label>
+              <input data-f="casa_commission_pct" value="${esc(s.casa_commission_pct)}" placeholder="0" />
+            </div>
+          </div>
+          <div class="field team-pick" data-market-side="casa">
+            <label>Mercado</label>
+            <div style="position:relative">
+              <input data-f="market_name_casa" value="${esc(s.market_name_casa)}" placeholder="Buscar… Ex: Menos 2.5 gols" autocomplete="off" />
+              <div class="team-suggest" id="casaMarketSuggest" role="listbox" hidden></div>
+            </div>
+            <p class="field-hint">Digite para buscar no catálogo (Mais/Menos, escanteios, cartões…).</p>
+          </div>
+          <div class="field">
+            <label>Valor da entrada na casa (R$)</label>
+            <input data-f="casa_stake_cents" value="${esc(s.casa_stake_cents)}" placeholder="Ex.: 100,00" />
+          </div>
+          <div class="field">
+            <label>Link da Casa de Aposta</label>
+            <input data-f="external_bet_link" value="${esc(s.external_bet_link)}" placeholder="https://www.bet365.com/..." />
+          </div>
+
+          <div class="leg-title arbi">Entrada ArbiShield</div>
+          <div class="field team-pick" data-side="arbi">
+            <label>Time / Seleção</label>
+            <div class="team-pick-row">
+              <div class="team-logo-box" id="arbiLogoPrev">${logoPreviewHtml(s.arbi_team_logo_url)}</div>
+              <div style="min-width:0;position:relative">
+                <input data-f="arbi_team_name" value="${esc(s.arbi_team_name)}" placeholder="Buscar time… Ex: Vitória" autocomplete="off" />
+                <div class="team-suggest" id="arbiSuggest" role="listbox" hidden></div>
+              </div>
+            </div>
+            <input type="hidden" data-f="arbi_team_logo_url" value="${esc(s.arbi_team_logo_url || "")}" />
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <div class="odd-mode-row">
+                <label for="arbiOddInput">Odd ArbiShield</label>
+                <div class="odd-mode-toggle" role="group" aria-label="Modo da odd ArbiShield">
+                  <button type="button" data-odd-mode="auto" class="${s.arbi_odd_manual ? "" : "is-on"}">Auto</button>
+                  <button type="button" data-odd-mode="manual" class="${s.arbi_odd_manual ? "is-on" : ""}">Manual</button>
+                </div>
+              </div>
+              <input id="arbiOddInput" data-f="arbi_odd" value="${esc(s.arbi_odd)}" placeholder="—" ${s.arbi_odd_manual ? "" : "readonly"} />
+              <p class="odd-auto-hint" data-arbi-odd-hint>
+                ${s.arbi_odd_manual
+                  ? "Modo manual: edite a odd livremente."
+                  : "Surebet automática: 1/odd_casa + 1/odd_arbi = 1/(1+lucro%). Ex.: 1,85 + 5% → ~2,428."}
+              </p>
+            </div>
+            <div class="field">
+              <label>Comissão (%)</label>
+              <input data-f="arbi_commission_pct" value="${esc(s.arbi_commission_pct)}" placeholder="0" />
+            </div>
+          </div>
+          <div class="field team-pick" data-market-side="arbi">
+            <label>Mercado</label>
+            <div style="position:relative">
+              <input data-f="market_name_arbishield" value="${esc(s.market_name_arbishield)}" placeholder="Buscar… Ex: Mais 2.5 gols" autocomplete="off" />
+              <div class="team-suggest" id="arbiMarketSuggest" role="listbox" hidden></div>
+            </div>
+            <p class="field-hint">Ao escolher um lado, o oposto preenche automaticamente se estiver vazio.</p>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Liquidez Real (R$)</label>
+              <input data-f="liquidity_cents" value="${esc(s.liquidity_cents)}" placeholder="Ex.: 15000,00" />
+            </div>
+            <div class="field">
+              <label>Liquidez Fake (R$) — opcional</label>
+              <input data-f="display_liquidity_cents" value="${esc(s.display_liquidity_cents)}" placeholder="Ex.: 250000,00" />
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Data e Horário</label>
+              <input data-f="starts_at" type="datetime-local" value="${esc(s.starts_at)}" />
+            </div>
+            <div class="field">
+              <label>Liberar entrada quantos minutos antes</label>
+              <select data-f="release_minutes_before">
+                <option value="0" ${Number(s.release_minutes_before) === 0 ? "selected" : ""}>No horário do jogo</option>
+                <option value="15" ${Number(s.release_minutes_before) === 15 ? "selected" : ""}>15 minutos antes</option>
+                <option value="30" ${Number(s.release_minutes_before) === 30 ? "selected" : ""}>30 minutos antes</option>
+                <option value="60" ${Number(s.release_minutes_before) === 60 ? "selected" : ""}>60 minutos antes</option>
+                <option value="120" ${Number(s.release_minutes_before) === 120 ? "selected" : ""}>120 minutos antes</option>
+              </select>
+            </div>
+          </div>
+        </div>`;
+      bindTeamPickers();
+      bindMarketPickers();
+      bindOddAutoCalc();
+    }
+
+    function parseOddInput(v) {
+      const n = Number(String(v || "").replace(",", "."));
+      return Number.isFinite(n) && n > 1 ? n : null;
+    }
+
+    /** Surebet: 1/casa + 1/arbi = 1/(1+lucro%). Ex.: 1,85 + 5% → arbi ≈ 2,428 */
+    function calcArbiOddFromCasa(casaOdd, profitPct) {
+      const o = parseOddInput(casaOdd);
+      const p = Number(profitPct);
+      if (o == null || !(o > 1) || !Number.isFinite(p) || p <= 0) return "";
+      const invSum = 1 / (1 + p / 100);
+      const invArbi = invSum - 1 / o;
+      if (!(invArbi > 0.0000001)) return "";
+      const arbi = 1 / invArbi;
+      if (!(arbi > 1) || !Number.isFinite(arbi)) return "";
+      return (Math.round(arbi * 1000) / 1000).toFixed(3);
+    }
+
+    function isArbiOddManual() {
+      return !!(draft.steps && draft.steps[0] && draft.steps[0].arbi_odd_manual);
+    }
+
+    function setArbiOddMode(manual) {
+      if (!draft.steps || !draft.steps[0]) return;
+      draft.steps[0].arbi_odd_manual = !!manual;
+      const root = document.querySelector(`[data-step-idx="0"]`);
+      if (!root) return;
+      const arbiEl = root.querySelector(`[data-f="arbi_odd"]`);
+      const hint = root.querySelector("[data-arbi-odd-hint]");
+      root.querySelectorAll("[data-odd-mode]").forEach(function (btn) {
+        const mode = btn.getAttribute("data-odd-mode");
+        btn.classList.toggle("is-on", manual ? mode === "manual" : mode === "auto");
+      });
+      if (arbiEl) {
+        if (manual) arbiEl.removeAttribute("readonly");
+        else arbiEl.setAttribute("readonly", "");
+      }
+      if (hint) {
+        hint.textContent = manual
+          ? "Modo manual: edite a odd livremente."
+          : "Surebet automática: 1/odd_casa + 1/odd_arbi = 1/(1+lucro%). Ex.: 1,85 + 5% → ~2,428.";
+      }
+      if (!manual) syncArbiOddFromCasa();
+    }
+
+    function syncArbiOddFromCasa() {
+      if (isArbiOddManual()) return;
+      const root = document.querySelector(`[data-step-idx="0"]`);
+      if (!root) return;
+      const casaEl = root.querySelector(`[data-f="casa_odd"]`);
+      const arbiEl = root.querySelector(`[data-f="arbi_odd"]`);
+      if (!casaEl || !arbiEl) return;
+      const pct = Number($("fProfitPct") && $("fProfitPct").value) || 0;
+      const next = calcArbiOddFromCasa(casaEl.value, pct);
+      arbiEl.value = next;
+      if (!next && String(casaEl.value || "").trim() && pct > 0) {
+        arbiEl.placeholder = "Odd externa alta demais p/ este %";
+      } else {
+        arbiEl.placeholder = "—";
+      }
+    }
+
+    function bindOddAutoCalc() {
+      const root = document.querySelector(`[data-step-idx="0"]`);
+      if (!root) return;
+      const casaEl = root.querySelector(`[data-f="casa_odd"]`);
+      if (casaEl) {
+        casaEl.addEventListener("input", syncArbiOddFromCasa);
+        casaEl.addEventListener("change", syncArbiOddFromCasa);
+      }
+      root.querySelectorAll("[data-odd-mode]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          setArbiOddMode(btn.getAttribute("data-odd-mode") === "manual");
+        });
+      });
+      const arbiEl = root.querySelector(`[data-f="arbi_odd"]`);
+      if (arbiEl) {
+        arbiEl.addEventListener("input", function () {
+          if (!isArbiOddManual()) setArbiOddMode(true);
+        });
+      }
+      setArbiOddMode(isArbiOddManual());
+    }
+
+    function fillHeaderFields() {
+      if ($("fProfitPct")) {
+        const pct = Number(draft.target_profit_pct) || 5;
+        $("fProfitPct").value = String(pct);
+      }
+      $("fActive").checked = draft.is_active !== false;
+    }
+
+    function syncPageChrome() {
+      const append = Boolean(draft.append_to_desafio_id);
+      $("pageTitle").innerHTML = append
+        ? "Lançar próximo <span>jogo</span>"
+        : "Lançar Novo <span>Desafio</span>";
+      $("pageSub").innerHTML = append
+        ? "Este jogo será a próxima etapa do circuito para quem <strong>já falhou na casa</strong> na etapa anterior."
+        : "Lance <strong>um evento</strong> com times e logos. O card é gerado automaticamente. Etapas já estão definidas e avançam sozinhas conforme o cliente.";
+    }
+
+    const DEFAULT_CIRCUIT_STEPS = 5;
+
+    function defaultEventTitle(step) {
+      const label = String(step && step.match_label || "").trim();
+      if (label) return label;
+      const home = String(step && step.home_team || "").trim();
+      const away = String(step && step.away_team || "").trim();
+      if (home && away) return home + " x " + away;
+      return "Desafio ArbiShield";
+    }
+
+    function buildPayload() {
+      readFormIntoDraft();
+      const profitPct = Number(draft.target_profit_pct);
+      if (!Number.isFinite(profitPct) || profitPct <= 0) {
+        throw new Error("Selecione o lucro líquido do evento antes de lançar.");
+      }
+      const a = draft.steps[0];
+      const homeTeam = String(a.home_team || "").trim();
+      const awayTeam = String(a.away_team || "").trim();
+      if (!a.match_label && homeTeam && awayTeam) {
+        a.match_label = homeTeam + " x " + awayTeam;
+      }
+      if (!a || !a.match_label) throw new Error("Preencha os times (casa e fora) ou o nome do jogo.");
+      if (!a.casa_team_name || !a.casa_odd) {
+        throw new Error("Preencha seleção e odd da Casa Externa.");
+      }
+      // Odd ArbiShield: surebet automática (salvo se modo manual)
+      if (!a.arbi_odd_manual) {
+        const autoArbi = calcArbiOddFromCasa(a.casa_odd, profitPct);
+        if (autoArbi) a.arbi_odd = autoArbi;
+      }
+      if (!a.arbi_team_name || !a.arbi_odd) {
+        throw new Error(
+          a.arbi_odd_manual
+            ? "Preencha seleção e odd ArbiShield (modo manual)."
+            : "Preencha seleção ArbiShield; a odd surebet é gerada pela odd externa + lucro %."
+        );
+      }
+      if (!a.market_name_arbishield || !a.market_name_casa) {
+        throw new Error("Informe o mercado da ArbiShield e da Casa Externa.");
+      }
+      if (!a.liquidity_cents) {
+        throw new Error("Informe a liquidez disponível.");
+      }
+      if (!a.external_bet_link) {
+        throw new Error("Informe o link da casa externa.");
+      }
+
+      const eventTitle = defaultEventTitle(a);
+      const arbiOdd = Number(String(a.arbi_odd).replace(",", "."));
+      const casaOdd = Number(String(a.casa_odd).replace(",", "."));
+      const labelParts = String(a.match_label || "")
+        .split(/\s+[x×X]\s+/)
+        .map((p) => p.trim())
+        .filter(Boolean);
+      const homeFromLabel = labelParts[0] || "";
+      const awayFromLabel = labelParts.length >= 2 ? labelParts.slice(1).join(" x ") : "";
+      const stepPayload = {
+        step_index: 1,
+        match_label: a.match_label,
+        league_name: a.league_name || null,
+        market_name: a.market_name_arbishield || a.market_name_casa || null,
+        market_name_arbishield: a.market_name_arbishield || null,
+        market_name_casa: a.market_name_casa || null,
+        home_team: homeTeam || homeFromLabel || "Casa",
+        away_team: awayTeam || awayFromLabel || "Visitante",
+        home_logo_url: String(a.home_logo_url || "").trim() || null,
+        away_logo_url: String(a.away_logo_url || "").trim() || null,
+        arbi_team_name: a.arbi_team_name || null,
+        arbi_team_logo_url: String(a.arbi_team_logo_url || "").trim() || null,
+        arbi_odd: Number.isFinite(arbiOdd) ? arbiOdd : null,
+        casa_team_name: a.casa_team_name || null,
+        casa_team_logo_url: String(a.casa_team_logo_url || "").trim() || null,
+        casa_odd: Number.isFinite(casaOdd) ? casaOdd : null,
+        home_odd: Number.isFinite(arbiOdd) ? arbiOdd : null,
+        away_odd: Number.isFinite(casaOdd) ? casaOdd : null,
+        casa_stake_cents: reaisToCents(a.casa_stake_cents) || null,
+        arbi_commission_pct: Number(String(a.arbi_commission_pct || "0").replace(",", ".")) || 0,
+        casa_commission_pct:
+          Number(String(a.casa_commission_pct || "0").replace(",", ".")) || 0,
+        external_bet_link: a.external_bet_link || null,
+        liquidity_cents: reaisToCents(a.liquidity_cents) || 200000,
+        display_liquidity_cents:
+          reaisToCents(a.display_liquidity_cents) ||
+          reaisToCents(a.liquidity_cents) ||
+          200000,
+        starts_at: fromLocalInput(a.starts_at),
+        release_minutes_before: Number(a.release_minutes_before) || 0,
+        status: a.status || "pending",
+        is_published: Boolean(draft.is_active),
+      };
+
+      if (draft.append_to_desafio_id) {
+        return {
+          append_to_desafio_id: draft.append_to_desafio_id,
+          steps: [stepPayload],
+          target_profit_pct: profitPct,
+          is_active: true,
+        };
+      }
+
+      // Título padrão do evento; número e saldo vêm da API / carteira Desafio
+      return {
+        title: eventTitle,
+        subtitle: null,
+        total_steps: DEFAULT_CIRCUIT_STEPS,
+        target_profit_pct: profitPct,
+        is_active: Boolean(draft.is_active),
+        status: draft.is_active ? "active" : "draft",
+        auto_link_matches: true,
+        steps: [stepPayload],
+      };
+    }
+
+    async function authHeaders() {
+      const headers = { "Content-Type": "application/json", accept: "application/json" };
+      try {
+        if (window.ArbiV2) {
+          const sess = await ArbiV2.client().auth.getSession();
+          const token = sess.data && sess.data.session && sess.data.session.access_token;
+          if (token) headers.Authorization = "Bearer " + token;
+        }
+      } catch {}
+      return headers;
+    }
+
+    async function saveDesafio() {
+      setFormError("");
+      let body;
+      try {
+        body = buildPayload();
+      } catch (err) {
+        setFormError(err.message || String(err));
+        return;
+      }
+      const btn = $("btnSaveDraft");
+      btn.disabled = true;
+      btn.textContent = "Salvando…";
+      try {
+        const res = await fetch("/api/arbishield/desafios", {
+          method: "POST",
+          headers: await authHeaders(),
+          body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) {
+          throw new Error((data && data.error) || "Falha ao criar desafio (HTTP " + res.status + ")");
+        }
+        localStorage.removeItem("arbishield_desafio_suggestion");
+        localStorage.removeItem("arbishield_desafio_suggestion_at");
+        alert(
+          body.append_to_desafio_id
+            ? "Próximo jogo lançado! Quem falhou na etapa anterior entra automaticamente nesta."
+            : "Evento lançado. O card usa o jogo com logos; etapas avançam sozinhas conforme o cliente."
+        );
+        location.href = "/admin-desafios.html";
+      } catch (err) {
+        setFormError(err.message || String(err));
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Salvar e Liberar";
+      }
+    }
+
+    syncPageChrome();
+    fillHeaderFields();
+    renderStepsEditor();
+    $("btnSaveDraft").addEventListener("click", saveDesafio);
+    if ($("fProfitPct")) {
+      $("fProfitPct").addEventListener("change", () => {
+        draft.target_profit_pct = Number($("fProfitPct").value) || 0;
+        syncArbiOddFromCasa();
+      });
+    }
+
+    try {
+      const u = new URL(location.href);
+      if (u.searchParams.has("sugestao") || u.searchParams.has("lancar")) {
+        u.searchParams.delete("sugestao");
+        u.searchParams.delete("lancar");
+        history.replaceState({}, "", u.pathname + u.search);
+      }
+    } catch {}
+  </script>
+</body>
+</html>

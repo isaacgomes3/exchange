@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Login — ArbiShield</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/blocked-emails.js?v=1"></script>
+  <style>
+    :root {
+      --bg: #010b08;
+      --panel: rgba(3, 30, 24, 0.92);
+      --border: rgba(245, 245, 247, 0.1);
+      --text: #f5f5f7;
+      --muted: #8a8a8f;
+      --lime: #c9f223;
+      --danger: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(700px 420px at 15% 10%, rgba(201,242,35,0.12), transparent 55%),
+        radial-gradient(600px 380px at 90% 80%, rgba(16,185,129,0.08), transparent 50%),
+        var(--bg);
+      display: grid; place-items: center; padding: 24px;
+    }
+    .card {
+      width: min(420px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 28px 24px;
+      backdrop-filter: blur(10px);
+    }
+    .brand {
+      font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+      font-size: 12px; color: var(--lime); margin-bottom: 10px;
+    }
+    h1 {
+      margin: 0 0 6px; font-size: 1.6rem; letter-spacing: -0.03em;
+      text-transform: uppercase;
+    }
+    .sub { color: var(--muted); font-size: 13px; margin: 0 0 22px; }
+    label {
+      display: block; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted); margin: 0 0 6px;
+    }
+    input {
+      width: 100%; border-radius: 12px; border: 1px solid var(--border);
+      background: rgba(0,0,0,0.35); color: var(--text);
+      padding: 12px 14px; margin-bottom: 14px; font: inherit;
+    }
+    input:focus { outline: 2px solid rgba(201,242,35,0.35); border-color: transparent; }
+    .btn {
+      width: 100%; border: 0; border-radius: 12px; padding: 13px 16px;
+      font-weight: 800; font-size: 12px; letter-spacing: 0.12em;
+      text-transform: uppercase; cursor: pointer;
+      background: var(--lime); color: #04140f;
+    }
+    .btn:disabled { opacity: 0.6; cursor: wait; }
+    .err {
+      display: none; margin-bottom: 12px; padding: 10px 12px;
+      border-radius: 10px; border: 1px solid rgba(248,113,113,0.4);
+      background: rgba(248,113,113,0.08); color: var(--danger);
+      font-size: 13px;
+    }
+    .err.show { display: block; }
+    .links {
+      margin-top: 16px; display: flex; justify-content: space-between; gap: 10px;
+      font-size: 12px;
+    }
+    .links a { color: var(--muted); text-decoration: none; }
+    .links a:hover { color: var(--lime); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">ArbiShield Admin</div>
+    <h1>Entrar</h1>
+    <p class="sub">Acesso ao painel administrativo na VPS.</p>
+    <div class="err" id="err"></div>
+    <form id="form">
+      <label for="email">E-mail</label>
+      <input id="email" type="email" autocomplete="username" required placeholder="seu@email.com" />
+      <label for="password">Senha</label>
+      <input id="password" type="password" autocomplete="current-password" required placeholder="••••••••" />
+      <button class="btn" id="btn" type="submit">Entrar</button>
+    </form>
+    <div class="links">
+      <a href="/auth">Login do app</a>
+      <a href="/admin">Ir ao dashboard</a>
+    </div>
+  </div>
+  <script>
+    const SUPABASE_URL = "https://arbishield.app";
+    // mesma anon key do bundle do frontend (pública)
+    const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzg0NDc5OTk4LCJleHAiOjE5NDIxNTk5OTh9.mxLqs20sCUNn58jWlsD0sznclCOr8rbksjTEAuQee3s";
+    // gotrue-js: sb-${hostname.split('.')[0]}-auth-token
+    const STORAGE_KEY = "sb-arbishield-auth-token";
+
+    const params = new URLSearchParams(location.search);
+    const redirectTo = params.get("redirect") || "/admin";
+
+    const { createClient } = supabase;
+    const client = createClient(SUPABASE_URL, ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        storageKey: STORAGE_KEY,
+      },
+    });
+
+    const errEl = document.getElementById("err");
+    const btn = document.getElementById("btn");
+
+    function showError(msg) {
+      errEl.textContent = msg;
+      errEl.classList.add("show");
+    }
+
+    async function isAdmin(userId) {
+      const [{ data: profile }, { data: roles }] = await Promise.all([
+        client.from("profiles").select("is_super_admin").eq("id", userId).maybeSingle(),
+        client.from("user_roles").select("role").eq("user_id", userId),
+      ]);
+      if (profile?.is_super_admin) return true;
+      return (roles || []).some((r) => r.role === "admin" || r.role === "master_admin");
+    }
+
+    async function goIfSession() {
+      const { data } = await client.auth.getSession();
+      const session = data?.session;
+      if (!session?.user) return false;
+      if (window.ArbiIsBlockedEmail && ArbiIsBlockedEmail(session.user.email)) {
+        await client.auth.signOut();
+        showError("Esta conta está bloqueada. Contate o suporte.");
+        return false;
+      }
+      const ok = await isAdmin(session.user.id);
+      if (!ok) {
+        await client.auth.signOut();
+        showError("Conta sem permissão de admin.");
+        return false;
+      }
+      location.replace(redirectTo);
+      return true;
+    }
+
+    document.getElementById("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errEl.classList.remove("show");
+      btn.disabled = true;
+      btn.textContent = "Entrando…";
+      try {
+        const email = document.getElementById("email").value.trim();
+        const password = document.getElementById("password").value;
+        if (window.ArbiIsBlockedEmail && ArbiIsBlockedEmail(email)) {
+          throw new Error("Esta conta está bloqueada. Contate o suporte.");
+        }
+        const { data, error } = await client.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        if (data.user && window.ArbiIsBlockedEmail && ArbiIsBlockedEmail(data.user.email)) {
+          await client.auth.signOut();
+          throw new Error("Esta conta está bloqueada. Contate o suporte.");
+        }
+        const ok = await isAdmin(data.user.id);
+        if (!ok) {
+          await client.auth.signOut();
+          throw new Error("Conta sem permissão de admin.");
+        }
+        location.replace(redirectTo);
+      } catch (err) {
+        const msg = err?.message || String(err);
+        showError(/banned/i.test(msg) ? "Esta conta está bloqueada. Contate o suporte." : msg);
+        btn.disabled = false;
+        btn.textContent = "Entrar";
+      }
+    });
+
+    goIfSession();
+  </script>
+</body>
+</html>

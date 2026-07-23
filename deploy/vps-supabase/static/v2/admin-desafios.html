@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gestão de Desafios — ArbiShield v2</title>
+  <link rel="stylesheet" href="/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js"></script>
+  <script src="/v2-shell.js" defer></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #050505;
+      --panel: #0a0a0a;
+      --border: #1f1f1f;
+      --text: #f5f5f7;
+      --muted: #8a8a8f;
+      --lime: #c9f223;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      color: var(--text);
+    }
+    .wrap { width: 100%; max-width: none; margin: 0; padding: 0 0 48px; }
+    header {
+      display: flex; flex-wrap: wrap; gap: 14px;
+      align-items: flex-start; justify-content: space-between;
+      margin-bottom: 22px;
+    }
+    h1 {
+      margin: 0; font-size: clamp(1.5rem, 3vw, 2.1rem);
+      font-weight: 900; font-style: italic;
+      letter-spacing: -0.04em; text-transform: uppercase;
+    }
+    h1 span { color: var(--lime); }
+    .sub {
+      margin: 6px 0 0; color: var(--muted); font-size: 0.72rem;
+      letter-spacing: 0.14em; text-transform: uppercase; font-weight: 700;
+    }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn {
+      border: 0; border-radius: 12px; padding: 12px 16px;
+      font-weight: 800; font-size: 10px; letter-spacing: 0.12em;
+      text-transform: uppercase; cursor: pointer; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn-primary {
+      background: var(--lime); color: #000;
+      box-shadow: 0 0 20px rgba(201,242,35,0.25);
+    }
+    .btn-ghost {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-danger {
+      background: transparent; color: #fca5a5;
+      border: 1px solid rgba(239,68,68,0.45);
+    }
+    .btn-danger:hover { background: rgba(239,68,68,0.12); }
+    .btn-warn {
+      background: transparent; color: #fcd34d;
+      border: 1px solid rgba(245,158,11,0.45);
+    }
+    .btn-warn:hover { background: rgba(245,158,11,0.12); }
+    .btn-lime-outline {
+      background: transparent; color: var(--lime);
+      border: 1px solid rgba(201,242,35,0.4);
+    }
+    .filters {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      margin: 0 0 16px;
+    }
+    .filters input[type="search"] {
+      flex: 1; min-width: 200px; border-radius: 12px;
+      border: 1px solid var(--border); background: #050505;
+      color: var(--text); padding: 12px 14px;
+    }
+    .tab {
+      border: 1px solid var(--border); background: transparent;
+      color: var(--muted); border-radius: 999px; padding: 8px 12px;
+      font-size: 9px; font-weight: 800; letter-spacing: 0.12em;
+      text-transform: uppercase; cursor: pointer;
+    }
+    .tab.is-on { background: var(--lime); color: #022c22; border-color: var(--lime); }
+    .stats {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+      gap: 10px; margin-bottom: 20px;
+    }
+    .stat {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; padding: 12px 14px;
+    }
+    .stat .l {
+      font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted); font-weight: 800;
+    }
+    .stat .v {
+      font-size: 1.5rem; font-weight: 900; font-style: italic; margin-top: 4px;
+    }
+    .stat .v.lime { color: var(--lime); }
+    .stat .v.amber { color: #f59e0b; }
+    .stat .v.red { color: #ef4444; }
+    .meta { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+    .list { display: flex; flex-direction: column; gap: 12px; }
+    .card {
+      border: 1px solid var(--border); border-radius: 16px;
+      background: var(--panel); padding: 16px;
+    }
+    .card-top {
+      display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+      margin-bottom: 10px; align-items: center;
+    }
+    .title { font-weight: 900; font-size: 1.05rem; letter-spacing: -0.02em; }
+    .badge {
+      font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
+      text-transform: uppercase; padding: 4px 8px; border-radius: 999px;
+      border: 1px solid var(--border); color: var(--muted);
+    }
+    .badge.on { color: var(--lime); border-color: rgba(201,242,35,0.35); background: rgba(201,242,35,0.08); }
+    .badge.amber { color: #fbbf24; border-color: rgba(251,191,36,0.45); background: rgba(251,191,36,0.1); }
+    .mini-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+      gap: 8px; margin: 12px 0;
+    }
+    .mini {
+      border: 1px solid var(--border); border-radius: 12px; padding: 10px;
+      background: rgba(255,255,255,0.02);
+    }
+    .mini .l { font-size: 9px; color: var(--muted); font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mini .v { margin-top: 4px; font-weight: 800; }
+    .mini .v.lime { color: var(--lime); }
+    .step-box {
+      border: 1px solid var(--border); border-radius: 12px; padding: 12px;
+      margin-top: 8px; background: rgba(0,0,0,0.25);
+    }
+    .step-box .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .tag-arbi {
+      background: rgba(201,242,35,0.12); color: var(--lime);
+      border: 1px solid rgba(201,242,35,0.3); border-radius: 8px;
+      padding: 4px 8px; font-size: 10px; font-weight: 800;
+    }
+    .tag-casa {
+      background: rgba(59,130,246,0.12); color: #93c5fd;
+      border: 1px solid rgba(59,130,246,0.3); border-radius: 8px;
+      padding: 4px 8px; font-size: 10px; font-weight: 800;
+    }
+    .card-actions {
+      display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 14px;
+    }
+    .steps { color: var(--muted); font-size: 13px; line-height: 1.45; }
+    .empty, .error, .loading {
+      border: 1px dashed var(--border); border-radius: 16px;
+      padding: 28px; text-align: center; color: var(--muted);
+    }
+    .error { border-color: rgba(239,68,68,0.4); color: #fca5a5; }
+    .suggest {
+      display: none;
+      margin-bottom: 18px;
+      border: 1px solid rgba(201,242,35,0.35);
+      border-radius: 16px;
+      background: rgba(201,242,35,0.06);
+      padding: 16px;
+    }
+    .suggest.show { display: block; }
+    .suggest h2 {
+      margin: 0 0 8px;
+      font-size: 0.85rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--lime);
+    }
+    .suggest .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .suggest .k {
+      font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted); font-weight: 700;
+    }
+    .suggest .v { font-weight: 700; margin-top: 2px; word-break: break-word; }
+    .suggest .hint { color: var(--muted); font-size: 13px; margin: 0 0 4px; }
+    .suggest .actions { margin-top: 14px; }
+    .clients-box {
+      margin-top: 14px;
+      border: 1px solid rgba(201,242,35,0.28);
+      border-radius: 14px;
+      background: rgba(201,242,35,0.05);
+      padding: 12px 14px;
+      overflow: auto;
+    }
+    .clients-box h4 {
+      margin: 0 0 10px;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--lime);
+      font-weight: 900;
+    }
+    .clients-box .clients-empty {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .clients-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      min-width: 520px;
+    }
+    .clients-table th {
+      text-align: left;
+      padding: 8px 8px;
+      color: var(--muted);
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .clients-table td {
+      padding: 10px 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      vertical-align: top;
+    }
+    .clients-table tr:last-child td { border-bottom: 0; }
+    .clients-table .name { font-weight: 800; color: #fff; }
+    .clients-table .subname {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .clients-table .amt { font-weight: 900; color: var(--lime); white-space: nowrap; }
+    .clients-table .when {
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      color: rgba(255,255,255,0.75);
+      font-size: 11px;
+    }
+    .clients-table .etapa {
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .clients-table .etapa .wait {
+      display: block;
+      margin-top: 2px;
+      color: #fcd34d;
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .clients-link {
+      color: #fcd34d;
+      font-weight: 800;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      background: none;
+      border: 0;
+      padding: 0;
+      font: inherit;
+      letter-spacing: inherit;
+      text-transform: none;
+    }
+    .clients-link:hover { color: var(--lime); }
+    .clients-box.is-open { display: block; }
+  </style>
+</head>
+<body data-shell="admin" data-active="desafios">
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Gestão de <span>Desafios</span></h1>
+        <p class="sub">Cockpit de Desafios ArbiShield</p>
+      </div>
+      <div class="actions">
+        <a class="btn btn-primary" href="/admin-desafio-lancar.html" id="btnLaunch">⚡ Lançar Desafio</a>
+        <button class="btn btn-ghost" id="btnRefresh" type="button">Atualizar</button>
+      </div>
+    </header>
+
+    <section class="suggest" id="suggestPanel" aria-live="polite">
+      <h2>Sugestão pronta para lançamento</h2>
+      <p class="hint">Clique em “Usar no formulário” para abrir a página de lançamento com estes dados.</p>
+      <div class="grid" id="suggestGrid"></div>
+      <div class="actions">
+        <a class="btn btn-lime-outline" id="suggestBetbra" href="#" target="_blank" rel="noopener">Abrir BetBra</a>
+        <button class="btn btn-ghost" id="suggestClear" type="button">Descartar sugestão</button>
+        <button class="btn btn-primary" id="suggestUse" type="button">Usar no formulário</button>
+      </div>
+    </section>
+
+    <div class="stats" id="stats"></div>
+    <div class="filters">
+      <button type="button" class="tab is-on" data-f="active">Ativos</button>
+      <button type="button" class="tab" data-f="all">Todos</button>
+      <button type="button" class="tab" data-f="draft">Rascunhos</button>
+      <button type="button" class="tab" data-f="pending">Pendente</button>
+      <input id="search" type="search" placeholder="Buscar desafio ou jogo" />
+    </div>
+    <div class="meta" id="meta">Carregando…</div>
+    <div class="list" id="list"></div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const DRAFT_KEY = "arbishield_desafio_launch_draft";
+    const money = (c) =>
+      c == null ? "—" : (Number(c) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+    function centsToReaisInput(c) {
+      if (c == null || c === "" || Number.isNaN(Number(c))) return "";
+      return (Number(c) / 100).toLocaleString("pt-BR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    }
+
+    function emptyStep(i) {
+      return {
+        step_index: i,
+        match_label: "",
+        league_name: "",
+        market_name_arbishield: "",
+        market_name_casa: "",
+        home_team: "",
+        away_team: "",
+        home_logo_url: "",
+        away_logo_url: "",
+        arbi_team_name: "",
+        arbi_odd: "",
+        casa_team_name: "",
+        casa_odd: "",
+        casa_stake_cents: "",
+        arbi_commission_pct: "0",
+        casa_commission_pct: "4.5",
+        external_bet_link: "",
+        liquidity_cents: "",
+        display_liquidity_cents: "",
+        starts_at: "",
+        release_minutes_before: 60,
+        status: "pending",
+      };
+    }
+
+    function emptyDraft() {
+      return {
+        target_profit_pct: 5,
+        is_active: true,
+        append_to_desafio_id: null,
+        steps: [emptyStep(1)],
+      };
+    }
+
+    function goLaunch(prefill) {
+      try {
+        sessionStorage.setItem(DRAFT_KEY, JSON.stringify(prefill || emptyDraft()));
+      } catch {}
+      location.href = "/admin-desafio-lancar.html";
+    }
+
+    function stepState(step) {
+      if (!step?.starts_at) return "upcoming";
+      if (step.status === "done" || step.status === "current") return step.status === "done" ? "done" : "live";
+      const u = new Date(step.starts_at).getTime();
+      const end = u + 9000 * 1000;
+      const now = Date.now();
+      if (now >= end) return "pending";
+      if (now >= u) return "live";
+      return "upcoming";
+    }
+
+    /** Etapa ainda aberta (não encerrada no settle). */
+    function isStepOpen(step) {
+      const st = String(step?.status || "").toLowerCase();
+      return st !== "done" && st !== "settled" && st !== "cancelled" && st !== "canceled";
+    }
+
+    function hasOpenGame(d) {
+      return (d.desafio_steps || []).some(isStepOpen);
+    }
+
+    function totals(rows) {
+      const alive = rows.filter((x) => !x.deleted_at);
+      const steps = alive.flatMap((x) => x.desafio_steps || []);
+      const closed = (x) => {
+        const s = x.desafio_steps || [];
+        const circuitMax = Number(x.total_steps) || Math.max(s.length, 5);
+        return s.length > 0 && s.every((e) => !isStepOpen(e)) && s.length >= circuitMax;
+      };
+      return {
+        total: alive.length,
+        // Ativos = publicados (a sequência do circuito é do cliente, não do evento)
+        active: alive.filter((x) => x.is_active).length,
+        drafts: alive.filter((x) => !x.is_active && !closed(x)).length,
+        upcoming: steps.filter((x) => stepState(x) === "upcoming").length,
+        live: steps.filter((x) => stepState(x) === "live").length,
+        // Pendente = só settle atrasado (jogo acabou, falta liquidar)
+        pending: steps.filter((x) => stepState(x) === "pending").length,
+        closed: alive.filter(closed).length,
+        deleted: rows.filter((x) => x.deleted_at).length,
+      };
+    }
+
+    function renderStats(t) {
+      const items = [
+        ["Total", t.total, ""],
+        ["Ativos", t.active, "lime"],
+        ["Rascunhos", t.drafts, ""],
+        ["Agendadas", t.upcoming, ""],
+        ["Ao Vivo", t.live, "red"],
+        ["Pendente", t.pending, "amber"],
+        ["Encerrados", t.closed, "lime"],
+        ["Excluídos", t.deleted, "red"],
+      ];
+      $("stats").innerHTML = items
+        .map(
+          ([l, v, c]) =>
+            `<div class="stat"><div class="l">${l}</div><div class="v ${c}">${v}</div></div>`
+        )
+        .join("");
+    }
+
+    function toLocalInput(iso) {
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return "";
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function fmtWhen(iso) {
+      if (!iso) return "—";
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return "—";
+      return d.toLocaleString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    }
+
+    function clientsTableHtml(rows) {
+      if (!rows || !rows.length) {
+        return `<p class="clients-empty">Nenhum cliente ativo neste circuito no momento.</p>`;
+      }
+      const body = rows
+        .map((c) => {
+          const name =
+            String(c.full_name || "").trim() ||
+            "Cliente " + String(c.user_id || "").slice(0, 8);
+          const etapa =
+            "Etapa " +
+            (c.step_index || 1) +
+            " de " +
+            (c.total_steps || 5);
+          const wait = c.waiting_next_game
+            ? `<span class="wait">Aguardando próximo jogo</span>`
+            : c.step_label
+              ? `<span class="subname">${esc(c.step_label)}</span>`
+              : "";
+          return `<tr>
+            <td><span class="name">${esc(name)}</span></td>
+            <td class="amt">${esc(money(c.amount_cents))}</td>
+            <td class="when">${esc(fmtWhen(c.entered_at))}</td>
+            <td class="etapa">${esc(etapa)}${wait}</td>
+          </tr>`;
+        })
+        .join("");
+      return `<table class="clients-table">
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th>Valor da entrada</th>
+            <th>Data e hora</th>
+            <th>Etapa</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>`;
+    }
+
+    function clientsPanelHtml(desafioId, open) {
+      if (!open) return "";
+      const cached =
+        window.__desafioActiveClients &&
+        Object.prototype.hasOwnProperty.call(window.__desafioActiveClients, desafioId)
+          ? window.__desafioActiveClients[desafioId]
+          : null;
+      const loading = window.__desafioClientsLoading && window.__desafioClientsLoading[desafioId];
+      let inner;
+      if (loading) {
+        inner = `<p class="clients-empty">Carregando clientes…</p>`;
+      } else if (cached == null) {
+        inner = `<p class="clients-empty">Carregando clientes…</p>`;
+      } else {
+        inner = clientsTableHtml(cached);
+      }
+      const count = Array.isArray(cached) ? cached.length : "—";
+      return `<div class="clients-box is-open" data-clients-panel="${esc(desafioId)}">
+        <h4>Clientes ativos no desafio${cached ? " · " + count : ""}</h4>
+        ${inner}
+      </div>`;
+    }
+
+    function esc(v) {
+      return String(v ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;");
+    }
+
+    function suggestionToDraft(data) {
+      const step = (data.steps && data.steps[0]) || data.step || {};
+      const arbiName = step.market_name_arbishield || step.arbi_team_name || "";
+      const casaName = step.market_name_casa || step.market_name || step.casa_team_name || "";
+      return {
+        target_profit_pct: Number(data.target_profit_pct) || 5,
+        append_to_desafio_id: null,
+        is_active: data.is_active !== false,
+        steps: [
+          {
+            ...emptyStep(1),
+            match_label:
+              step.match_label ||
+              [step.home_team, step.away_team].filter(Boolean).join(" x ") ||
+              "",
+            league_name: step.league_name || "",
+            home_team: step.home_team || "",
+            away_team: step.away_team || "",
+            home_logo_url: step.home_logo_url || step.home_logo || "",
+            away_logo_url: step.away_logo_url || step.away_logo || "",
+            arbi_team_name: arbiName,
+            arbi_odd: step.arbi_odd != null ? String(step.arbi_odd) : "",
+            market_name_arbishield: step.market_name_arbishield || arbiName,
+            arbi_commission_pct:
+              step.arbi_commission_pct != null ? String(step.arbi_commission_pct) : "0",
+            casa_team_name: casaName,
+            casa_odd: step.casa_odd != null ? String(step.casa_odd) : "",
+            market_name_casa: step.market_name_casa || casaName,
+            casa_commission_pct:
+              step.casa_commission_pct != null ? String(step.casa_commission_pct) : "4.5",
+            casa_stake_cents: centsToReaisInput(step.casa_stake_cents),
+            external_bet_link: step.external_bet_link || data.betbraLink || "",
+            liquidity_cents: centsToReaisInput(step.liquidity_cents),
+            display_liquidity_cents: centsToReaisInput(
+              step.display_liquidity_cents ?? step.liquidity_cents
+            ),
+            starts_at: toLocalInput(step.starts_at),
+            release_minutes_before: step.release_minutes_before ?? 30,
+            status: step.status || "pending",
+          },
+        ],
+      };
+    }
+
+    function render(rows) {
+      const t = totals(rows);
+      renderStats(t);
+      const filter = window.__desafioFilter || "active";
+      const q = (window.__desafioQ || "").trim().toLowerCase();
+      let visible = rows
+        .filter((x) => !x.deleted_at)
+        .sort((a, b) => {
+          // Ativos (jogo aberto) sempre primeiro
+          const aa = a.is_active && hasOpenGame(a) ? 1 : 0;
+          const ab = b.is_active && hasOpenGame(b) ? 1 : 0;
+          if (aa !== ab) return ab - aa;
+          const ta = new Date(a.updated_at || a.created_at || 0).getTime();
+          const tb = new Date(b.updated_at || b.created_at || 0).getTime();
+          return tb - ta;
+        });
+      if (filter === "active") {
+        // Publicados — admin pode ter vários jogos/eventos; sequência é do cliente
+        visible = visible.filter((x) => x.is_active);
+      }
+      if (filter === "draft") visible = visible.filter((x) => !x.is_active);
+      if (filter === "pending") {
+        visible = visible.filter((x) =>
+          (x.desafio_steps || []).some((s) => stepState(s) === "pending")
+        );
+      }
+      if (q) {
+        visible = visible.filter((d) => {
+          const hay = [
+            d.title,
+            d.number,
+            ...(d.desafio_steps || []).map(
+              (s) =>
+                (s.match_label || "") +
+                " " +
+                (s.home_team || "") +
+                " " +
+                (s.away_team || "")
+            ),
+          ]
+            .join(" ")
+            .toLowerCase();
+          return hay.includes(q);
+        });
+      }
+      $("meta").textContent = `${visible.length} desafio(s) · filtro ${filter}`;
+      if (!visible.length) {
+        $("list").innerHTML = `<div class="empty">Nenhum desafio encontrado.</div>`;
+        return;
+      }
+      $("list").innerHTML = visible
+        .map((d) => {
+          const steps = (d.desafio_steps || [])
+            .slice()
+            .sort((a, b) => a.step_index - b.step_index);
+          const stepBlocks = steps
+            .map((s) => {
+              const label =
+                s.match_label ||
+                [s.home_team, s.away_team].filter(Boolean).join(" x ") ||
+                "—";
+              const st = stepState(s);
+              const done = st === "done" || s.status === "done";
+              const settle = done
+                ? `<div class="tags"><span class="tag-arbi">Encerrada · ${
+                    s.result === "zebra_protected"
+                      ? "Bateu ArbiShield"
+                      : s.result === "win"
+                        ? "Bateu Casa"
+                        : esc(s.result || "done")
+                  }</span></div>`
+                : `<div class="card-actions" style="margin-top:8px">
+                    <button class="btn btn-primary" type="button" data-settle="${esc(s.id)}" data-side="arbishield">Bateu ArbiShield</button>
+                    <button class="btn btn-ghost" type="button" data-settle="${esc(s.id)}" data-side="casa">Bateu Casa</button>
+                  </div>
+                  <p style="margin:6px 0 0;font-size:10px;color:var(--muted)">Circuito: vitórias só na ArbiShield até o fim → ganhos vão aos provedores de liquidez.</p>`;
+              return `<div class="step-box">
+                <strong>Jogo ${s.step_index}</strong> · ${label}
+                <div class="tags">
+                  <span class="tag-arbi">Arbi: ${s.market_name_arbishield || s.market_name || "—"} @ ${s.arbi_odd ?? "—"}</span>
+                  <span class="tag-casa">Casa: ${s.market_name_casa || "—"} @ ${s.casa_odd ?? "—"}</span>
+                </div>
+                ${settle}
+              </div>`;
+            })
+            .join("");
+          const live = steps.filter((s) => stepState(s) === "live").length;
+          const pending = steps.filter((s) => stepState(s) === "pending").length;
+          const upcoming = steps.filter((s) => stepState(s) === "upcoming").length;
+          const circuitMax = Number(d.total_steps) || Math.max(steps.length, 5);
+          const canAppend =
+            Boolean(d.is_active) && !d.deleted_at && steps.length < circuitMax;
+          const isCancelled = String(d.status) === "cancelled";
+          const pendingClients = Number(
+            (window.__desafioPendingCounts && window.__desafioPendingCounts[d.id]) || 0
+          );
+          const canDelete = !d.deleted_at && !isCancelled && pendingClients === 0;
+          const canCancel = !d.deleted_at && !isCancelled && pendingClients > 0;
+          const badgeClass = isCancelled ? "" : d.is_active ? "on" : "";
+          const badgeLabel = isCancelled
+            ? "Cancelado"
+            : d.is_active
+              ? "Ativo · Publicado"
+              : "Rascunho";
+          return `<article class="card">
+            <div class="card-top">
+              <div class="title">${esc((steps[0] && (steps[0].match_label || [steps[0].home_team, steps[0].away_team].filter(Boolean).join(" x "))) || d.title || "Desafio")}</div>
+              <span class="badge ${badgeClass}" style="${
+                isCancelled
+                  ? "border-color:rgba(245,158,11,0.5);color:#fcd34d"
+                  : ""
+              }">${badgeLabel}</span>
+            </div>
+            <div class="steps">${esc(
+              isCancelled
+                ? "Cancelado — entradas pendentes devolvidas à carteira Desafio"
+                : d.subtitle || "Saldo na carteira Desafio · etapas avançam por cliente"
+            )}${
+              pendingClients > 0
+                ? ` · <button type="button" class="clients-link" data-open-clients="${esc(d.id)}" aria-expanded="${
+                    window.__desafioClientsOpen && window.__desafioClientsOpen[d.id] ? "true" : "false"
+                  }">${pendingClients} cliente(s) ativo(s)</button>`
+                : ""
+            }</div>
+            <div class="mini-grid">
+              <div class="mini"><div class="l">Jogos lançados</div><div class="v">${steps.length}</div></div>
+              <div class="mini"><div class="l">Circuito até</div><div class="v">${circuitMax}</div></div>
+              <div class="mini"><div class="l">Agendadas</div><div class="v">${upcoming}</div></div>
+              <div class="mini"><div class="l">Ao Vivo</div><div class="v ${live ? "lime" : ""}">${live}</div></div>
+              <div class="mini"><div class="l">Pendente</div><div class="v">${pending}</div></div>
+              <div class="mini"><div class="l">Lucro líquido</div><div class="v lime">${Number(d.target_profit_pct) || 5}%</div></div>
+            </div>
+            ${stepBlocks || '<div class="steps">Sem jogos</div>'}
+            ${clientsPanelHtml(
+              d.id,
+              !!(window.__desafioClientsOpen && window.__desafioClientsOpen[d.id])
+            )}
+            <div class="card-actions">
+              ${
+                canAppend
+                  ? `<button class="btn btn-primary" type="button" data-next-game="${esc(d.id)}">Lançar novo jogo</button>`
+                  : ""
+              }
+              <button class="btn btn-ghost" type="button" data-clone="${esc(d.id)}">Usar como base</button>
+              ${
+                canDelete
+                  ? `<button class="btn btn-danger" type="button" data-delete="${esc(d.id)}">Excluir</button>`
+                  : ""
+              }
+              ${
+                canCancel
+                  ? `<button class="btn btn-warn" type="button" data-cancel="${esc(d.id)}">Cancelar · devolver saldo</button>`
+                  : ""
+              }
+            </div>
+          </article>`;
+        })
+        .join("");
+
+      $("list").querySelectorAll("[data-next-game]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const id = btn.getAttribute("data-next-game");
+          const d = rows.find((x) => String(x.id) === String(id));
+          if (!d) return;
+          goLaunch({
+            ...emptyDraft(),
+            target_profit_pct: Number(d.target_profit_pct) || 5,
+            is_active: true,
+            append_to_desafio_id: d.id,
+            steps: [emptyStep(1)],
+          });
+        });
+      });
+
+      $("list").querySelectorAll("[data-open-clients]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const id = btn.getAttribute("data-open-clients");
+          if (!id) return;
+          window.__desafioClientsOpen = window.__desafioClientsOpen || {};
+          window.__desafioActiveClients = window.__desafioActiveClients || {};
+          window.__desafioClientsLoading = window.__desafioClientsLoading || {};
+          const willOpen = !window.__desafioClientsOpen[id];
+          window.__desafioClientsOpen[id] = willOpen;
+          if (!willOpen) {
+            if (window.__desafioRows) render(window.__desafioRows);
+            return;
+          }
+          // Sempre busca ao abrir (evita cache vazio antigo)
+          delete window.__desafioActiveClients[id];
+          window.__desafioClientsLoading[id] = true;
+          if (window.__desafioRows) render(window.__desafioRows);
+          try {
+            let loaded = null;
+            try {
+              const res = await fetch("/api/arbishield/desafio-active-clients", {
+                method: "POST",
+                headers: await authHeaders(),
+                body: JSON.stringify({ desafioIds: [id] }),
+                signal: AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined,
+              });
+              const data = await res.json().catch(() => ({}));
+              if (res.ok && data && data.byDesafio) {
+                loaded = data.byDesafio[id] || [];
+              }
+            } catch (apiErr) {
+              console.warn("desafio-active-clients api", apiErr);
+            }
+            // Fallback: lê entradas pending direto no Supabase (mesmo critério do contador)
+            if (!Array.isArray(loaded) || (loaded.length === 0 && (window.__desafioPendingCounts || {})[id] > 0)) {
+              try {
+                const supa = ArbiV2.client();
+                const dRow = (window.__desafioRows || []).find((x) => String(x.id) === String(id));
+                const steps = ((dRow && dRow.desafio_steps) || [])
+                  .slice()
+                  .sort((a, b) => (a.step_index || 0) - (b.step_index || 0));
+                const stepById = {};
+                steps.forEach((s) => {
+                  stepById[String(s.id)] = s;
+                });
+                let q = await supa
+                  .from("desafio_participations")
+                  .select(
+                    "id,user_id,step_id,desafio_id,side,result,amount_cents,created_at,profiles(full_name,avatar_url)"
+                  )
+                  .eq("desafio_id", id)
+                  .or("result.eq.pending,result.is.null")
+                  .order("created_at", { ascending: false })
+                  .limit(500);
+                let rows = q.data || [];
+                if (q.error || !rows.length) {
+                  const stepIds = steps.map((s) => s.id).filter(Boolean);
+                  if (stepIds.length) {
+                    const q2 = await supa
+                      .from("desafio_participations")
+                      .select(
+                        "id,user_id,step_id,desafio_id,side,result,amount_cents,created_at,profiles(full_name,avatar_url)"
+                      )
+                      .in("step_id", stepIds)
+                      .or("result.eq.pending,result.is.null")
+                      .order("created_at", { ascending: false })
+                      .limit(500);
+                    rows = q2.data || [];
+                  }
+                }
+                const byUser = new Map();
+                for (const r of rows) {
+                  const uid = String(r.user_id || "");
+                  if (!uid || byUser.has(uid)) continue;
+                  const st = stepById[String(r.step_id)] || {};
+                  byUser.set(uid, {
+                    user_id: uid,
+                    full_name: (r.profiles && r.profiles.full_name) || null,
+                    amount_cents: Number(r.amount_cents) || 0,
+                    entered_at: r.created_at || null,
+                    step_index: Number(st.step_index) || 1,
+                    total_steps: Number(dRow && dRow.total_steps) || steps.length || 5,
+                    waiting_next_game: false,
+                    step_label:
+                      st.match_label ||
+                      [st.home_team, st.away_team].filter(Boolean).join(" x ") ||
+                      null,
+                  });
+                }
+                const fallback = Array.from(byUser.values());
+                if (!Array.isArray(loaded) || fallback.length > loaded.length) {
+                  loaded = fallback;
+                }
+              } catch (fbErr) {
+                console.warn("desafio clients fallback", fbErr);
+              }
+            }
+            window.__desafioActiveClients[id] = Array.isArray(loaded) ? loaded : [];
+          } catch (err) {
+            window.__desafioActiveClients[id] = [];
+            console.warn("desafio-active-clients", err);
+          } finally {
+            window.__desafioClientsLoading[id] = false;
+            if (window.__desafioRows) render(window.__desafioRows);
+          }
+        });
+      });
+
+      $("list").querySelectorAll("[data-settle]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const stepId = btn.getAttribute("data-settle");
+          const winningSide = btn.getAttribute("data-side");
+          if (!stepId || !winningSide) return;
+          if (
+            !confirm(
+              winningSide === "arbishield"
+                ? "Encerrar etapa: Bateu ArbiShield (zebra / falha na casa)?"
+                : "Encerrar etapa: Bateu na Casa (objetivo do circuito)?"
+            )
+          ) {
+            return;
+          }
+          btn.disabled = true;
+          try {
+            const session = await ArbiV2.client().auth.getSession();
+            const token = session.data.session?.access_token;
+            const res = await fetch("/api/arbishield/desafio-settle", {
+              method: "POST",
+              headers: {
+                Authorization: "Bearer " + token,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ stepId, winningSide }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || "Falha ao encerrar");
+            const forfeits = (data.forfeits || []).filter((f) => f.forfeited);
+            alert(
+              "Etapa encerrada." +
+                (forfeits.length
+                  ? `\n${forfeits.length} circuito(s) liquidados para provedores.`
+                  : "")
+            );
+            await load();
+          } catch (err) {
+            alert(err.message || "Erro ao encerrar etapa");
+            btn.disabled = false;
+          }
+        });
+      });
+
+      $("list").querySelectorAll("[data-clone]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const id = btn.getAttribute("data-clone");
+          const row = (window.__desafioRows || []).find((x) => String(x.id) === String(id));
+          if (!row) return;
+          const first = (row.desafio_steps || [])
+            .slice()
+            .sort((a, b) => a.step_index - b.step_index)[0];
+          const s = first || {};
+          goLaunch({
+            ...emptyDraft(),
+            target_profit_pct: Number(row.target_profit_pct) || 5,
+            append_to_desafio_id: null,
+            is_active: true,
+            steps: [
+              {
+                ...emptyStep(1),
+                match_label: s.match_label || "",
+                league_name: s.league_name || "",
+                home_team: s.home_team || "",
+                away_team: s.away_team || "",
+                home_logo_url: s.home_logo_url || s.home_logo || "",
+                away_logo_url: s.away_logo_url || s.away_logo || "",
+                arbi_team_name: s.arbi_team_name || s.market_name_arbishield || "",
+                arbi_odd: s.arbi_odd != null ? String(s.arbi_odd) : "",
+                market_name_arbishield: s.market_name_arbishield || "",
+                arbi_commission_pct:
+                  s.arbi_commission_pct != null ? String(s.arbi_commission_pct) : "0",
+                casa_team_name: s.casa_team_name || s.market_name_casa || "",
+                casa_odd: s.casa_odd != null ? String(s.casa_odd) : "",
+                market_name_casa: s.market_name_casa || "",
+                casa_commission_pct:
+                  s.casa_commission_pct != null ? String(s.casa_commission_pct) : "4.5",
+                casa_stake_cents: centsToReaisInput(s.casa_stake_cents),
+                external_bet_link: s.external_bet_link || "",
+                liquidity_cents: centsToReaisInput(s.liquidity_cents),
+                display_liquidity_cents: centsToReaisInput(
+                  s.display_liquidity_cents ?? s.liquidity_cents
+                ),
+                starts_at: toLocalInput(s.starts_at),
+                release_minutes_before: s.release_minutes_before ?? 60,
+                status: "pending",
+              },
+            ],
+          });
+        });
+      });
+
+      $("list").querySelectorAll("[data-delete]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const id = btn.getAttribute("data-delete");
+          if (!id) return;
+          if (
+            !confirm(
+              "Excluir este desafio?\nSó funciona se não houver nenhum cliente com entrada ativa."
+            )
+          ) {
+            return;
+          }
+          btn.disabled = true;
+          try {
+            const headers = await authHeaders();
+            const res = await fetch("/api/arbishield/desafio-delete", {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ id }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              const errMsg = data.error || "Falha ao excluir";
+              if (String(errMsg) === "not_found") {
+                throw new Error(
+                  "API Excluir ainda não está no servidor. Rode o hotfix v14 na VPS e Ctrl+F5."
+                );
+              }
+              throw new Error(errMsg);
+            }
+            alert("Desafio excluído.");
+            await load();
+          } catch (err) {
+            alert(err.message || "Erro ao excluir");
+            btn.disabled = false;
+          }
+        });
+      });
+
+      $("list").querySelectorAll("[data-cancel]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const id = btn.getAttribute("data-cancel");
+          if (!id) return;
+          const nClients = Number(
+            (window.__desafioPendingCounts && window.__desafioPendingCounts[id]) || 0
+          );
+          if (
+            !confirm(
+              "Cancelar este desafio?\n" +
+                (nClients
+                  ? `Vai devolver o saldo de ${nClients} entrada(s) pendente(s) para a carteira Desafio de cada cliente.`
+                  : "Entradas pendentes serão devolvidas à carteira Desafio.")
+            )
+          ) {
+            return;
+          }
+          btn.disabled = true;
+          try {
+            const headers = await authHeaders();
+            const res = await fetch("/api/arbishield/desafio-cancel", {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ id }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              const errMsg = data.error || "Falha ao cancelar";
+              if (String(errMsg) === "not_found") {
+                throw new Error(
+                  "API Cancelar ainda não está no servidor. Rode o hotfix v14 na VPS e Ctrl+F5."
+                );
+              }
+              throw new Error(errMsg);
+            }
+            const reais = ((Number(data.refundedCents) || 0) / 100).toLocaleString(
+              "pt-BR",
+              { style: "currency", currency: "BRL" }
+            );
+            alert(
+              "Desafio cancelado.\n" +
+                (data.refundedCount || 0) +
+                " cliente(s) reembolsados · " +
+                reais +
+                " na carteira Desafio."
+            );
+            await load();
+          } catch (err) {
+            alert(err.message || "Erro ao cancelar");
+            btn.disabled = false;
+          }
+        });
+      });
+    }
+
+    async function authHeaders() {
+      const headers = { "Content-Type": "application/json", accept: "application/json" };
+      try {
+        if (window.ArbiV2) {
+          const sess = await ArbiV2.client().auth.getSession();
+          const token = sess.data && sess.data.session && sess.data.session.access_token;
+          if (token) headers.Authorization = "Bearer " + token;
+        }
+      } catch {}
+      return headers;
+    }
+
+    async function loadPendingCounts(rows) {
+      const ids = (rows || [])
+        .filter((x) => !x.deleted_at && String(x.status) !== "cancelled")
+        .map((x) => x.id)
+        .filter(Boolean);
+      window.__desafioPendingCounts = {};
+      if (!ids.length) return {};
+      try {
+        const res = await fetch("/api/arbishield/desafio-pending-counts", {
+          method: "POST",
+          headers: await authHeaders(),
+          body: JSON.stringify({ desafioIds: ids }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data && data.counts) {
+          window.__desafioPendingCounts = data.counts;
+          return data.counts;
+        }
+      } catch {}
+      return {};
+    }
+
+    async function load() {
+      $("list").innerHTML = `<div class="loading">Carregando desafios…</div>`;
+      $("meta").textContent = "Buscando…";
+      try {
+        const res = await fetch("/api/arbishield/desafios", {
+          cache: "no-store",
+          headers: { accept: "application/json" },
+        });
+        const text = await res.text();
+        let data;
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch {
+          throw new Error("Resposta inválida (" + res.status + ")");
+        }
+        if (!res.ok) throw new Error((data && data.error) || "HTTP " + res.status);
+        if (!Array.isArray(data)) throw new Error("Resposta inválida da API");
+        window.__desafioRows = data;
+        window.__desafioActiveClients = window.__desafioActiveClients || {};
+        window.__desafioClientsOpen = window.__desafioClientsOpen || {};
+        window.__desafioClientsLoading = {};
+        await loadPendingCounts(data);
+        render(data);
+      } catch (err) {
+        $("stats").innerHTML = "";
+        $("meta").textContent = "";
+        $("list").innerHTML = `<div class="error">${String(err.message || err)}</div>`;
+      }
+    }
+
+    window.__desafioFilter = "active";
+    window.__desafioQ = "";
+    document.querySelectorAll(".filters .tab").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".filters .tab").forEach((b) => b.classList.remove("is-on"));
+        btn.classList.add("is-on");
+        window.__desafioFilter = btn.getAttribute("data-f") || "active";
+        if (window.__desafioRows) render(window.__desafioRows);
+      });
+    });
+    const searchEl = $("search");
+    if (searchEl) {
+      searchEl.addEventListener("input", () => {
+        window.__desafioQ = searchEl.value || "";
+        if (window.__desafioRows) render(window.__desafioRows);
+      });
+    }
+
+    function readSuggestion() {
+      const want =
+        new URLSearchParams(location.search).get("sugestao") === "1" ||
+        Boolean(localStorage.getItem("arbishield_desafio_suggestion"));
+      if (!want) return null;
+      const raw = localStorage.getItem("arbishield_desafio_suggestion");
+      if (!raw) return null;
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    }
+
+    function clearSuggestionQuery() {
+      try {
+        const u = new URL(location.href);
+        if (u.searchParams.has("sugestao")) {
+          u.searchParams.delete("sugestao");
+          history.replaceState({}, "", u.pathname + u.search);
+        }
+      } catch {}
+    }
+
+    function renderSuggestion() {
+      const data = readSuggestion();
+      const panel = $("suggestPanel");
+      if (!data) {
+        panel.classList.remove("show");
+        return;
+      }
+      const step = (data.steps && data.steps[0]) || data.step || {};
+      const rows = [
+        ["Partida", step.match_label || [step.home_team, step.away_team].filter(Boolean).join(" x ")],
+        ["Mercado casa", step.market_name_casa || step.market_name],
+        ["Odd casa", step.casa_odd],
+        ["Mercado Arbi", step.market_name_arbishield],
+        ["Odd Arbi", step.arbi_odd],
+        ["Stake casa", money(step.casa_stake_cents)],
+        ["Lucro líquido", (data.target_profit_pct != null ? data.target_profit_pct + "%" : "")],
+        ["Liquidez", money(step.liquidity_cents)],
+        ["Início", step.starts_at],
+      ];
+      $("suggestGrid").innerHTML = rows
+        .filter(([, v]) => v != null && v !== "")
+        .map(([k, v]) => `<div><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`)
+        .join("");
+      const link = step.external_bet_link || data.betbraLink || "#";
+      const a = $("suggestBetbra");
+      a.href = link;
+      a.style.display = link && link !== "#" ? "inline-flex" : "none";
+      panel.classList.add("show");
+      clearSuggestionQuery();
+    }
+
+    $("suggestClear").addEventListener("click", () => {
+      localStorage.removeItem("arbishield_desafio_suggestion");
+      localStorage.removeItem("arbishield_desafio_suggestion_at");
+      renderSuggestion();
+    });
+
+    $("suggestUse").addEventListener("click", () => {
+      const data = readSuggestion();
+      if (!data) return;
+      goLaunch(suggestionToDraft(data));
+    });
+
+    $("btnRefresh").addEventListener("click", load);
+    renderSuggestion();
+
+    if (new URLSearchParams(location.search).get("lancar") === "1") {
+      location.replace("/admin-desafio-lancar.html");
+    } else if (new URLSearchParams(location.search).get("sugestao") === "1" && readSuggestion()) {
+      goLaunch(suggestionToDraft(readSuggestion()));
+    } else {
+      load();
+    }
+  </script>
+</body>
+</html>
