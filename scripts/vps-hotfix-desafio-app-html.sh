@@ -3,7 +3,7 @@
 # Usa jsDelivr + SHA do tip para evitar HTML antigo em cache.
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=24")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=25")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -118,6 +118,11 @@ grep -q 'Depositar PIX Desafio\|deposit-dest="desafio"' "$DEST" || die "app-desa
 grep -q 'transfer-desafio' "$DEST" && die "app-desafio ainda chama transfer-desafio" || true
 grep -q 'isStepPlayable' "$DEST" || die "app-desafio sem filtro de etapa encerrada"
 grep -q 'Jogo encerrado' "$DEST" || die "app-desafio sem CTA Jogo encerrado"
+grep -q 'Saldo desafio congelado' "$DEST" || die "app-desafio sem Saldo desafio congelado"
+grep -q 'stakeBudgetCents' "$DEST" || die "app-desafio sem stakeBudgetCents"
+grep -q 'is-frozen' "$DEST" || die "app-desafio sem estilo is-frozen"
+grep -q 'is-banca' "$DEST" || die "app-desafio sem estilo is-banca"
+grep -q '7dd3fc\|azul frozen\|is-frozen' "$DEST" || die "app-desafio sem azul frozen"
 
 
 # Shim (lucro composto etapa 2+)

@@ -50,6 +50,58 @@
     body[data-shell="app"] .dz-wallet-l {
       font-weight: 900 !important;
     }
+
+    /* Cópia preenche a célula, alinhada à esquerda */
+    body[data-shell="app"] .dz-wallet-copy {
+      flex: 1 1 auto !important;
+      min-width: 0 !important;
+      width: 100% !important;
+      text-align: left !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: flex-start !important;
+      justify-content: flex-start !important;
+    }
+    body[data-shell="app"] .dz-wallet-copy .dz-wallet-l,
+    body[data-shell="app"] .dz-wallet-copy .dz-wallet-v,
+    body[data-shell="app"] .dz-wallet-copy .dz-wallet-hint {
+      width: 100% !important;
+      max-width: none !important;
+      text-align: left !important;
+    }
+
+    /* Saldo da banca — todos os caracteres em verde limão */
+    body[data-shell="app"] .dz-wallet-cell.is-banca,
+    body[data-shell="app"] .dz-wallet-cell.is-banca .dz-wallet-l,
+    body[data-shell="app"] .dz-wallet-cell.is-banca .dz-wallet-v,
+    body[data-shell="app"] .dz-wallet-cell.is-banca .dz-wallet-hint,
+    body[data-shell="app"] .dz-wallet-cell.is-banca .dz-wallet-ico {
+      color: #c9f223 !important;
+    }
+    body[data-shell="app"] .dz-wallet-cell.is-banca .dz-wallet-ico {
+      background: rgba(201, 242, 35, 0.1) !important;
+      border-color: rgba(201, 242, 35, 0.45) !important;
+    }
+
+    /* Saldo desafio congelado — todos os caracteres em azul frozen */
+    body[data-shell="app"] .dz-wallet-cell.is-frozen,
+    body[data-shell="app"] .dz-wallet-cell.is-frozen .dz-wallet-l,
+    body[data-shell="app"] .dz-wallet-cell.is-frozen .dz-wallet-v,
+    body[data-shell="app"] .dz-wallet-cell.is-frozen .dz-wallet-v.lime,
+    body[data-shell="app"] .dz-wallet-cell.is-frozen .dz-wallet-hint,
+    body[data-shell="app"] .dz-wallet-cell.is-frozen .dz-wallet-ico {
+      color: #7dd3fc !important;
+    }
+    body[data-shell="app"] .dz-wallet-cell.is-frozen {
+      border-color: rgba(125, 211, 252, 0.45) !important;
+    }
+    body[data-shell="app"] .dz-wallet-cell.is-frozen .dz-wallet-ico {
+      background: rgba(125, 211, 252, 0.1) !important;
+      border-color: rgba(125, 211, 252, 0.45) !important;
+    }
+    body[data-shell="app"] .dz-wallet-cell.is-frozen .dz-wallet-ico.lime {
+      color: #7dd3fc !important;
+    }
     /* Abas Todos/Futebol/Hoje removidas do Desafio — esconde se HTML antigo ficar em cache */
     .dz-filters,
     #filters[role="tablist"] {
@@ -313,12 +365,12 @@
 
   <!-- Barra saldo / depósito do Desafio (substitui KPIs) -->
   <section class="dz-wallet-bar" aria-label="Saldo do Desafio">
-    <div class="dz-wallet-cell">
+    <div class="dz-wallet-cell is-banca">
       <div class="dz-wallet-ico" aria-hidden="true">◈</div>
-      <div>
+      <div class="dz-wallet-copy">
         <div class="dz-wallet-l">Saldo da banca</div>
         <div class="dz-wallet-v" id="dzWalletBanca">—</div>
-        <p class="dz-wallet-hint" style="margin-top:8px">Desafio só via PIX — sem transferência da banca.</p>
+        <p class="dz-wallet-hint">Desafio só via PIX — sem transferência da banca.</p>
       </div>
       <button type="button" class="dz-wallet-deposit" id="dzDepositBtn" data-open-deposit="1" data-deposit-dest="desafio">Depositar PIX Desafio</button>
     </div>
@@ -330,11 +382,11 @@
         <div class="dz-wallet-steps" id="dzWalletSteps" aria-hidden="true"></div>
       </div>
     </div>
-    <div class="dz-wallet-cell">
-      <div class="dz-wallet-ico lime" aria-hidden="true">↗</div>
-      <div>
+    <div class="dz-wallet-cell is-frozen">
+      <div class="dz-wallet-ico" aria-hidden="true">↗</div>
+      <div class="dz-wallet-copy">
         <div class="dz-wallet-l">Saldo desafio congelado</div>
-        <div class="dz-wallet-v lime" id="dzWalletSaldo">—</div>
+        <div class="dz-wallet-v" id="dzWalletSaldo">—</div>
         <p class="dz-wallet-hint">Lucro do resultado “Bateu ArbiShield” — fica no circuito, fora da banca PIX.</p>
       </div>
     </div>

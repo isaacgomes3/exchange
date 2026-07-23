@@ -3777,6 +3777,47 @@ body[data-shell="app"] .dz-wallet-cell,
   font-weight: 900;
 }
 .dz-wallet-ico.lime { color: #c9f223; }
+.dz-wallet-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+.dz-wallet-copy .dz-wallet-l,
+.dz-wallet-copy .dz-wallet-v,
+.dz-wallet-copy .dz-wallet-hint {
+  width: 100%;
+  max-width: none;
+  text-align: left;
+}
+.dz-wallet-cell.is-banca,
+.dz-wallet-cell.is-banca .dz-wallet-l,
+.dz-wallet-cell.is-banca .dz-wallet-v,
+.dz-wallet-cell.is-banca .dz-wallet-hint,
+.dz-wallet-cell.is-banca .dz-wallet-ico {
+  color: #c9f223;
+}
+.dz-wallet-cell.is-banca .dz-wallet-ico {
+  background: rgba(201, 242, 35, 0.1);
+  border-color: rgba(201, 242, 35, 0.45);
+}
+.dz-wallet-cell.is-frozen,
+.dz-wallet-cell.is-frozen .dz-wallet-l,
+.dz-wallet-cell.is-frozen .dz-wallet-v,
+.dz-wallet-cell.is-frozen .dz-wallet-v.lime,
+.dz-wallet-cell.is-frozen .dz-wallet-hint,
+.dz-wallet-cell.is-frozen .dz-wallet-ico {
+  color: #7dd3fc;
+}
+.dz-wallet-cell.is-frozen .dz-wallet-ico {
+  background: rgba(125, 211, 252, 0.1);
+  border-color: rgba(125, 211, 252, 0.45);
+  color: #7dd3fc;
+}
 .dz-wallet-l {
   font-size: 10px;
   font-weight: 900;
