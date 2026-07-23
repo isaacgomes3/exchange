@@ -410,13 +410,6 @@
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     }
 
-    function money(cents) {
-      return new Intl.NumberFormat("pt-BR", {
-        style: "currency",
-        currency: "BRL",
-      }).format((Number(cents) || 0) / 100);
-    }
-
     function fmtWhen(iso) {
       if (!iso) return "—";
       const d = new Date(iso);
@@ -933,6 +926,7 @@
           method: "POST",
           headers: await authHeaders(),
           body: JSON.stringify({ desafioIds: ids }),
+          signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined,
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok && data && data.byDesafio) {
@@ -962,8 +956,14 @@
         if (!Array.isArray(data)) throw new Error("Resposta inválida da API");
         window.__desafioRows = data;
         await loadPendingCounts(data);
-        await loadActiveClients(data);
+        // Renderiza na hora; clientes ativos vêm em seguida (não trava a lista)
+        window.__desafioActiveClients = {};
         render(data);
+        loadActiveClients(data)
+          .then(() => {
+            if (window.__desafioRows) render(window.__desafioRows);
+          })
+          .catch(() => {});
       } catch (err) {
         $("stats").innerHTML = "";
         $("meta").textContent = "";
