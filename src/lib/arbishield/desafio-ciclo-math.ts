@@ -7,14 +7,14 @@
  * Uso: Node (shim/prelive) e browser (admin/app).
  */
 
-function desafioClampFee(pct) {
+function desafioClampFee(pct: unknown): number {
   const x = Number(pct);
   if (!Number.isFinite(x) || x < 0) return 0;
   return Math.min(100, x) / 100;
 }
 
 /** Multiplicador efetivo de retorno (stake incluso): 1 + (odd-1)*(1-fee) */
-function desafioEffectiveL(odd, commissionPct) {
+function desafioEffectiveL(odd: unknown, commissionPct: unknown): number {
   const o = Number(odd);
   if (!(o > 1)) return NaN;
   const fee = desafioClampFee(commissionPct);
@@ -22,10 +22,11 @@ function desafioEffectiveL(odd, commissionPct) {
 }
 
 /** Odd decimal a partir de L efetivo */
-function desafioOddFromL(L, commissionPct) {
+function desafioOddFromL(L: unknown, commissionPct: unknown): number {
   const fee = desafioClampFee(commissionPct);
-  if (!(L > 1) || fee >= 1) return NaN;
-  return 1 + (L - 1) / (1 - fee);
+  const l = Number(L);
+  if (!(l > 1) || fee >= 1) return NaN;
+  return 1 + (l - 1) / (1 - fee);
 }
 
 /**
@@ -33,17 +34,17 @@ function desafioOddFromL(L, commissionPct) {
  * de forma que o lucro surebet ≈ targetProfitPct do volume total.
  */
 function calcZebraOddFromFavorite(
-  casaOdd,
-  targetProfitPct = 5,
-  casaCommissionPct = 0,
-  arbiCommissionPct = 0
-) {
+  casaOdd: unknown,
+  targetProfitPct: unknown = 5,
+  casaCommissionPct: unknown = 0,
+  arbiCommissionPct: unknown = 0
+): number {
   const Lc = desafioEffectiveL(casaOdd, casaCommissionPct);
   const margin = 1 + Math.max(0, Number(targetProfitPct) || 5) / 100;
   if (!(Lc > margin)) {
     const err = new Error(
       `Odd do favorito (${casaOdd}) baixa demais para lucro de ${targetProfitPct}%. Use odd > ${margin.toFixed(2)}.`
-    );
+    ) as Error & { code?: string };
     err.code = "FAVORITE_ODD_TOO_LOW";
     throw err;
   }
@@ -57,12 +58,12 @@ function calcZebraOddFromFavorite(
 
 /** Stake na casa externa para equalizar retorno com a zebra */
 function calcCasaStakeFromZebra(
-  zebraStakeCents,
-  arbiOdd,
-  casaOdd,
-  arbiCommissionPct = 0,
-  casaCommissionPct = 0
-) {
+  zebraStakeCents: unknown,
+  arbiOdd: unknown,
+  casaOdd: unknown,
+  arbiCommissionPct: unknown = 0,
+  casaCommissionPct: unknown = 0
+): number {
   const Sz = Math.max(0, Math.round(Number(zebraStakeCents) || 0));
   const Lz = desafioEffectiveL(arbiOdd, arbiCommissionPct);
   const Lc = desafioEffectiveL(casaOdd, casaCommissionPct);
@@ -71,7 +72,11 @@ function calcCasaStakeFromZebra(
 }
 
 /** Retorno projetado (payout) se a zebra bater */
-function calcZebraPayoutCents(zebraStakeCents, arbiOdd, arbiCommissionPct = 0) {
+function calcZebraPayoutCents(
+  zebraStakeCents: unknown,
+  arbiOdd: unknown,
+  arbiCommissionPct: unknown = 0
+): number {
   const Sz = Math.max(0, Math.round(Number(zebraStakeCents) || 0));
   const Lz = desafioEffectiveL(arbiOdd, arbiCommissionPct);
   if (!(Sz > 0) || !(Lz > 1)) return 0;
@@ -79,19 +84,36 @@ function calcZebraPayoutCents(zebraStakeCents, arbiOdd, arbiCommissionPct = 0) {
 }
 
 /** Lucro líquido (payout − stake) na zebra */
-function calcZebraProfitCents(zebraStakeCents, arbiOdd, arbiCommissionPct = 0) {
+function calcZebraProfitCents(
+  zebraStakeCents: unknown,
+  arbiOdd: unknown,
+  arbiCommissionPct: unknown = 0
+): number {
   const Sz = Math.max(0, Math.round(Number(zebraStakeCents) || 0));
   return Math.max(0, calcZebraPayoutCents(Sz, arbiOdd, arbiCommissionPct) - Sz);
 }
 
 /** Retorno projetado do ciclo (= volume * (1 + target%)) ≈ payout equalizado */
-function calcProjectedReturnCents(zebraStakeCents, casaStakeCents, targetProfitPct = 5) {
+function calcProjectedReturnCents(
+  zebraStakeCents: unknown,
+  casaStakeCents: unknown,
+  targetProfitPct: unknown = 5
+): number {
   const total =
     Math.max(0, Math.round(Number(zebraStakeCents) || 0)) +
     Math.max(0, Math.round(Number(casaStakeCents) || 0));
   const margin = 1 + Math.max(0, Number(targetProfitPct) || 5) / 100;
   return Math.round(total * margin);
 }
+
+type SinalPreviewInput = {
+  zebraStakeCents?: unknown;
+  arbiOdd?: unknown;
+  casaOdd?: unknown;
+  arbiCommissionPct?: unknown;
+  casaCommissionPct?: unknown;
+  targetProfitPct?: unknown;
+};
 
 function buildSinalPreview({
   zebraStakeCents,
@@ -100,7 +122,7 @@ function buildSinalPreview({
   arbiCommissionPct = 0,
   casaCommissionPct = 0,
   targetProfitPct = 5,
-}) {
+}: SinalPreviewInput) {
   const Sz = Math.max(0, Math.round(Number(zebraStakeCents) || 0));
   const Sc = calcCasaStakeFromZebra(
     Sz,
