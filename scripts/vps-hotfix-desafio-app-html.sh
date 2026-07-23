@@ -3,7 +3,7 @@
 # Usa jsDelivr + SHA do tip para evitar HTML antigo em cache.
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=11")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=12")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -47,6 +47,7 @@ grep -q '3.1rem' "$DEST" || die "HTML sem X/horário 2× maior"
 grep -q 'dz-v2-panel-market' "$DEST" || die "HTML sem mercado por painel (Arbi/Casa)"
 grep -q 'resolveSideMarkets' "$DEST" || die "HTML sem resolveSideMarkets"
 grep -q 'dz-v2-retorno' "$DEST" || die "HTML sem barra RETORNO CERTO"
+grep -q 'background: #c9f223' "$DEST" || die "HTML sem barra retorno em verde limão"
 grep -q 'desafio-no-filter-tabs' "$DEST" || die "HTML sem marcador sem-abas"
 grep -q 'dz-section-head' "$DEST" || die "HTML sem título Desafio Disponível/Em andamento"
 grep -q 'data-f="Todos"' "$DEST" && die "HTML ainda tem abas Todos"
@@ -68,6 +69,8 @@ fetch "deploy/vps-supabase/static/v2/v2.css" "$WEB/v2.css"
 chmod 0644 "$WEB/v2.css"
 cp -f "$WEB/v2.css" "$WEB_ROOT/v2.css" 2>/dev/null || true
 grep -q 'stadium-hero.jpg' "$WEB/v2.css" || die "CSS sem stadium-hero"
+grep -q '\.dz-v2-retorno' "$WEB/v2.css" || die "CSS sem .dz-v2-retorno"
+grep -Eq 'dz-v2-retorno[\s\S]{0,200}#c9f223' "$WEB/v2.css" || grep -q 'background: #c9f223' "$WEB/v2.css" || die "CSS sem retorno limão"
 grep -q '\.pf-page' "$WEB/v2.css" || die "CSS sem Meu Perfil (.pf-page)"
 
 log "brand stadium (se faltar)"
