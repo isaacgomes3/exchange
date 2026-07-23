@@ -154,7 +154,7 @@ step = {
     "casa_odd": casa_odd,
     "casa_stake_cents": 10000,
     "arbi_commission_pct": 0,
-    "casa_commission_pct": 4.5,
+    "casa_commission_pct": 0,
     "liquidity_cents": 1500000,
     "display_liquidity_cents": 25000000,
     "external_bet_link": "https://www.bet365.com/",

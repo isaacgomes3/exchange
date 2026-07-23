@@ -3,7 +3,7 @@
 # Usa jsDelivr + SHA do tip para evitar HTML antigo em cache.
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=13")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=14")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -89,6 +89,12 @@ done
 BYTES=$(wc -c < "$DEST" | tr -d ' ')
 log "OK instalado em $DEST ($BYTES bytes)"
 
+log "admin-desafio-lancar.html (comissão padrão 0)"
+fetch "deploy/vps-supabase/static/v2/admin-desafio-lancar.html" "$WEB/admin-desafio-lancar.html"
+chmod 0644 "$WEB/admin-desafio-lancar.html"
+cp -f "$WEB/admin-desafio-lancar.html" "$WEB_ROOT/admin-desafio-lancar.html" 2>/dev/null || true
+grep -q 'casa_commission_pct: "0"' "$WEB/admin-desafio-lancar.html" || die "lançar sem comissão casa padrão 0"
+
 # Shim (lucro composto etapa 2+)
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
 EXEC_LINE="$(systemctl show -p ExecStart --value arbishield-serverfn-shim.service 2>/dev/null || true)"
@@ -102,13 +108,31 @@ if [[ -z "${SHIM_PATH:-}" ]]; then
   done
 fi
 if [[ -n "${SHIM_PATH:-}" ]]; then
-  log "Atualizando shim (lucro composto etapa 2+) em $SHIM_PATH"
+  log "Atualizando shim em $SHIM_PATH"
   fetch "scripts/arbishield-serverfn-shim.mjs" "$SHIM_PATH"
   chmod 0644 "$SHIM_PATH"
   grep -q 'desafioCompoundProfitCents' "$SHIM_PATH" || die "shim sem desafioCompoundProfitCents"
+  # comissão casa default 0 no buildStepRow
+  python3 - "$SHIM_PATH" <<'PY' || true
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+t = p.read_text(encoding="utf-8")
+if "casa_commission_pct" in t and ": 4.5" in t:
+    print("aviso: ainda há default 4.5 no shim — confira buildStepRow")
+PY
   systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 else
   log "aviso: shim não encontrado — lucro composto no settle só após atualizar o shim"
 fi
 
-log "Ctrl+F5 em https://arbishield.app/app-desafio.html"
+# prelive (append step) se existir no mesmo host
+for PRE in /opt/arbishield/scripts/arbishield-prelive-events.mjs /opt/arbishield/arbishield-prelive-events.mjs; do
+  if [[ -f "$PRE" ]]; then
+    log "Atualizando prelive $PRE"
+    fetch "scripts/arbishield-prelive-events.mjs" "$PRE" || true
+    break
+  fi
+done
+
+log "Ctrl+F5 em https://arbishield.app/admin-desafio-lancar.html"

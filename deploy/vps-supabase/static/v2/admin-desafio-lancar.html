@@ -321,7 +321,7 @@
         casa_odd: "",
         casa_stake_cents: "",
         arbi_commission_pct: "0",
-        casa_commission_pct: "4.5",
+        casa_commission_pct: "0",
         external_bet_link: "",
         liquidity_cents: "",
         display_liquidity_cents: "",
@@ -403,7 +403,7 @@
             casa_odd: step.casa_odd != null ? String(step.casa_odd) : "",
             market_name_casa: step.market_name_casa || casaName,
             casa_commission_pct:
-              step.casa_commission_pct != null ? String(step.casa_commission_pct) : "4.5",
+              step.casa_commission_pct != null ? String(step.casa_commission_pct) : "0",
             casa_stake_cents: centsToReaisInput(step.casa_stake_cents),
             external_bet_link: step.external_bet_link || data.betbraLink || "",
             liquidity_cents: centsToReaisInput(step.liquidity_cents),
@@ -960,7 +960,7 @@
             </div>
             <div class="field">
               <label>Comissão (%)</label>
-              <input data-f="casa_commission_pct" value="${esc(s.casa_commission_pct)}" placeholder="4.5" />
+              <input data-f="casa_commission_pct" value="${esc(s.casa_commission_pct)}" placeholder="0" />
             </div>
           </div>
           <div class="field team-pick" data-market-side="casa">
@@ -1168,7 +1168,7 @@
         casa_stake_cents: reaisToCents(a.casa_stake_cents) || null,
         arbi_commission_pct: Number(String(a.arbi_commission_pct || "0").replace(",", ".")) || 0,
         casa_commission_pct:
-          Number(String(a.casa_commission_pct || "4.5").replace(",", ".")) || 4.5,
+          Number(String(a.casa_commission_pct || "0").replace(",", ".")) || 0,
         external_bet_link: a.external_bet_link || null,
         liquidity_cents: reaisToCents(a.liquidity_cents) || 200000,
         display_liquidity_cents:

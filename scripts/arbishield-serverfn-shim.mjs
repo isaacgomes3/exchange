@@ -398,7 +398,7 @@ function buildStepRow(desafioId, stepIn, isActive) {
     casa_commission_pct:
       stepIn.casa_commission_pct != null
         ? Number(stepIn.casa_commission_pct)
-        : 4.5,
+        : 0,
     liquidity_cents:
       stepIn.liquidity_cents != null ? Number(stepIn.liquidity_cents) : 200000,
     display_liquidity_cents:
