@@ -4,45 +4,119 @@
 # - Soft-delete em todos (deleted_at)
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-wipe-desafios.sh?v=1")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-wipe-desafios.sh?v=2")
 set -euo pipefail
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
 
-ENV_FILE=""
-for f in \
-  /opt/arbishield/.env \
-  /opt/arbishield/arbishield.env \
-  /var/www/arbishield/.env \
-  /etc/arbishield.env
-do
-  [[ -f "$f" ]] && ENV_FILE="$f" && break
-done
+load_env_file() {
+  local f="$1"
+  [[ -f "$f" ]] || return 1
+  set -a
+  # shellcheck disable=SC1090
+  source "$f" 2>/dev/null || true
+  set +a
+  return 0
+}
 
-# Também tenta EnvironmentFile do systemd do shim
-if [[ -z "$ENV_FILE" ]] && command -v systemctl >/dev/null; then
-  EF="$(systemctl show -p EnvironmentFiles --value arbishield-serverfn-shim.service 2>/dev/null | awk '{print $1}' | tr -d '\t' || true)"
-  [[ -f "${EF:-}" ]] && ENV_FILE="$EF"
+# Candidatos conhecidos na VPS ArbiShield
+CANDIDATES=(
+  /opt/arbishield/deploy/vps-supabase/.env
+  /opt/arbishield/.env
+  /opt/arbishield/arbishield.env
+  /opt/arbishield/.arbishield-odds-sync.env
+  /var/www/arbishield/.env
+  /etc/arbishield.env
+  /root/arbishield/.env
+  /root/deploy/vps-supabase/.env
+)
+
+# EnvironmentFile dos serviços systemd
+if command -v systemctl >/dev/null 2>&1; then
+  for svc in arbishield-serverfn-shim arbishield-prelive-events arbishield-desafio-suggestions; do
+    # systemctl show EnvironmentFiles= path (ignored=no)
+    while IFS= read -r line; do
+      f="$(echo "$line" | awk '{print $1}' | tr -d '\t')"
+      [[ -n "$f" && -f "$f" ]] && CANDIDATES+=("$f")
+    done < <(systemctl show -p EnvironmentFiles --value "${svc}.service" 2>/dev/null || true)
+  done
 fi
 
-[[ -n "$ENV_FILE" ]] || die "Não achei .env com SERVICE_ROLE_KEY (ex.: /opt/arbishield/.env)"
+# Busca ampla por arquivos .env com SERVICE_ROLE
+while IFS= read -r f; do
+  [[ -n "$f" ]] && CANDIDATES+=("$f")
+done < <(
+  grep -rlE '^(SERVICE_ROLE_KEY|SUPABASE_SERVICE_ROLE_KEY|ARBISHIELD_SERVICE_ROLE_KEY)=' \
+    /opt/arbishield /var/www/arbishield /root 2>/dev/null | head -20 || true
+)
 
-log "Carregando env: $ENV_FILE"
-set -a
-# shellcheck disable=SC1090
-source "$ENV_FILE"
-set +a
+ENV_FILE=""
+for f in "${CANDIDATES[@]}"; do
+  [[ -f "$f" ]] || continue
+  if grep -qE '^(SERVICE_ROLE_KEY|SUPABASE_SERVICE_ROLE_KEY|ARBISHIELD_SERVICE_ROLE_KEY)=' "$f" 2>/dev/null; then
+    ENV_FILE="$f"
+    break
+  fi
+done
+
+if [[ -n "$ENV_FILE" ]]; then
+  log "Carregando env: $ENV_FILE"
+  load_env_file "$ENV_FILE"
+else
+  log "Nenhum .env com SERVICE_ROLE encontrado — tentando ambiente do processo shim…"
+fi
+
+# Fallback: ler variáveis do processo node do shim / prelive
+if [[ -z "${SERVICE_ROLE_KEY:-${SUPABASE_SERVICE_ROLE_KEY:-${ARBISHIELD_SERVICE_ROLE_KEY:-}}}" ]]; then
+  for pat in arbishield-serverfn-shim arbishield-prelive-events; do
+    PID="$(pgrep -f "$pat" | head -1 || true)"
+    [[ -n "${PID:-}" && -r "/proc/$PID/environ" ]] || continue
+    # Extrai SERVICE_ROLE* do environ do processo
+    EVAL_LINE="$(
+      tr '\0' '\n' < "/proc/$PID/environ" \
+        | grep -E '^(ARBISHIELD_SERVICE_ROLE_KEY|SERVICE_ROLE_KEY|SUPABASE_SERVICE_ROLE_KEY|ARBISHIELD_SUPABASE_URL|API_EXTERNAL_URL|SUPABASE_PUBLIC_URL)=' \
+        || true
+    )"
+    if [[ -n "$EVAL_LINE" ]]; then
+      log "Usando env do processo PID $PID ($pat)"
+      # shellcheck disable=SC2086
+      export $EVAL_LINE
+      break
+    fi
+  done
+fi
+
+# Fallback: systemctl show Environment=
+if [[ -z "${SERVICE_ROLE_KEY:-${SUPABASE_SERVICE_ROLE_KEY:-${ARBISHIELD_SERVICE_ROLE_KEY:-}}}" ]] \
+  && command -v systemctl >/dev/null 2>&1; then
+  for svc in arbishield-serverfn-shim arbishield-prelive-events; do
+    ENV_BLOB="$(systemctl show -p Environment --value "${svc}.service" 2>/dev/null || true)"
+    if [[ "$ENV_BLOB" == *SERVICE_ROLE* ]]; then
+      log "Usando Environment= do systemd ($svc)"
+      # shellcheck disable=SC2086
+      export $ENV_BLOB
+      break
+    fi
+  done
+fi
 
 SUPABASE_URL="${ARBISHIELD_SUPABASE_URL:-${API_EXTERNAL_URL:-${SUPABASE_PUBLIC_URL:-http://127.0.0.1:8000}}}"
 SERVICE_KEY="${ARBISHIELD_SERVICE_ROLE_KEY:-${SERVICE_ROLE_KEY:-${SUPABASE_SERVICE_ROLE_KEY:-}}}"
-[[ -n "$SERVICE_KEY" ]] || die "SERVICE_ROLE_KEY ausente no env"
 
+if [[ -z "$SERVICE_KEY" ]]; then
+  echo "Arquivos .env candidatos:" >&2
+  printf '  %s\n' "${CANDIDATES[@]}" >&2 || true
+  die "SERVICE_ROLE_KEY não encontrada. Confira /opt/arbishield/deploy/vps-supabase/.env"
+fi
+
+log "Supabase: $SUPABASE_URL"
 HDR=(-H "apikey: $SERVICE_KEY" -H "Authorization: Bearer $SERVICE_KEY" -H "Content-Type: application/json" -H "Prefer: return=representation")
 
 log "Listando desafios ativos (deleted_at nulo)…"
 ROWS="$(curl -fsS "${HDR[@]}" \
-  "$SUPABASE_URL/rest/v1/desafios?select=id,title,status,is_active&deleted_at=is.null&limit=1000")"
+  "$SUPABASE_URL/rest/v1/desafios?select=id,title,status,is_active&deleted_at=is.null&limit=1000")" \
+  || die "Falha ao listar desafios (URL/chave inválidos?)"
 COUNT="$(python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' <<<"$ROWS")"
 log "Encontrados: $COUNT"
 
@@ -52,7 +126,7 @@ if [[ "$COUNT" -eq 0 ]]; then
 fi
 
 python3 - "$SUPABASE_URL" "$SERVICE_KEY" "$ROWS" <<'PY'
-import json, os, sys, urllib.request, urllib.error
+import json, sys, urllib.request, urllib.error
 
 base = sys.argv[1].rstrip("/")
 key = sys.argv[2]
