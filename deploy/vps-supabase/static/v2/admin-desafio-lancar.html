@@ -231,6 +231,42 @@
       color: var(--lime);
       font-weight: 800;
     }
+    .odd-mode-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .odd-mode-row label { margin: 0; }
+    .odd-mode-toggle {
+      display: inline-flex;
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 999px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .odd-mode-toggle button {
+      border: 0;
+      background: transparent;
+      color: rgba(255,255,255,0.55);
+      font: inherit;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    .odd-mode-toggle button.is-on {
+      background: #c9f223;
+      color: #000;
+    }
+    input[data-f="arbi_odd"]:not([readonly]) {
+      border-color: rgba(201,242,35,0.55);
+      color: #fff;
+      font-weight: 800;
+    }
   </style>
 </head>
 <body data-shell="admin" data-active="desafios">
@@ -259,7 +295,7 @@
             <option value="12">12%</option>
             <option value="15">15%</option>
           </select>
-          <p class="field-hint">Odd ArbiShield = odd da casa externa × (1 + lucro%). Defina isso antes de preencher a odd externa.</p>
+          <p class="field-hint">Lucro surebet nos <strong>dois</strong> lados (ex.: total R$100 → ~R$5 de lucro em qualquer resultado). Odd ArbiShield é calculada automaticamente; dá para trocar para manual.</p>
         </div>
       </div>
 
@@ -316,6 +352,7 @@
         arbi_team_name: "",
         arbi_team_logo_url: "",
         arbi_odd: "",
+        arbi_odd_manual: false,
         casa_team_name: "",
         casa_team_logo_url: "",
         casa_odd: "",
@@ -395,6 +432,7 @@
             arbi_team_name: arbiName,
             arbi_team_logo_url: step.arbi_team_logo_url || "",
             arbi_odd: step.arbi_odd != null ? String(step.arbi_odd) : "",
+            arbi_odd_manual: !!step.arbi_odd_manual,
             market_name_arbishield: step.market_name_arbishield || arbiName,
             arbi_commission_pct:
               step.arbi_commission_pct != null ? String(step.arbi_commission_pct) : "0",
@@ -483,6 +521,7 @@
           arbi_team_name: g("arbi_team_name"),
           arbi_team_logo_url: g("arbi_team_logo_url"),
           arbi_odd: g("arbi_odd"),
+          arbi_odd_manual: !!(base && base.arbi_odd_manual),
           market_name_arbishield: g("market_name_arbishield"),
           arbi_commission_pct: g("arbi_commission_pct"),
           casa_team_name: g("casa_team_name"),
@@ -956,7 +995,7 @@
             <div class="field">
               <label>Odd externa</label>
               <input data-f="casa_odd" value="${esc(s.casa_odd)}" placeholder="1.85" inputmode="decimal" />
-              <p class="odd-auto-hint">Ao informar a odd, a odd ArbiShield é gerada com o lucro líquido selecionado.</p>
+              <p class="odd-auto-hint">Ao informar a odd, a odd ArbiShield surebet é gerada com o lucro % (nos dois lados).</p>
             </div>
             <div class="field">
               <label>Comissão (%)</label>
@@ -994,9 +1033,19 @@
           </div>
           <div class="field-row">
             <div class="field">
-              <label>Odd ArbiShield (automática)</label>
-              <input data-f="arbi_odd" value="${esc(s.arbi_odd)}" placeholder="—" readonly />
-              <p class="odd-auto-hint">Odd externa × (1 + lucro líquido %).</p>
+              <div class="odd-mode-row">
+                <label for="arbiOddInput">Odd ArbiShield</label>
+                <div class="odd-mode-toggle" role="group" aria-label="Modo da odd ArbiShield">
+                  <button type="button" data-odd-mode="auto" class="${s.arbi_odd_manual ? "" : "is-on"}">Auto</button>
+                  <button type="button" data-odd-mode="manual" class="${s.arbi_odd_manual ? "is-on" : ""}">Manual</button>
+                </div>
+              </div>
+              <input id="arbiOddInput" data-f="arbi_odd" value="${esc(s.arbi_odd)}" placeholder="—" ${s.arbi_odd_manual ? "" : "readonly"} />
+              <p class="odd-auto-hint" data-arbi-odd-hint>
+                ${s.arbi_odd_manual
+                  ? "Modo manual: edite a odd livremente."
+                  : "Surebet automática: 1/odd_casa + 1/odd_arbi = 1/(1+lucro%). Ex.: 1,85 + 5% → ~2,428."}
+              </p>
             </div>
             <div class="field">
               <label>Comissão (%)</label>
@@ -1048,21 +1097,61 @@
       return Number.isFinite(n) && n > 1 ? n : null;
     }
 
+    /** Surebet: 1/casa + 1/arbi = 1/(1+lucro%). Ex.: 1,85 + 5% → arbi ≈ 2,428 */
     function calcArbiOddFromCasa(casaOdd, profitPct) {
       const o = parseOddInput(casaOdd);
       const p = Number(profitPct);
-      if (o == null || !Number.isFinite(p) || p <= 0) return "";
-      return (o * (1 + p / 100)).toFixed(2);
+      if (o == null || !(o > 1) || !Number.isFinite(p) || p <= 0) return "";
+      const invSum = 1 / (1 + p / 100);
+      const invArbi = invSum - 1 / o;
+      if (!(invArbi > 0.0000001)) return "";
+      const arbi = 1 / invArbi;
+      if (!(arbi > 1) || !Number.isFinite(arbi)) return "";
+      return (Math.round(arbi * 1000) / 1000).toFixed(3);
+    }
+
+    function isArbiOddManual() {
+      return !!(draft.steps && draft.steps[0] && draft.steps[0].arbi_odd_manual);
+    }
+
+    function setArbiOddMode(manual) {
+      if (!draft.steps || !draft.steps[0]) return;
+      draft.steps[0].arbi_odd_manual = !!manual;
+      const root = document.querySelector(`[data-step-idx="0"]`);
+      if (!root) return;
+      const arbiEl = root.querySelector(`[data-f="arbi_odd"]`);
+      const hint = root.querySelector("[data-arbi-odd-hint]");
+      root.querySelectorAll("[data-odd-mode]").forEach(function (btn) {
+        const mode = btn.getAttribute("data-odd-mode");
+        btn.classList.toggle("is-on", manual ? mode === "manual" : mode === "auto");
+      });
+      if (arbiEl) {
+        if (manual) arbiEl.removeAttribute("readonly");
+        else arbiEl.setAttribute("readonly", "");
+      }
+      if (hint) {
+        hint.textContent = manual
+          ? "Modo manual: edite a odd livremente."
+          : "Surebet automática: 1/odd_casa + 1/odd_arbi = 1/(1+lucro%). Ex.: 1,85 + 5% → ~2,428.";
+      }
+      if (!manual) syncArbiOddFromCasa();
     }
 
     function syncArbiOddFromCasa() {
+      if (isArbiOddManual()) return;
       const root = document.querySelector(`[data-step-idx="0"]`);
       if (!root) return;
       const casaEl = root.querySelector(`[data-f="casa_odd"]`);
       const arbiEl = root.querySelector(`[data-f="arbi_odd"]`);
       if (!casaEl || !arbiEl) return;
       const pct = Number($("fProfitPct") && $("fProfitPct").value) || 0;
-      arbiEl.value = calcArbiOddFromCasa(casaEl.value, pct);
+      const next = calcArbiOddFromCasa(casaEl.value, pct);
+      arbiEl.value = next;
+      if (!next && String(casaEl.value || "").trim() && pct > 0) {
+        arbiEl.placeholder = "Odd externa alta demais p/ este %";
+      } else {
+        arbiEl.placeholder = "—";
+      }
     }
 
     function bindOddAutoCalc() {
@@ -1073,7 +1162,18 @@
         casaEl.addEventListener("input", syncArbiOddFromCasa);
         casaEl.addEventListener("change", syncArbiOddFromCasa);
       }
-      syncArbiOddFromCasa();
+      root.querySelectorAll("[data-odd-mode]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          setArbiOddMode(btn.getAttribute("data-odd-mode") === "manual");
+        });
+      });
+      const arbiEl = root.querySelector(`[data-f="arbi_odd"]`);
+      if (arbiEl) {
+        arbiEl.addEventListener("input", function () {
+          if (!isArbiOddManual()) setArbiOddMode(true);
+        });
+      }
+      setArbiOddMode(isArbiOddManual());
     }
 
     function fillHeaderFields() {
@@ -1121,11 +1221,17 @@
       if (!a.casa_team_name || !a.casa_odd) {
         throw new Error("Preencha seleção e odd da Casa Externa.");
       }
-      // Garante odd ArbiShield a partir da externa + lucro
-      const autoArbi = calcArbiOddFromCasa(a.casa_odd, profitPct);
-      if (autoArbi) a.arbi_odd = autoArbi;
+      // Odd ArbiShield: surebet automática (salvo se modo manual)
+      if (!a.arbi_odd_manual) {
+        const autoArbi = calcArbiOddFromCasa(a.casa_odd, profitPct);
+        if (autoArbi) a.arbi_odd = autoArbi;
+      }
       if (!a.arbi_team_name || !a.arbi_odd) {
-        throw new Error("Preencha seleção ArbiShield; a odd é gerada pela odd externa + lucro.");
+        throw new Error(
+          a.arbi_odd_manual
+            ? "Preencha seleção e odd ArbiShield (modo manual)."
+            : "Preencha seleção ArbiShield; a odd surebet é gerada pela odd externa + lucro %."
+        );
       }
       if (!a.market_name_arbishield || !a.market_name_casa) {
         throw new Error("Informe o mercado da ArbiShield e da Casa Externa.");
