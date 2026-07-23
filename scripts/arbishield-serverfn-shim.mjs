@@ -1350,6 +1350,287 @@ async function transferRealToDesafio(token, body) {
   };
 }
 
+/** Admin: lista depósitos Desafio (USDT + transferências banca→desafio) */
+async function listDesafioDeposits(token) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+
+  let manuals = [];
+  try {
+    manuals = await sb(
+      "/rest/v1/manual_deposits?select=id,user_id,amount_cents,status,network,proof_url,admin_notes,created_at,updated_at,deposit_type&deposit_type=eq.desafio&order=created_at.desc&limit=400",
+      { token: SERVICE_KEY }
+    );
+  } catch {
+    // schema sem deposit_type: tenta todos e filtra depois se possível
+    try {
+      const all = await sb(
+        "/rest/v1/manual_deposits?select=id,user_id,amount_cents,status,network,proof_url,admin_notes,created_at,updated_at,deposit_type&order=created_at.desc&limit=400",
+        { token: SERVICE_KEY }
+      );
+      manuals = (Array.isArray(all) ? all : []).filter(
+        (r) => String(r.deposit_type || "").toLowerCase() === "desafio"
+      );
+    } catch {
+      manuals = [];
+    }
+  }
+  manuals = Array.isArray(manuals) ? manuals : [];
+
+  let transfers = [];
+  try {
+    transfers = await sb(
+      "/rest/v1/wallet_transactions?select=id,user_id,type,amount_cents,meta,created_at&type=eq.transfer_to_desafio&order=created_at.desc&limit=400",
+      { token: SERVICE_KEY }
+    );
+  } catch {
+    transfers = [];
+  }
+  transfers = Array.isArray(transfers) ? transfers : [];
+
+  const userIds = [
+    ...new Set(
+      [...manuals, ...transfers]
+        .map((r) => r.user_id)
+        .filter(Boolean)
+        .map(String)
+    ),
+  ];
+  const profileMap = {};
+  if (userIds.length) {
+    // PostgREST: id=in.(...)
+    const chunk = userIds.slice(0, 200);
+    try {
+      const profiles = await sb(
+        `/rest/v1/profiles?select=id,full_name,email,phone&id=in.(${chunk.join(
+          ","
+        )})`,
+        { token: SERVICE_KEY }
+      );
+      for (const p of Array.isArray(profiles) ? profiles : []) {
+        profileMap[String(p.id)] = p;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function clientLabel(uid) {
+    const p = profileMap[String(uid)] || {};
+    return (
+      String(p.full_name || "").trim() ||
+      String(p.email || "").trim() ||
+      String(p.phone || "").trim() ||
+      String(uid || "").slice(0, 8) ||
+      "Cliente"
+    );
+  }
+
+  const items = [];
+
+  for (const m of manuals) {
+    const st = String(m.status || "").toUpperCase();
+    let description = "Depósito Desafio (USDT)";
+    if (st === "PENDING") description = "Depósito Desafio — pendente de ativação";
+    else if (st === "AWAITING_PROOF")
+      description = "Depósito Desafio — aguardando comprovante";
+    else if (st === "APPROVED") description = "Depósito Desafio — ativado";
+    else if (st === "REJECTED") description = "Depósito Desafio — rejeitado";
+    if (m.network) description += ` · ${m.network}`;
+
+    items.push({
+      id: m.id,
+      source: "manual",
+      user_id: m.user_id,
+      client_name: clientLabel(m.user_id),
+      description,
+      amount_cents: Math.max(0, n(m.amount_cents)),
+      status: st || "PENDING",
+      network: m.network || null,
+      proof_url: m.proof_url || null,
+      admin_notes: m.admin_notes || null,
+      created_at: m.created_at,
+      updated_at: m.updated_at || null,
+      can_activate: st === "PENDING" || st === "AWAITING_PROOF",
+    });
+  }
+
+  for (const t of transfers) {
+    const meta =
+      t.meta && typeof t.meta === "object"
+        ? t.meta
+        : (() => {
+            try {
+              return JSON.parse(t.meta || "{}");
+            } catch {
+              return {};
+            }
+          })();
+    const amt = Math.max(
+      0,
+      n(meta.amount_cents) || Math.abs(n(t.amount_cents))
+    );
+    items.push({
+      id: t.id,
+      source: "transfer",
+      user_id: t.user_id,
+      client_name: clientLabel(t.user_id),
+      description: "Transferência banca → saldo Desafio",
+      amount_cents: amt,
+      status: "COMPLETED",
+      network: null,
+      proof_url: null,
+      admin_notes: null,
+      created_at: t.created_at,
+      updated_at: null,
+      can_activate: false,
+    });
+  }
+
+  items.sort((a, b) => {
+    const ta = new Date(a.created_at || 0).getTime();
+    const tb = new Date(b.created_at || 0).getTime();
+    return tb - ta;
+  });
+
+  let acumulado = 0;
+  let feitosCount = 0;
+  let pendentes = 0;
+  let pendentesCount = 0;
+  for (const it of items) {
+    if (it.status === "APPROVED" || it.status === "COMPLETED") {
+      acumulado += it.amount_cents;
+      feitosCount += 1;
+    } else if (it.status === "PENDING" || it.status === "AWAITING_PROOF") {
+      pendentes += it.amount_cents;
+      pendentesCount += 1;
+    }
+  }
+
+  return {
+    items,
+    summary: {
+      acumulado_cents: acumulado,
+      feitos_count: feitosCount,
+      pendentes_cents: pendentes,
+      pendentes_count: pendentesCount,
+      total_count: items.length,
+    },
+  };
+}
+
+async function approveDesafioDeposit(token, body) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const id = String(body?.id || "").trim();
+  if (!id) throw new Error("id obrigatório");
+
+  const rows = await sb(
+    `/rest/v1/manual_deposits?select=*&id=eq.${encodeURIComponent(id)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const dep = Array.isArray(rows) ? rows[0] : null;
+  if (!dep) throw new Error("Depósito não encontrado");
+  if (String(dep.deposit_type || "").toLowerCase() !== "desafio") {
+    throw new Error("Depósito não é do tipo Desafio");
+  }
+  const st = String(dep.status || "").toUpperCase();
+  if (st === "APPROVED") return { ok: true, already: true, deposit: dep };
+  if (st === "REJECTED") throw new Error("Depósito já foi rejeitado");
+
+  const amount = Math.max(0, n(dep.amount_cents));
+  const userId = dep.user_id;
+  if (!userId || !(amount > 0)) throw new Error("Depósito inválido");
+
+  const profiles = await sb(
+    `/rest/v1/profiles?select=desafio_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const profile = Array.isArray(profiles) ? profiles[0] : null;
+  if (!profile) throw new Error("Cliente não encontrado");
+  const nextBal = n(profile.desafio_balance_cents) + amount;
+
+  await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: {
+      desafio_balance_cents: nextBal,
+      updated_at: new Date().toISOString(),
+    },
+  });
+
+  const updated = await sb(
+    `/rest/v1/manual_deposits?id=eq.${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        status: "APPROVED",
+        updated_at: new Date().toISOString(),
+      },
+    }
+  );
+
+  try {
+    await sb("/rest/v1/wallet_transactions", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        user_id: userId,
+        type: "deposit_desafio",
+        amount_cents: amount,
+        balance_after_cents: nextBal,
+        meta: {
+          destino: "desafio",
+          manual_deposit_id: id,
+          amount_cents: amount,
+        },
+      },
+    });
+  } catch {
+    /* extrato opcional */
+  }
+
+  return {
+    ok: true,
+    deposit: Array.isArray(updated) ? updated[0] : updated,
+    desafio_balance_cents: nextBal,
+  };
+}
+
+async function rejectDesafioDeposit(token, body) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const id = String(body?.id || "").trim();
+  if (!id) throw new Error("id obrigatório");
+  const reason = String(body?.reason || body?.admin_notes || "").trim();
+
+  const rows = await sb(
+    `/rest/v1/manual_deposits?select=*&id=eq.${encodeURIComponent(id)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const dep = Array.isArray(rows) ? rows[0] : null;
+  if (!dep) throw new Error("Depósito não encontrado");
+  if (String(dep.deposit_type || "").toLowerCase() !== "desafio") {
+    throw new Error("Depósito não é do tipo Desafio");
+  }
+  const st = String(dep.status || "").toUpperCase();
+  if (st === "APPROVED")
+    throw new Error("Depósito já ativado — não pode rejeitar");
+  if (st === "REJECTED") return { ok: true, already: true, deposit: dep };
+
+  const updated = await sb(
+    `/rest/v1/manual_deposits?id=eq.${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        status: "REJECTED",
+        admin_notes: reason || dep.admin_notes || "Rejeitado pelo admin",
+        updated_at: new Date().toISOString(),
+      },
+    }
+  );
+  return { ok: true, deposit: Array.isArray(updated) ? updated[0] : updated };
+}
+
 /** Lucro surebet aproximado (lado vencedor). */
 function desafioProfitCents(amountCents, odd, commissionPct) {
   const stake = Math.max(0, Math.round(Number(amountCents) || 0));
@@ -3093,6 +3374,51 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 400, {
         error: err instanceof Error ? err.message : String(err),
       });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/desafio-deposits" && req.method === "GET") {
+    try {
+      const token = bearerFromReq(req);
+      const data = await listDesafioDeposits(token);
+      return sendJson(res, 200, data);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return sendJson(res, /negado|Acesso/i.test(msg) ? 403 : 400, { error: msg });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/desafio-deposit-approve" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      return sendJson(res, 200, await approveDesafioDeposit(token, body.data || body));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return sendJson(res, /negado|Acesso/i.test(msg) ? 403 : 400, { error: msg });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/desafio-deposit-reject" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      return sendJson(res, 200, await rejectDesafioDeposit(token, body.data || body));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return sendJson(res, /negado|Acesso/i.test(msg) ? 403 : 400, { error: msg });
     }
   }
 

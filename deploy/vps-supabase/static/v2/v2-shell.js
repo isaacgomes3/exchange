@@ -55,6 +55,7 @@
         p("transactions", "Transações", "/admin-transactions.html"),
         p("saques", "Saques", "/admin-saques.html"),
         p("manual-deposits", "Depósitos USDT", "/admin-manual-deposits.html"),
+        p("depositos-desafio", "Depósitos Desafio", "/admin-depositos-desafio.html"),
         p("refunds", "Reembolsos", "/admin-refunds.html"),
         p("treasury", "Tesouraria", "/admin-treasury.html"),
         p("partners-distribution", "Distribuição", "/admin-partners-distribution.html"),

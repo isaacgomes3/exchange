@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Depósitos Desafio — ArbiShield v2</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css?v=depositos-desafio-1" />
+  <style>
+    .ddz-page { padding-bottom: 48px; }
+    .ddz-filters {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      margin: 0 0 14px;
+    }
+    .ddz-filters .tab {
+      border: 1px solid rgba(255,255,255,0.12);
+      background: transparent; color: rgba(255,255,255,0.7);
+      border-radius: 999px; padding: 8px 14px;
+      font-size: 10px; font-weight: 900; letter-spacing: 0.1em;
+      text-transform: uppercase; cursor: pointer;
+    }
+    .ddz-filters .tab.is-on {
+      background: #c9f223; color: #000; border-color: #c9f223;
+    }
+    .ddz-filters input {
+      flex: 1 1 200px; min-width: 160px;
+      border-radius: 12px; border: 1px solid rgba(255,255,255,0.12);
+      background: #050505; color: #fff; padding: 10px 12px;
+      font: inherit; font-size: 13px; font-weight: 600;
+    }
+    .ddz-badge {
+      display: inline-flex; align-items: center;
+      border-radius: 999px; padding: 4px 10px;
+      font-size: 10px; font-weight: 900; letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .ddz-badge.pending { background: rgba(245,197,24,0.15); color: #f5c518; border: 1px solid rgba(245,197,24,0.35); }
+    .ddz-badge.awaiting { background: rgba(148,163,184,0.15); color: #cbd5e1; border: 1px solid rgba(148,163,184,0.35); }
+    .ddz-badge.approved, .ddz-badge.completed { background: rgba(201,242,35,0.12); color: #c9f223; border: 1px solid rgba(201,242,35,0.35); }
+    .ddz-badge.rejected { background: rgba(248,113,113,0.12); color: #f87171; border: 1px solid rgba(248,113,113,0.35); }
+    .ddz-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .ddz-actions .btn { font-size: 10px; padding: 7px 10px; }
+    .ops-table td.desc { max-width: 280px; white-space: normal; font-size: 12px; color: rgba(255,255,255,0.78); }
+    .ops-table td.client { font-weight: 800; }
+    .ops-table td.when { white-space: nowrap; font-variant-numeric: tabular-nums; font-size: 12px; color: rgba(255,255,255,0.65); }
+    .ops-table td.amt { font-weight: 900; color: #c9f223; white-space: nowrap; }
+    @media (max-width: 720px) {
+      .tpl-kpi-row { grid-template-columns: 1fr 1fr !important; }
+      .ops-table th:nth-child(4),
+      .ops-table td:nth-child(4) { display: none; }
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js"></script>
+  <script src="/v2-shell.js?v=depositos-desafio-1" defer></script>
+</head>
+<body data-shell="admin" data-active="depositos-desafio">
+  <div class="ddz-page">
+    <div class="page-head">
+      <div>
+        <h1>Depósitos <span>Desafio</span></h1>
+        <p class="sub">Financeiro · feitos · pendentes de ativação · acumulado</p>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn btn-ghost" id="btnRefresh">Atualizar</button>
+      </div>
+    </div>
+    <div id="err" class="err" hidden></div>
+
+    <div class="tpl-kpi-row" id="kpis" style="grid-template-columns: repeat(4, minmax(0, 1fr));">
+      <div class="tpl-kpi"><div class="l">Valor acumulado</div><div class="v lime" id="kpiAcum">—</div><div class="s">Ativados + transferências</div></div>
+      <div class="tpl-kpi"><div class="l">Pendentes de ativação</div><div class="v white" id="kpiPend">—</div><div class="s" id="kpiPendCount">—</div></div>
+      <div class="tpl-kpi"><div class="l">Depósitos feitos</div><div class="v white" id="kpiFeitos">—</div><div class="s" id="kpiFeitosCount">—</div></div>
+      <div class="tpl-kpi"><div class="l">Total de lançamentos</div><div class="v white" id="kpiTotal">—</div><div class="s">USDT + transferências</div></div>
+    </div>
+
+    <div class="ddz-filters" role="tablist">
+      <button type="button" class="tab is-on" data-f="all">Todos</button>
+      <button type="button" class="tab" data-f="pending">Pendentes</button>
+      <button type="button" class="tab" data-f="done">Feitos</button>
+      <button type="button" class="tab" data-f="transfer">Transferências</button>
+      <button type="button" class="tab" data-f="manual">USDT</button>
+      <input type="search" id="search" placeholder="Buscar cliente ou descrição…" autocomplete="off" />
+    </div>
+
+    <div class="tpl-card">
+      <div class="tpl-card-head">
+        <div>
+          <strong style="font-size:12px;letter-spacing:0.1em;text-transform:uppercase">Movimentações</strong>
+          <p class="meta" id="meta" style="margin:4px 0 0">Carregando…</p>
+        </div>
+      </div>
+      <div class="ops-table-wrap">
+        <table class="ops-table" id="tbl">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Descrição</th>
+              <th>Valor</th>
+              <th>Status</th>
+              <th>Data / hora</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr><td colspan="6" class="meta">Carregando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (async function () {
+      var money = ArbiV2.money;
+      var filter = "all";
+      var items = [];
+      var summary = null;
+
+      function esc(v) {
+        return String(v == null ? "" : v)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function showErr(msg) {
+        var el = document.getElementById("err");
+        if (!msg) {
+          el.hidden = true;
+          el.textContent = "";
+          return;
+        }
+        el.hidden = false;
+        el.textContent = msg;
+      }
+
+      function fmtWhen(iso) {
+        if (!iso) return "—";
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return "—";
+        return d.toLocaleString("pt-BR", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+      }
+
+      function statusBadge(st) {
+        var s = String(st || "").toUpperCase();
+        var cls = "pending";
+        var label = s;
+        if (s === "PENDING") {
+          cls = "pending";
+          label = "Pendente ativação";
+        } else if (s === "AWAITING_PROOF") {
+          cls = "awaiting";
+          label = "Aguardando comprovante";
+        } else if (s === "APPROVED") {
+          cls = "approved";
+          label = "Ativado";
+        } else if (s === "COMPLETED") {
+          cls = "completed";
+          label = "Concluído";
+        } else if (s === "REJECTED") {
+          cls = "rejected";
+          label = "Rejeitado";
+        }
+        return '<span class="ddz-badge ' + cls + '">' + esc(label) + "</span>";
+      }
+
+      function visibleItems() {
+        var q = String(document.getElementById("search").value || "")
+          .trim()
+          .toLowerCase();
+        return items.filter(function (it) {
+          var st = String(it.status || "").toUpperCase();
+          if (filter === "pending") {
+            if (st !== "PENDING" && st !== "AWAITING_PROOF") return false;
+          } else if (filter === "done") {
+            if (st !== "APPROVED" && st !== "COMPLETED") return false;
+          } else if (filter === "transfer") {
+            if (it.source !== "transfer") return false;
+          } else if (filter === "manual") {
+            if (it.source !== "manual") return false;
+          }
+          if (!q) return true;
+          var blob = (
+            (it.client_name || "") +
+            " " +
+            (it.description || "") +
+            " " +
+            (it.user_id || "")
+          ).toLowerCase();
+          return blob.indexOf(q) >= 0;
+        });
+      }
+
+      function renderKpis() {
+        var s = summary || {};
+        document.getElementById("kpiAcum").textContent = money(s.acumulado_cents || 0);
+        document.getElementById("kpiPend").textContent = money(s.pendentes_cents || 0);
+        document.getElementById("kpiPendCount").textContent =
+          (s.pendentes_count || 0) + " aguardando ativação";
+        document.getElementById("kpiFeitos").textContent = money(s.acumulado_cents || 0);
+        document.getElementById("kpiFeitosCount").textContent =
+          (s.feitos_count || 0) + " concluídos";
+        document.getElementById("kpiTotal").textContent = String(s.total_count || 0);
+      }
+
+      function renderTable() {
+        var list = visibleItems();
+        var host = document.getElementById("tbody");
+        document.getElementById("meta").textContent =
+          list.length + " registro(s) · filtro: " + filter;
+        if (!list.length) {
+          host.innerHTML =
+            '<tr><td colspan="6" class="meta">Nenhum depósito Desafio neste filtro.</td></tr>';
+          return;
+        }
+        host.innerHTML = list
+          .map(function (it) {
+            var actions = "";
+            if (it.can_activate) {
+              actions +=
+                '<button type="button" class="btn btn-primary btn-sm" data-act="approve" data-id="' +
+                esc(it.id) +
+                '">Ativar</button>';
+              actions +=
+                '<button type="button" class="btn btn-ghost btn-sm" data-act="reject" data-id="' +
+                esc(it.id) +
+                '">Rejeitar</button>';
+            }
+            if (it.proof_url) {
+              actions +=
+                '<a class="btn btn-ghost btn-sm" href="' +
+                esc(it.proof_url) +
+                '" target="_blank" rel="noreferrer">Comprovante</a>';
+            }
+            if (!actions) actions = '<span class="meta">—</span>';
+            return (
+              "<tr>" +
+              '<td class="client">' +
+              esc(it.client_name) +
+              "</td>" +
+              '<td class="desc">' +
+              esc(it.description) +
+              "</td>" +
+              '<td class="amt">' +
+              money(it.amount_cents) +
+              "</td>" +
+              "<td>" +
+              statusBadge(it.status) +
+              "</td>" +
+              '<td class="when">' +
+              esc(fmtWhen(it.created_at)) +
+              "</td>" +
+              '<td><div class="ddz-actions">' +
+              actions +
+              "</div></td>" +
+              "</tr>"
+            );
+          })
+          .join("");
+      }
+
+      async function authToken() {
+        var session = await ArbiV2.client().auth.getSession();
+        return session.data.session && session.data.session.access_token;
+      }
+
+      async function load() {
+        showErr("");
+        document.getElementById("meta").textContent = "Carregando…";
+        try {
+          var token = await authToken();
+          if (!token) throw new Error("Sessão expirada — entre novamente.");
+          var res = await fetch("/api/arbishield/desafio-deposits", {
+            cache: "no-store",
+            headers: {
+              Authorization: "Bearer " + token,
+              accept: "application/json",
+            },
+          });
+          var data = await res.json().catch(function () {
+            return {};
+          });
+          if (!res.ok) throw new Error(data.error || "Falha ao carregar depósitos");
+          items = Array.isArray(data.items) ? data.items : [];
+          summary = data.summary || {};
+          renderKpis();
+          renderTable();
+        } catch (ex) {
+          showErr((ex && ex.message) || "Erro ao carregar");
+          document.getElementById("tbody").innerHTML =
+            '<tr><td colspan="6" class="meta">Falha ao carregar.</td></tr>';
+          document.getElementById("meta").textContent = "Erro";
+        }
+      }
+
+      async function act(kind, id) {
+        var token = await authToken();
+        if (!token) return alert("Sessão expirada");
+        var url =
+          kind === "approve"
+            ? "/api/arbishield/desafio-deposit-approve"
+            : "/api/arbishield/desafio-deposit-reject";
+        var body = { id: id };
+        if (kind === "reject") {
+          var reason = prompt("Motivo da rejeição (opcional):") || "";
+          body.reason = reason;
+        } else if (
+          !confirm("Ativar este depósito e creditar o saldo Desafio do cliente?")
+        ) {
+          return;
+        }
+        try {
+          var res = await fetch(url, {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer " + token,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+          });
+          var data = await res.json().catch(function () {
+            return {};
+          });
+          if (!res.ok) throw new Error(data.error || "Falha na ação");
+          await load();
+        } catch (ex) {
+          alert((ex && ex.message) || "Erro");
+        }
+      }
+
+      document.querySelectorAll(".ddz-filters .tab").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          document.querySelectorAll(".ddz-filters .tab").forEach(function (b) {
+            b.classList.remove("is-on");
+          });
+          btn.classList.add("is-on");
+          filter = btn.getAttribute("data-f") || "all";
+          renderTable();
+        });
+      });
+      document.getElementById("search").addEventListener("input", renderTable);
+      document.getElementById("btnRefresh").addEventListener("click", load);
+      document.getElementById("tbody").addEventListener("click", function (ev) {
+        var btn = ev.target.closest("[data-act]");
+        if (!btn) return;
+        act(btn.getAttribute("data-act"), btn.getAttribute("data-id"));
+      });
+
+      await ArbiV2.requireUser(ArbiV2.client());
+      await load();
+    })();
+  </script>
+</body>
+</html>
