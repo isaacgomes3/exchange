@@ -769,6 +769,12 @@
         steps: draft.steps.map((a) => {
           const arbiOdd = Number(String(a.arbi_odd).replace(",", "."));
           const casaOdd = Number(String(a.casa_odd).replace(",", "."));
+          const labelParts = String(a.match_label || "")
+            .split(/\s+[x×X]\s+/)
+            .map((p) => p.trim())
+            .filter(Boolean);
+          const homeFromLabel = labelParts[0] || "";
+          const awayFromLabel = labelParts.length >= 2 ? labelParts.slice(1).join(" x ") : "";
           return {
             step_index: a.step_index,
             match_label: a.match_label,
@@ -776,8 +782,8 @@
             market_name: a.market_name_arbishield || a.market_name_casa || null,
             market_name_arbishield: a.market_name_arbishield || null,
             market_name_casa: a.market_name_casa || null,
-            home_team: a.home_team || a.arbi_team_name || "Casa",
-            away_team: a.away_team || a.casa_team_name || "Visitante",
+            home_team: homeFromLabel || a.home_team || "Casa",
+            away_team: awayFromLabel || a.away_team || "Visitante",
             arbi_team_name: a.arbi_team_name || null,
             arbi_odd: Number.isFinite(arbiOdd) ? arbiOdd : null,
             casa_team_name: a.casa_team_name || null,
