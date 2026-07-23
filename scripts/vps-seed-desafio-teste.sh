@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
-# Cria desafio de teste via API do app (mesmo caminho do admin) — sempre com etapa.
+# Cria desafio de teste COM liquidez e horário futuro (não vem “ao vivo”).
 #
-# Na VPS ou de qualquer máquina:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-seed-desafio-teste.sh?v=5")
-#
-# Ou só:
-#   API=https://arbishield.app bash <(curl ...?v=5)
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-seed-desafio-teste.sh?v=6")
 set -euo pipefail
 
-echo "==> seed-desafio-teste v5 (API /api/arbishield/desafios)"
+echo "==> seed-desafio-teste v6 (liquidez + kickoff futuro)"
 API="${API:-https://arbishield.app}"
 API="${API%/}"
 
@@ -24,10 +20,7 @@ def http(method, path, body=None):
         api + path,
         data=data,
         method=method,
-        headers={
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
     )
     try:
         with urllib.request.urlopen(r, timeout=60) as res:
@@ -40,40 +33,16 @@ casa_odd = 1.90
 profit_pct = 5
 inv = 1.0 / (1.0 + profit_pct / 100.0)
 arbi_odd = round(1.0 / (inv - 1.0 / casa_odd), 3)
-kickoff = (datetime.now(timezone.utc) + timedelta(hours=3)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+# 12h no futuro + release 24h → entrada liberada agora, sem virar ao vivo
+kickoff = (datetime.now(timezone.utc) + timedelta(hours=12)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 stamp = datetime.now(timezone.utc).strftime("%H:%M")
-
 home_logo = "https://r2.thesportsdb.com/images/media/team/badge/yvwvtr1420652851.png"
 away_logo = "https://r2.thesportsdb.com/images/media/team/badge/vyyvwt1420653033.png"
 match_label = "Botafogo x Santos"
 
-# Desativa ativos órfãos (sem etapas) para não poluir o admin
-code, rows = http("GET", "/api/arbishield/desafios")
-rows = rows if isinstance(rows, list) else []
-for x in rows:
-    if x.get("deleted_at"):
-        continue
-    steps = x.get("desafio_steps") or []
-    if x.get("is_active") and not steps:
-        print(f"==> desativando órfão #{x.get('number')} {x.get('title')}")
-        http(
-            "POST",
-            "/api/arbishield/desafios",
-            {
-                "id": x["id"],
-                "title": x.get("title") or "Desafio",
-                "is_active": False,
-                "status": "draft",
-                "total_steps": x.get("total_steps") or 5,
-                "initial_balance_cents": x.get("initial_balance_cents") or 20000,
-                "target_profit_pct": x.get("target_profit_pct") or 5,
-                "steps": [],
-            },
-        )
-
 body = {
     "title": match_label,
-    "subtitle": f"Desafio teste · {stamp} UTC",
+    "subtitle": f"Teste liquidez · {stamp} UTC",
     "total_steps": 5,
     "initial_balance_cents": 20000,
     "is_active": True,
@@ -102,11 +71,11 @@ body = {
             "casa_stake_cents": 21053,
             "arbi_commission_pct": 0,
             "casa_commission_pct": 0,
-            "liquidity_cents": 800000,
-            "display_liquidity_cents": 800000,
+            "liquidity_cents": 5000000,
+            "display_liquidity_cents": 5000000,
             "external_bet_link": "https://www.bet365.com/",
             "starts_at": kickoff,
-            "release_minutes_before": 180,
+            "release_minutes_before": 1440,
             "status": "pending",
             "is_published": True,
         }
@@ -114,14 +83,15 @@ body = {
 }
 
 code, data = http("POST", "/api/arbishield/desafios", body)
-d = (data or {}).get("desafio") or data or {}
+d = (data or {}).get("desafio") or {}
 steps = d.get("desafio_steps") or []
-print(f"==> HTTP {code}  #{d.get('number')} {d.get('title')}  active={d.get('is_active')}")
-print(f"==> etapas: {len(steps)}")
+print(f"==> HTTP {code}  #{d.get('number')} {d.get('title')}")
 if not steps:
-    raise SystemExit("ERRO: criado sem etapas")
+    raise SystemExit("ERRO: sem etapas")
 s = steps[0]
-print(f"==> etapa 1: {s.get('id')}  status={s.get('status')}  starts={s.get('starts_at')}")
-print(f"==> odds casa {casa_odd} / arbi {arbi_odd} (lucro {profit_pct}%)")
-print("OK — Ctrl+F5 em https://arbishield.app/app-desafio.html")
+print(f"==> liquidez R$ {int(s.get('liquidity_cents') or 0)/100:.2f}")
+print(f"==> kickoff {s.get('starts_at')}  release {s.get('release_minutes_before')} min")
+print("OK — Ctrl+F5 em /app-desafio.html")
+print("Para apostar, credite saldo Desafio (carteira R$ 0 bloqueia o teste):")
+print("  EMAIL=seu@email.com REAIS=500 bash <(curl -fsSL \"https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-credit-desafio-teste.sh?v=1\")")
 PY
