@@ -2,7 +2,7 @@
 # Corrige Buscar time + logo + autocomplete de mercados no Lançar Evento Manual
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-buscar-time-logo.sh")
 set -euo pipefail
-REF="${ARBISHIELD_REF:-bdb12eb}"
+REF="${ARBISHIELD_REF:-1663e93}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
