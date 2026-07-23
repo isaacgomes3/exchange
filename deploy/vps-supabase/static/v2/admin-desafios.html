@@ -341,7 +341,7 @@
         <strong>Publicar ao salvar</strong>
         <span>Se desligado, grava como rascunho</span>
       </div>
-      <input id="fActive" type="checkbox" />
+      <input id="fActive" type="checkbox" checked />
     </div>
 
     <div class="section-head">
@@ -407,7 +407,7 @@
         title: "DESAFIO #001",
         subtitle: "Complete os desafios seguidos e fature todo o saldo final com lucro!",
         initial_balance_reais: "200,00",
-        is_active: false,
+        is_active: true,
         steps: [emptyStep(1)],
       };
     }
@@ -1002,6 +1002,11 @@
             </div>
             ${stepBlocks || '<div class="steps">Sem etapas</div>'}
             <div class="card-actions">
+              ${
+                d.is_active
+                  ? ""
+                  : `<button class="btn btn-primary" type="button" data-publish="${esc(d.id)}">Publicar para clientes</button>`
+              }
               <button class="btn btn-ghost" type="button" data-clone="${esc(d.id)}">Usar como base</button>
             </div>
           </article>`;
@@ -1051,6 +1056,49 @@
         });
       });
 
+      $("list").querySelectorAll("[data-publish]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const id = btn.getAttribute("data-publish");
+          if (!id) return;
+          if (!confirm("Publicar este desafio para a área do cliente?")) return;
+          btn.disabled = true;
+          try {
+            const session = await ArbiV2.client().auth.getSession();
+            const token = session.data.session && session.data.session.access_token;
+            const res = await fetch("/api/arbishield/desafios", {
+              method: "POST",
+              headers: {
+                Authorization: "Bearer " + token,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                id,
+                is_active: true,
+                status: "active",
+                publish_only: true,
+              }),
+            });
+            // Fallback: update direto no Supabase
+            if (!res.ok) {
+              const up = await ArbiV2.client()
+                .from("desafios")
+                .update({
+                  is_active: true,
+                  status: "active",
+                  published_at: new Date().toISOString(),
+                })
+                .eq("id", id);
+              if (up.error) throw new Error(up.error.message || "Falha ao publicar");
+            }
+            alert("Desafio publicado para os clientes.");
+            await load();
+          } catch (err) {
+            alert(err.message || "Erro ao publicar");
+            btn.disabled = false;
+          }
+        });
+      });
+
       $("list").querySelectorAll("[data-clone]").forEach((btn) => {
         btn.addEventListener("click", () => {
           const id = btn.getAttribute("data-clone");
@@ -1090,14 +1138,7 @@
             title: row.title || "DESAFIO",
             subtitle: row.subtitle || "",
             initial_balance_reais: centsToReaisInput(row.initial_balance_cents || 20000),
-            is_active: false,
-            steps: steps.length ? steps : [emptyStep(1)],
-          });
-        });
-      });
-    }
-
-    async function load() {
+            is_active: true,
       $("list").innerHTML = `<div class="loading">Carregando desafios…</div>`;
       $("meta").textContent = "Buscando…";
       try {

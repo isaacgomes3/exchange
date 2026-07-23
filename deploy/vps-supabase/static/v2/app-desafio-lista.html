@@ -534,7 +534,10 @@
         if (!res.ok) throw new Error((data && data.error) || "Falha ao carregar desafios");
         var rows = Array.isArray(data) ? data : [];
         var alive = rows.filter(function (d) { return !d.deleted_at; });
-        var active = alive.filter(function (d) { return d.is_active; });
+        // Mostra ativos e também rascunhos que já têm etapas (lançamento manual)
+        var active = alive.filter(function (d) {
+          return d.is_active || (Array.isArray(d.desafio_steps) && d.desafio_steps.length);
+        });
 
         items = [];
         active.forEach(function (d) {

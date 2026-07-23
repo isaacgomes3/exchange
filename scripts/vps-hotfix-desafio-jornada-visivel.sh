@@ -22,8 +22,20 @@ dl() {
   curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 "$RAW/$1?v=$BUST" -o "$2"
 }
 
-log "1/3 UI — jornada como /app-desafio.html"
-for f in app-desafio.html app-desafio-jornada.html app-desafio-lista.html app-desafio-sinais.html desafio-ciclo-math.js v2-shell.js; do
+log "1/4 Backend prelive (publicar desafio)"
+PRELIVE_DST="/opt/arbishield/scripts/arbishield-prelive-events.mjs"
+[[ -f "$PRELIVE_DST" ]] || PRELIVE_DST="/opt/arbishield/arbishield-prelive-events.mjs"
+[[ -f "$SCRIPTS_DIR/arbishield-prelive-events.mjs" ]] && PRELIVE_DST="$SCRIPTS_DIR/arbishield-prelive-events.mjs" || true
+# SCRIPTS_DIR may not exist in this script - use SHIM_DIR parent
+SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield}"
+PRELIVE_DST="$SCRIPTS_DIR/arbishield-prelive-events.mjs"
+[[ -f /opt/arbishield/scripts/arbishield-prelive-events.mjs ]] && PRELIVE_DST="/opt/arbishield/scripts/arbishield-prelive-events.mjs"
+dl "scripts/arbishield-prelive-events.mjs" "$PRELIVE_DST"
+chmod 0755 "$PRELIVE_DST"
+systemctl restart arbishield-prelive-events.service 2>/dev/null || systemctl restart arbishield-prelive.service 2>/dev/null || true
+
+log "2/4 UI — jornada como /app-desafio.html"
+for f in app-desafio.html app-desafio-jornada.html app-desafio-lista.html app-desafio-sinais.html admin-desafios.html desafio-ciclo-math.js v2-shell.js; do
   dl "deploy/vps-supabase/static/v2/$f" "$WEB/$f"
   chmod 0644 "$WEB/$f"
   cp -f "$WEB/$f" "$WEB_ROOT/$f" 2>/dev/null || true
@@ -35,17 +47,18 @@ grep -q 'j-map\|Mapa de campanha\|jornada-v1\|Painel de Sinais &amp; Arbitragem\
   || grep -q 'j-map\|Mapa do desafio' "$WEB/app-desafio.html" \
   || die "app-desafio.html ainda não é o mapa de jornada"
 grep -q 'j-map\|Mapa do desafio' "$WEB/app-desafio.html" || die "falha: app-desafio sem j-map"
-grep -q 'Abrir sinal\|DESAFIOS DISPON\|Desafios disponíveis\|app-desafio-grid' "$WEB/app-desafio-lista.html" \
-  || true
+grep -q 'buildManualSinalState\|evento do Desafio\|fetchDesafios' "$WEB/app-desafio-sinais.html" \
+  || die "sinais ainda depende de API antiga"
+grep -q 'fActive' "$WEB/admin-desafios.html" || die "admin-desafios ausente"
 
-log "2/3 Backend jornada API"
+log "3/4 Backend jornada API"
 dl "scripts/arbishield-serverfn-shim.mjs" "$SHIM_DIR/arbishield-serverfn-shim.mjs"
 chmod 0644 "$SHIM_DIR/arbishield-serverfn-shim.mjs"
 grep -q 'getDesafioJornada\|desafio-jornada' "$SHIM_DIR/arbishield-serverfn-shim.mjs" \
   || die "shim sem getDesafioJornada"
 systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 
-log "3/3 Nginx — /app/desafio → mapa + API jornada"
+log "4/4 Nginx — /app/desafio → mapa + API jornada"
 for conf in /etc/nginx/sites-enabled/arbishield.app \
   /etc/nginx/conf.d/arbishield.app.conf \
   /etc/nginx/sites-available/arbishield.app; do

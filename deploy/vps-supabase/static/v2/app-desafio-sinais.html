@@ -12,7 +12,11 @@
   <script src="/desafio-ciclo-math.js"></script>
   <script src="/v2-shell.js" defer></script>
   <style>
-    .sinais-wrap { max-width: 720px; margin: 0 auto; }
+    .sinais-wrap { width: 100%; max-width: none; margin: 0; box-sizing: border-box; }
+    body[data-shell="app"] .v2-page:has(.sinais-wrap) {
+      padding-left: 10px;
+      padding-right: 10px;
+    }
     .sinais-panel {
       border: 1px solid rgba(255,255,255,0.1);
       background: linear-gradient(165deg, rgba(12,40,34,0.95), rgba(6,18,16,0.98));
@@ -185,11 +189,208 @@
         });
       }
 
+      async function fetchDesafios() {
+        var res = await fetch("/api/arbishield/desafios", {
+          cache: "no-store",
+          headers: { accept: "application/json" },
+        });
+        var data = await res.json().catch(function () { return []; });
+        if (res.ok && Array.isArray(data)) return data;
+        var sb = await supa
+          .from("desafios")
+          .select("*,desafio_steps(*)")
+          .is("deleted_at", null)
+          .order("updated_at", { ascending: false })
+          .limit(20);
+        if (sb.error) throw new Error(sb.error.message || "Não foi possível carregar desafios");
+        return sb.data || [];
+      }
+
+      function pickDesafioAndStep(rows, wantStepId) {
+        var alive = (rows || []).filter(function (d) { return !d.deleted_at; });
+        function stepsOf(d) {
+          return (d.desafio_steps || [])
+            .slice()
+            .sort(function (a, b) {
+              return (Number(a.step_index) || 0) - (Number(b.step_index) || 0);
+            });
+        }
+        var withSteps = alive.filter(function (d) {
+          return stepsOf(d).length > 0;
+        });
+        // Prefer ativo com etapas; senão qualquer com etapas (inclui rascunho lançado)
+        var ordered = withSteps
+          .slice()
+          .sort(function (a, b) {
+            return Number(!!b.is_active) - Number(!!a.is_active);
+          });
+
+        if (wantStepId) {
+          for (var i = 0; i < ordered.length; i++) {
+            var st = stepsOf(ordered[i]).find(function (s) {
+              return String(s.id) === String(wantStepId);
+            });
+            if (st) return { desafio: ordered[i], step: st };
+          }
+        }
+        for (var j = 0; j < ordered.length; j++) {
+          var list = stepsOf(ordered[j]);
+          for (var k = 0; k < list.length; k++) {
+            if (String(list[k].status) !== "done") {
+              return { desafio: ordered[j], step: list[k] };
+            }
+          }
+          if (list.length) return { desafio: ordered[j], step: list[0] };
+        }
+        return null;
+      }
+
+      async function buildManualSinalState(desafio, step) {
+        var MathC = MathCiclo || window.ArbiDesafioCiclo;
+        var targetPct = Number(desafio.target_profit_pct) || 5;
+        var maxEntries = Math.min(
+          5,
+          Math.max(
+            Number(desafio.total_steps) || 1,
+            (desafio.desafio_steps || []).length || 1
+          )
+        );
+        var arbiOdd = Number(step.arbi_odd != null ? step.arbi_odd : step.home_odd);
+        var casaOdd = Number(step.casa_odd != null ? step.casa_odd : step.away_odd);
+        if (!(arbiOdd > 1) && casaOdd > 1 && MathC) {
+          try {
+            arbiOdd = MathC.calcZebraOddFromFavorite(
+              casaOdd,
+              targetPct,
+              Number(step.casa_commission_pct) || 0,
+              Number(step.arbi_commission_pct) || 0
+            );
+          } catch (e) { /* */ }
+        }
+
+        var parts = [];
+        var bal = 0;
+        try {
+          var prof = await supa
+            .from("profiles")
+            .select("desafio_balance_cents")
+            .eq("id", user.id)
+            .maybeSingle();
+          bal = Number(prof.data && prof.data.desafio_balance_cents) || 0;
+        } catch (e) { /* */ }
+        try {
+          var pr = await supa
+            .from("desafio_participations")
+            .select("*")
+            .eq("user_id", user.id)
+            .eq("desafio_id", desafio.id)
+            .eq("side", "arbishield")
+            .order("created_at", { ascending: true })
+            .limit(50);
+          if (!pr.error && Array.isArray(pr.data)) parts = pr.data;
+        } catch (e) { /* */ }
+
+        var pending = parts.find(function (p) {
+          return String(p.result || "").toLowerCase() === "pending";
+        });
+        var won = parts.filter(function (p) {
+          return String(p.result || "").toLowerCase() === "won";
+        });
+        var lost = parts.filter(function (p) {
+          return String(p.result || "").toLowerCase() === "lost";
+        });
+        var retained = 0;
+        if (won.length) {
+          var last = won[won.length - 1];
+          retained = (Number(last.amount_cents) || 0) + (Number(last.profit_cents) || 0);
+        }
+        var entryNumber = pending ? parts.length : parts.length + 1;
+        if (entryNumber < 1) entryNumber = 1;
+        if (entryNumber > maxEntries) entryNumber = maxEntries;
+
+        var status = "ready";
+        if (lost.length && !pending && lost.length >= won.length && parts.length && String(parts[parts.length - 1].result).toLowerCase() === "lost") {
+          status = "success_closed";
+        } else if (pending) {
+          status = "pending_entry";
+        } else if (won.length > 0) {
+          status = "extraction_active";
+        }
+
+        var zebraStake =
+          entryNumber === 1
+            ? Number(desafio.initial_balance_cents) || 20000
+            : retained || bal || Number(desafio.initial_balance_cents) || 0;
+
+        var prev = MathC
+          ? MathC.buildSinalPreview({
+              zebraStakeCents: zebraStake,
+              arbiOdd: arbiOdd,
+              casaOdd: casaOdd,
+              arbiCommissionPct: Number(step.arbi_commission_pct) || 0,
+              casaCommissionPct: Number(step.casa_commission_pct) || 0,
+              targetProfitPct: targetPct,
+            })
+          : {
+              zebraStakeCents: zebraStake,
+              casaStakeCents: 0,
+              projectedReturnCents: zebraStake,
+            };
+
+        return {
+          ok: true,
+          status: status,
+          entryNumber: entryNumber,
+          maxEntries: maxEntries,
+          retainedCents: retained,
+          desafioBalanceCents: bal,
+          sinal: {
+            stepId: step.id,
+            desafioId: desafio.id,
+            title: desafio.title,
+            matchLabel:
+              step.match_label ||
+              [step.home_team, step.away_team].filter(Boolean).join(" x ") ||
+              ". " + (step.market_name || "Etapa"),
+            zebraTeam: step.arbi_team_name || step.away_team || "Zebra",
+            favoriteTeam: step.casa_team_name || step.home_team || "Favorito",
+            arbiOdd: arbiOdd,
+            casaOdd: casaOdd,
+            zebraStakeCents: prev.zebraStakeCents,
+            casaStakeCents: prev.casaStakeCents,
+            projectedReturnCents: prev.projectedReturnCents,
+            targetProfitPct: targetPct,
+            externalBetLink: step.external_bet_link || null,
+            allocatedAutomatically: entryNumber > 1,
+          },
+        };
+      }
+
+      async function registerEntry(amountCents) {
+        var session = await supa.auth.getSession();
+        var token = session.data.session && session.data.session.access_token;
+        var res = await fetch("/api/arbishield/desafio-register", {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            stepId: state.sinal.stepId,
+            side: "arbishield",
+            amountCents: amountCents,
+          }),
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok) throw new Error(data.error || "Falha ao registrar entrada");
+        return data;
+      }
+
       function paint() {
         if (!state || !state.sinal) {
           $("panel").innerHTML =
             '<div class="sinais-head"><h2>Painel de Sinais &amp; Arbitragem</h2></div>' +
-            '<div class="sinais-block"><p class="sinais-hint">Selecione um desafio em /app-desafio.html</p></div>';
+            '<div class="sinais-block"><p class="sinais-hint">Nenhum evento de desafio disponível. Lance um desafio no admin (etapas manuais).</p></div>';
           return;
         }
         var s = state.sinal;
@@ -210,7 +411,7 @@
             '<input id="zebraStakeInput" type="text" inputmode="decimal" value="' +
             esc(centsToInput(zebra)) +
             '" />' +
-            '<p class="sinais-hint">O sistema calcula automaticamente quanto apostar na casa externa.</p></div>'
+            '<p class="sinais-hint">Evento do Desafio (manual). O sistema calcula a aposta na casa externa.</p></div>'
           : '<div class="exact">' +
             esc(money(zebra)) +
             (auto ? ' <span class="auto">Alocado automaticamente</span>' : "") +
@@ -226,14 +427,14 @@
           esc(money(retained > 0 ? retained : state.desafioBalanceCents || 0)) +
           "</div></div>" +
           '<div class="sinais-block">' +
-          '<div class="sinais-label">Oportunidade atual</div>' +
+          '<div class="sinais-label">Oportunidade atual (evento do Desafio)</div>' +
           '<div class="sinais-match">' +
-          esc(s.matchLabel || (s.favoriteTeam + " (Favorito) vs " + s.zebraTeam + " (Zebra)")) +
+          esc(s.matchLabel || (s.favoriteTeam + " vs " + s.zebraTeam)) +
           "</div></div>" +
           '<div class="sinais-block">' +
           '<div class="sinais-leg zebra">' +
           "<h3>1. Sua aposta (aqui no site)</h3>" +
-          "<p>Jogo: <strong>" +
+          "<p>Seleção: <strong>" +
           esc(s.zebraTeam || "Zebra") +
           "</strong> | Odd: <strong>" +
           esc(s.arbiOdd) +
@@ -242,7 +443,7 @@
           "</div>" +
           '<div class="sinais-leg fav">' +
           "<h3>2. Aposta na casa externa</h3>" +
-          "<p>Jogo: <strong>" +
+          "<p>Seleção: <strong>" +
           esc(s.favoriteTeam || "Favorito") +
           "</strong> | Odd: <strong>" +
           esc(s.casaOdd) +
@@ -267,7 +468,7 @@
           (canConfirm
             ? '<button type="button" class="btn btn-primary" id="btnConfirm">Confirmar e enviar sinal</button>'
             : '<button type="button" class="btn btn-ghost" disabled>Aguardando resultado</button>') +
-          '<a class="btn btn-ghost" href="/app-desafio.html">Outros desafios</a>' +
+          '<a class="btn btn-ghost" href="/app-desafio.html">Voltar à jornada</a>' +
           "</div>" +
           '<div class="sinais-err" id="localErr"></div>' +
           "</div>";
@@ -292,18 +493,15 @@
                 ? reaisToCents(($("zebraStakeInput") && $("zebraStakeInput").value) || "0")
                 : zebra;
               if (!(amount > 0)) throw new Error("Informe o valor da aposta na zebra");
-              var out = await api("/api/arbishield/desafio-register", {
-                stepId: s.stepId || stepId,
-                side: "arbishield",
-                amountCents: amount,
-              });
+              var out = await registerEntry(amount);
+              var sinal = (out && out.sinal) || state.sinal;
               alert(
                 "Sinal confirmado!\n\nZebra: " +
-                  money(out.sinal && out.sinal.zebraStakeCents) +
+                  money((sinal && sinal.zebraStakeCents) || amount) +
                   "\nCasa externa: " +
-                  money(out.sinal && out.sinal.casaStakeCents) +
+                  money((sinal && sinal.casaStakeCents) || casa) +
                   "\nRetorno projetado: " +
-                  money(out.sinal && out.sinal.projectedReturnCents)
+                  money((sinal && sinal.projectedReturnCents) || projected)
               );
               await load();
             } catch (ex) {
@@ -322,48 +520,29 @@
 
       async function load() {
         showErr("");
-        if (!stepId) {
-          // Sem step: pega o primeiro desafio ativo com etapa disponível
-          var res = await fetch("/api/arbishield/desafios", {
-            cache: "no-store",
-            headers: { accept: "application/json" },
-          });
-          var data = await res.json().catch(function () { return []; });
-          var rows = Array.isArray(data) ? data : [];
-          var pick = null;
-          rows.forEach(function (d) {
-            if (pick || d.deleted_at || !d.is_active) return;
-            var steps = (d.desafio_steps || []).slice().sort(function (a, b) {
-              return (a.step_index || 0) - (b.step_index || 0);
-            });
-            for (var i = 0; i < steps.length; i++) {
-              if (String(steps[i].status) !== "done") {
-                pick = steps[i].id;
-                break;
-              }
-            }
-          });
-          if (!pick) {
-            $("panel").innerHTML =
-              '<div class="sinais-head"><h2>Painel de Sinais &amp; Arbitragem</h2></div>' +
-              '<div class="sinais-block"><p class="sinais-hint">Nenhum sinal disponível no momento.</p></div>';
-            return;
-          }
-          stepId = pick;
-          history.replaceState(null, "", "?stepId=" + encodeURIComponent(stepId));
+        var rows = await fetchDesafios();
+        var picked = pickDesafioAndStep(rows, stepId);
+        if (!picked) {
+          state = null;
+          paint();
+          return;
         }
-        state = await api("/api/arbishield/desafio-sinal", {
-          stepId: stepId,
-          amountCents: 0,
-        });
+        stepId = picked.step.id;
+        history.replaceState(null, "", "?stepId=" + encodeURIComponent(stepId));
+        state = await buildManualSinalState(picked.desafio, picked.step);
         paint();
       }
 
       try {
         await load();
       } catch (ex) {
-        showErr(ex.message || "Erro ao carregar sinal");
+        console.warn("[sinais]", ex);
+        showErr("");
+        $("panel").innerHTML =
+          '<div class="sinais-head"><h2>Painel de Sinais &amp; Arbitragem</h2></div>' +
+          '<div class="sinais-block"><p class="sinais-hint">Aguardando evento de desafio lançado no admin.</p></div>';
       }
+
     })();
   </script>
 </body>

@@ -418,6 +418,21 @@ function buildStepRow(desafioId, stepIn, isActive) {
 async function createDesafio(body, token) {
   if (!SERVICE_KEY) throw new Error("SERVICE_ROLE_KEY ausente no .env da VPS");
   const auth = token || SERVICE_KEY;
+  // Publicar desafio existente (área do cliente)
+  if (body?.id && (body.publish_only || (body.is_active && !body.steps && !body.step))) {
+    const patched = await sb(`/rest/v1/desafios?id=eq.${encodeURIComponent(body.id)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        is_active: true,
+        status: "active",
+        published_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    });
+    const row = Array.isArray(patched) ? patched[0] : patched;
+    return row || { id: body.id, is_active: true };
+  }
   const stepIn = body.step || (body.steps && body.steps[0]) || {};
   const desafioRow = buildDesafioRow(body);
   if (desafioRow.number == null) {

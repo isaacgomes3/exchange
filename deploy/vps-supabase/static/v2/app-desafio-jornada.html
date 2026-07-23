@@ -881,11 +881,20 @@
         }
         var rows = Array.isArray(data) ? data : [];
         var alive = rows.filter(function (d) { return !d.deleted_at; });
+        function hasSteps(d) {
+          return Array.isArray(d.desafio_steps) && d.desafio_steps.length > 0;
+        }
+        // Eventos do Desafio = etapas lançadas no admin (não proteção / não API externa)
+        var withSteps = alive.filter(hasSteps);
         var desafio =
           (wantId &&
             alive.find(function (d) {
               return String(d.id) === String(wantId);
             })) ||
+          withSteps.find(function (d) {
+            return d.is_active;
+          }) ||
+          withSteps[0] ||
           alive.find(function (d) {
             return d.is_active;
           }) ||
