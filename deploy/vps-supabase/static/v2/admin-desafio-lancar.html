@@ -414,6 +414,7 @@
           data.initial_balance_cents ?? step.arbi_stake_cents ?? 20000
         ),
         circuit_max_steps: Number(data.total_steps || data.circuit_max_steps) || 5,
+        target_profit_pct: Number(data.target_profit_pct) || 5,
         append_to_desafio_id: null,
         is_active: Boolean(data.is_active),
         steps: [
@@ -490,6 +491,7 @@
     if (!draft.steps || !draft.steps.length) draft.steps = [emptyStep(1)];
     draft.steps = [draft.steps[0]];
     if (draft.circuit_max_steps == null) draft.circuit_max_steps = 5;
+    if (draft.target_profit_pct == null) draft.target_profit_pct = 5;
 
     function readFormIntoDraft() {
       draft.number = $("fNumber").value.trim();
@@ -1098,6 +1100,12 @@
     fillHeaderFields();
     renderStepsEditor();
     $("btnSaveDraft").addEventListener("click", saveDesafio);
+    if ($("fProfitPct")) {
+      $("fProfitPct").addEventListener("change", () => {
+        draft.target_profit_pct = Number($("fProfitPct").value) || 0;
+        syncArbiOddFromCasa();
+      });
+    }
 
     try {
       const u = new URL(location.href);
