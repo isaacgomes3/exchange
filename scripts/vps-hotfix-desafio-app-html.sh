@@ -3,7 +3,7 @@
 # Usa jsDelivr + SHA do tip para evitar HTML antigo em cache.
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=22")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=23")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -116,6 +116,8 @@ log "app-desafio.html (Depositar PIX Desafio)"
 # já baixado acima no DEST — revalida
 grep -q 'Depositar PIX Desafio\|deposit-dest="desafio"' "$DEST" || die "app-desafio sem depósito PIX Desafio"
 grep -q 'transfer-desafio' "$DEST" && die "app-desafio ainda chama transfer-desafio" || true
+grep -q 'isStepPlayable' "$DEST" || die "app-desafio sem filtro de etapa encerrada"
+grep -q 'Jogo encerrado' "$DEST" || die "app-desafio sem CTA Jogo encerrado"
 
 
 # Shim (lucro composto etapa 2+)
@@ -138,9 +140,41 @@ if [[ -n "${SHIM_PATH:-}" ]]; then
   grep -q 'listDesafioActiveClients' "$SHIM_PATH" || die "shim sem listDesafioActiveClients"
   grep -q 'desafio-active-clients' "$SHIM_PATH" || die "shim sem rota desafio-active-clients"
   grep -q 'só aceita depósito PIX\|Transferência da banca não é permitida' "$SHIM_PATH" || die "shim sem bloqueio transfer→desafio"
+  grep -q 'desafio_participations_result_check' "$SHIM_PATH" || die "shim sem fallback result_check"
   systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 else
   log "aviso: shim não encontrado"
+fi
+
+# Corrige CHECK result (bloqueava won/lost/pending no encerrar/entrar)
+DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E 'db|postgres' | head -1 || true)"
+if [[ -n "${DB_CONTAINER:-}" ]]; then
+  log "Corrigindo desafio_participations_result_check no Postgres ($DB_CONTAINER)"
+  psql_fix() {
+    if docker exec -i "$DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 "$@" 2>/tmp/psql-dp-result.err; then
+      return 0
+    fi
+    docker exec -i "$DB_CONTAINER" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 "$@"
+  }
+  psql_fix <<'SQL' || log "aviso: não foi possível alterar constraint (rode vps-fix-desafio-participations-result-check.sh)"
+BEGIN;
+ALTER TABLE public.desafio_participations
+  DROP CONSTRAINT IF EXISTS desafio_participations_result_check;
+ALTER TABLE public.desafio_participations
+  ADD CONSTRAINT desafio_participations_result_check
+  CHECK (
+    result IS NULL
+    OR lower(btrim(result::text)) = ANY (
+      ARRAY[
+        'pending','open','won','win','lost','lose',
+        'cancelled','canceled','void','refunded'
+      ]
+    )
+  );
+COMMIT;
+SQL
+else
+  log "aviso: container Postgres não encontrado — rode scripts/vps-fix-desafio-participations-result-check.sh"
 fi
 
 # Nginx: libera rota desafio-active-clients

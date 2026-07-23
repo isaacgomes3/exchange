@@ -451,6 +451,20 @@
         }, 300);
       }
 
+      /** Etapa ainda pode receber entrada (não encerrada no admin). */
+      function isStepPlayable(step) {
+        var st = String((step && step.status) || "")
+          .toLowerCase()
+          .trim();
+        return (
+          st !== "done" &&
+          st !== "settled" &&
+          st !== "cancelled" &&
+          st !== "canceled" &&
+          st !== "closed"
+        );
+      }
+
       /** Progresso pessoal: etapa 2+ = falhou na casa (venceu ArbiShield) na anterior — não é cadastro prévio. */
       function personalProgress(desafio, parts) {
         var empty = {
@@ -484,7 +498,12 @@
           var side = String(p.side || "").toLowerCase();
           var result = String(p.result || "").toLowerCase();
           if (!result || result === "pending" || result === "open") {
-            openStepIndex = idx;
+            // Jogo já encerrado no admin: não mantém como “aberto” para apostar
+            if (isStepPlayable(step)) openStepIndex = idx;
+            else if (side === "arbishield") {
+              // Liquidação pendente em etapa done → trata como avanço (bateu Arbi)
+              advancedPast = Math.max(advancedPast, idx);
+            }
             return;
           }
           if (result === "won" || result === "win") {
@@ -535,8 +554,9 @@
             waitingNextGame: false,
           };
         }
+        // Só conta jogo ainda jogável (status != done). Encerrado some do “disponível”.
         var hasGame = steps.some(function (s) {
-          return Number(s.step_index) === next;
+          return Number(s.step_index) === next && isStepPlayable(s);
         });
         return {
           circuitMax: circuitMax,
@@ -810,6 +830,7 @@
       }
 
       function phaseOf(item, now) {
+        if (item && item.stepClosed) return "closed";
         var start = item.startsAtMs;
         if (start == null) return "ativo";
         var unlock = start - (item.releaseMinutesBefore || 0) * 6e4;
@@ -1081,6 +1102,8 @@
           externalBetLink: externalLink,
           stepId: step.id,
           isActiveDesafio: !!desafio.is_active,
+          stepClosed: !isStepPlayable(step),
+          stepStatus: String(step.status || ""),
           totalSteps: Number(desafio.total_steps) || 5,
           houseName: houseFromLink(externalLink),
         };
@@ -1099,7 +1122,10 @@
           "Etapa " + (item.stepIndex || 1) + " de " + (item.totalSteps || 1);
 
         var arbiCta;
-        if (waiting) {
+        if (phase === "closed" || item.stepClosed) {
+          arbiCta =
+            '<button type="button" class="dz-v2-cta arbi is-disabled" disabled>Jogo encerrado</button>';
+        } else if (waiting) {
           arbiCta =
             '<button type="button" class="dz-v2-cta arbi wait" disabled>' +
             "<span>Disponível em</span>" +
@@ -1527,6 +1553,16 @@
             return Number(s.step_index) === Number(progress.eligibleStepIndex);
           });
           if (!step) return;
+          // Admin encerrou (Bateu ArbiShield / Casa) → some do app do cliente
+          if (!isStepPlayable(step)) {
+            if (
+              Number(progress.eligibleStepIndex) > 1 ||
+              progress.waitingNextGame
+            ) {
+              waitingNextGame = true;
+            }
+            return;
+          }
           // Só o jogo da etapa pessoal atual — etapa 2+ vem da falha na casa, não do cadastro
           items.push(toCardItem(d, step));
         });
