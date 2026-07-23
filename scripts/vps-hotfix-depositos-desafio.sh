@@ -44,6 +44,14 @@ grep -q 'depositos-desafio' "$WEB/v2-shell.js" || die "shell sem Depósitos Desa
 grep -q 'v2-nav-group' "$WEB/v2-shell.js" || die "shell sem seções recolhíveis"
 grep -q 'ensureNavAccordionCss\|data-v2-nav-acc' "$WEB/v2-shell.js" || die "shell sem CSS crítico do acordeão"
 cp -f "$WEB/v2-shell.js" "$WEB_ROOT/v2-shell.js" 2>/dev/null || true
+
+log "v2.css (acordeão do menu)"
+fetch "deploy/vps-supabase/static/v2/v2.css" "$WEB/v2.css"
+chmod 0644 "$WEB/v2.css"
+grep -q 'v2-nav-group.is-open' "$WEB/v2.css" || die "CSS sem acordeão do menu"
+grep -q 'appearance: none' "$WEB/v2.css" || die "CSS sem reset de botão do menu"
+cp -f "$WEB/v2.css" "$WEB_ROOT/v2.css" 2>/dev/null || true
+
 log "em-breve.html"
 fetch "deploy/vps-supabase/static/v2/em-breve.html" "$WEB/em-breve.html" || true
 chmod 0644 "$WEB/em-breve.html" 2>/dev/null || true
