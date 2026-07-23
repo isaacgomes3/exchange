@@ -592,17 +592,25 @@
           });
         });
         host.querySelectorAll("[data-stake-max]").forEach(function (btn) {
-          btn.addEventListener("click", function () {
+          btn.addEventListener("click", async function () {
             var card = btn.closest(".dz-card");
-            var id = card && card.getAttribute("data-card");
-            var item = items.find(function (x) { return String(x.id) === String(id); });
-            if (!card || !item) return;
-            var maxCents = desafioBalCents > 0
-              ? Math.min(desafioBalCents, item.entradaCents || desafioBalCents)
-              : item.entradaCents || MIN_ACCESS_CENTS;
-            if (!(maxCents > 0)) maxCents = item.entradaCents || MIN_ACCESS_CENTS;
+            if (!card) return;
+            // MAX = saldo usável da carteira Desafio (nunca congelado/locked).
+            try {
+              await refreshAccessBar();
+            } catch (ex) {}
+            var maxCents = Math.max(0, Number(desafioBalCents) || 0);
+            if (!(maxCents > 0)) {
+              alert(
+                "Sem saldo disponível no Desafio. O saldo congelado não pode ser usado nas entradas."
+              );
+              return;
+            }
             var input = card.querySelector("[data-stake-input]");
-            if (input) input.value = centsToInput(maxCents);
+            if (input) {
+              input.value = centsToInput(maxCents);
+              input.dispatchEvent(new Event("input", { bubbles: true }));
+            }
             refreshCardMath(card);
           });
         });
