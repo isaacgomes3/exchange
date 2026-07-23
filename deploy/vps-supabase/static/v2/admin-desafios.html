@@ -733,11 +733,8 @@
             if (window.__desafioRows) render(window.__desafioRows);
             return;
           }
-          // Já em cache → só abre
-          if (Object.prototype.hasOwnProperty.call(window.__desafioActiveClients, id)) {
-            if (window.__desafioRows) render(window.__desafioRows);
-            return;
-          }
+          // Sempre busca ao abrir (evita cache vazio antigo)
+          delete window.__desafioActiveClients[id];
           window.__desafioClientsLoading[id] = true;
           if (window.__desafioRows) render(window.__desafioRows);
           try {

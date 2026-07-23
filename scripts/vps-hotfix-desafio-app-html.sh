@@ -3,7 +3,7 @@
 # Usa jsDelivr + SHA do tip para evitar HTML antigo em cache.
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=19")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=20")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -103,7 +103,7 @@ fetch "deploy/vps-supabase/static/v2/admin-desafios.html" "$WEB/admin-desafios.h
 chmod 0644 "$WEB/admin-desafios.html"
 cp -f "$WEB/admin-desafios.html" "$WEB_ROOT/admin-desafios.html" 2>/dev/null || true
 grep -q 'desafio-active-clients' "$WEB/admin-desafios.html" || die "admin-desafios sem API clientes ativos"
-grep -q 'clients-box\|Clientes ativos no desafio' "$WEB/admin-desafios.html" || die "admin-desafios sem bloco de clientes"
+grep -q 'data-open-clients' "$WEB/admin-desafios.html" || die "admin-desafios sem clique em clientes ativos"
 
 # Shim (lucro composto etapa 2+)
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"

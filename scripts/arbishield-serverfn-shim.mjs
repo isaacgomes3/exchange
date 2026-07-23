@@ -703,30 +703,41 @@ async function listDesafioPendingCounts(token, body) {
 /**
  * Clientes ativos no circuito: pendentes na etapa atual ou avançando
  * (ganhou ArbiShield e ainda não bateu na casa / não foi eliminado).
+ * Alinhado ao contador de "cliente(s) ativo(s)" (entradas pending).
  */
+function isPendingResult(result) {
+  const r = String(result == null ? "pending" : result).toLowerCase();
+  return !r || r === "pending" || r === "open" || r === "null";
+}
+
 function computeClientCircuitProgress(parts, steps, circuitMax) {
   const byId = {};
-  for (const s of steps) byId[String(s.id)] = s;
+  for (const s of steps || []) byId[String(s.id)] = s;
   let advancedPast = 0;
   let wonCasa = false;
   let openStepIndex = null;
   let openPart = null;
   let eliminated = false;
   let lastPart = null;
+
   for (const p of parts || []) {
     const step = byId[String(p.step_id)];
-    if (!step) continue;
-    const idx = Math.max(1, n(step.step_index) || 1);
+    const idx = Math.max(1, n(step?.step_index) || 1);
     const side = String(p.side || "").toLowerCase();
     const result = String(p.result || "").toLowerCase();
     if (!lastPart || String(p.created_at || "") > String(lastPart.created_at || "")) {
       lastPart = p;
     }
-    if (!result || result === "pending" || result === "open" || result === "null") {
-      openStepIndex = idx;
-      openPart = p;
+    // Entrada pendente conta mesmo se o step não veio no mapa
+    if (isPendingResult(result)) {
+      openStepIndex = step ? idx : openStepIndex || idx;
+      if (!openPart || String(p.created_at || "") > String(openPart.created_at || "")) {
+        openPart = p;
+        if (step) openStepIndex = idx;
+      }
       continue;
     }
+    if (!step) continue;
     if (result === "won" || result === "win") {
       if (side === "casa" || side === "exchange") {
         wonCasa = true;
@@ -738,29 +749,30 @@ function computeClientCircuitProgress(parts, steps, circuitMax) {
       if (side === "arbishield") eliminated = true;
     }
   }
-  if (wonCasa) {
-    return { active: false, reason: "won_casa", stepIndex: null, entry: lastPart };
-  }
-  if (eliminated && openStepIndex == null) {
-    return { active: false, reason: "eliminated", stepIndex: null, entry: lastPart };
-  }
-  if (openStepIndex != null) {
+
+  if (openPart || openStepIndex != null) {
     return {
       active: true,
       reason: "pending",
-      stepIndex: openStepIndex,
+      stepIndex: openStepIndex || 1,
       entry: openPart || lastPart,
       waitingNextGame: false,
     };
   }
-  const next = advancedPast + 1;
-  if (next > circuitMax) {
-    return { active: false, reason: "finished", stepIndex: null, entry: lastPart };
+  if (wonCasa) {
+    return { active: false, reason: "won_casa", stepIndex: null, entry: lastPart };
   }
+  if (eliminated) {
+    return { active: false, reason: "eliminated", stepIndex: null, entry: lastPart };
+  }
+  const next = advancedPast + 1;
   if (advancedPast <= 0) {
     return { active: false, reason: "no_entry", stepIndex: null, entry: lastPart };
   }
-  const hasGame = steps.some((s) => n(s.step_index) === next);
+  if (next > circuitMax) {
+    return { active: false, reason: "finished", stepIndex: null, entry: lastPart };
+  }
+  const hasGame = (steps || []).some((s) => n(s.step_index) === next);
   return {
     active: true,
     reason: hasGame ? "eligible" : "waiting_next",
@@ -784,73 +796,100 @@ async function listDesafioActiveClients(token, body) {
   for (let i = 0; i < ids.length; i += 40) {
     const chunk = ids.slice(i, i + 40);
     const inList = chunk.join(",");
-    const desafios = await sb(
-      `/rest/v1/desafios?select=id,total_steps,desafio_steps(id,step_index,status,match_label,home_team,away_team)&id=in.(${inList})`,
+
+    const flat = await sb(
+      `/rest/v1/desafios?select=id,total_steps&id=in.(${inList})`,
       { token: SERVICE_KEY }
-    ).catch(() => null);
-    let desafioRows = Array.isArray(desafios) ? desafios : [];
-    if (!desafioRows.length) {
-      const flat = await sb(
-        `/rest/v1/desafios?select=id,total_steps&id=in.(${inList})`,
-        { token: SERVICE_KEY }
-      ).catch(() => []);
-      const stepsFlat = await sb(
-        `/rest/v1/desafio_steps?select=id,desafio_id,step_index,status,match_label,home_team,away_team&desafio_id=in.(${inList})&order=step_index.asc&limit=2000`,
-        { token: SERVICE_KEY }
-      ).catch(() => []);
-      const stepsByD = new Map();
-      for (const s of Array.isArray(stepsFlat) ? stepsFlat : []) {
-        const did = String(s.desafio_id || "");
-        if (!stepsByD.has(did)) stepsByD.set(did, []);
-        stepsByD.get(did).push(s);
-      }
-      desafioRows = (Array.isArray(flat) ? flat : []).map((d) => ({
-        ...d,
-        desafio_steps: stepsByD.get(String(d.id)) || [],
-      }));
+    ).catch(() => []);
+    const stepsFlat = await sb(
+      `/rest/v1/desafio_steps?select=id,desafio_id,step_index,status,match_label,home_team,away_team&desafio_id=in.(${inList})&order=step_index.asc&limit=2000`,
+      { token: SERVICE_KEY }
+    ).catch(() => []);
+    const stepsByD = new Map();
+    for (const s of Array.isArray(stepsFlat) ? stepsFlat : []) {
+      const did = String(s.desafio_id || "");
+      if (!stepsByD.has(did)) stepsByD.set(did, []);
+      stepsByD.get(did).push(s);
     }
     const desafioMap = new Map();
-    for (const d of desafioRows) {
-      desafioMap.set(String(d.id), d);
+    for (const d of Array.isArray(flat) ? flat : []) {
+      desafioMap.set(String(d.id), {
+        ...d,
+        desafio_steps: stepsByD.get(String(d.id)) || [],
+      });
     }
-    let parts = await sb(
-      `/rest/v1/desafio_participations?select=id,user_id,step_id,desafio_id,side,result,amount_cents,profit_cents,created_at,updated_at,profiles(full_name,avatar_url)&desafio_id=in.(${inList})&order=created_at.desc&limit=5000`,
-      { token: SERVICE_KEY }
-    ).catch(() => null);
-    if (!Array.isArray(parts)) {
-      parts = await sb(
-        `/rest/v1/desafio_participations?select=id,user_id,step_id,desafio_id,side,result,amount_cents,profit_cents,created_at,updated_at&desafio_id=in.(${inList})&order=created_at.desc&limit=5000`,
-        { token: SERVICE_KEY }
-      ).catch(() => []);
-      const userIds = [
-        ...new Set(
-          (Array.isArray(parts) ? parts : [])
-            .map((p) => p.user_id)
-            .filter(Boolean)
-        ),
-      ];
-      const nameMap = new Map();
-      for (let u = 0; u < userIds.length; u += 80) {
-        const uchunk = userIds.slice(u, u + 80);
-        const profiles = await sb(
-          `/rest/v1/profiles?select=id,full_name,avatar_url&id=in.(${uchunk.join(",")})`,
-          { token: SERVICE_KEY }
-        ).catch(() => []);
-        for (const pr of Array.isArray(profiles) ? profiles : []) {
-          nameMap.set(String(pr.id), pr);
-        }
+    // Garante chave mesmo se o desafio sumiu do select
+    for (const id of chunk) {
+      if (!desafioMap.has(String(id))) {
+        desafioMap.set(String(id), {
+          id,
+          total_steps: 5,
+          desafio_steps: stepsByD.get(String(id)) || [],
+        });
       }
-      parts = (Array.isArray(parts) ? parts : []).map((p) => ({
-        ...p,
-        profiles: nameMap.get(String(p.user_id)) || null,
-      }));
     }
 
-    const byUser = new Map(); // key: desafioId|userId
-    for (const p of Array.isArray(parts) ? parts : []) {
-      const did = String(p.desafio_id || "");
+    // Participações: por desafio_id OU por step_id dos jogos deste desafio
+    const stepIds = (Array.isArray(stepsFlat) ? stepsFlat : [])
+      .map((s) => s.id)
+      .filter(Boolean);
+    let parts = await sb(
+      `/rest/v1/desafio_participations?select=id,user_id,step_id,desafio_id,side,result,amount_cents,profit_cents,created_at,updated_at&desafio_id=in.(${inList})&order=created_at.desc&limit=5000`,
+      { token: SERVICE_KEY }
+    ).catch(() => []);
+    parts = Array.isArray(parts) ? parts : [];
+
+    if (stepIds.length) {
+      for (let s = 0; s < stepIds.length; s += 80) {
+        const schunk = stepIds.slice(s, s + 80);
+        const extra = await sb(
+          `/rest/v1/desafio_participations?select=id,user_id,step_id,desafio_id,side,result,amount_cents,profit_cents,created_at,updated_at&step_id=in.(${schunk.join(",")})&order=created_at.desc&limit=5000`,
+          { token: SERVICE_KEY }
+        ).catch(() => []);
+        const seen = new Set(parts.map((p) => String(p.id)));
+        for (const p of Array.isArray(extra) ? extra : []) {
+          if (seen.has(String(p.id))) continue;
+          // normaliza desafio_id a partir do step
+          if (!p.desafio_id) {
+            const st = (Array.isArray(stepsFlat) ? stepsFlat : []).find(
+              (x) => String(x.id) === String(p.step_id)
+            );
+            if (st) p.desafio_id = st.desafio_id;
+          }
+          parts.push(p);
+          seen.add(String(p.id));
+        }
+      }
+    }
+
+    const userIds = [
+      ...new Set(parts.map((p) => p.user_id).filter(Boolean).map(String)),
+    ];
+    const nameMap = new Map();
+    for (let u = 0; u < userIds.length; u += 80) {
+      const uchunk = userIds.slice(u, u + 80);
+      const profiles = await sb(
+        `/rest/v1/profiles?select=id,full_name,avatar_url&id=in.(${uchunk.join(",")})`,
+        { token: SERVICE_KEY }
+      ).catch(() => []);
+      for (const pr of Array.isArray(profiles) ? profiles : []) {
+        nameMap.set(String(pr.id), pr);
+      }
+    }
+
+    const byUser = new Map();
+    for (const p of parts) {
+      let did = String(p.desafio_id || "");
+      if (!did && p.step_id) {
+        const st = (Array.isArray(stepsFlat) ? stepsFlat : []).find(
+          (x) => String(x.id) === String(p.step_id)
+        );
+        if (st) did = String(st.desafio_id || "");
+      }
       const uid = String(p.user_id || "");
       if (!did || !uid || !(did in byDesafio)) continue;
+      p.desafio_id = did;
+      p.profiles = nameMap.get(uid) || null;
       const key = did + "|" + uid;
       if (!byUser.has(key)) byUser.set(key, []);
       byUser.get(key).push(p);
@@ -858,8 +897,11 @@ async function listDesafioActiveClients(token, body) {
 
     for (const [key, userParts] of byUser.entries()) {
       const [did, uid] = key.split("|");
-      const d = desafioMap.get(did);
-      if (!d) continue;
+      const d = desafioMap.get(did) || {
+        id: did,
+        total_steps: 5,
+        desafio_steps: stepsByD.get(did) || [],
+      };
       const steps = Array.isArray(d.desafio_steps)
         ? d.desafio_steps.slice().sort((a, b) => n(a.step_index) - n(b.step_index))
         : [];
@@ -867,8 +909,10 @@ async function listDesafioActiveClients(token, body) {
       const progress = computeClientCircuitProgress(userParts, steps, circuitMax);
       if (!progress.active) continue;
       const entry = progress.entry || userParts[0];
-      const profile = entry?.profiles || {};
-      const step = steps.find((s) => n(s.step_index) === n(progress.stepIndex));
+      const profile = entry?.profiles || nameMap.get(uid) || {};
+      const step =
+        steps.find((s) => n(s.step_index) === n(progress.stepIndex)) ||
+        steps.find((s) => String(s.id) === String(entry?.step_id));
       const stepLabel =
         (step &&
           (step.match_label ||
@@ -883,7 +927,7 @@ async function listDesafioActiveClients(token, body) {
         side: entry?.side || "arbishield",
         result: entry?.result || "pending",
         entered_at: entry?.created_at || null,
-        step_index: progress.stepIndex,
+        step_index: progress.stepIndex || n(step?.step_index) || 1,
         total_steps: circuitMax,
         waiting_next_game: !!progress.waitingNextGame,
         step_label: stepLabel,
