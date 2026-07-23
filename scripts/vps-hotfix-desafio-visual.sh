@@ -27,6 +27,7 @@ log "v2.css (estilos do card v2)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/v2.css" -o "$WEB/v2.css"
 chmod 0644 "$WEB/v2.css"
 grep -q 'dz-v2-panel' "$WEB/v2.css" || die "CSS sem dz-v2-panel"
+grep -q 'dz-wallet-bar' "$WEB/v2.css" || die "CSS sem dz-wallet-bar"
 
 log "admin-desafios.html (home/away a partir do nome do jogo)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-desafios.html" -o "$WEB/admin-desafios.html"

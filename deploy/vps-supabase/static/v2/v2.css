@@ -3622,6 +3622,257 @@ body.dep-open { overflow: hidden; }
   color: var(--muted);
   font-size: 13px;
 }
+
+/* Barra saldo / depósito do Desafio */
+.dz-wallet-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 0 0 18px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  background: #0b231e;
+  overflow: hidden;
+}
+.dz-wallet-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 16px;
+  min-width: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  position: relative;
+}
+.dz-wallet-cell:last-child { border-right: 0; }
+.dz-wallet-ico {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 16px;
+  font-weight: 900;
+}
+.dz-wallet-ico.lime { color: #c6ff00; }
+.dz-wallet-l {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+}
+.dz-wallet-v {
+  margin-top: 6px;
+  font-size: clamp(1.25rem, 2.4vw, 1.6rem);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: #fff;
+  line-height: 1.1;
+}
+.dz-wallet-v.sm { font-size: 1.05rem; margin-top: 8px; }
+.dz-wallet-v.lime { color: #c6ff00; }
+.dz-wallet-hint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  line-height: 1.35;
+}
+.dz-wallet-deposit {
+  margin-left: auto;
+  align-self: center;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #c6ff00;
+  color: #000;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dz-wallet-deposit:hover { filter: brightness(1.06); }
+.dz-wallet-steps {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.dz-wallet-steps span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.dz-wallet-steps span.done {
+  background: #c6ff00;
+  border-color: #c6ff00;
+}
+.dz-wallet-steps span.current {
+  background: rgba(201, 242, 35, 0.25);
+  border-color: #c6ff00;
+  box-shadow: 0 0 0 3px rgba(201, 242, 35, 0.12);
+}
+.dz-wallet-steps span.lost {
+  background: #ef4444;
+  border-color: #ef4444;
+}
+
+.dz-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.dz-modal.open { display: flex; }
+.dz-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+}
+.dz-modal-sheet {
+  position: relative;
+  width: min(440px, 100%);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #0b231e;
+  color: #fff;
+  overflow: hidden;
+}
+.dz-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 18px 0;
+}
+.dz-modal-kicker {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+.dz-modal-head h2 {
+  margin: 6px 0 0;
+  font-size: 1.2rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+.dz-modal-x {
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 22px;
+  cursor: pointer;
+  line-height: 1;
+}
+.dz-modal-body { padding: 14px 18px 18px; }
+.dz-modal-note {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  line-height: 1.45;
+}
+.dz-transfer-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.dz-transfer-meta > div {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.22);
+}
+.dz-transfer-meta .l {
+  display: block;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+.dz-transfer-meta strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 14px;
+}
+.dz-field {
+  display: grid;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+}
+.dz-field input {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.dz-modal-err {
+  margin: 10px 0 0;
+  color: #fca5a5;
+  font-size: 12px;
+  font-weight: 700;
+}
+.dz-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+.dz-btn {
+  border: 0;
+  border-radius: 10px;
+  padding: 11px 14px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.dz-btn.ghost {
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.dz-btn.primary {
+  background: #c6ff00;
+  color: #000;
+}
+.dz-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+@media (max-width: 860px) {
+  .dz-wallet-bar { grid-template-columns: 1fr; }
+  .dz-wallet-cell {
+    border-right: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .dz-wallet-cell:last-child { border-bottom: 0; }
+  .dz-wallet-deposit { margin-left: 0; }
+}
+
 /* Banner do Desafio (SPA DesafioScreen · variant=desafio) */
 .dz-banner {
   margin: 0 0 18px;

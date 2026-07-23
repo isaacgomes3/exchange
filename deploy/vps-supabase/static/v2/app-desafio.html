@@ -25,11 +25,31 @@
     <div class="dz-banner-placeholder">Banner do Desafio · aguardando publicação</div>
   </div>
 
-  <div class="app-kpi-row">
-    <div class="app-kpi"><div class="l">Jogos liberados</div><div class="v lime" id="kAvail">—</div></div>
-    <div class="app-kpi"><div class="l">Desafios ativos</div><div class="v" id="kActive">—</div></div>
-    <div class="app-kpi"><div class="l">Etapas</div><div class="v" id="kTotal">—</div></div>
-  </div>
+  <!-- Barra saldo / depósito do Desafio (substitui KPIs) -->
+  <section class="dz-wallet-bar" aria-label="Saldo do Desafio">
+    <div class="dz-wallet-cell">
+      <div class="dz-wallet-ico" aria-hidden="true">◈</div>
+      <div>
+        <div class="dz-wallet-l">Saldo da banca</div>
+        <div class="dz-wallet-v" id="dzWalletBanca">—</div>
+      </div>
+      <button type="button" class="dz-wallet-deposit" id="dzDepositBtn">Depositar Desafio</button>
+    </div>
+    <div class="dz-wallet-cell">
+      <div class="dz-wallet-l">Progresso no desafio atual</div>
+      <div class="dz-wallet-v sm" id="dzWalletProgress">Nenhuma etapa contabilizada</div>
+      <div class="dz-wallet-steps" id="dzWalletSteps" aria-hidden="true"></div>
+      <p class="dz-wallet-hint" id="dzWalletProgressHint">Pegue um jogo para começar a contar seu progresso</p>
+    </div>
+    <div class="dz-wallet-cell">
+      <div class="dz-wallet-ico lime" aria-hidden="true">↗</div>
+      <div>
+        <div class="dz-wallet-l">Saldo do desafio atual</div>
+        <div class="dz-wallet-v lime" id="dzWalletSaldo">—</div>
+        <p class="dz-wallet-hint">Acumula os lucros das vitórias na ArbiShield.</p>
+      </div>
+    </div>
+  </section>
 
   <div class="dz-filters" id="filters" role="tablist">
     <button type="button" class="dz-filter is-on" data-f="Todos">Todos</button>
@@ -43,6 +63,35 @@
   <p class="app-desafio-lead">Ganhou na ArbiShield (falha na casa)? Segue no circuito (até +4 eventos) mirando a casa oposta. Sem vitória na casa ao final, o valor acumulado vai aos provedores de liquidez.</p>
   <div id="list" class="app-desafio-grid"><div class="ops-empty">Carregando…</div></div>
 
+  <div class="dz-modal" id="dzTransferModal" aria-hidden="true">
+    <div class="dz-modal-backdrop" data-dz-close="1"></div>
+    <div class="dz-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="dzTransferTitle">
+      <header class="dz-modal-head">
+        <div>
+          <p class="dz-modal-kicker">Transferência interna</p>
+          <h2 id="dzTransferTitle">Depositar no Desafio</h2>
+        </div>
+        <button type="button" class="dz-modal-x" data-dz-close="1" aria-label="Fechar">×</button>
+      </header>
+      <div class="dz-modal-body">
+        <p class="dz-modal-note">Mova até 50% do saldo da banca (real + reutilizável) para o saldo do Desafio ArbiShield.</p>
+        <div class="dz-transfer-meta">
+          <div><span class="l">Disponível na banca</span><strong id="dzTransferAvail">—</strong></div>
+          <div><span class="l">Máximo (50%)</span><strong id="dzTransferMax">—</strong></div>
+        </div>
+        <label class="dz-field">
+          <span>Valor (R$)</span>
+          <input id="dzTransferAmount" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" />
+        </label>
+        <p class="dz-modal-err" id="dzTransferErr" hidden></p>
+        <div class="dz-modal-actions">
+          <button type="button" class="dz-btn ghost" data-dz-close="1">Cancelar</button>
+          <button type="button" class="dz-btn primary" id="dzTransferSubmit">Confirmar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     (async function () {
       var money = ArbiV2.money;
@@ -53,12 +102,204 @@
       var filter = "Todos";
       var items = [];
       var tickTimer = null;
+      var walletState = {
+        bancaCents: 0,
+        desafioWalletCents: 0,
+        desafioSaldoCents: 0,
+        currentStep: 0,
+        totalSteps: 5,
+        stepStates: ["pending", "pending", "pending", "pending", "pending"],
+        desafioActive: false,
+      };
 
-      function showErr(msg) {
-        var el = document.getElementById("err");
-        el.textContent = msg || "";
-        el.classList.toggle("show", !!msg);
+      function setTxt(id, value) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = value;
       }
+
+      function renderWalletBar() {
+        setTxt("dzWalletBanca", money(walletState.desafioWalletCents));
+        setTxt("dzWalletSaldo", money(walletState.desafioSaldoCents));
+        var stepsHost = document.getElementById("dzWalletSteps");
+        var hint = document.getElementById("dzWalletProgressHint");
+        if (walletState.desafioActive && walletState.totalSteps > 0) {
+          setTxt(
+            "dzWalletProgress",
+            "Etapa " + walletState.currentStep + " de " + walletState.totalSteps
+          );
+          if (hint) hint.hidden = true;
+          if (stepsHost) {
+            var states = walletState.stepStates || [];
+            var total = walletState.totalSteps || states.length || 5;
+            var html = "";
+            for (var i = 0; i < total; i++) {
+              var st = states[i] || "pending";
+              html += '<span class="' + esc(st) + '"></span>';
+            }
+            stepsHost.innerHTML = html;
+          }
+        } else {
+          setTxt("dzWalletProgress", "Nenhuma etapa contabilizada");
+          if (hint) hint.hidden = false;
+          if (stepsHost) {
+            stepsHost.innerHTML =
+              '<span></span><span></span><span></span><span></span><span></span>';
+          }
+        }
+      }
+
+      function openTransferModal() {
+        var modal = document.getElementById("dzTransferModal");
+        var max = Math.floor(walletState.bancaCents / 2);
+        setTxt("dzTransferAvail", money(walletState.bancaCents));
+        setTxt("dzTransferMax", money(max));
+        document.getElementById("dzTransferAmount").value = "";
+        var err = document.getElementById("dzTransferErr");
+        err.hidden = true;
+        err.textContent = "";
+        modal.classList.add("open");
+        modal.setAttribute("aria-hidden", "false");
+      }
+
+      function closeTransferModal() {
+        var modal = document.getElementById("dzTransferModal");
+        modal.classList.remove("open");
+        modal.setAttribute("aria-hidden", "true");
+      }
+
+      async function submitTransfer() {
+        var err = document.getElementById("dzTransferErr");
+        var raw = document.getElementById("dzTransferAmount").value || "";
+        var normalized = raw.replace(/\./g, "").replace(",", ".");
+        var reais = parseFloat(normalized);
+        var cents = Math.round((reais || 0) * 100);
+        if (!cents || cents <= 0) {
+          err.textContent = "Informe um valor válido.";
+          err.hidden = false;
+          return;
+        }
+        var btn = document.getElementById("dzTransferSubmit");
+        btn.disabled = true;
+        try {
+          var session = await supa.auth.getSession();
+          var token =
+            session.data.session && session.data.session.access_token;
+          if (!token) throw new Error("Sessão expirada");
+          var res = await fetch("/api/arbishield/transfer-desafio", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + token,
+            },
+            body: JSON.stringify({ amountCents: cents }),
+          });
+          var data = await res.json().catch(function () {
+            return {};
+          });
+          if (!res.ok) throw new Error(data.error || "Falha na transferência");
+          closeTransferModal();
+          location.reload();
+        } catch (ex) {
+          err.textContent = ex.message || "Erro";
+          err.hidden = false;
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      async function loadWalletBar(activeDesafios) {
+        try {
+          var profileRes = await supa
+            .from("profiles")
+            .select(
+              "balance_cents,reusable_balance_cents,desafio_balance_cents"
+            )
+            .eq("id", user.id)
+            .maybeSingle();
+          if (profileRes.error) throw profileRes.error;
+          var p = profileRes.data || {};
+          walletState.bancaCents =
+            Number(p.balance_cents || 0) + Number(p.reusable_balance_cents || 0);
+          walletState.desafioWalletCents = Number(p.desafio_balance_cents || 0);
+
+          var active = Array.isArray(activeDesafios) ? activeDesafios[0] : null;
+          var steps = active
+            ? (active.desafio_steps || [])
+                .slice()
+                .sort(function (a, b) {
+                  return (a.step_index || 0) - (b.step_index || 0);
+                })
+            : [];
+          walletState.totalSteps = steps.length || Number(active && active.total_steps) || 5;
+
+          var partRes = await supa
+            .from("desafio_participations")
+            .select("id,step_id,side,result,profit_cents,amount_cents,created_at")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: true })
+            .limit(200);
+          var parts = !partRes.error && Array.isArray(partRes.data) ? partRes.data : [];
+
+          var stepIds = {};
+          steps.forEach(function (s) {
+            stepIds[String(s.id)] = s;
+          });
+          var myParts = parts.filter(function (p) {
+            return stepIds[String(p.step_id)];
+          });
+
+          var saldo = 0;
+          var states = steps.map(function () {
+            return "pending";
+          });
+          var current = 0;
+          myParts.forEach(function (p) {
+            var idx = steps.findIndex(function (s) {
+              return String(s.id) === String(p.step_id);
+            });
+            if (idx < 0) return;
+            var side = String(p.side || "").toLowerCase();
+            var result = String(p.result || "").toLowerCase();
+            if (result === "won" || result === "win") {
+              if (side === "arbishield") {
+                states[idx] = "done";
+                saldo += Number(p.profit_cents || 0);
+                current = Math.max(current, idx + 1);
+              } else if (side === "casa" || side === "exchange") {
+                states[idx] = "lost";
+                saldo = 0;
+                current = Math.max(current, idx + 1);
+              }
+            } else if (result === "lost" || result === "lose") {
+              states[idx] = side === "arbishield" ? "lost" : "done";
+              current = Math.max(current, idx + 1);
+            } else {
+              states[idx] = "current";
+              current = Math.max(current, idx + 1);
+            }
+          });
+
+          if (!current && myParts.length) current = 1;
+          if (states.indexOf("current") < 0 && current < states.length && myParts.length) {
+            // next pending becomes current visual
+          }
+          walletState.stepStates = states.length
+            ? states
+            : ["pending", "pending", "pending", "pending", "pending"];
+          walletState.currentStep = current || (myParts.length ? 1 : 0);
+          walletState.desafioSaldoCents = saldo;
+          walletState.desafioActive = Boolean(active && myParts.length);
+        } catch (ex) {
+          console.warn("[desafio] wallet bar", ex);
+        }
+        renderWalletBar();
+      }
+
+      document.getElementById("dzDepositBtn").addEventListener("click", openTransferModal);
+      document.getElementById("dzTransferSubmit").addEventListener("click", submitTransfer);
+      document.querySelectorAll("[data-dz-close]").forEach(function (el) {
+        el.addEventListener("click", closeTransferModal);
+      });
 
       function esc(v) {
         return String(v == null ? "" : v)
@@ -667,13 +908,7 @@
           return na - nb;
         });
 
-        document.getElementById("kAvail").textContent = String(
-          items.filter(function (it) {
-            return phaseOf(it, Date.now()) === "ativo" || phaseOf(it, Date.now()) === "soon";
-          }).length
-        );
-        document.getElementById("kActive").textContent = String(active.length);
-        document.getElementById("kTotal").textContent = String(items.length);
+        await loadWalletBar(active);
 
         render();
         enrichLogos(items)
