@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <title>Depósitos manuais — ArbiShield</title>
+  <title>Depósitos Desafio — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css" />
@@ -48,11 +48,11 @@
     .drawer img, .drawer embed { width: 100%; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); margin-top: 10px; min-height: 200px; }
   </style>
 </head>
-<body data-shell="admin" data-active="manual-deposits">
+<body data-shell="admin" data-active="depositos-desafio">
   <div class="page-head">
     <div>
-      <h1>Depósitos <span>manuais</span></h1>
-      <p class="sub">PIX / crypto · comprovante · creditar saldo como no site antigo</p>
+      <h1>Depósitos <span>Desafio</span></h1>
+      <p class="sub">PIX do app Desafio · credita a carteira desafio_balance</p>
     </div>
     <button type="button" class="btn btn-ghost" id="btnRefresh">Atualizar</button>
   </div>
@@ -73,12 +73,8 @@
       <option value="REJECTED">Rejeitados</option>
       <option value="AWAITING_PROOF">Aguardando comprovante</option>
     </select>
-    <select id="fltType">
-      <option value="ALL">Todos os tipos</option>
-      <option value="user">Saldo usuário</option>
-      <option value="desafio">Desafio</option>
-      <option value="investor">Provedor / investidor</option>
-    </select>
+    <input type="hidden" id="fltType" value="desafio" />
+    <span class="muted" style="font-size:12px">Somente deposit_type = desafio</span>
     <input id="fltQ" type="search" placeholder="Buscar nome ou id…" style="min-width:200px" />
   </div>
 
@@ -184,10 +180,21 @@
         var q = await supa
           .from("manual_deposits")
           .select("*")
+          .eq("deposit_type", "desafio")
           .order("created_at", { ascending: false })
           .limit(300);
-        if (q.error) throw q.error;
-        rows = q.data || [];
+        if (q.error) {
+          // coluna deposit_type pode falhar em schemas antigos — fallback client-side
+          q = await supa.from("manual_deposits").select("*").order("created_at", { ascending: false }).limit(300);
+          if (q.error) throw q.error;
+          rows = (q.data || []).filter(function (r) {
+            var t = String(r.deposit_type || "").toLowerCase();
+            var notes = String(r.notes || r.admin_notes || "").toLowerCase();
+            return t === "desafio" || t === "challenge" || notes.indexOf("desafio") >= 0;
+          });
+        } else {
+          rows = q.data || [];
+        }
         var userIds = Array.from(new Set(rows.map(function (r) { return r.user_id; }).filter(Boolean)));
         var profileMap = {};
         if (userIds.length) {
@@ -235,7 +242,7 @@
 
         var list = filtered();
         if (!list.length) {
-          tbody.innerHTML = '<tr><td colspan="8" class="empty">Sem depósitos para exibir</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="8" class="empty">Nenhum depósito Desafio. Confira se o PIX do app usou deposit_type=desafio.</td></tr>';
           return;
         }
         tbody.innerHTML = list.map(function (r, idx) {
