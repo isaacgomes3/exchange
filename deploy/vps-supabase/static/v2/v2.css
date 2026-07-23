@@ -1828,20 +1828,27 @@ body[data-shell="app"] .btn-primary {
   background: transparent;
 }
 .v2-app-balances {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: nowrap;
   align-items: stretch;
-  gap: 8px;
+  gap: clamp(4px, 1vw, 8px);
   width: 100%;
   min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.v2-app-balances::-webkit-scrollbar {
+  display: none;
 }
 .v2-bal-chip {
   display: flex;
+  flex: 1 1 0;
   flex-direction: column;
   justify-content: center;
   gap: 2px;
   min-width: 0;
-  padding: 8px 10px;
+  padding: 8px clamp(4px, 1.2vw, 10px);
   border-radius: 12px;
   background: #051a14;
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -1855,13 +1862,17 @@ body[data-shell="app"] .btn-primary {
   text-transform: uppercase;
 }
 .v2-bal-chip .v {
-  font-size: 15px;
+  font-size: clamp(11px, 1.35vw, 15px);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 .v2-bal-chip .v::after {
   content: "";
@@ -2016,14 +2027,15 @@ body[data-shell="app"] .btn-primary {
     position: static !important;
   }
   body[data-shell="app"] .v2-app-balances {
-    display: grid !important;
-    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-    gap: 6px;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 5px;
     width: 100%;
   }
   body[data-shell="app"] .v2-bal-chip {
+    flex: 1 1 0;
     min-width: 0;
-    padding: 7px 4px;
+    padding: 7px 3px;
     align-items: center;
     text-align: center;
     gap: 3px;
@@ -6481,10 +6493,13 @@ body.dep-open { overflow: hidden; }
     grid-template-columns: 1fr !important;
   }
   body[data-shell="app"] .v2-app-balances {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 4px;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 3px;
   }
   body[data-shell="app"] .v2-bal-chip {
+    flex: 1 1 0;
+    min-width: 0;
     padding: 6px 2px;
     border-radius: 10px;
   }
