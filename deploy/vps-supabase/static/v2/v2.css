@@ -3932,7 +3932,7 @@ body[data-shell="app"] .dz-wallet-cell,
   max-width: 920px;
 }
 .dz-filters {
-  display: flex;
+  display: none !important; /* removidas da UI do Desafio */
   gap: 8px;
   overflow-x: auto;
   padding: 0 0 14px;

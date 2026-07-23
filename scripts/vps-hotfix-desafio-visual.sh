@@ -2,11 +2,10 @@
 # Hotfix: visual Desafios + lançamento 1 evento (etapa = falha do cliente)
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=17")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=18")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
-RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${BRANCH}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
 
@@ -16,9 +15,43 @@ need() { command -v "$1" >/dev/null || die "$1 não encontrado"; }
 need curl
 mkdir -p "$WEB"
 
+# Resolve tip SHA para evitar cache stale do raw.githubusercontent.com
+log "resolvendo tip de $BRANCH"
+SHA="$(
+  curl -fsSL "https://api.github.com/repos/isaacgomes3/exchange/commits/${BRANCH}" \
+    | python3 -c 'import sys,json; print(json.load(sys.stdin)["sha"])' 2>/dev/null \
+    || true
+)"
+if [[ -z "${SHA:-}" ]]; then
+  SHA="$BRANCH"
+  log "aviso: API GitHub indisponível; usando branch ($BRANCH)"
+else
+  log "tip=$SHA"
+fi
+RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${SHA}"
+BUST="?t=$(date +%s)"
+
 log "app-desafio.html (visual mockup + etapa pessoal)"
-curl -fsSL "$RAW/deploy/vps-supabase/static/v2/app-desafio.html" -o "$WEB/app-desafio.html"
+curl -fsSL "${RAW}/deploy/vps-supabase/static/v2/app-desafio.html${BUST}" -o "$WEB/app-desafio.html"
 chmod 0644 "$WEB/app-desafio.html"
+
+# Cinto de segurança: remove bloco de abas se HTML antigo ainda vier com elas
+python3 - "$WEB/app-desafio.html" <<'PY'
+from pathlib import Path
+import re, sys
+p = Path(sys.argv[1])
+t = p.read_text(encoding="utf-8")
+t2, n = re.subn(
+    r'\s*<div class="dz-filters"[^>]*>[\s\S]*?</div>\s*',
+    "\n\n",
+    t,
+    count=1,
+)
+if n:
+    print(f"==> removeu {n} bloco(s) dz-filters remanescente(s)")
+    p.write_text(t2, encoding="utf-8")
+PY
+
 grep -q 'dz-v2-compare' "$WEB/app-desafio.html" || die "HTML sem dz-v2-compare"
 grep -q 'dz-wallet-bar' "$WEB/app-desafio.html" || die "HTML sem dz-wallet-bar"
 grep -q 'Depositar Desafio' "$WEB/app-desafio.html" || die "HTML sem Depositar Desafio"
@@ -32,16 +65,18 @@ grep -q 'data-stake-input' "$WEB/app-desafio.html" || die "HTML sem campo editá
 grep -q 'data-stake-max' "$WEB/app-desafio.html" || die "HTML sem botão MAX do stake"
 grep -q 'calcSideStakes' "$WEB/app-desafio.html" || die "HTML sem cálculo automático da casa"
 grep -q 'em andamento' "$WEB/app-desafio.html" || die "HTML sem progresso em andamento"
-grep -q 'dz-filters' "$WEB/app-desafio.html" && die "abas de filtro ainda presentes no Desafio"
+grep -q 'desafio-no-filter-tabs' "$WEB/app-desafio.html" || die "HTML sem marcador desafio-no-filter-tabs"
+grep -q 'data-f="Todos"' "$WEB/app-desafio.html" && die "abas de filtro ainda presentes no Desafio"
+grep -q 'id="filters"' "$WEB/app-desafio.html" && die "bloco #filters ainda presente no Desafio"
 
 log "v2.js (busca de times + fallback TheSportsDB)"
-curl -fsSL "$RAW/deploy/vps-supabase/static/v2/v2.js" -o "$WEB/v2.js"
+curl -fsSL "${RAW}/deploy/vps-supabase/static/v2/v2.js${BUST}" -o "$WEB/v2.js"
 chmod 0644 "$WEB/v2.js"
 cp -f "$WEB/v2.js" "$WEB_ROOT/v2.js" 2>/dev/null || true
 grep -q 'thesportsdb.com' "$WEB/v2.js" || die "v2.js sem fallback TheSportsDB"
 
 log "v2.css (barra preta + borda limão)"
-curl -fsSL "$RAW/deploy/vps-supabase/static/v2/v2.css" -o "$WEB/v2.css"
+curl -fsSL "${RAW}/deploy/vps-supabase/static/v2/v2.css${BUST}" -o "$WEB/v2.css"
 chmod 0644 "$WEB/v2.css"
 # Espelha também na raiz caso o nginx sirva /v2.css de outro path
 cp -f "$WEB/v2.css" "$WEB_ROOT/v2.css" 2>/dev/null || true
