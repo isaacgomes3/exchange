@@ -68,7 +68,8 @@ grep -q 'arbiSuggest' "$WEB/admin-desafio-lancar.html" || die "página sem busca
 grep -q 'casaMarketSuggest' "$WEB/admin-desafio-lancar.html" || die "página sem busca de mercado (casa)"
 grep -q 'arbiMarketSuggest' "$WEB/admin-desafio-lancar.html" || die "página sem busca de mercado (arbi)"
 grep -q 'bindMarketPickers' "$WEB/admin-desafio-lancar.html" || die "página sem bindMarketPickers"
-grep -q 'market-catalog.js' "$WEB/admin-desafio-lancar.html" || die "página sem market-catalog.js"
+grep -q 'ArbiMarketCatalog' "$WEB/admin-desafio-lancar.html" || die "página sem catálogo de mercados embutido"
+grep -q 'Menos 2.5 gols na partida' "$WEB/admin-desafio-lancar.html" || die "página sem opções Menos 2.5 no catálogo"
 grep -q 'fProfitPct' "$WEB/admin-desafio-lancar.html" || die "página sem lucro líquido do evento"
 grep -q 'calcArbiOddFromCasa' "$WEB/admin-desafio-lancar.html" || die "página sem cálculo automático da odd ArbiShield"
 grep -q 'max-width: none !important' "$WEB/admin-desafio-lancar.html" || die "página ainda centralizada (sem full-bleed)"
@@ -96,5 +97,5 @@ if [[ -f /opt/arbishield/arbishield-prelive-events.mjs ]] || [[ -f "${ARBISHIELD
   grep -q 'appendDesafioGame' "$SCRIPTS_DIR/arbishield-prelive-events.mjs" || die "prelive sem appendDesafioGame"
 fi
 
-log "OK — hotfix desafio visual aplicado (v10: busca de mercado no lançamento)"
+log "OK — hotfix desafio visual aplicado (v11: catálogo de mercado embutido na página)"
 echo "Reinicie o serviço prelive se o script foi atualizado, e faça Ctrl+F5 no browser."
