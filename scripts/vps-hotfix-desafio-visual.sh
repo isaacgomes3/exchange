@@ -65,10 +65,21 @@ grep -q 'defaultEventTitle' "$WEB/admin-desafio-lancar.html" || die "página sem
 grep -q 'DEFAULT_CIRCUIT_STEPS' "$WEB/admin-desafio-lancar.html" || die "página sem etapas padrão do circuito"
 grep -q 'casaSuggest' "$WEB/admin-desafio-lancar.html" || die "página sem busca na Entrada Casa Externa"
 grep -q 'arbiSuggest' "$WEB/admin-desafio-lancar.html" || die "página sem busca na Entrada ArbiShield"
+grep -q 'casaMarketSuggest' "$WEB/admin-desafio-lancar.html" || die "página sem busca de mercado (casa)"
+grep -q 'arbiMarketSuggest' "$WEB/admin-desafio-lancar.html" || die "página sem busca de mercado (arbi)"
+grep -q 'bindMarketPickers' "$WEB/admin-desafio-lancar.html" || die "página sem bindMarketPickers"
+grep -q 'market-catalog.js' "$WEB/admin-desafio-lancar.html" || die "página sem market-catalog.js"
 grep -q 'fProfitPct' "$WEB/admin-desafio-lancar.html" || die "página sem lucro líquido do evento"
 grep -q 'calcArbiOddFromCasa' "$WEB/admin-desafio-lancar.html" || die "página sem cálculo automático da odd ArbiShield"
 grep -q 'max-width: none !important' "$WEB/admin-desafio-lancar.html" || die "página ainda centralizada (sem full-bleed)"
 grep -q '720px' "$WEB/admin-desafio-lancar.html" && die "página ainda tem max-width 720px"
+
+log "market-catalog.js (autocomplete de mercados)"
+curl -fsSL "$RAW/deploy/vps-supabase/static/v2/market-catalog.js" -o "$WEB/market-catalog.js"
+chmod 0644 "$WEB/market-catalog.js"
+cp -f "$WEB/market-catalog.js" "$WEB_ROOT/market-catalog.js" 2>/dev/null || true
+grep -q 'ArbiMarketCatalog' "$WEB/market-catalog.js" || die "market-catalog sem ArbiMarketCatalog"
+grep -q 'Menos 2.5 gols na partida' "$WEB/market-catalog.js" || die "market-catalog sem Menos 2.5"
 
 log "v2-shell.js (menu ativo em Lançar Desafio)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/v2-shell.js" -o "$WEB/v2-shell.js"
@@ -85,5 +96,5 @@ if [[ -f /opt/arbishield/arbishield-prelive-events.mjs ]] || [[ -f "${ARBISHIELD
   grep -q 'appendDesafioGame' "$SCRIPTS_DIR/arbishield-prelive-events.mjs" || die "prelive sem appendDesafioGame"
 fi
 
-log "OK — hotfix desafio visual aplicado (v9: form sem número/título/saldo/etapas manuais)"
+log "OK — hotfix desafio visual aplicado (v10: busca de mercado no lançamento)"
 echo "Reinicie o serviço prelive se o script foi atualizado, e faça Ctrl+F5 no browser."
