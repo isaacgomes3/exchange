@@ -258,6 +258,21 @@
       font-size: 10px;
       font-weight: 700;
     }
+    .clients-link {
+      color: #fcd34d;
+      font-weight: 800;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      background: none;
+      border: 0;
+      padding: 0;
+      font: inherit;
+      letter-spacing: inherit;
+      text-transform: none;
+    }
+    .clients-link:hover { color: var(--lime); }
+    .clients-box.is-open { display: block; }
   </style>
 </head>
 <body data-shell="admin" data-active="desafios">
@@ -424,20 +439,9 @@
       });
     }
 
-    function clientsBlockHtml(desafioId, isActive) {
-      if (!isActive) return "";
-      const rows = (window.__desafioActiveClients && window.__desafioActiveClients[desafioId]) || null;
-      if (!rows) {
-        return `<div class="clients-box" data-clients-for="${esc(desafioId)}">
-          <h4>Clientes ativos no desafio</h4>
-          <p class="clients-empty">Carregando clientes…</p>
-        </div>`;
-      }
-      if (!rows.length) {
-        return `<div class="clients-box" data-clients-for="${esc(desafioId)}">
-          <h4>Clientes ativos no desafio</h4>
-          <p class="clients-empty">Nenhum cliente ativo neste circuito no momento.</p>
-        </div>`;
+    function clientsTableHtml(rows) {
+      if (!rows || !rows.length) {
+        return `<p class="clients-empty">Nenhum cliente ativo neste circuito no momento.</p>`;
       }
       const body = rows
         .map((c) => {
@@ -462,19 +466,39 @@
           </tr>`;
         })
         .join("");
-      return `<div class="clients-box" data-clients-for="${esc(desafioId)}">
-        <h4>Clientes ativos no desafio · ${rows.length}</h4>
-        <table class="clients-table">
-          <thead>
-            <tr>
-              <th>Cliente</th>
-              <th>Valor da entrada</th>
-              <th>Data e hora</th>
-              <th>Etapa</th>
-            </tr>
-          </thead>
-          <tbody>${body}</tbody>
-        </table>
+      return `<table class="clients-table">
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th>Valor da entrada</th>
+            <th>Data e hora</th>
+            <th>Etapa</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>`;
+    }
+
+    function clientsPanelHtml(desafioId, open) {
+      if (!open) return "";
+      const cached =
+        window.__desafioActiveClients &&
+        Object.prototype.hasOwnProperty.call(window.__desafioActiveClients, desafioId)
+          ? window.__desafioActiveClients[desafioId]
+          : null;
+      const loading = window.__desafioClientsLoading && window.__desafioClientsLoading[desafioId];
+      let inner;
+      if (loading) {
+        inner = `<p class="clients-empty">Carregando clientes…</p>`;
+      } else if (cached == null) {
+        inner = `<p class="clients-empty">Carregando clientes…</p>`;
+      } else {
+        inner = clientsTableHtml(cached);
+      }
+      const count = Array.isArray(cached) ? cached.length : "—";
+      return `<div class="clients-box is-open" data-clients-panel="${esc(desafioId)}">
+        <h4>Clientes ativos no desafio${cached ? " · " + count : ""}</h4>
+        ${inner}
       </div>`;
     }
 
@@ -641,7 +665,9 @@
                 : d.subtitle || "Saldo na carteira Desafio · etapas avançam por cliente"
             )}${
               pendingClients > 0
-                ? ` · <span style="color:#fcd34d">${pendingClients} cliente(s) ativo(s)</span>`
+                ? ` · <button type="button" class="clients-link" data-open-clients="${esc(d.id)}" aria-expanded="${
+                    window.__desafioClientsOpen && window.__desafioClientsOpen[d.id] ? "true" : "false"
+                  }">${pendingClients} cliente(s) ativo(s)</button>`
                 : ""
             }</div>
             <div class="mini-grid">
@@ -653,7 +679,10 @@
               <div class="mini"><div class="l">Lucro líquido</div><div class="v lime">${Number(d.target_profit_pct) || 5}%</div></div>
             </div>
             ${stepBlocks || '<div class="steps">Sem jogos</div>'}
-            ${clientsBlockHtml(d.id, Boolean(d.is_active) && !isCancelled && !d.deleted_at)}
+            ${clientsPanelHtml(
+              d.id,
+              !!(window.__desafioClientsOpen && window.__desafioClientsOpen[d.id])
+            )}
             <div class="card-actions">
               ${
                 canAppend
