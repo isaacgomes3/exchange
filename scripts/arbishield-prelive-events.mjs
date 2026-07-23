@@ -356,13 +356,36 @@ function buildStepRow(desafioId, stepIn, isActive) {
     league_name: stepIn.league_name ?? null,
     home_team: stepIn.home_team || null,
     away_team: stepIn.away_team || null,
+    arbi_team_logo_url:
+      stepIn.arbi_team_logo_url ||
+      stepIn.arbi_logo ||
+      (stepIn.arbi_team_name &&
+      stepIn.arbi_team_name === stepIn.home_team
+        ? stepIn.home_logo
+        : null) ||
+      (stepIn.arbi_team_name &&
+      stepIn.arbi_team_name === stepIn.away_team
+        ? stepIn.away_logo
+        : null) ||
+      null,
+    casa_team_logo_url:
+      stepIn.casa_team_logo_url ||
+      stepIn.casa_logo ||
+      (stepIn.casa_team_name &&
+      stepIn.casa_team_name === stepIn.home_team
+        ? stepIn.home_logo
+        : null) ||
+      (stepIn.casa_team_name &&
+      stepIn.casa_team_name === stepIn.away_team
+        ? stepIn.away_logo
+        : null) ||
+      null,
     market_name: stepIn.market_name || stepIn.market_name_casa || null,
     market_name_casa: stepIn.market_name_casa || stepIn.market_name || null,
     market_name_arbishield: stepIn.market_name_arbishield || null,
     home_odd: stepIn.home_odd != null ? Number(stepIn.home_odd) : null,
     away_odd: stepIn.away_odd != null ? Number(stepIn.away_odd) : null,
     arbi_team_name: stepIn.arbi_team_name ?? null,
-    arbi_team_logo_url: stepIn.arbi_team_logo_url ?? null,
     arbi_odd: (() => {
       if (stepIn.arbi_odd != null && Number(stepIn.arbi_odd) > 1) {
         return Number(stepIn.arbi_odd);
@@ -383,7 +406,6 @@ function buildStepRow(desafioId, stepIn, isActive) {
       return null;
     })(),
     casa_team_name: stepIn.casa_team_name ?? null,
-    casa_team_logo_url: stepIn.casa_team_logo_url ?? null,
     casa_odd: stepIn.casa_odd != null ? Number(stepIn.casa_odd) : null,
     casa_stake_cents:
       stepIn.casa_stake_cents != null ? Number(stepIn.casa_stake_cents) : null,
@@ -1988,6 +2010,109 @@ async function contestReject(body, token) {
   return { ok: true, protectionId, status: "active", rejected: true };
 }
 
+async function searchFootballTeams(query) {
+  const q = String(query || "").trim();
+  if (q.length < 2) return [];
+
+  const byKey = new Map();
+  const push = (row) => {
+    const name = String(row?.name || "").trim();
+    if (!name) return;
+    const key = name.toLowerCase();
+    const logo = String(row.logo || "").trim();
+    const prev = byKey.get(key);
+    if (!prev) {
+      byKey.set(key, {
+        name,
+        logo: logo || null,
+        country: row.country || null,
+        league: row.league || null,
+        source: row.source || null,
+        apiFootballId: row.apiFootballId || null,
+      });
+      return;
+    }
+    if (!prev.logo && logo) prev.logo = logo;
+    if (!prev.country && row.country) prev.country = row.country;
+    if (!prev.league && row.league) prev.league = row.league;
+    if (!prev.apiFootballId && row.apiFootballId) prev.apiFootballId = row.apiFootballId;
+  };
+
+  // 1) Matches já cadastrados (logos que a operação já usou)
+  try {
+    const safe = q.replace(/[%*,()]/g, " ").trim();
+    const star = `*${safe}*`;
+    const rows = await sb(
+      `/rest/v1/matches?or=(home_team.ilike.${encodeURIComponent(star)},away_team.ilike.${encodeURIComponent(star)})&select=home_team,away_team,home_logo,away_logo,league&order=updated_at.desc&limit=80`
+    );
+    for (const m of Array.isArray(rows) ? rows : []) {
+      if (m.home_team && String(m.home_team).toLowerCase().includes(q.toLowerCase())) {
+        push({
+          name: m.home_team,
+          logo: m.home_logo,
+          league: m.league,
+          source: "local",
+        });
+      }
+      if (m.away_team && String(m.away_team).toLowerCase().includes(q.toLowerCase())) {
+        push({
+          name: m.away_team,
+          logo: m.away_logo,
+          league: m.league,
+          source: "local",
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("[football-teams] local", err.message || err);
+  }
+
+  // 2) TheSportsDB
+  try {
+    const url =
+      "https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=" +
+      encodeURIComponent(q);
+    const res = await fetch(url, {
+      headers: { Accept: "application/json", "User-Agent": "ArbiShield/1.0" },
+    });
+    const text = await res.text();
+    if (res.ok && !text.trim().startsWith("<!")) {
+      const data = JSON.parse(text);
+      for (const t of Array.isArray(data.teams) ? data.teams : []) {
+        if (String(t.strSport || "").toLowerCase() === "motorsport") continue;
+        const logo =
+          t.strLogo ||
+          t.strBadge ||
+          (t.idAPIfootball
+            ? `https://media.api-sports.io/football/teams/${t.idAPIfootball}.png`
+            : null);
+        push({
+          name: t.strTeam,
+          logo,
+          country: t.strCountry || null,
+          league: t.strLeague || null,
+          source: "thesportsdb",
+          apiFootballId: t.idAPIfootball || null,
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("[football-teams] thesportsdb", err.message || err);
+  }
+
+  const out = Array.from(byKey.values());
+  out.sort((a, b) => {
+    const aq = a.name.toLowerCase().startsWith(q.toLowerCase()) ? 0 : 1;
+    const bq = b.name.toLowerCase().startsWith(q.toLowerCase()) ? 0 : 1;
+    if (aq !== bq) return aq - bq;
+    const al = a.logo ? 0 : 1;
+    const bl = b.logo ? 0 : 1;
+    if (al !== bl) return al - bl;
+    return a.name.localeCompare(b.name, "pt-BR");
+  });
+  return out.slice(0, 20);
+}
+
 async function handleApi(req, res) {
   if (req.method === "OPTIONS") return sendJson(res, 204, {});
 
@@ -1999,6 +2124,19 @@ async function handleApi(req, res) {
       service: "arbishield-matches",
       fix: "sem-betbra-api-v1",
     });
+  }
+
+  if (url.pathname === "/api/arbishield/football-teams" && req.method === "GET") {
+    try {
+      const q = url.searchParams.get("q") || url.searchParams.get("query") || "";
+      const teams = await searchFootballTeams(q);
+      return sendJson(res, 200, { ok: true, teams, q });
+    } catch (err) {
+      return sendJson(res, 500, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   if (url.pathname === "/api/arbishield/desafios" && req.method === "GET") {

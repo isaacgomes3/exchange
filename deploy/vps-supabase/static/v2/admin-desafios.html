@@ -270,26 +270,82 @@
     .suggest .hint { color: var(--muted); font-size: 13px; margin: 0 0 4px; }
     .suggest .actions { margin-top: 14px; }
 
-    /* Painel lateral — Lançar Desafio (igual SPA) */
+    /* Painel expandido — Lançar Desafio (não lateral estreito) */
     .drawer-backdrop {
       display: none;
       position: fixed; inset: 0; z-index: 80;
-      background: rgba(0,0,0,0.62);
+      background: rgba(0,0,0,0.78);
+      justify-content: center; align-items: center;
+      padding: 18px;
     }
-    .drawer-backdrop.open { display: block; }
+    .drawer-backdrop.open { display: flex; }
     .drawer {
-      position: fixed; top: 0; right: 0; bottom: 0; z-index: 90;
-      width: min(560px, 100vw); max-width: 50vw; min-width: min(560px, 100vw);
-      background: #0a0a0a; border-left: 1px solid rgba(255,255,255,0.06);
+      position: relative; z-index: 90;
+      width: min(1100px, 96vw); max-height: 94vh;
+      background: #0a0a0a; border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 18px;
       color: var(--text); overflow-y: auto;
-      transform: translateX(100%);
-      transition: transform 0.22s ease;
+      transform: none;
       padding: 24px;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.55);
     }
     @media (max-width: 720px) {
-      .drawer { max-width: 100vw; min-width: 100vw; width: 100vw; }
+      .drawer { width: 100%; max-height: 100vh; border-radius: 0; }
     }
-    .drawer.open { transform: translateX(0); }
+    .drawer.open { transform: none; }
+    .team-pick { position: relative; }
+    .team-pick-row {
+      display: grid; grid-template-columns: 44px 1fr; gap: 10px; align-items: start;
+    }
+    .team-logo-box {
+      width: 44px; height: 44px; border-radius: 12px;
+      border: 1px solid var(--border); background: rgba(255,255,255,0.04);
+      display: grid; place-items: center; overflow: hidden; flex-shrink: 0;
+    }
+    .team-logo-box img {
+      width: 100%; height: 100%; object-fit: contain; display: block; background: #fff;
+    }
+    .team-logo-box .ph {
+      font-size: 10px; font-weight: 800; color: var(--muted);
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .team-suggest, .market-suggest {
+      position: absolute; left: 0; right: 0; top: calc(100% + 4px);
+      z-index: 30; max-height: 240px; overflow: auto;
+      border: 1px solid var(--border); border-radius: 12px;
+      background: #111; box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+      display: none;
+    }
+    .team-suggest.show, .market-suggest.show { display: block; }
+    .team-suggest-item, .market-suggest-item {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; border: 0; background: transparent; color: var(--text);
+      text-align: left; padding: 10px 12px; cursor: pointer;
+      border-bottom: 1px solid var(--border);
+    }
+    .market-suggest-item { flex-direction: column; align-items: flex-start; gap: 2px; }
+    .team-suggest-item:last-child, .market-suggest-item:last-child { border-bottom: 0; }
+    .team-suggest-item:hover, .team-suggest-item:focus,
+    .market-suggest-item:hover, .market-suggest-item:focus {
+      background: rgba(201,242,35,0.08); outline: none;
+    }
+    .team-suggest-item img {
+      width: 28px; height: 28px; object-fit: contain; border-radius: 6px;
+      background: #fff; flex-shrink: 0;
+    }
+    .team-suggest-item .name, .market-suggest-item .name {
+      font-size: 13px; font-weight: 800; line-height: 1.2;
+    }
+    .team-suggest-item .sub, .market-suggest-item .sub {
+      margin-top: 2px; font-size: 10px; color: var(--muted); font-weight: 700;
+      letter-spacing: 0.04em; text-transform: uppercase;
+    }
+    .team-suggest-empty, .team-suggest-loading, .market-suggest-empty {
+      padding: 12px; color: var(--muted); font-size: 11px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .market-pick { position: relative; }
+    .team-logo-url { margin-top: 8px; font-size: 12px; }
     .drawer h2 {
       margin: 0 0 4px;
       font-size: 1.35rem; font-weight: 900; font-style: italic;
@@ -419,7 +475,7 @@
   <div class="drawer-backdrop" id="drawerBackdrop" aria-hidden="true"></div>
   <aside class="drawer" id="drawer" aria-hidden="true" role="dialog" aria-labelledby="drawerTitle">
     <h2 id="drawerTitle">Lançar Novo <span>Desafio</span></h2>
-    <p class="drawer-sub">Insira o evento e as etapas manualmente (mesmo fluxo do painel antigo).</p>
+    <p class="drawer-sub">Formulário expandido · busca de time com logo · autocomplete de mercados.</p>
     <div class="form-error" id="formError"></div>
 
     <div class="field-row">
@@ -460,6 +516,7 @@
     </div>
   </aside>
 
+  <script src="/market-catalog.js"></script>
   <script>
     const $ = (id) => document.getElementById(id);
     const money = (c) =>
@@ -489,6 +546,8 @@
         market_name_casa: "",
         home_team: "",
         away_team: "",
+        home_logo: "",
+        away_logo: "",
         arbi_team_name: "",
         arbi_odd: "",
         casa_team_name: "",
@@ -637,12 +696,19 @@
           const el = root.querySelector(`[data-f="${name}"]`);
           return el ? el.value : "";
         };
+        const home = g("home_team");
+        const away = g("away_team");
+        const matchLabel = g("match_label") || (home && away ? `${home} x ${away}` : "");
         return {
           ...s,
           step_index: idx + 1,
           status: g("status") || "pending",
-          match_label: g("match_label"),
+          match_label: matchLabel,
           league_name: g("league_name"),
+          home_team: home,
+          away_team: away,
+          home_logo: g("home_logo"),
+          away_logo: g("away_logo"),
           arbi_team_name: g("arbi_team_name"),
           arbi_odd: g("arbi_odd"),
           market_name_arbishield: g("market_name_arbishield"),
@@ -658,6 +724,220 @@
           starts_at: g("starts_at"),
           release_minutes_before: Number(g("release_minutes_before") || 60),
         };
+      });
+    }
+
+
+    function flattenMarketCatalog() {
+      const raw = window.ARBISHIELD_MARKET_CATALOG;
+      const out = [];
+      if (!Array.isArray(raw)) return out;
+      raw.forEach((group) => {
+        const label = group && group.label ? group.label : "";
+        const opts = (group && group.options) || [];
+        opts.forEach((name) => out.push({ name, group: label }));
+      });
+      return out;
+    }
+
+    function filterMarketCatalog(query) {
+      const q = String(query || "").trim().toLowerCase();
+      const all = flattenMarketCatalog();
+      if (!q) return all.slice(0, 40);
+      const scored = [];
+      all.forEach((item) => {
+        const name = String(item.name || "").toLowerCase();
+        const group = String(item.group || "").toLowerCase();
+        const idx = name.indexOf(q);
+        const gidx = group.indexOf(q);
+        if (idx < 0 && gidx < 0) return;
+        let score = idx === 0 ? 0 : idx > 0 ? 1 : 2;
+        if (gidx === 0) score = Math.min(score, 1);
+        scored.push({ item, score, idx: idx < 0 ? 99 : idx });
+      });
+      scored.sort((a, b) => a.score - b.score || a.idx - b.idx || a.item.name.localeCompare(b.item.name, "pt-BR"));
+      return scored.slice(0, 40).map((x) => x.item);
+    }
+
+    function bindDesafioLaunchPickers() {
+      const root = $("stepsEditor");
+      if (!root) return;
+
+      root.querySelectorAll(".step-card").forEach((card) => {
+        // Team search
+        ["home", "away"].forEach((side) => {
+          const nameEl = card.querySelector(`[data-f="${side}_team"]`);
+          const logoEl = card.querySelector(`[data-f="${side}_logo"]`);
+          const suggest = card.querySelector(`[data-team-suggest="${side}"]`);
+          const preview = card.querySelector(`[data-logo-preview="${side}"]`);
+          if (!nameEl || !suggest || nameEl.dataset.teamBound === "1") return;
+          nameEl.dataset.teamBound = "1";
+          let timer = null;
+          let seq = 0;
+          const setPreview = (url) => {
+            if (!preview) return;
+            const u = String(url || "").trim();
+            preview.innerHTML = u
+              ? `<img src="${esc(u)}" alt="" />`
+              : `<span class="ph">Logo</span>`;
+          };
+          const hide = () => {
+            suggest.classList.remove("show");
+            suggest.hidden = true;
+            suggest.innerHTML = "";
+          };
+          const show = (html) => {
+            suggest.innerHTML = html;
+            suggest.hidden = false;
+            suggest.classList.add("show");
+          };
+          const search = async (q) => {
+            const my = ++seq;
+            q = String(q || "").trim();
+            if (q.length < 2) return hide();
+            show('<div class="team-suggest-loading">Buscando times…</div>');
+            try {
+              const session = await ArbiV2.client().auth.getSession();
+              const token = session.data.session?.access_token;
+              const res = await fetch(
+                "/api/arbishield/football-teams?q=" + encodeURIComponent(q),
+                { headers: token ? { Authorization: "Bearer " + token } : {} }
+              );
+              const data = await res.json().catch(() => ({}));
+              if (my !== seq) return;
+              const teams = Array.isArray(data.teams) ? data.teams : [];
+              if (!teams.length) {
+                return show('<div class="team-suggest-empty">Nenhum time — digite manualmente</div>');
+              }
+              show(
+                teams
+                  .map(
+                    (tm, idx) =>
+                      `<button type="button" class="team-suggest-item" data-idx="${idx}">` +
+                      (tm.logo ? `<img src="${esc(tm.logo)}" alt="" />` : "") +
+                      `<span class="meta"><span class="name">${esc(tm.name)}</span>` +
+                      ([tm.country, tm.league].filter(Boolean).length
+                        ? `<span class="sub">${esc([tm.country, tm.league].filter(Boolean).join(" · "))}</span>`
+                        : "") +
+                      `</span></button>`
+                  )
+                  .join("")
+              );
+              suggest.querySelectorAll(".team-suggest-item").forEach((btn) => {
+                btn.addEventListener("mousedown", (ev) => {
+                  ev.preventDefault();
+                  const i = Number(btn.getAttribute("data-idx"));
+                  const tm = teams[i];
+                  if (!tm) return;
+                  nameEl.value = tm.name || "";
+                  if (logoEl) logoEl.value = tm.logo || "";
+                  setPreview(tm.logo || "");
+                  const leagueEl = card.querySelector('[data-f="league_name"]');
+                  if (leagueEl && !String(leagueEl.value || "").trim() && tm.league) {
+                    leagueEl.value = tm.league;
+                  }
+                  const home = card.querySelector('[data-f="home_team"]')?.value || "";
+                  const away = card.querySelector('[data-f="away_team"]')?.value || "";
+                  const matchEl = card.querySelector('[data-f="match_label"]');
+                  if (matchEl && home && away) matchEl.value = home + " x " + away;
+                  hide();
+                });
+              });
+            } catch (err) {
+              if (my !== seq) return;
+              show('<div class="team-suggest-empty">' + esc(err.message || "Falha na busca") + "</div>");
+            }
+          };
+          nameEl.addEventListener("input", () => {
+            clearTimeout(timer);
+            timer = setTimeout(() => search(nameEl.value), 280);
+          });
+          nameEl.addEventListener("focus", () => {
+            if (String(nameEl.value || "").trim().length >= 2) search(nameEl.value);
+          });
+          nameEl.addEventListener("blur", () => setTimeout(hide, 180));
+          if (logoEl) logoEl.addEventListener("input", () => setPreview(logoEl.value));
+        });
+
+        // Market autocomplete
+        card.querySelectorAll(".market-pick").forEach((pick) => {
+          const nameEl = pick.querySelector("input[data-f]");
+          const box = pick.querySelector(".market-suggest");
+          if (!nameEl || !box || nameEl.dataset.marketBound === "1") return;
+          nameEl.dataset.marketBound = "1";
+          let timer = null;
+          const hide = () => {
+            box.classList.remove("show");
+            box.hidden = true;
+            box.innerHTML = "";
+          };
+          const show = (html) => {
+            box.innerHTML = html;
+            box.hidden = false;
+            box.classList.add("show");
+          };
+          const paint = (q) => {
+            const matches = filterMarketCatalog(q);
+            if (!matches.length) {
+              return show('<div class="market-suggest-empty">Nenhum mercado — digite manualmente</div>');
+            }
+            show(
+              matches
+                .map(
+                  (m, idx) =>
+                    `<button type="button" class="market-suggest-item" data-idx="${idx}">` +
+                    `<span class="name">${esc(m.name)}</span>` +
+                    (m.group ? `<span class="sub">${esc(m.group)}</span>` : "") +
+                    `</button>`
+                )
+                .join("")
+            );
+            box.querySelectorAll(".market-suggest-item").forEach((btn) => {
+              btn.addEventListener("mousedown", (ev) => {
+                ev.preventDefault();
+                const i = Number(btn.getAttribute("data-idx"));
+                if (matches[i]) nameEl.value = matches[i].name;
+                hide();
+              });
+            });
+          };
+          nameEl.addEventListener("input", () => {
+            clearTimeout(timer);
+            timer = setTimeout(() => {
+              if (!String(nameEl.value || "").trim()) return hide();
+              paint(nameEl.value);
+            }, 120);
+          });
+          nameEl.addEventListener("focus", () => {
+            const q = String(nameEl.value || "").trim();
+            if (q) paint(q);
+            else {
+              const matches = flattenMarketCatalog().slice(0, 30);
+              if (!matches.length) return;
+              show(
+                matches
+                  .map(
+                    (m, idx) =>
+                      `<button type="button" class="market-suggest-item" data-idx="${idx}">` +
+                      `<span class="name">${esc(m.name)}</span>` +
+                      (m.group ? `<span class="sub">${esc(m.group)}</span>` : "") +
+                      `</button>`
+                  )
+                  .join("")
+              );
+              box.querySelectorAll(".market-suggest-item").forEach((btn) => {
+                btn.addEventListener("mousedown", (ev) => {
+                  ev.preventDefault();
+                  const i = Number(btn.getAttribute("data-idx"));
+                  const all = flattenMarketCatalog().slice(0, 30);
+                  if (all[i]) nameEl.value = all[i].name;
+                  hide();
+                });
+              });
+            }
+          });
+          nameEl.addEventListener("blur", () => setTimeout(hide, 180));
+        });
       });
     }
 
@@ -681,13 +961,39 @@
               }
             </div>
           </div>
-          <div class="field">
-            <label>Nome do Jogo</label>
-            <input data-f="match_label" value="${esc(s.match_label)}" placeholder="Flamengo x Palmeiras" />
+          <div class="field-row">
+            <div class="field team-pick" data-team-side="home">
+              <label>Time Casa</label>
+              <div class="team-pick-row">
+                <div class="team-logo-box" data-logo-preview="home">${s.home_logo ? `<img src="${esc(s.home_logo)}" alt="" />` : `<span class="ph">Logo</span>`}</div>
+                <div>
+                  <input data-f="home_team" value="${esc(s.home_team)}" placeholder="Digite para buscar…" autocomplete="off" />
+                  <div class="team-suggest" data-team-suggest="home" hidden></div>
+                  <input class="team-logo-url" data-f="home_logo" value="${esc(s.home_logo)}" placeholder="URL da logo (opcional)" />
+                </div>
+              </div>
+            </div>
+            <div class="field team-pick" data-team-side="away">
+              <label>Time Visitante</label>
+              <div class="team-pick-row">
+                <div class="team-logo-box" data-logo-preview="away">${s.away_logo ? `<img src="${esc(s.away_logo)}" alt="" />` : `<span class="ph">Logo</span>`}</div>
+                <div>
+                  <input data-f="away_team" value="${esc(s.away_team)}" placeholder="Digite para buscar…" autocomplete="off" />
+                  <div class="team-suggest" data-team-suggest="away" hidden></div>
+                  <input class="team-logo-url" data-f="away_logo" value="${esc(s.away_logo)}" placeholder="URL da logo (opcional)" />
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="field">
-            <label>Liga / Campeonato</label>
-            <input data-f="league_name" value="${esc(s.league_name)}" placeholder="Ex.: Brasileirão Série A" />
+          <div class="field-row">
+            <div class="field">
+              <label>Nome do Jogo</label>
+              <input data-f="match_label" value="${esc(s.match_label)}" placeholder="auto a partir dos times" />
+            </div>
+            <div class="field">
+              <label>Liga / Campeonato</label>
+              <input data-f="league_name" value="${esc(s.league_name)}" placeholder="Ex.: Brasileirão Série A" />
+            </div>
           </div>
 
           <div class="leg-title casa">1. Favorito — Casa Externa (cadastro ADM)</div>
@@ -702,9 +1008,10 @@
             </div>
           </div>
           <div class="field-row">
-            <div class="field">
+            <div class="field market-pick">
               <label>Mercado (casa)</label>
-              <input data-f="market_name_casa" value="${esc(s.market_name_casa)}" placeholder="Resultado final / Favorito" />
+              <input data-f="market_name_casa" value="${esc(s.market_name_casa)}" placeholder="Digite para sugerir…" autocomplete="off" />
+              <div class="market-suggest" hidden></div>
             </div>
             <div class="field">
               <label>Comissão casa (%)</label>
@@ -725,9 +1032,10 @@
             </div>
           </div>
           <div class="field-row">
-            <div class="field">
+            <div class="field market-pick">
               <label>Mercado (ArbiShield)</label>
-              <input data-f="market_name_arbishield" value="${esc(s.market_name_arbishield)}" placeholder="Resultado final / Zebra" />
+              <input data-f="market_name_arbishield" value="${esc(s.market_name_arbishield)}" placeholder="Digite para sugerir…" autocomplete="off" />
+              <div class="market-suggest" hidden></div>
             </div>
             <div class="field">
               <label>Comissão Arbi (%)</label>
@@ -813,6 +1121,7 @@
         });
         syncZebra();
       });
+      bindDesafioLaunchPickers();
     }
 
     function esc(v) {
@@ -1313,6 +1622,24 @@
               league_name: s.league_name || "",
               home_team: s.home_team || "",
               away_team: s.away_team || "",
+              home_logo:
+                s.home_logo ||
+                (s.casa_team_name && s.casa_team_name === s.home_team
+                  ? s.casa_team_logo_url
+                  : "") ||
+                (s.arbi_team_name && s.arbi_team_name === s.home_team
+                  ? s.arbi_team_logo_url
+                  : "") ||
+                "",
+              away_logo:
+                s.away_logo ||
+                (s.casa_team_name && s.casa_team_name === s.away_team
+                  ? s.casa_team_logo_url
+                  : "") ||
+                (s.arbi_team_name && s.arbi_team_name === s.away_team
+                  ? s.arbi_team_logo_url
+                  : "") ||
+                "",
               arbi_team_name: s.arbi_team_name || s.market_name_arbishield || "",
               arbi_odd: s.arbi_odd != null ? String(s.arbi_odd) : "",
               market_name_arbishield: s.market_name_arbishield || "",
