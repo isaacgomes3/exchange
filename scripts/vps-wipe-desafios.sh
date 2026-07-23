@@ -84,11 +84,15 @@ if command -v systemctl >/dev/null 2>&1; then
   done
 fi
 
-while IFS= read -r f; do
-  [[ -n "$f" ]] && CANDIDATES+=("$f")
-done < <(
-  grep -rlE 'SERVICE_ROLE_KEY=' /opt/arbishield /var/www/arbishield /root 2>/dev/null | head -30 || true
-)
+# Busca ampla só se o .env conhecido não existir (evita travar em discos grandes)
+KNOWN=/opt/arbishield/deploy/vps-supabase/.env
+if [[ ! -f "$KNOWN" ]] && [[ ! -f "${ENV_FILE:-}" ]]; then
+  while IFS= read -r f; do
+    [[ -n "$f" ]] && CANDIDATES+=("$f")
+  done < <(
+    timeout 8 grep -rlE 'SERVICE_ROLE_KEY=' /opt/arbishield /var/www/arbishield 2>/dev/null | head -20 || true
+  )
+fi
 
 FOUND=""
 for f in "${CANDIDATES[@]}"; do
