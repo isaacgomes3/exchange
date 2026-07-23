@@ -1137,6 +1137,7 @@ async function reorderBanners(token, body) {
 }
 
 function requireUserId(token) {
+  assertNotBlocked(token);
   const payload = decodeJwtPayload(token);
   const uid = payload?.sub;
   if (!uid) throw new Error("Não autorizado");
