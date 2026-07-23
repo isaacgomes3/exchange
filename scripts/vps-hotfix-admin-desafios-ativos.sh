@@ -5,7 +5,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-admin-desafios-ativos.sh")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-d2ccd44}"
+REF="${ARBISHIELD_REF:-PLACEHOLDER_SHA}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
@@ -29,6 +29,8 @@ cp -f "$WEB/admin-desafios.html" "$WEB_ROOT/admin-desafios.html" 2>/dev/null || 
 
 grep -q 'isDesafioActiveOpen' "$WEB/admin-desafios.html" || die "admin-desafios sem filtro Ativos limpo"
 grep -q 'desafioBadge' "$WEB/admin-desafios.html" || die "admin-desafios sem badge Encerrado"
+grep -q 'data-toggle-desafio' "$WEB/admin-desafios.html" || die "admin-desafios sem accordion do jogo"
+grep -q 'card-body' "$WEB/admin-desafios.html" || die "admin-desafios sem corpo expansível"
 grep -q '__desafioFilter = "active"' "$WEB/admin-desafios.html" || die "admin-desafios não abre em Ativos"
 grep -q 'Finalizados ficam em Todos' "$WEB/admin-desafios.html" || die "admin-desafios sem regra finalizados só em Todos"
 grep -q 'class="tab is-on" data-f="active"' "$WEB/admin-desafios.html" \

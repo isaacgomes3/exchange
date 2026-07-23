@@ -101,12 +101,45 @@
     .list { display: flex; flex-direction: column; gap: 12px; }
     .card {
       border: 1px solid var(--border); border-radius: 16px;
-      background: var(--panel); padding: 16px;
+      background: var(--panel); padding: 0;
+      overflow: hidden;
     }
     .card-top {
-      display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;
-      margin-bottom: 10px; align-items: center;
+      display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+      align-items: center;
+      padding: 14px 16px;
+      cursor: pointer;
+      user-select: none;
     }
+    .card-top:hover { background: rgba(255,255,255,0.03); }
+    .card-top .title-wrap { min-width: 0; flex: 1; }
+    .card-top .league {
+      font-size: 10px; font-weight: 800; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .card-top .title {
+      margin-top: 4px;
+      font-weight: 900; font-size: 1.05rem; letter-spacing: -0.02em;
+    }
+    .card-top .row-meta {
+      margin-top: 6px; font-size: 11px; color: var(--muted);
+      display: flex; flex-wrap: wrap; gap: 8px;
+    }
+    .card-top .chev {
+      flex-shrink: 0;
+      width: 28px; height: 28px; border-radius: 999px;
+      border: 1px solid var(--border);
+      display: inline-flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: 12px; font-weight: 900;
+      transition: transform 0.15s ease;
+    }
+    .card.is-open .card-top .chev { transform: rotate(180deg); color: var(--lime); border-color: rgba(201,242,35,0.35); }
+    .card-body {
+      display: none;
+      padding: 0 16px 16px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .card.is-open .card-body { display: block; padding-top: 14px; }
     .title { font-weight: 900; font-size: 1.05rem; letter-spacing: -0.02em; }
     .badge {
       font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
@@ -1081,31 +1114,81 @@
           const live = steps.filter((s) => stepState(s) === "live").length;
           const pending = steps.filter((s) => stepState(s) === "pending").length;
           const upcoming = steps.filter((s) => stepState(s) === "upcoming").length;
-          return `<article class="card">
-            <div class="card-top">
-              <div class="title">${esc(d.title || "Desafio")} <span style="color:var(--muted);font-weight:700">#${String(d.number ?? "—").padStart(3, "0")}</span></div>
-              <span class="badge ${desafioBadge(d).cls}">${esc(desafioBadge(d).label)}</span>
+          const first = steps[0] || null;
+          const matchLabel =
+            (first &&
+              (first.match_label ||
+                [first.home_team, first.away_team].filter(Boolean).join(" x "))) ||
+            d.title ||
+            "Desafio";
+          const league =
+            (first && first.league_name) ||
+            (steps.length > 1 ? `${steps.length} etapas` : "Desafio");
+          const whenHint = first && first.starts_at
+            ? new Date(first.starts_at).toLocaleString("pt-BR", {
+                day: "2-digit",
+                month: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "Horário a definir";
+          const open = String(window.__desafioOpenId || "") === String(d.id);
+          const badge = desafioBadge(d);
+          return `<article class="card${open ? " is-open" : ""}" data-desafio-id="${esc(d.id)}">
+            <div class="card-top" data-toggle-desafio="${esc(d.id)}" role="button" tabindex="0" aria-expanded="${open ? "true" : "false"}">
+              <div class="title-wrap">
+                <div class="league">${esc(league)}</div>
+                <div class="title">${esc(matchLabel)} <span style="color:var(--muted);font-weight:700">#${String(d.number ?? "—").padStart(3, "0")}</span></div>
+                <div class="row-meta">
+                  <span>${esc(whenHint)}</span>
+                  <span>${steps.length} etapa(s)</span>
+                  <span>Saldo ${money(d.initial_balance_cents)}</span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+                <span class="badge ${badge.cls}">${esc(badge.label)}</span>
+                <span class="chev" aria-hidden="true">▼</span>
+              </div>
             </div>
-            <div class="steps">${esc(d.subtitle || "Complete os desafios seguidos e fature o saldo final com lucro.")}</div>
-            <div class="mini-grid">
-              <div class="mini"><div class="l">Etapas</div><div class="v">${steps.length}</div></div>
-              <div class="mini"><div class="l">Agendadas</div><div class="v">${upcoming}</div></div>
-              <div class="mini"><div class="l">Ao Vivo</div><div class="v ${live ? "lime" : ""}">${live}</div></div>
-              <div class="mini"><div class="l">Pendente</div><div class="v">${pending}</div></div>
-              <div class="mini"><div class="l">Saldo inicial</div><div class="v lime">${money(d.initial_balance_cents)}</div></div>
-            </div>
-            ${stepBlocks || '<div class="steps">Sem etapas</div>'}
-            <div class="card-actions">
-              ${
-                d.is_active
-                  ? ""
-                  : `<button class="btn btn-primary" type="button" data-publish="${esc(d.id)}">Publicar para clientes</button>`
-              }
-              <button class="btn btn-ghost" type="button" data-clone="${esc(d.id)}">Usar como base</button>
+            <div class="card-body">
+              <div class="steps">${esc(d.subtitle || "Complete os desafios seguidos e fature o saldo final com lucro.")}</div>
+              <div class="mini-grid">
+                <div class="mini"><div class="l">Etapas</div><div class="v">${steps.length}</div></div>
+                <div class="mini"><div class="l">Agendadas</div><div class="v">${upcoming}</div></div>
+                <div class="mini"><div class="l">Ao Vivo</div><div class="v ${live ? "lime" : ""}">${live}</div></div>
+                <div class="mini"><div class="l">Pendente</div><div class="v">${pending}</div></div>
+                <div class="mini"><div class="l">Saldo inicial</div><div class="v lime">${money(d.initial_balance_cents)}</div></div>
+              </div>
+              ${stepBlocks || '<div class="steps">Sem etapas</div>'}
+              <div class="card-actions">
+                ${
+                  d.is_active || isDesafioClosed(d)
+                    ? ""
+                    : `<button class="btn btn-primary" type="button" data-publish="${esc(d.id)}">Publicar para clientes</button>`
+                }
+                <button class="btn btn-ghost" type="button" data-clone="${esc(d.id)}">Usar como base</button>
+              </div>
             </div>
           </article>`;
         })
         .join("");
+
+      $("list").querySelectorAll("[data-toggle-desafio]").forEach((el) => {
+        const toggle = () => {
+          const id = el.getAttribute("data-toggle-desafio");
+          if (!id) return;
+          window.__desafioOpenId =
+            String(window.__desafioOpenId || "") === String(id) ? "" : id;
+          if (window.__desafioRows) render(window.__desafioRows);
+        };
+        el.addEventListener("click", toggle);
+        el.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggle();
+          }
+        });
+      });
 
       $("list").querySelectorAll("[data-settle]").forEach((btn) => {
         btn.addEventListener("click", async () => {
@@ -1423,6 +1506,7 @@
 
     // Abre em Ativos (publicados com etapa em aberto) — não lista encerrados.
     window.__desafioFilter = "active";
+    window.__desafioOpenId = "";
     window.__desafioQ = "";
     document.querySelectorAll(".filters .tab").forEach((btn) => {
       btn.addEventListener("click", () => {
