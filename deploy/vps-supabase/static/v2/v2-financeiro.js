@@ -778,8 +778,10 @@
     // header mudar ao atualizar /app-carteira.html vs /app.html
     var hdr = document.getElementById("v2BalApostador");
     if (hdr) hdr.textContent = money(state.apostadorHeader);
+    var hdrCongelado = document.getElementById("v2BalCongelado");
+    if (hdrCongelado) hdrCongelado.textContent = money(state.locked);
     var hdrProv = document.getElementById("v2BalProvedor");
-    if (hdrProv) hdrProv.textContent = money(state.providerBalance);
+    if (hdrProv) hdrProv.textContent = money(state.locked);
     var hdrDesafio = document.getElementById("v2BalDesafio");
     if (hdrDesafio) hdrDesafio.textContent = money(state.desafio);
     var hdrAff = document.getElementById("v2BalAfiliado");

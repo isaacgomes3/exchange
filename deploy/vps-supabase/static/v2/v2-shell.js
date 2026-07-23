@@ -298,9 +298,9 @@
         balBar.innerHTML =
           '<div class="v2-app-balances" aria-label="Saldos">' +
           '<a class="v2-bal-chip v2-bal-apostador" href="/app-carteira.html"><span class="l">Apostador</span><span class="v" id="v2BalApostador">—</span></a>' +
-          '<a class="v2-bal-chip v2-bal-desafio" href="/app-desafio.html"><span class="l">Desafio</span><span class="v" id="v2BalDesafio">—</span></a>' +
           '<a class="v2-bal-chip v2-bal-afiliado" href="/app-afiliados.html"><span class="l">Afiliado</span><span class="v" id="v2BalAfiliado">—</span></a>' +
-          '<a class="v2-bal-chip v2-bal-provedor" href="/app-partners.html"><span class="l">Provedor</span><span class="v" id="v2BalProvedor">—</span></a>' +
+          '<a class="v2-bal-chip v2-bal-desafio" href="/app-desafio.html"><span class="l">Desafio</span><span class="v" id="v2BalDesafio">—</span></a>' +
+          '<a class="v2-bal-chip v2-bal-congelado" href="/app-carteira.html" title="Capital bloqueado em proteções"><span class="l">Congelado</span><span class="v" id="v2BalCongelado">—</span></a>' +
           "</div>";
         main.appendChild(balBar);
       }
@@ -498,7 +498,7 @@
             var balRes = await appSupa
               .from("profiles")
               .select(
-                "balance_cents,reusable_balance_cents,demo_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,full_name,avatar_url"
+                "balance_cents,reusable_balance_cents,demo_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,locked_balance_cents,full_name,avatar_url"
               )
               .eq("id", appUser.id)
               .maybeSingle();
@@ -512,6 +512,31 @@
               Number(p.investor_balance_cents || 0) +
               Number(p.demo_balance_provider_cents || 0);
             var desafio = Number(p.desafio_balance_cents || 0);
+            var congelado = Number(p.locked_balance_cents || 0);
+            if (!(congelado > 0)) {
+              try {
+                var prot = await appSupa
+                  .from("protections")
+                  .select("amount_cents,status")
+                  .eq("user_id", appUser.id)
+                  .eq("status", "active")
+                  .limit(200);
+                var back = await appSupa
+                  .from("back_protections")
+                  .select("amount_cents,status")
+                  .eq("user_id", appUser.id)
+                  .eq("status", "active")
+                  .limit(200);
+                var sumP = 0;
+                (prot.data || []).forEach(function (r) {
+                  sumP += Number(r.amount_cents || 0);
+                });
+                (back.data || []).forEach(function (r) {
+                  sumP += Number(r.amount_cents || 0);
+                });
+                if (sumP > 0) congelado = sumP;
+              } catch (protErr) {}
+            }
             var afiliado = 0;
             try {
               var aff = await appSupa
@@ -531,7 +556,9 @@
             setTxt("v2BalApostador", apostador);
             setTxt("v2BalDesafio", desafio);
             setTxt("v2BalAfiliado", afiliado);
-            setTxt("v2BalProvedor", provedor);
+            setTxt("v2BalCongelado", congelado);
+            // compat: se HTML antigo ainda tiver Provedor
+            setTxt("v2BalProvedor", congelado);
             var displayName =
               p.full_name ||
               (appUser.email ? appUser.email.split("@")[0] : "Membro");
