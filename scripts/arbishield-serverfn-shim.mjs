@@ -47,11 +47,36 @@ const BLOCKED_EMAILS = new Set([
   "jeffersojeffersonboulevard@gmail.com",
 ]);
 
+/** Só estes e-mails acessam APIs da área Financeiro. */
+const FINANCE_ADMIN_EMAILS = new Set([
+  "isaacgomes3@gmail.com",
+  "financeiro@arbishield.com",
+]);
+
 function isBlockedEmail(email) {
   const e = String(email || "")
     .trim()
     .toLowerCase();
   return !!e && BLOCKED_EMAILS.has(e);
+}
+
+function tokenEmail(token) {
+  const payload = decodeJwtPayload(token);
+  return String(
+    payload?.email ||
+      payload?.user_metadata?.email ||
+      payload?.app_metadata?.email ||
+      ""
+  )
+    .trim()
+    .toLowerCase();
+}
+
+function canAccessFinance(email) {
+  const e = String(email || "")
+    .trim()
+    .toLowerCase();
+  return !!e && FINANCE_ADMIN_EMAILS.has(e);
 }
 
 const LISTEN = process.env.SERVERFN_LISTEN || "127.0.0.1:3101";
@@ -1032,6 +1057,19 @@ async function currentUserIsAdmin(token) {
   );
 }
 
+async function currentUserCanFinance(token) {
+  if (!(await currentUserIsAdmin(token))) return false;
+  return canAccessFinance(tokenEmail(token));
+}
+
+async function requireFinanceAdmin(token) {
+  if (!(await currentUserCanFinance(token))) {
+    const err = new Error("Sem permissão para a área Financeiro");
+    err.status = 403;
+    throw err;
+  }
+}
+
 function assertNotBlocked(token) {
   const payload = decodeJwtPayload(token);
   const email =
@@ -1384,7 +1422,7 @@ async function transferRealToDesafio(token, body) {
 
 /** Admin: lista depósitos Desafio (USDT + transferências banca→desafio) */
 async function listDesafioDeposits(token) {
-  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  await requireFinanceAdmin(token);
 
   let manuals = [];
   try {
@@ -1550,7 +1588,7 @@ async function listDesafioDeposits(token) {
 }
 
 async function approveDesafioDeposit(token, body) {
-  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  await requireFinanceAdmin(token);
   const id = String(body?.id || "").trim();
   if (!id) throw new Error("id obrigatório");
 
@@ -1628,7 +1666,7 @@ async function approveDesafioDeposit(token, body) {
 }
 
 async function rejectDesafioDeposit(token, body) {
-  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  await requireFinanceAdmin(token);
   const id = String(body?.id || "").trim();
   if (!id) throw new Error("id obrigatório");
   const reason = String(body?.reason || body?.admin_notes || "").trim();
@@ -2075,7 +2113,7 @@ async function registerDesafioEntry(token, body) {
 }
 
 async function listActivePartnerRounds(token) {
-  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  await requireFinanceAdmin(token);
   const rounds = await sb(
     `/rest/v1/partner_rounds?select=*,profiles(full_name,email)&status=eq.active&order=created_at.desc&limit=500`,
     { token: SERVICE_KEY }
@@ -2089,7 +2127,7 @@ async function listActivePartnerRounds(token) {
 }
 
 async function distributePartnerYield(token, body) {
-  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  await requireFinanceAdmin(token);
   const percentage = Number(body?.percentage ?? body?.pct ?? 0);
   if (!(percentage > 0) || percentage > 100) {
     throw new Error("Informe um percentual válido.");
@@ -2152,7 +2190,7 @@ async function distributePartnerYield(token, body) {
 }
 
 async function partnerDistributionHistory(token) {
-  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  await requireFinanceAdmin(token);
   const rows = await sb(
     `/rest/v1/partner_distributions?select=*&order=created_at.desc&limit=200`,
     { token: SERVICE_KEY }
@@ -2161,7 +2199,7 @@ async function partnerDistributionHistory(token) {
 }
 
 async function partnerMonthlyStats(token) {
-  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  await requireFinanceAdmin(token);
   const now = new Date();
   const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
   const rows = await sb(

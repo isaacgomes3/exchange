@@ -12,12 +12,42 @@
     "jeffersojeffersonboulevard@gmail.com": 1,
   };
 
+  /** Só estes e-mails veem o menu/páginas Financeiro no admin */
+  var FINANCE_ADMIN_EMAILS = {
+    "isaacgomes3@gmail.com": 1,
+    "financeiro@arbishield.com": 1,
+  };
+
+  var FINANCE_PAGE_IDS = {
+    transactions: 1,
+    saques: 1,
+    "manual-deposits": 1,
+    "depositos-desafio": 1,
+    refunds: 1,
+    treasury: 1,
+    "partners-distribution": 1,
+    expenses: 1,
+  };
+
   function isBlockedEmail(email) {
     email = String(email || "")
       .trim()
       .toLowerCase();
     if (global.ArbiIsBlockedEmail) return !!global.ArbiIsBlockedEmail(email);
     return !!(email && BLOCKED_EMAILS[email]);
+  }
+
+  function canAccessFinance(email) {
+    email = String(email || "")
+      .trim()
+      .toLowerCase();
+    if (!email) return false;
+    if (global.ArbiCanAccessFinance) return !!global.ArbiCanAccessFinance(email);
+    return !!FINANCE_ADMIN_EMAILS[email];
+  }
+
+  function isFinancePageId(id) {
+    return !!FINANCE_PAGE_IDS[String(id || "")];
   }
 
   function client() {
@@ -72,6 +102,11 @@
         return r.role === "admin" || r.role === "master_admin";
       });
     return ok;
+  }
+
+  async function requireFinanceAdmin(supa, user) {
+    if (!(await requireAdmin(supa, user))) return false;
+    return canAccessFinance(user && user.email);
   }
 
   async function searchFootballTeams(query) {
@@ -137,6 +172,9 @@
     money: money,
     requireUser: requireUser,
     requireAdmin: requireAdmin,
+    requireFinanceAdmin: requireFinanceAdmin,
+    canAccessFinance: canAccessFinance,
+    isFinancePageId: isFinancePageId,
     isBlockedEmail: isBlockedEmail,
     searchFootballTeams: searchFootballTeams,
   };

@@ -53,8 +53,9 @@
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js"></script>
-  <script src="/v2-shell.js?v=nav-acc-3" defer></script>
+  <script src="/finance-admins.js?v=fin-acl-1"></script>
+  <script src="/v2.js?v=fin-acl-1"></script>
+  <script src="/v2-shell.js?v=fin-acl-1" defer></script>
 </head>
 <body data-shell="admin" data-active="depositos-desafio">
   <div class="ddz-page">
@@ -357,7 +358,13 @@
         act(btn.getAttribute("data-act"), btn.getAttribute("data-id"));
       });
 
-      await ArbiV2.requireAdmin(ArbiV2.client(), await ArbiV2.requireUser(ArbiV2.client()));
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+      if (!(await ArbiV2.requireFinanceAdmin(supa, user))) {
+        location.replace("/admin.html");
+        return;
+      }
       await load();
     })();
   </script>

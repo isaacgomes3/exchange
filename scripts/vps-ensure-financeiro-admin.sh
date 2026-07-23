@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 # Garante admin financeiro: financeiro@arbishield.com + isaacgomes3@gmail.com
 #
-# No sistema NÃO existe role "só Financeiro" — admin vê o bloco Financeiro
-# (e o restante do painel admin).
+# Role admin sozinha NÃO basta para o menu Financeiro. A allowlist de e-mails
+# (frontend v2.js / finance-admins.js + shim) libera só:
+#   - isaacgomes3@gmail.com
+#   - financeiro@arbishield.com
+# Demais admins (ex.: icaro@ / carlos@) continuam na Operação, sem Financeiro.
+#
+# Após criar/promover, aplique o hotfix de ACL:
+#   bash <(curl -fsSL ".../scripts/vps-hotfix-finance-acl.sh?v=1")
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-ensure-financeiro-admin.sh?v=1")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-ensure-financeiro-admin.sh?v=2")
 #
-# Senha inicial (só se a conta for criada agora):
-#   FINANCEIRO_PASSWORD='SuaSenhaForte' bash <(curl ...?v=1)
+# Senha inicial (opcional; se omitida e a conta for criada, gera uma aleatória):
+#   FINANCEIRO_PASSWORD='SuaSenhaForte' bash <(curl ...?v=2)
 set -euo pipefail
 
 EMAIL_FINANCEIRO="${EMAIL_FINANCEIRO:-financeiro@arbishield.com}"
@@ -23,34 +29,53 @@ need curl
 need docker
 need python3
 
-# --- carrega SERVICE_ROLE (mesmo padrão dos hotfixes) ---
 load_env_file() {
   local f="$1"
-  [[ -f "$f" ]] || return 0
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    line="${line%$'\r'}"
-    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
-    if [[ "$line" =~ ^(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
-      local k="${BASH_REMATCH[2]}"
-      local v="${BASH_REMATCH[3]}"
-      v="${v%\"}" ; v="${v#\"}"
-      v="${v%\'}" ; v="${v#\'}"
-      case "$k" in
-        ARBISHIELD_SERVICE_ROLE_KEY|SERVICE_ROLE_KEY|SUPABASE_SERVICE_ROLE_KEY|ARBISHIELD_SUPABASE_URL|API_EXTERNAL_URL|SUPABASE_PUBLIC_URL|ANON_KEY|SUPABASE_ANON_KEY)
-          if [[ -z "${!k:-}" ]]; then export "$k=$v"; fi
-          ;;
-      esac
-    fi
-  done < "$f"
+  [[ -f "$f" ]] || return 1
+  eval "$(
+    python3 - "$f" <<'PY'
+import shlex, sys
+path = sys.argv[1]
+keys = {
+  "ARBISHIELD_SERVICE_ROLE_KEY",
+  "SERVICE_ROLE_KEY",
+  "SUPABASE_SERVICE_ROLE_KEY",
+  "ARBISHIELD_SUPABASE_URL",
+  "API_EXTERNAL_URL",
+  "SUPABASE_PUBLIC_URL",
+}
+text = open(path, "rb").read().decode("utf-8", "replace").replace("\r\n", "\n").replace("\r", "\n")
+out = []
+for raw in text.splitlines():
+    line = raw.strip()
+    if not line or line.startswith("#"):
+        continue
+    if line.startswith("export "):
+        line = line[7:].strip()
+    if "=" not in line:
+        continue
+    k, v = line.split("=", 1)
+    k = k.strip()
+    if k not in keys:
+        continue
+    v = v.strip()
+    if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+        v = v[1:-1]
+    out.append(f"export {k}={shlex.quote(v)}")
+print("\n".join(out))
+PY
+  )"
 }
 
 for f in \
+  "${ENV_FILE:-}" \
   /opt/arbishield/deploy/vps-supabase/.env \
   /opt/arbishield/.env \
   /opt/arbishield/.arbishield-odds-sync.env \
   /var/www/arbishield/.env
 do
-  load_env_file "$f"
+  [[ -n "${f:-}" ]] || continue
+  load_env_file "$f" 2>/dev/null || true
 done
 
 SERVICE_KEY="${ARBISHIELD_SERVICE_ROLE_KEY:-${SERVICE_ROLE_KEY:-${SUPABASE_SERVICE_ROLE_KEY:-}}}"
@@ -62,57 +87,62 @@ SUPABASE_URL="$(
 
 DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E 'db|postgres' | head -1 || true)"
 [[ -n "$DB_CONTAINER" ]] || die "container Postgres não encontrado"
+
 psql_db() {
-  docker exec -i "$DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 "$@" \
-    || docker exec -i "$DB_CONTAINER" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 "$@"
+  if docker exec -i "$DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 "$@" 2>/tmp/psql-fin.err; then
+    return 0
+  fi
+  docker exec -i "$DB_CONTAINER" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 "$@"
 }
 
-auth_get_user_id() {
+sql_user_id() {
   local email="$1"
-  curl -fsS \
-    -H "apikey: $SERVICE_KEY" \
-    -H "Authorization: Bearer $SERVICE_KEY" \
-    "$SUPABASE_URL/auth/v1/admin/users?page=1&per_page=200" \
-    | python3 -c '
-import json,sys
-email=sys.argv[1].lower().strip()
-data=json.load(sys.stdin)
-users=data.get("users") if isinstance(data, dict) else data
-for u in users or []:
-  if str(u.get("email") or "").lower()==email:
-    print(u.get("id") or "")
-    break
-' "$email" 2>/dev/null || true
+  python3 - "$email" <<'PY' | psql_db -At 2>/dev/null | head -1 || true
+import sys
+email = sys.argv[1].replace("'", "''")
+print(f"SELECT id::text FROM auth.users WHERE lower(email)=lower('{email}') LIMIT 1;")
+PY
 }
 
 auth_create_user() {
   local email="$1" password="$2" name="$3"
-  curl -fsS -X POST \
-    -H "apikey: $SERVICE_KEY" \
-    -H "Authorization: Bearer $SERVICE_KEY" \
-    -H "Content-Type: application/json" \
-    "$SUPABASE_URL/auth/v1/admin/users" \
-    -d "$(python3 - <<PY
-import json
-print(json.dumps({
-  "email": "$email",
-  "password": """$password""",
+  FIN_EMAIL="$email" FIN_PASS="$password" FIN_NAME="$name" \
+  SERVICE_KEY="$SERVICE_KEY" SUPABASE_URL="$SUPABASE_URL" \
+  python3 <<'PY'
+import json, os, urllib.request
+url = os.environ["SUPABASE_URL"].rstrip("/") + "/auth/v1/admin/users"
+key = os.environ["SERVICE_KEY"]
+body = json.dumps({
+  "email": os.environ["FIN_EMAIL"],
+  "password": os.environ["FIN_PASS"],
   "email_confirm": True,
-  "user_metadata": {"full_name": """$name"""},
-}))
+  "user_metadata": {"full_name": os.environ["FIN_NAME"]},
+}).encode()
+req = urllib.request.Request(
+  url, data=body, method="POST",
+  headers={
+    "apikey": key,
+    "Authorization": f"Bearer {key}",
+    "Content-Type": "application/json",
+  },
+)
+with urllib.request.urlopen(req, timeout=30) as res:
+  data = json.load(res)
+print(data.get("id") or "")
 PY
-)" | python3 -c 'import json,sys; u=json.load(sys.stdin); print(u.get("id") or "")'
 }
 
 grant_admin() {
   local uid="$1" email="$2" name="$3"
   [[ -n "$uid" ]] || die "uid vazio para $email"
+  local email_sql name_sql
+  email_sql="${email//\'/\'\'}"
+  name_sql="${name//\'/\'\'}"
   psql_db <<SQL
--- perfil
 INSERT INTO public.profiles (id, full_name, account_status, is_super_admin, created_at, updated_at)
 VALUES (
-  '$uid'::uuid,
-  COALESCE(NULLIF('$name',''), 'Admin'),
+  '${uid}'::uuid,
+  COALESCE(NULLIF('${name_sql}',''), 'Admin'),
   'active',
   false,
   now(),
@@ -123,19 +153,17 @@ SET account_status = 'active',
     updated_at = now(),
     full_name = COALESCE(NULLIF(public.profiles.full_name,''), EXCLUDED.full_name);
 
--- role admin (Financeiro + painel admin)
 INSERT INTO public.user_roles (user_id, role)
-SELECT '$uid'::uuid, 'admin'
+SELECT '${uid}'::uuid, 'admin'
 WHERE NOT EXISTS (
   SELECT 1 FROM public.user_roles
-  WHERE user_id = '$uid'::uuid AND role IN ('admin', 'master_admin')
+  WHERE user_id = '${uid}'::uuid AND role IN ('admin', 'master_admin')
 );
 
--- garante não banido no Auth
 UPDATE auth.users
 SET banned_until = NULL,
     updated_at = now()
-WHERE id = '$uid'::uuid;
+WHERE id = '${uid}'::uuid;
 SQL
   log "admin OK → $email ($uid)"
 }
@@ -144,24 +172,18 @@ ensure_user_admin() {
   local email="$1" name="$2" create_if_missing="$3"
   log "verificando $email"
   local uid
-  uid="$(auth_get_user_id "$email")"
-  if [[ -z "$uid" ]]; then
-    # fallback SQL (Auth Admin list pode paginar)
-    uid="$(
-      echo "SELECT id::text FROM auth.users WHERE lower(email)=lower('$email') LIMIT 1;" \
-        | psql_db -At 2>/dev/null | head -1 || true
-    )"
-  fi
+  uid="$(sql_user_id "$email")"
 
   if [[ -z "$uid" ]]; then
     if [[ "$create_if_missing" != "1" ]]; then
-      die "conta $email não existe e create_if_missing=0"
+      log "aviso: $email não existe — não criando"
+      return 1
     fi
     local pass="$FINANCEIRO_PASSWORD"
     if [[ -z "$pass" ]]; then
       pass="$(python3 - <<'PY'
-import secrets,string
-alphabet=string.ascii_letters+string.digits
+import secrets, string
+alphabet = string.ascii_letters + string.digits
 print("Fin@" + "".join(secrets.choice(alphabet) for _ in range(12)) + "!")
 PY
 )"
@@ -173,23 +195,19 @@ PY
       echo "======================================================"
       echo
     fi
-    log "criando usuário $email"
-    uid="$(auth_create_user "$email" "$pass" "$name")"
-    [[ -n "$uid" ]] || die "falha ao criar $email via Auth Admin"
+    log "criando usuário $email via Auth Admin"
+    uid="$(auth_create_user "$email" "$pass" "$name" || true)"
+    [[ -n "$uid" ]] || die "falha ao criar $email"
   fi
 
   grant_admin "$uid" "$email" "$name"
+  return 0
 }
 
-# Isaac: só promove (não cria senha nova)
-ensure_user_admin "$EMAIL_ISAAC" "Isaac Gomes" 0 || {
-  log "aviso: $EMAIL_ISAAC não encontrado — pulando criação"
-}
-
-# Financeiro: cria se não existir
+ensure_user_admin "$EMAIL_ISAAC" "Isaac Gomes" 0 || true
 ensure_user_admin "$EMAIL_FINANCEIRO" "$FINANCEIRO_NAME" 1
 
-log "lista final de admins (financeiro + isaac)"
+log "admins atuais (inclui financeiro + isaac)"
 psql_db <<'SQL'
 SELECT u.email, p.full_name, p.is_super_admin, p.account_status,
        array_agg(DISTINCT ur.role) FILTER (WHERE ur.role IS NOT NULL) AS roles
@@ -203,6 +221,8 @@ GROUP BY u.email, p.full_name, p.is_super_admin, p.account_status
 ORDER BY u.email;
 SQL
 
-log "OK — login admin: https://arbishield.app/admin/login"
-log "  financeiro@arbishield.com  (admin → menu Financeiro)"
-log "  isaacgomes3@gmail.com      (já existente / promovido)"
+log "OK — login: https://arbishield.app/admin/login"
+log "  financeiro@arbishield.com  → admin + allowlist Financeiro"
+log "  isaacgomes3@gmail.com      → admin + allowlist Financeiro"
+log "Obs.: icaro@ / carlos@ e outros admins NÃO entram em Financeiro (hotfix finance-acl)."
+log "Aplique: bash <(curl -fsSL \".../scripts/vps-hotfix-finance-acl.sh?v=1\")"
