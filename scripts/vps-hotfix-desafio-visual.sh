@@ -2,7 +2,12 @@
 # Hotfix: visual Desafios + lançamento 1 evento (etapa = falha do cliente)
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=19")
+#   bash <(curl -fsSL "https://cdn.jsdelivr.net/gh/isaacgomes3/exchange@cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh")
+# ou:
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=20")
+#
+# Só remover abas (cirúrgico, no HTML já instalado):
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-strip-filters.sh?v=1")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -28,29 +33,77 @@ if [[ -z "${SHA:-}" ]]; then
 else
   log "tip=$SHA"
 fi
-RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${SHA}"
+
+# Prefer jsDelivr (menos cache stale que raw.githubusercontent branch tip)
+RAW_JS="https://cdn.jsdelivr.net/gh/isaacgomes3/exchange@${SHA}"
+RAW_GH="https://raw.githubusercontent.com/isaacgomes3/exchange/${SHA}"
 BUST="?t=$(date +%s)"
 
-log "app-desafio.html (visual mockup + etapa pessoal)"
-curl -fsSL "${RAW}/deploy/vps-supabase/static/v2/app-desafio.html${BUST}" -o "$WEB/app-desafio.html"
-chmod 0644 "$WEB/app-desafio.html"
+fetch() {
+  # usage: fetch <relpath> <dest>
+  local rel="$1" dest="$2"
+  if curl -fsSL "${RAW_JS}/${rel}" -o "$dest"; then
+    return 0
+  fi
+  log "jsDelivr falhou para $rel — tentando raw.githubusercontent"
+  curl -fsSL "${RAW_GH}/${rel}${BUST}" -o "$dest"
+}
 
-# Cinto de segurança: remove bloco de abas se HTML antigo ainda vier com elas
-python3 - "$WEB/app-desafio.html" <<'PY'
+# RAW usado pelos curls restantes do script (admin etc.)
+RAW="$RAW_GH"
+
+strip_desafio_filters() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+  python3 - "$file" <<'PY'
 from pathlib import Path
 import re, sys
 p = Path(sys.argv[1])
 t = p.read_text(encoding="utf-8")
-t2, n = re.subn(
+orig = t
+t, n = re.subn(
     r'\s*<div class="dz-filters"[^>]*>[\s\S]*?</div>\s*',
     "\n\n",
     t,
     count=1,
 )
 if n:
-    print(f"==> removeu {n} bloco(s) dz-filters remanescente(s)")
-    p.write_text(t2, encoding="utf-8")
+    print(f"==> removeu {n} bloco(s) dz-filters em {p}")
+css = """
+    /* hotfix: esconde abas do Desafio */
+    .dz-filters,
+    #filters[role="tablist"],
+    button.dz-filter {
+      display: none !important;
+      height: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: hidden !important;
+      visibility: hidden !important;
+    }
+"""
+if "hotfix: esconde abas do Desafio" not in t and "</style>" in t:
+    t = t.replace("</style>", css + "\n  </style>", 1)
+if "desafio-no-filter-tabs" not in t and "Desafios disponíveis" in t:
+    t = t.replace(
+        '<div class="section-label">',
+        '<!-- desafio-no-filter-tabs -->\n  <div class="section-label">',
+        1,
+    )
+if t != orig:
+    p.write_text(t, encoding="utf-8")
 PY
+}
+
+# 0) Patch imediato no arquivo já instalado (mesmo se o download falhar depois)
+log "removendo abas do HTML já instalado (se existir)"
+strip_desafio_filters "$WEB/app-desafio.html"
+strip_desafio_filters "$WEB_ROOT/app-desafio.html"
+
+log "app-desafio.html (visual mockup + etapa pessoal)"
+fetch "deploy/vps-supabase/static/v2/app-desafio.html" "$WEB/app-desafio.html"
+chmod 0644 "$WEB/app-desafio.html"
+strip_desafio_filters "$WEB/app-desafio.html"
 
 grep -q 'dz-v2-compare' "$WEB/app-desafio.html" || die "HTML sem dz-v2-compare"
 grep -q 'dz-wallet-bar' "$WEB/app-desafio.html" || die "HTML sem dz-wallet-bar"
@@ -71,13 +124,13 @@ grep -q 'id="filters"' "$WEB/app-desafio.html" && die "bloco #filters ainda pres
 grep -q 'data-casa-copy' "$WEB/app-desafio.html" || die "HTML sem botão Copiar do valor da casa"
 
 log "v2.js (busca de times + fallback TheSportsDB)"
-curl -fsSL "${RAW}/deploy/vps-supabase/static/v2/v2.js${BUST}" -o "$WEB/v2.js"
+fetch "deploy/vps-supabase/static/v2/v2.js" "$WEB/v2.js"
 chmod 0644 "$WEB/v2.js"
 cp -f "$WEB/v2.js" "$WEB_ROOT/v2.js" 2>/dev/null || true
 grep -q 'thesportsdb.com' "$WEB/v2.js" || die "v2.js sem fallback TheSportsDB"
 
 log "v2.css (barra preta + borda limão)"
-curl -fsSL "${RAW}/deploy/vps-supabase/static/v2/v2.css${BUST}" -o "$WEB/v2.css"
+fetch "deploy/vps-supabase/static/v2/v2.css" "$WEB/v2.css"
 chmod 0644 "$WEB/v2.css"
 # Espelha também na raiz caso o nginx sirva /v2.css de outro path
 cp -f "$WEB/v2.css" "$WEB_ROOT/v2.css" 2>/dev/null || true
