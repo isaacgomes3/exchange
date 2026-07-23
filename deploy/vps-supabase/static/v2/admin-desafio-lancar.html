@@ -203,6 +203,34 @@
       padding: 12px; color: var(--muted); font-size: 11px; font-weight: 700;
       letter-spacing: 0.06em; text-transform: uppercase;
     }
+    .profit-box {
+      border: 1px solid rgba(201,242,35,0.45);
+      background: rgba(201,242,35,0.08);
+      border-radius: 16px;
+      padding: 16px;
+      margin: 0 0 18px;
+    }
+    .profit-box strong {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--lime);
+      margin-bottom: 8px;
+    }
+    .profit-box .field { margin-bottom: 0; }
+    .odd-auto-hint {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    input[data-f="arbi_odd"][readonly] {
+      opacity: 0.92;
+      border-color: rgba(201,242,35,0.35);
+      color: var(--lime);
+      font-weight: 800;
+    }
   </style>
 </head>
 <body data-shell="admin" data-active="desafios">
@@ -217,6 +245,23 @@
 
     <div class="panel">
       <div class="form-error" id="formError"></div>
+
+      <div class="profit-box">
+        <strong>Lucro líquido do evento</strong>
+        <div class="field">
+          <label for="fProfitPct">Percentual (obrigatório antes de lançar)</label>
+          <select id="fProfitPct">
+            <option value="">Selecione o lucro líquido…</option>
+            <option value="3">3%</option>
+            <option value="5" selected>5%</option>
+            <option value="7">7%</option>
+            <option value="10">10%</option>
+            <option value="12">12%</option>
+            <option value="15">15%</option>
+          </select>
+          <p class="field-hint">Odd ArbiShield = odd da casa externa × (1 + lucro%). Defina isso antes de preencher a odd externa.</p>
+        </div>
+      </div>
 
       <div class="field-row">
         <div class="field">
@@ -318,6 +363,7 @@
         subtitle: "Complete os desafios seguidos e fature todo o saldo final com lucro!",
         initial_balance_reais: "200,00",
         circuit_max_steps: 5,
+        target_profit_pct: 5,
         is_active: false,
         append_to_desafio_id: null,
         steps: [emptyStep(1)],
@@ -454,6 +500,7 @@
         1,
         Math.min(20, Number($("fCircuitMax") && $("fCircuitMax").value) || 5)
       );
+      draft.target_profit_pct = Number($("fProfitPct") && $("fProfitPct").value) || 0;
       draft.is_active = $("fActive").checked;
       const root = document.querySelector(`[data-step-idx="0"]`);
       const base = draft.steps[0] || emptyStep(1);
@@ -740,33 +787,6 @@
             <input data-f="league_name" value="${esc(s.league_name)}" placeholder="Ex.: Brasileirão Série A" />
           </div>
 
-          <div class="leg-title arbi">Entrada ArbiShield</div>
-          <div class="field team-pick" data-side="arbi">
-            <label>Time / Seleção</label>
-            <div class="team-pick-row">
-              <div class="team-logo-box" id="arbiLogoPrev">${logoPreviewHtml(s.arbi_team_logo_url)}</div>
-              <div style="min-width:0;position:relative">
-                <input data-f="arbi_team_name" value="${esc(s.arbi_team_name)}" placeholder="Buscar time… Ex: Vitória" autocomplete="off" />
-                <div class="team-suggest" id="arbiSuggest" role="listbox" hidden></div>
-              </div>
-            </div>
-            <input type="hidden" data-f="arbi_team_logo_url" value="${esc(s.arbi_team_logo_url || "")}" />
-          </div>
-          <div class="field-row">
-            <div class="field">
-              <label>Odd</label>
-              <input data-f="arbi_odd" value="${esc(s.arbi_odd)}" placeholder="2.10" />
-            </div>
-            <div class="field">
-              <label>Comissão (%)</label>
-              <input data-f="arbi_commission_pct" value="${esc(s.arbi_commission_pct)}" placeholder="0" />
-            </div>
-          </div>
-          <div class="field">
-            <label>Mercado</label>
-            <input data-f="market_name_arbishield" value="${esc(s.market_name_arbishield)}" placeholder="Menos 2.5 gols" />
-          </div>
-
           <div class="leg-title casa">Entrada Casa Externa</div>
           <div class="field team-pick" data-side="casa">
             <label>Time / Seleção</label>
@@ -781,8 +801,9 @@
           </div>
           <div class="field-row">
             <div class="field">
-              <label>Odd</label>
-              <input data-f="casa_odd" value="${esc(s.casa_odd)}" placeholder="1.85" />
+              <label>Odd externa</label>
+              <input data-f="casa_odd" value="${esc(s.casa_odd)}" placeholder="1.85" inputmode="decimal" />
+              <p class="odd-auto-hint">Ao informar a odd, a odd ArbiShield é gerada com o lucro líquido selecionado.</p>
             </div>
             <div class="field">
               <label>Comissão (%)</label>
@@ -800,6 +821,34 @@
           <div class="field">
             <label>Link da Casa de Aposta</label>
             <input data-f="external_bet_link" value="${esc(s.external_bet_link)}" placeholder="https://www.bet365.com/..." />
+          </div>
+
+          <div class="leg-title arbi">Entrada ArbiShield</div>
+          <div class="field team-pick" data-side="arbi">
+            <label>Time / Seleção</label>
+            <div class="team-pick-row">
+              <div class="team-logo-box" id="arbiLogoPrev">${logoPreviewHtml(s.arbi_team_logo_url)}</div>
+              <div style="min-width:0;position:relative">
+                <input data-f="arbi_team_name" value="${esc(s.arbi_team_name)}" placeholder="Buscar time… Ex: Vitória" autocomplete="off" />
+                <div class="team-suggest" id="arbiSuggest" role="listbox" hidden></div>
+              </div>
+            </div>
+            <input type="hidden" data-f="arbi_team_logo_url" value="${esc(s.arbi_team_logo_url || "")}" />
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Odd ArbiShield (automática)</label>
+              <input data-f="arbi_odd" value="${esc(s.arbi_odd)}" placeholder="—" readonly />
+              <p class="odd-auto-hint">Odd externa × (1 + lucro líquido %).</p>
+            </div>
+            <div class="field">
+              <label>Comissão (%)</label>
+              <input data-f="arbi_commission_pct" value="${esc(s.arbi_commission_pct)}" placeholder="0" />
+            </div>
+          </div>
+          <div class="field">
+            <label>Mercado</label>
+            <input data-f="market_name_arbishield" value="${esc(s.market_name_arbishield)}" placeholder="Menos 2.5 gols" />
           </div>
           <div class="field-row">
             <div class="field">
@@ -829,6 +878,40 @@
           </div>
         </div>`;
       bindTeamPickers();
+      bindOddAutoCalc();
+    }
+
+    function parseOddInput(v) {
+      const n = Number(String(v || "").replace(",", "."));
+      return Number.isFinite(n) && n > 1 ? n : null;
+    }
+
+    function calcArbiOddFromCasa(casaOdd, profitPct) {
+      const o = parseOddInput(casaOdd);
+      const p = Number(profitPct);
+      if (o == null || !Number.isFinite(p) || p <= 0) return "";
+      return (o * (1 + p / 100)).toFixed(2);
+    }
+
+    function syncArbiOddFromCasa() {
+      const root = document.querySelector(`[data-step-idx="0"]`);
+      if (!root) return;
+      const casaEl = root.querySelector(`[data-f="casa_odd"]`);
+      const arbiEl = root.querySelector(`[data-f="arbi_odd"]`);
+      if (!casaEl || !arbiEl) return;
+      const pct = Number($("fProfitPct") && $("fProfitPct").value) || 0;
+      arbiEl.value = calcArbiOddFromCasa(casaEl.value, pct);
+    }
+
+    function bindOddAutoCalc() {
+      const root = document.querySelector(`[data-step-idx="0"]`);
+      if (!root) return;
+      const casaEl = root.querySelector(`[data-f="casa_odd"]`);
+      if (casaEl) {
+        casaEl.addEventListener("input", syncArbiOddFromCasa);
+        casaEl.addEventListener("change", syncArbiOddFromCasa);
+      }
+      syncArbiOddFromCasa();
     }
 
     function fillHeaderFields() {
@@ -839,6 +922,10 @@
       if ($("fCircuitMax")) {
         $("fCircuitMax").value = String(draft.circuit_max_steps || 5);
         $("fCircuitMax").disabled = Boolean(draft.append_to_desafio_id);
+      }
+      if ($("fProfitPct")) {
+        const pct = Number(draft.target_profit_pct) || 5;
+        $("fProfitPct").value = String(pct);
       }
       $("fActive").checked = Boolean(draft.is_active);
     }
@@ -858,6 +945,10 @@
       if (!draft.title && !draft.append_to_desafio_id) {
         throw new Error("Informe o título do desafio.");
       }
+      const profitPct = Number(draft.target_profit_pct);
+      if (!Number.isFinite(profitPct) || profitPct <= 0) {
+        throw new Error("Selecione o lucro líquido do evento antes de lançar.");
+      }
       const a = draft.steps[0];
       const homeTeam = String(a.home_team || "").trim();
       const awayTeam = String(a.away_team || "").trim();
@@ -865,8 +956,14 @@
         a.match_label = homeTeam + " x " + awayTeam;
       }
       if (!a || !a.match_label) throw new Error("Preencha os times (casa e fora) ou o nome do jogo.");
-      if (!a.arbi_team_name || !a.arbi_odd || !a.casa_team_name || !a.casa_odd) {
-        throw new Error("Preencha seleção e odd para ArbiShield e Casa Externa.");
+      if (!a.casa_team_name || !a.casa_odd) {
+        throw new Error("Preencha seleção e odd da Casa Externa.");
+      }
+      // Garante odd ArbiShield a partir da externa + lucro
+      const autoArbi = calcArbiOddFromCasa(a.casa_odd, profitPct);
+      if (autoArbi) a.arbi_odd = autoArbi;
+      if (!a.arbi_team_name || !a.arbi_odd) {
+        throw new Error("Preencha seleção ArbiShield; a odd é gerada pela odd externa + lucro.");
       }
       if (!a.market_name_arbishield || !a.market_name_casa) {
         throw new Error("Informe o mercado da ArbiShield e da Casa Externa.");
@@ -926,6 +1023,7 @@
         return {
           append_to_desafio_id: draft.append_to_desafio_id,
           steps: [stepPayload],
+          target_profit_pct: profitPct,
           is_active: true,
         };
       }
@@ -935,6 +1033,7 @@
         title: draft.title,
         subtitle: draft.subtitle || null,
         total_steps: Number(draft.circuit_max_steps) || 5,
+        target_profit_pct: profitPct,
         initial_balance_cents: initialCents || 20000,
         is_active: Boolean(draft.is_active),
         status: draft.is_active ? "active" : "draft",
