@@ -104,6 +104,58 @@
       background: rgba(201, 242, 35, 0.14);
       color: #c9f223;
     }
+    /* Título da lista: estilo logo ArbiShield (itálico 900) · 2× o section-label */
+    .dz-section-head {
+      margin: 28px 0 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      font-size: 22px;
+      font-weight: 900;
+      font-style: italic;
+      letter-spacing: -0.04em;
+      text-transform: uppercase;
+      line-height: 1.05;
+    }
+    .dz-section-head .dz-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .dz-section-head .dz-dot::after {
+      content: "";
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      background: inherit;
+      opacity: 0.45;
+      animation: dz-dot-pulse 1.6s ease-out infinite;
+    }
+    .dz-section-head.is-available .dz-dot {
+      background: #c9f223;
+      box-shadow: 0 0 10px rgba(201, 242, 35, 0.55);
+    }
+    .dz-section-head.is-running .dz-dot {
+      background: #f5c518;
+      box-shadow: 0 0 10px rgba(245, 197, 24, 0.55);
+    }
+    .dz-section-head .w {
+      color: #fff;
+    }
+    .dz-section-head.is-available .a {
+      color: #c9f223;
+    }
+    .dz-section-head.is-running .a {
+      color: #f5c518;
+    }
+    @keyframes dz-dot-pulse {
+      0% { transform: scale(0.7); opacity: 0.55; }
+      70% { transform: scale(1.85); opacity: 0; }
+      100% { transform: scale(1.85); opacity: 0; }
+    }
     @media (max-width: 860px) {
       body[data-shell="app"] .dz-wallet-cell {
         border-bottom-color: rgba(201, 242, 35, 0.45) !important;
@@ -155,7 +207,10 @@
   </section>
 
   <!-- desafio-no-filter-tabs -->
-  <div class="section-label"><span class="dot" style="background:#c6ff00"></span>Desafios disponíveis</div>
+  <div class="dz-section-head is-available" id="dzSectionHead" aria-live="polite">
+    <span class="dz-dot" aria-hidden="true"></span>
+    <span class="w">Desafio</span>&nbsp;<span class="a" id="dzSectionAccent">Disponível</span>
+  </div>
   <div id="list" class="app-desafio-grid"><div class="ops-empty">Carregando…</div></div>
 
   <div class="dz-modal" id="dzTransferModal" aria-hidden="true">
@@ -215,11 +270,23 @@
         if (el) el.textContent = value;
       }
 
+      /** Título: DESAFIO DISPONÍVEL (sem entrada) ou DESAFIO EM ANDAMENTO (com desafio ativo) */
+      function renderSectionHead() {
+        var head = document.getElementById("dzSectionHead");
+        var accent = document.getElementById("dzSectionAccent");
+        if (!head || !accent) return;
+        var active = Boolean(walletState.desafioActive);
+        head.classList.toggle("is-available", !active);
+        head.classList.toggle("is-running", active);
+        accent.textContent = active ? "Em andamento" : "Disponível";
+      }
+
       function renderWalletBar() {
         setTxt("dzWalletBanca", money(walletState.desafioWalletCents));
         setTxt("dzWalletSaldo", money(walletState.desafioSaldoCents));
         var stepsHost = document.getElementById("dzWalletSteps");
         var hint = document.getElementById("dzWalletProgressHint");
+        renderSectionHead();
         if (walletState.desafioActive && walletState.totalSteps > 0) {
           if (walletState.inProgress) {
             setTxt(

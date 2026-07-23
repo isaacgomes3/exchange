@@ -3,7 +3,7 @@
 # Usa jsDelivr + SHA do tip para evitar HTML antigo em cache.
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=2")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=3")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -40,6 +40,8 @@ fi
 grep -q 'data-casa-copy' "$TMP" || die "download sem botão Copiar"
 grep -q 'data-stake-input' "$TMP" || die "download sem Entrar com editável"
 grep -q 'desafio-no-filter-tabs' "$TMP" || die "download sem marcador sem-abas"
+grep -q 'dz-section-head' "$TMP" || die "download sem título Desafio Disponível/Em andamento"
+grep -q 'dz-dot-pulse' "$TMP" || die "download sem animação pulsante do ícone"
 grep -q 'data-f="Todos"' "$TMP" && die "download ainda tem abas Todos"
 
 # Strip + CSS hide (cinto de segurança)
