@@ -123,6 +123,7 @@ grep -q 'transfer-desafio' "$DEST" && die "app-desafio ainda chama transfer-desa
 grep -q 'isStepPlayable' "$DEST" || die "app-desafio sem filtro de etapa encerrada"
 grep -q 'Jogo encerrado' "$DEST" || die "app-desafio sem CTA Jogo encerrado"
 grep -q 'Saldo desafio congelado' "$DEST" || die "app-desafio sem Saldo desafio congelado"
+grep -q 'Retorno total\|stored < stakeAmt' "$DEST" || die "app-desafio sem payout total no congelado"
 grep -q 'stakeBudgetCents' "$DEST" || die "app-desafio sem stakeBudgetCents"
 grep -q 'is-frozen' "$DEST" || die "app-desafio sem estilo is-frozen"
 grep -q 'is-banca' "$DEST" || die "app-desafio sem estilo is-banca"
