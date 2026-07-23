@@ -30,6 +30,44 @@
     body[data-shell="app"] .dz-wallet-l {
       font-weight: 900 !important;
     }
+    .dz-stake-edit {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+    .dz-stake-edit input {
+      width: 7.5rem;
+      max-width: 46vw;
+      border-radius: 10px;
+      border: 1px solid rgba(201, 242, 35, 0.45);
+      background: #050505;
+      color: #fff;
+      font: inherit;
+      font-size: 1.05rem;
+      font-weight: 900;
+      padding: 8px 10px;
+      text-align: right;
+    }
+    .dz-stake-edit input:focus {
+      outline: none;
+      border-color: #c9f223;
+      box-shadow: 0 0 0 2px rgba(201, 242, 35, 0.2);
+    }
+    .dz-stake-max {
+      border: 1px solid rgba(201, 242, 35, 0.55);
+      background: rgba(201, 242, 35, 0.12);
+      color: #c9f223;
+      border-radius: 8px;
+      padding: 7px 10px;
+      font-size: 9px;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .dz-stake-max:hover { background: rgba(201, 242, 35, 0.22); }
     @media (max-width: 860px) {
       body[data-shell="app"] .dz-wallet-cell {
         border-bottom-color: rgba(201, 242, 35, 0.45) !important;
@@ -68,7 +106,7 @@
       <div class="dz-wallet-l">Progresso no desafio atual</div>
       <div class="dz-wallet-v sm" id="dzWalletProgress">Nenhuma etapa contabilizada</div>
       <div class="dz-wallet-steps" id="dzWalletSteps" aria-hidden="true"></div>
-      <p class="dz-wallet-hint" id="dzWalletProgressHint">Pegue um jogo para começar a contar seu progresso</p>
+      <p class="dz-wallet-hint" id="dzWalletProgressHint">Confirme a entrada no primeiro evento para iniciar o progresso</p>
     </div>
     <div class="dz-wallet-cell">
       <div class="dz-wallet-ico lime" aria-hidden="true">↗</div>
@@ -140,7 +178,10 @@
         totalSteps: 5,
         stepStates: ["pending", "pending", "pending", "pending", "pending"],
         desafioActive: false,
+        inProgress: false,
       };
+      /** Valores editados de "Entrar com" por card id (cents) */
+      var stakeEdits = {};
 
       function setTxt(id, value) {
         var el = document.getElementById(id);
@@ -153,11 +194,28 @@
         var stepsHost = document.getElementById("dzWalletSteps");
         var hint = document.getElementById("dzWalletProgressHint");
         if (walletState.desafioActive && walletState.totalSteps > 0) {
-          setTxt(
-            "dzWalletProgress",
-            "Etapa " + walletState.currentStep + " de " + walletState.totalSteps
-          );
-          if (hint) hint.hidden = true;
+          if (walletState.inProgress) {
+            setTxt(
+              "dzWalletProgress",
+              String(walletState.currentStep || 1) + " etapa"
+            );
+          } else {
+            setTxt(
+              "dzWalletProgress",
+              "Etapa " +
+                walletState.currentStep +
+                " de " +
+                walletState.totalSteps
+            );
+          }
+          if (hint) {
+            hint.hidden = false;
+            hint.textContent = walletState.inProgress
+              ? "em andamento"
+              : walletState.currentStep > 1
+                ? "Circuito em progresso"
+                : "Entrada confirmada";
+          }
           if (stepsHost) {
             var states = walletState.stepStates || [];
             var total = walletState.totalSteps || states.length || 5;
@@ -170,7 +228,10 @@
           }
         } else {
           setTxt("dzWalletProgress", "Nenhuma etapa contabilizada");
-          if (hint) hint.hidden = false;
+          if (hint) {
+            hint.hidden = false;
+            hint.textContent = "Confirme a entrada no primeiro evento para iniciar o progresso";
+          }
           if (stepsHost) {
             stepsHost.innerHTML =
               '<span></span><span></span><span></span><span></span><span></span>';
@@ -382,6 +443,7 @@
           var saldo = 0;
           var states = [];
           for (var si = 0; si < circuitMax; si++) states.push("pending");
+          var hasPendingEntry = false;
           myParts.forEach(function (p) {
             var step = stepIds[String(p.step_id)];
             if (!step) return;
@@ -400,20 +462,26 @@
             } else if (result === "lost" || result === "lose") {
               states[idx] = side === "arbishield" ? "lost" : "done";
             } else {
+              // Entrada confirmada, jogo ainda não liquidado
               states[idx] = "current";
+              hasPendingEntry = true;
             }
           });
-          if (progress.eligibleStepIndex != null && progress.eligibleStepIndex <= circuitMax) {
-            var curIdx = progress.eligibleStepIndex - 1;
-            if (states[curIdx] === "pending") states[curIdx] = "current";
-          }
-
+          // Progresso só começa com entrada confirmada (não marca etapa só por haver jogo disponível)
           walletState.stepStates = states;
           walletState.currentStep = progress.wonCasa
             ? circuitMax
-            : progress.eligibleStepIndex || (myParts.length ? 1 : 0);
+            : myParts.length
+              ? Number(progress.eligibleStepIndex) ||
+                Number(
+                  (stepIds[String(myParts[myParts.length - 1].step_id)] || {})
+                    .step_index
+                ) ||
+                1
+              : 0;
           walletState.desafioSaldoCents = saldo;
-          walletState.desafioActive = Boolean(active && (myParts.length || progress.eligibleStepIndex));
+          walletState.desafioActive = Boolean(active && myParts.length > 0);
+          walletState.inProgress = Boolean(hasPendingEntry);
         } catch (ex) {
           console.warn("[desafio] wallet bar", ex);
         }
@@ -605,6 +673,65 @@
         return Math.round((e * p) / 100);
       }
 
+      function parseReaisToCents(raw) {
+        var u = String(raw || "")
+          .replace(/\s|R\$/gi, "")
+          .replace(/\./g, "")
+          .replace(",", ".");
+        var n = Number(u);
+        return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : 0;
+      }
+
+      function centsToInput(cents) {
+        var n = Number(cents) || 0;
+        return (n / 100).toLocaleString("pt-BR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+      }
+
+      /** Arb: stake casa para igualar o retorno da ArbiShield */
+      function calcSideStakes(entradaCents, arbiOdd, casaOdd) {
+        var entrada = Math.max(0, Number(entradaCents) || 0);
+        var ao = Number(arbiOdd);
+        var co = Number(casaOdd);
+        var receive =
+          Number.isFinite(ao) && ao > 0 ? Math.round(entrada * ao) : entrada;
+        var casaStake =
+          Number.isFinite(co) && co > 0 ? Math.round(receive / co) : 0;
+        var casaReceive =
+          Number.isFinite(co) && co > 0 ? Math.round(casaStake * co) : receive;
+        return {
+          entradaCents: entrada,
+          receiveCents: receive,
+          casaStakeCents: casaStake,
+          casaReceiveCents: casaReceive,
+        };
+      }
+
+      function applyStakeToCard(cardEl, item, entradaCents) {
+        if (!cardEl || !item) return;
+        var capped = Math.max(0, Number(entradaCents) || 0);
+        var maxWallet = Math.max(0, Number(walletState.desafioWalletCents) || 0);
+        if (maxWallet > 0 && capped > maxWallet) capped = maxWallet;
+        stakeEdits[item.id] = capped;
+        item.entradaCents = capped;
+        var calc = calcSideStakes(capped, item.arbiOdd, item.casaOdd);
+        item.receiveCents = calc.receiveCents;
+        item.casaStakeCents = calc.casaStakeCents;
+        item.casaReceiveCents = calc.casaReceiveCents;
+        var inp = cardEl.querySelector("[data-stake-input]");
+        if (inp && document.activeElement !== inp) {
+          inp.value = centsToInput(capped);
+        }
+        var arbiRecv = cardEl.querySelector("[data-arbi-receive]");
+        var casaStakeEl = cardEl.querySelector("[data-casa-stake]");
+        var casaRecv = cardEl.querySelector("[data-casa-receive]");
+        if (arbiRecv) arbiRecv.textContent = money(calc.receiveCents);
+        if (casaStakeEl) casaStakeEl.textContent = money(calc.casaStakeCents);
+        if (casaRecv) casaRecv.textContent = money(calc.casaReceiveCents);
+      }
+
       function liquidityShown(item, now) {
         var total = Math.max(
           Number(item.displayLiquidityCents) || 0,
@@ -627,10 +754,9 @@
 
       function toCardItem(desafio, step) {
         var teams = splitTeams(step || {});
-        var entrada = Number(desafio.initial_balance_cents) || 0;
+        var defaultEntrada = Number(desafio.initial_balance_cents) || 20000;
         var pct = Number(desafio.target_profit_pct);
         if (!Number.isFinite(pct) || pct <= 0) pct = 5;
-        var lucro = profitCents(entrada, pct);
         var startsAt = step.starts_at || null;
         var startsAtMs = startsAt ? new Date(startsAt).getTime() : null;
         if (startsAtMs != null && isNaN(startsAtMs)) startsAtMs = null;
@@ -644,22 +770,14 @@
         var casaOdd = Number(step.casa_odd);
         if (!Number.isFinite(arbiOdd) || arbiOdd <= 1) arbiOdd = null;
         if (!Number.isFinite(casaOdd) || casaOdd <= 1) casaOdd = null;
-        var receiveCents =
-          arbiOdd != null ? Math.round(entrada * arbiOdd) : entrada + lucro;
-        var casaStake =
-          Number(step.casa_stake_cents) > 0
-            ? Number(step.casa_stake_cents)
-            : casaOdd != null
-              ? Math.round(receiveCents / casaOdd)
-              : 0;
-        var casaReceive =
-          casaOdd != null && casaStake > 0
-            ? Math.round(casaStake * casaOdd)
-            : receiveCents;
+        var cardId = desafio.id + ":" + (step.id || step.step_index || 1);
+        var entrada =
+          stakeEdits[cardId] != null ? Number(stakeEdits[cardId]) : defaultEntrada;
+        var calc = calcSideStakes(entrada, arbiOdd, casaOdd);
         var externalLink = String(step.external_bet_link || "").trim();
 
         return {
-          id: desafio.id + ":" + (step.id || step.step_index || 1),
+          id: cardId,
           desafioId: desafio.id,
           desafioTitle: desafio.title || "Desafio",
           desafioNumber: desafio.number,
@@ -680,23 +798,24 @@
           startsAt: startsAt,
           startsAtMs: startsAtMs,
           releaseMinutesBefore: Number(step.release_minutes_before) || 0,
-          entradaCents: entrada,
-          lucroMaxPct: pct,
-          totalSteps: Number(desafio.total_steps) || (desafio.desafio_steps || []).length || 1,
-          isNew: true,
-          isActiveDesafio: !!desafio.is_active,
-          liquidityCents: Number(step.liquidity_cents) || 0,
-          displayLiquidityCents: Number(step.display_liquidity_cents) || Number(step.liquidity_cents) || 0,
-          usedLiquidityCents: Number(step.used_liquidity_cents) || 0,
-          guaranteedProfitCents: lucro,
-          profitArbiCents: lucro,
-          profitCasaCents: lucro,
           arbiOdd: arbiOdd,
           casaOdd: casaOdd,
-          receiveCents: receiveCents,
-          casaStakeCents: casaStake,
-          casaReceiveCents: casaReceive,
+          lucroMaxPct: pct,
+          entradaCents: calc.entradaCents,
+          defaultEntradaCents: defaultEntrada,
+          receiveCents: calc.receiveCents,
+          casaStakeCents: calc.casaStakeCents,
+          casaReceiveCents: calc.casaReceiveCents,
+          liquidityCents: Number(step.liquidity_cents) || 0,
+          displayLiquidityCents:
+            Number(step.display_liquidity_cents) ||
+            Number(step.liquidity_cents) ||
+            0,
+          usedLiquidityCents: Number(step.used_liquidity_cents) || 0,
           externalBetLink: externalLink,
+          stepId: step.id,
+          isActiveDesafio: !!desafio.is_active,
+          totalSteps: Number(desafio.total_steps) || 5,
           houseName: houseFromLink(externalLink),
         };
       }
@@ -809,9 +928,17 @@
           esc(fmtOdd(item.arbiOdd)) +
           "</span></div>" +
           '<div class="dz-v2-row"><span class="l">Entrar com</span><span class="v sm">' +
-          money(item.entradaCents) +
-          "</span></div>" +
-          '<div class="dz-v2-row"><span class="l">Você recebe</span><span class="v accent">' +
+          '<span class="dz-stake-edit">' +
+          '<input type="text" inputmode="decimal" autocomplete="off" data-stake-input="' +
+          esc(item.id) +
+          '" value="' +
+          esc(centsToInput(item.entradaCents)) +
+          '" aria-label="Valor de entrada ArbiShield" />' +
+          '<button type="button" class="dz-stake-max" data-stake-max="' +
+          esc(item.id) +
+          '">MAX</button>' +
+          "</span></span></div>" +
+          '<div class="dz-v2-row"><span class="l">Você recebe</span><span class="v accent" data-arbi-receive>' +
           money(item.receiveCents) +
           "</span></div>" +
           arbiCta +
@@ -825,10 +952,10 @@
           '<div class="dz-v2-row"><span class="l">Odd</span><span class="v accent">' +
           esc(fmtOdd(item.casaOdd)) +
           "</span></div>" +
-          '<div class="dz-v2-row"><span class="l">Aposte exatamente</span><span class="v sm">' +
+          '<div class="dz-v2-row"><span class="l">Aposte exatamente</span><span class="v sm" data-casa-stake>' +
           money(item.casaStakeCents) +
           "</span></div>" +
-          '<div class="dz-v2-row"><span class="l">Você recebe</span><span class="v accent">' +
+          '<div class="dz-v2-row"><span class="l">Você recebe</span><span class="v accent" data-casa-receive>' +
           money(item.casaReceiveCents) +
           "</span></div>" +
           casaCta +
@@ -864,6 +991,43 @@
           return;
         }
         host.innerHTML = visible.map(function (it) { return cardHtml(it, now); }).join("");
+
+        host.querySelectorAll("[data-stake-input]").forEach(function (inp) {
+          var cardId = inp.getAttribute("data-stake-input");
+          var item = items.find(function (x) {
+            return String(x.id) === String(cardId);
+          });
+          if (!item) return;
+          var cardEl = inp.closest("[data-card]");
+          function syncFromInput() {
+            applyStakeToCard(cardEl, item, parseReaisToCents(inp.value));
+          }
+          inp.addEventListener("input", syncFromInput);
+          inp.addEventListener("change", function () {
+            syncFromInput();
+            inp.value = centsToInput(item.entradaCents);
+          });
+          inp.addEventListener("blur", function () {
+            inp.value = centsToInput(item.entradaCents);
+          });
+        });
+
+        host.querySelectorAll("[data-stake-max]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var cardId = btn.getAttribute("data-stake-max");
+            var item = items.find(function (x) {
+              return String(x.id) === String(cardId);
+            });
+            if (!item) return;
+            var cardEl = btn.closest("[data-card]");
+            applyStakeToCard(
+              cardEl,
+              item,
+              Math.max(0, Number(walletState.desafioWalletCents) || 0)
+            );
+          });
+        });
+
         host.querySelectorAll("[data-participate]").forEach(function (btn) {
           btn.addEventListener("click", async function () {
             var stepId = btn.getAttribute("data-participate");
@@ -871,12 +1035,33 @@
               return String(x.id) === String(stepId);
             });
             if (!item) return;
+            var cardEl = btn.closest("[data-card]");
+            var inp = cardEl && cardEl.querySelector("[data-stake-input]");
+            if (inp) {
+              applyStakeToCard(cardEl, item, parseReaisToCents(inp.value));
+            }
+            var amountCents = Math.max(0, Number(item.entradaCents) || 0);
+            if (amountCents <= 0) {
+              alert("Informe um valor de entrada maior que zero.");
+              return;
+            }
+            var maxWallet = Math.max(0, Number(walletState.desafioWalletCents) || 0);
+            if (amountCents > maxWallet) {
+              alert(
+                "Saldo da banca do Desafio insuficiente. Deposite ou use MAX com o saldo disponível."
+              );
+              return;
+            }
             var realStepId = String(stepId).indexOf(":") >= 0
               ? String(stepId).split(":").slice(1).join(":")
               : stepId;
             if (
               !confirm(
-                "Registrar entrada no lado ArbiShield?\n\nSe você ganhar só na ArbiShield (falhar na casa), avança automaticamente para a próxima etapa — não é preciso cadastrar etapas no lançamento."
+                "Registrar entrada no lado ArbiShield?\n\nEntrada: " +
+                  money(amountCents) +
+                  "\nAposte na casa: " +
+                  money(item.casaStakeCents) +
+                  "\n\nSe você ganhar só na ArbiShield (falhar na casa), avança automaticamente para a próxima etapa."
               )
             ) {
               return;
@@ -894,7 +1079,7 @@
                 body: JSON.stringify({
                   stepId: realStepId,
                   side: "arbishield",
-                  amountCents: item.entradaCents,
+                  amountCents: amountCents,
                 }),
               });
               var data = await res.json().catch(function () {

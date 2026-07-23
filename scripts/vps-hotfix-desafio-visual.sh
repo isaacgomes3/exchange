@@ -2,7 +2,7 @@
 # Hotfix: visual Desafios + lançamento 1 evento (etapa = falha do cliente)
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=15")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=16")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -28,6 +28,10 @@ grep -q 'searchFootballTeams' "$WEB/app-desafio.html" || die "HTML sem searchFoo
 grep -q 'personalProgress' "$WEB/app-desafio.html" || die "HTML sem personalProgress (etapa = falha do cliente)"
 # enrichLogos deve sobrescrever URL quebrada com TheSportsDB
 grep -q 'Sempre tenta TheSportsDB' "$WEB/app-desafio.html" || die "app-desafio sem enrichLogos reforçado"
+grep -q 'data-stake-input' "$WEB/app-desafio.html" || die "HTML sem campo editável Entrar com"
+grep -q 'data-stake-max' "$WEB/app-desafio.html" || die "HTML sem botão MAX do stake"
+grep -q 'calcSideStakes' "$WEB/app-desafio.html" || die "HTML sem cálculo automático da casa"
+grep -q 'em andamento' "$WEB/app-desafio.html" || die "HTML sem progresso em andamento"
 
 log "v2.js (busca de times + fallback TheSportsDB)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/v2.js" -o "$WEB/v2.js"
