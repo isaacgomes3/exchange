@@ -31,9 +31,10 @@ chmod 0644 "$WEB/v2.css"
 grep -q 'dz-v2-panel' "$WEB/v2.css" || die "CSS sem dz-v2-panel"
 grep -q 'dz-wallet-bar' "$WEB/v2.css" || die "CSS sem dz-wallet-bar"
 
-log "admin-desafios.html (home/away a partir do nome do jogo)"
+log "admin-desafios.html (home/away a partir do nome do jogo; sem botão Sugestão)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-desafios.html" -o "$WEB/admin-desafios.html"
 chmod 0644 "$WEB/admin-desafios.html"
+grep -q 'Sugestão de Desafio' "$WEB/admin-desafios.html" && die "botão Sugestão de Desafio ainda presente"
 
 # Garante API de logos (dependência do visual)
 if [[ -f /opt/arbishield/arbishield-prelive-events.mjs ]] || [[ -f "${ARBISHIELD_SCRIPTS:-/opt/arbishield}/arbishield-prelive-events.mjs" ]]; then
