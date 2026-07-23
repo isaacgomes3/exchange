@@ -1556,7 +1556,10 @@ async function getDesafioCircuitForUser(desafioId, userId) {
     `/rest/v1/desafio_participations?select=id,step_id,side,result,amount_cents,profit_cents,created_at&user_id=eq.${encodeURIComponent(userId)}&desafio_id=eq.${encodeURIComponent(desafioId)}&side=eq.arbishield&order=created_at.asc&limit=50`,
     { token: SERVICE_KEY }
   ).catch(() => []);
-  const list = Array.isArray(parts) ? parts : [];
+  // Canceladas não contam no ciclo (cliente pode entrar de novo na etapa).
+  const list = (Array.isArray(parts) ? parts : []).filter(
+    (p) => String(p.result || "").toLowerCase() !== "cancelled"
+  );
   const maxEntries = Math.min(5, Math.max(1, n(desafio.total_steps) || 5));
   const pending = list.find((p) => String(p.result || "").toLowerCase() === "pending");
   const won = list.filter((p) => String(p.result || "").toLowerCase() === "won");
@@ -1868,10 +1871,14 @@ async function registerDesafioEntry(token, body) {
   }
 
   const existing = await sb(
-    `/rest/v1/desafio_participations?select=id&user_id=eq.${userId}&step_id=eq.${encodeURIComponent(stepId)}&side=eq.${side}&limit=1`,
+    `/rest/v1/desafio_participations?select=id,result&user_id=eq.${userId}&step_id=eq.${encodeURIComponent(stepId)}&side=eq.${side}&limit=5`,
     { token: SERVICE_KEY }
   ).catch(() => []);
-  if (Array.isArray(existing) && existing[0]) {
+  const activeExisting = (Array.isArray(existing) ? existing : []).find((r) => {
+    const rs = String(r.result || "").toLowerCase();
+    return rs !== "cancelled";
+  });
+  if (activeExisting) {
     throw new Error("already registered");
   }
 
@@ -1957,6 +1964,170 @@ async function registerDesafioEntry(token, body) {
   };
 }
 
+/**
+ * Cancela entrada pendente do Desafio e estorna amount_cents em desafio_balance.
+ * Cliente: só até o kickoff (starts_at). Admin: qualquer pending (etapa não done).
+ */
+async function cancelDesafioParticipation(token, body) {
+  const callerId = requireUserId(token);
+  const isAdmin = await currentUserIsAdmin(token);
+  const participationId = String(
+    body?.participationId || body?.participation_id || body?.id || ""
+  ).trim();
+  let stepId = String(body?.stepId || body?.step_id || "").trim();
+  const desafioIdHint = String(body?.desafioId || body?.desafio_id || "").trim();
+
+  let row = null;
+  if (participationId) {
+    const rows = await sb(
+      `/rest/v1/desafio_participations?select=*&id=eq.${encodeURIComponent(participationId)}&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    row = Array.isArray(rows) ? rows[0] : null;
+  } else if (stepId) {
+    stepId = (await resolveDesafioStepId(stepId)) || stepId;
+    const qUser = isAdmin && body?.userId ? String(body.userId) : callerId;
+    const rows = await sb(
+      `/rest/v1/desafio_participations?select=*&user_id=eq.${encodeURIComponent(qUser)}&step_id=eq.${encodeURIComponent(stepId)}&result=eq.pending&order=created_at.desc&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    row = Array.isArray(rows) ? rows[0] : null;
+  } else if (desafioIdHint) {
+    const rows = await sb(
+      `/rest/v1/desafio_participations?select=*&user_id=eq.${encodeURIComponent(callerId)}&desafio_id=eq.${encodeURIComponent(desafioIdHint)}&result=eq.pending&order=created_at.desc&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    row = Array.isArray(rows) ? rows[0] : null;
+  }
+
+  if (!row) throw new Error("Entrada pendente não encontrada");
+  if (!isAdmin && String(row.user_id) !== String(callerId)) {
+    throw new Error("Acesso negado");
+  }
+
+  const result = String(row.result || "").toLowerCase();
+  if (result === "cancelled") {
+    return {
+      ok: true,
+      alreadyCancelled: true,
+      participationId: row.id,
+      refundedCents: 0,
+    };
+  }
+  if (result !== "pending") {
+    throw new Error("Só entradas pendentes podem ser canceladas");
+  }
+
+  stepId = row.step_id || stepId;
+  const stepRows = await sb(
+    `/rest/v1/desafio_steps?select=id,status,starts_at,used_liquidity_cents,desafio_id&id=eq.${encodeURIComponent(stepId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const step = Array.isArray(stepRows) ? stepRows[0] : null;
+  if (!step) throw new Error("Etapa não encontrada");
+
+  const stepStatus = String(step.status || "").toLowerCase();
+  if (stepStatus === "done") {
+    throw new Error("Etapa já encerrada — não é possível cancelar");
+  }
+
+  const startsMs = step.starts_at ? new Date(step.starts_at).getTime() : NaN;
+  if (!isAdmin) {
+    if (stepStatus === "live") {
+      throw new Error("Jogo ao vivo — cancelamento encerrado");
+    }
+    if (Number.isFinite(startsMs) && Date.now() >= startsMs) {
+      throw new Error("Partida já iniciou — cancelamento encerrado");
+    }
+  }
+
+  const amount = n(row.amount_cents);
+  const userId = row.user_id;
+  if (amount > 0) {
+    const prof = await sb(
+      `/rest/v1/profiles?select=desafio_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    const bal = n(Array.isArray(prof) ? prof[0]?.desafio_balance_cents : 0);
+    await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        desafio_balance_cents: bal + amount,
+        updated_at: new Date().toISOString(),
+      },
+    });
+  }
+
+  let cancelledVia = "patch";
+  try {
+    await sb(
+      `/rest/v1/desafio_participations?id=eq.${encodeURIComponent(row.id)}`,
+      {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          result: "cancelled",
+          profit_cents: 0,
+          updated_at: new Date().toISOString(),
+        },
+      }
+    );
+  } catch (e) {
+    cancelledVia = "delete";
+    await sb(
+      `/rest/v1/desafio_participations?id=eq.${encodeURIComponent(row.id)}`,
+      { method: "DELETE", token: SERVICE_KEY }
+    );
+  }
+
+  try {
+    const used = Math.max(0, n(step.used_liquidity_cents) - amount);
+    await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        used_liquidity_cents: used,
+        updated_at: new Date().toISOString(),
+      },
+    });
+  } catch {
+    /* */
+  }
+
+  try {
+    await sb("/rest/v1/wallet_transactions", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        user_id: userId,
+        type: "desafio_cancel_refund",
+        amount_cents: amount,
+        metadata: {
+          participation_id: row.id,
+          step_id: stepId,
+          desafio_id: row.desafio_id || step.desafio_id,
+          cancelled_by: callerId,
+          admin: !!isAdmin,
+          via: cancelledVia,
+        },
+      },
+    });
+  } catch (e) {
+    console.warn("[desafio-cancel] wallet_transactions:", e.message || e);
+  }
+
+  return {
+    ok: true,
+    participationId: row.id,
+    stepId,
+    userId,
+    refundedCents: amount,
+    result: "cancelled",
+    via: cancelledVia,
+    admin: !!isAdmin,
+  };
+}
 
 async function getDesafioJornada(token, body) {
   const userId = requireUserId(token);
@@ -4805,6 +4976,23 @@ async function handleServerFn(req, res, id, rawBody = "") {
     }
   }
 
+  if (id === FN.DESAFIO_CANCEL && req.method === "POST") {
+    try {
+      return replyFnOk(
+        req,
+        res,
+        await cancelDesafioParticipation(token, extractServerFnData(rawBody))
+      );
+    } catch (err) {
+      console.error("[serverfn-shim] DESAFIO_CANCEL error", err);
+      return replyFnError(
+        req,
+        res,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
   if (id === FN.PARTNER_ACTIVE_ROUNDS) {
     try {
       return sendTsrOk(res, await listActivePartnerRounds(token));
@@ -5379,6 +5567,30 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 200, await settleDesafioStep(token, body.data || body));
     } catch (err) {
       return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/desafio-cancel" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      if (!token) return sendJson(res, 401, { error: "Não autorizado" });
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        return sendJson(res, 400, { error: "JSON inválido" });
+      }
+      return sendJson(
+        res,
+        200,
+        await cancelDesafioParticipation(token, body.data || body)
+      );
+    } catch (err) {
+      return sendJson(res, 400, {
+        ok: false,
         error: err instanceof Error ? err.message : String(err),
       });
     }

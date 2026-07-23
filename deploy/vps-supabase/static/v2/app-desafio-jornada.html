@@ -477,6 +477,11 @@
       cursor: pointer;
     }
     .j-drawer-cta .primary { background: var(--j-lime); color: #04140f; }
+    .j-drawer-cta .danger {
+      background: transparent;
+      color: #fca5a5;
+      border: 1px solid rgba(248, 113, 113, 0.45);
+    }
     .j-drawer-cta .ghost {
       background: transparent;
       color: #d7e0da;
@@ -921,7 +926,11 @@
               .eq("side", "arbishield")
               .order("created_at", { ascending: true })
               .limit(50);
-            if (!pr.error && Array.isArray(pr.data)) parts = pr.data;
+            if (!pr.error && Array.isArray(pr.data)) {
+              parts = pr.data.filter(function (p) {
+                return String(p.result || "").toLowerCase() !== "cancelled";
+              });
+            }
           } catch (e) { /* */ }
         }
 
@@ -1055,15 +1064,35 @@
           resultBlock = '<div class="j-status-pill waiting">🟡 Aguardando início</div>';
         }
 
-        var ctas = "";
+        var canCancel = false;
+        if (
+          stage.participation &&
+          stage.participation.result === "pending" &&
+          stage.participation.id
+        ) {
+          var kickMs = stage.startsAt ? new Date(stage.startsAt).getTime() : NaN;
+          canCancel = !Number.isFinite(kickMs) || Date.now() < kickMs;
+        }
+
+        var ctas = '<div class="j-drawer-cta">';
         if (stage.externalBetLink && (stage.state === "current" || stage.state === "final_ready" || stage.state === "waiting" || stage.state === "won")) {
-          ctas =
-            '<div class="j-drawer-cta">' +
+          ctas +=
             '<a class="primary" href="' +
             esc(stage.externalBetLink) +
-            '" target="_blank" rel="noopener">Abrir casa externa</a>' +
-            "</div>";
+            '" target="_blank" rel="noopener">Abrir casa externa</a>';
         }
+        if (canCancel) {
+          ctas +=
+            '<button type="button" class="danger" id="btnCancelEntry">Cancelar entrada</button>' +
+            '<p style="width:100%;margin:0;font-size:11px;color:#8b9690;line-height:1.4">Disponível até o início da partida. O valor volta para o saldo Desafio.</p>';
+        } else if (
+          stage.participation &&
+          stage.participation.result === "pending"
+        ) {
+          ctas +=
+            '<p style="width:100%;margin:0;font-size:11px;color:#8b9690">Partida iniciada — cancelamento encerrado.</p>';
+        }
+        ctas += "</div>";
 
         $("drawerBody").innerHTML =
           '<p class="j-match">' +
@@ -1084,8 +1113,8 @@
           '<div class="j-card"><div class="l">Casa Externa</div><div class="v">' +
           esc(stage.casaOdd != null ? stage.casaOdd : "—") +
           "</div></div>" +
-          '<div class="j-card"><div class="l">Valor recomendado</div><div class="v">' +
-          esc(money(stage.recommendedCents || 0)) +
+          '<div class="j-card"><div class="l">Valor da entrada</div><div class="v">' +
+          esc(money((stage.participation && stage.participation.amountCents) || stage.recommendedCents || 0)) +
           "</div></div>" +
           '<div class="j-card"><div class="l">Retorno</div><div class="v lime">' +
           esc(money(stage.returnCents || 0)) +
@@ -1108,6 +1137,52 @@
             var box = $("recoveryBox");
             box.classList.add("show");
             box.scrollIntoView({ behavior: "smooth", block: "center" });
+          });
+        }
+
+        var btnCancel = $("btnCancelEntry");
+        if (btnCancel) {
+          btnCancel.addEventListener("click", async function () {
+            var partId = stage.participation && stage.participation.id;
+            var amt = (stage.participation && stage.participation.amountCents) || 0;
+            if (!partId) return;
+            if (
+              !confirm(
+                "Cancelar esta entrada de " +
+                  money(amt) +
+                  "?\n\nO valor volta para o saldo Desafio (somente antes do início da partida)."
+              )
+            ) {
+              return;
+            }
+            btnCancel.disabled = true;
+            btnCancel.textContent = "Cancelando…";
+            try {
+              var session = await ArbiV2.client().auth.getSession();
+              var token = session.data.session && session.data.session.access_token;
+              var res = await fetch("/api/arbishield/desafio-cancel", {
+                method: "POST",
+                headers: {
+                  Authorization: "Bearer " + token,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ participationId: partId }),
+              });
+              var data = await res.json().catch(function () { return {}; });
+              if (!res.ok || data.ok !== true) {
+                throw new Error(data.error || "Falha ao cancelar");
+              }
+              alert(
+                "Entrada cancelada. Estornado: " +
+                  money(data.refundedCents || amt)
+              );
+              closeDrawer();
+              location.reload();
+            } catch (ex) {
+              alert((ex && ex.message) || "Erro ao cancelar");
+              btnCancel.disabled = false;
+              btnCancel.textContent = "Cancelar entrada";
+            }
           });
         }
       }

@@ -130,6 +130,50 @@
       margin-top: 8px; background: rgba(0,0,0,0.25);
     }
     .step-box .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .btn-danger {
+      background: transparent; color: #fca5a5;
+      border: 1px solid rgba(248,113,113,0.45);
+    }
+    .parts-back {
+      position: fixed; inset: 0; z-index: 80;
+      background: rgba(0,0,0,0.72);
+      display: none; align-items: stretch; justify-content: flex-end;
+    }
+    .parts-back.show { display: flex; }
+    .parts-drawer {
+      width: min(520px, 100%); background: #0a0a0a;
+      border-left: 1px solid rgba(201,242,35,0.25);
+      padding: 18px; overflow: auto;
+    }
+    .parts-drawer h2 {
+      margin: 0 0 6px; font-size: 1.05rem; font-weight: 900;
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .parts-drawer .sub { margin: 0 0 14px; }
+    .parts-totals {
+      display: grid; grid-template-columns: repeat(3, minmax(0,1fr));
+      gap: 8px; margin-bottom: 14px;
+    }
+    .parts-totals .mini .v { font-size: 1.05rem; }
+    .parts-row {
+      border: 1px solid var(--border); border-radius: 12px;
+      padding: 12px; margin-bottom: 8px; background: rgba(255,255,255,0.02);
+    }
+    .parts-row .name { font-weight: 800; font-size: 13px; }
+    .parts-row .meta-line {
+      color: var(--muted); font-size: 11px; margin-top: 4px;
+      display: flex; flex-wrap: wrap; gap: 8px;
+    }
+    .parts-row .row-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .pill-res {
+      display: inline-flex; padding: 2px 8px; border-radius: 999px;
+      font-size: 10px; font-weight: 800; letter-spacing: 0.06em;
+      text-transform: uppercase; border: 1px solid var(--border);
+    }
+    .pill-res.pending { color: #fbbf24; border-color: rgba(251,191,36,0.4); }
+    .pill-res.won { color: var(--lime); border-color: rgba(201,242,35,0.4); }
+    .pill-res.lost { color: #f87171; border-color: rgba(248,113,113,0.4); }
+    .pill-res.cancelled { color: #94a3b8; border-color: rgba(148,163,184,0.35); }
     .tag-arbi {
       background: rgba(201,242,35,0.12); color: var(--lime);
       border: 1px solid rgba(201,242,35,0.3); border-radius: 8px;
@@ -310,6 +354,19 @@
     </div>
     <div class="meta" id="meta">Carregando…</div>
     <div class="list" id="list"></div>
+  </div>
+
+  <div class="parts-back" id="partsBack" aria-hidden="true">
+    <div class="parts-drawer" role="dialog" aria-labelledby="partsTitle">
+      <h2 id="partsTitle">Entradas da etapa</h2>
+      <p class="sub" id="partsSub">Cliente · valor · resultado</p>
+      <div class="parts-totals" id="partsTotals"></div>
+      <div id="partsList"><div class="loading">Carregando entradas…</div></div>
+      <div class="card-actions" style="justify-content:flex-start;margin-top:16px">
+        <button type="button" class="btn btn-ghost" id="partsClose">Fechar</button>
+        <button type="button" class="btn btn-lime-outline" id="partsRefresh">Atualizar</button>
+      </div>
+    </div>
   </div>
 
   <div class="drawer-backdrop" id="drawerBackdrop" aria-hidden="true"></div>
@@ -980,6 +1037,9 @@
                   <span class="tag-arbi">Arbi: ${s.market_name_arbishield || s.market_name || "—"} @ ${s.arbi_odd ?? "—"}</span>
                   <span class="tag-casa">Casa: ${s.market_name_casa || "—"} @ ${s.casa_odd ?? "—"}</span>
                 </div>
+                <div class="card-actions" style="margin-top:8px;justify-content:flex-start">
+                  <button class="btn btn-lime-outline" type="button" data-parts="${esc(s.id)}" data-step-label="Etapa ${s.step_index} · ${esc(label)}">Ver entradas (cliente / valor)</button>
+                </div>
                 ${settle}
               </div>`;
             })
@@ -1053,6 +1113,14 @@
             alert(err.message || "Erro ao encerrar etapa");
             btn.disabled = false;
           }
+        });
+      });
+
+      $("list").querySelectorAll("[data-parts]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const stepId = btn.getAttribute("data-parts");
+          const label = btn.getAttribute("data-step-label") || "Etapa";
+          if (stepId) openPartsDrawer(stepId, label);
         });
       });
 
@@ -1143,6 +1211,151 @@
           });
         });
       });
+    }
+
+    let partsStepId = "";
+    let partsStepLabel = "";
+
+    function closePartsDrawer() {
+      const back = $("partsBack");
+      if (!back) return;
+      back.classList.remove("show");
+      back.setAttribute("aria-hidden", "true");
+      partsStepId = "";
+    }
+
+    function resultPill(result) {
+      const r = String(result || "pending").toLowerCase();
+      const label =
+        r === "won"
+          ? "Ganhou"
+          : r === "lost"
+            ? "Perdeu"
+            : r === "cancelled"
+              ? "Cancelada"
+              : "Pendente";
+      return `<span class="pill-res ${esc(r)}">${label}</span>`;
+    }
+
+    async function authToken() {
+      const session = await ArbiV2.client().auth.getSession();
+      return session.data.session && session.data.session.access_token;
+    }
+
+    async function loadPartsList() {
+      const host = $("partsList");
+      const totalsEl = $("partsTotals");
+      if (!partsStepId || !host) return;
+      host.innerHTML = `<div class="loading">Carregando entradas…</div>`;
+      try {
+        const token = await authToken();
+        const res = await fetch("/api/arbishield/desafio-participations", {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ stepId: partsStepId }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Falha ao listar entradas");
+        const rows = Array.isArray(data.rows) ? data.rows : [];
+        const t = data.totals || {};
+        if (totalsEl) {
+          totalsEl.innerHTML = `
+            <div class="mini"><div class="l">Total</div><div class="v">${Number(t.total) || rows.length}</div></div>
+            <div class="mini"><div class="l">ArbiShield</div><div class="v lime">${Number(t.arbishield) || 0} · ${money(t.amount_arbishield_cents || 0)}</div></div>
+            <div class="mini"><div class="l">Casa</div><div class="v">${Number(t.casa) || 0} · ${money(t.amount_casa_cents || 0)}</div></div>`;
+        }
+        if (!rows.length) {
+          host.innerHTML = `<div class="empty">Nenhuma entrada nesta etapa.</div>`;
+          return;
+        }
+        host.innerHTML = rows
+          .map((r) => {
+            const name =
+              (r.profiles && (r.profiles.full_name || r.profiles.email)) ||
+              "Cliente";
+            const uid = String(r.user_id || "").slice(0, 8);
+            const side = String(r.side || "arbishield").toLowerCase();
+            const result = String(r.result || "pending").toLowerCase();
+            const pending = result === "pending";
+            const cancelBtn = pending
+              ? `<button type="button" class="btn btn-danger" data-cancel-part="${esc(r.id)}" data-cancel-name="${esc(name)}" data-cancel-amount="${Number(r.amount_cents) || 0}">Cancelar / estornar</button>`
+              : "";
+            return `<div class="parts-row">
+              <div class="name">${esc(name)}</div>
+              <div class="meta-line">
+                <span>ID ${esc(uid)}…</span>
+                <span>Etapa · ${esc(partsStepLabel || "—")}</span>
+                <span>Lado · ${side === "casa" ? "Casa" : "ArbiShield"}</span>
+                <span>Valor · <strong style="color:var(--lime)">${money(r.amount_cents)}</strong></span>
+                ${resultPill(result)}
+              </div>
+              <div class="row-actions">${cancelBtn}</div>
+            </div>`;
+          })
+          .join("");
+
+        host.querySelectorAll("[data-cancel-part]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const id = btn.getAttribute("data-cancel-part");
+            const name = btn.getAttribute("data-cancel-name") || "cliente";
+            const amount = Number(btn.getAttribute("data-cancel-amount") || 0);
+            if (!id) return;
+            if (
+              !confirm(
+                `Cancelar entrada de ${name} (${money(amount)}) e estornar no saldo Desafio?`
+              )
+            ) {
+              return;
+            }
+            btn.disabled = true;
+            try {
+              const token = await authToken();
+              const res = await fetch("/api/arbishield/desafio-cancel", {
+                method: "POST",
+                headers: {
+                  Authorization: "Bearer " + token,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ participationId: id }),
+              });
+              const out = await res.json().catch(() => ({}));
+              if (!res.ok || out.ok !== true) {
+                throw new Error(out.error || "Falha ao cancelar");
+              }
+              alert(
+                "Entrada cancelada. Estornado: " + money(out.refundedCents || amount)
+              );
+              await loadPartsList();
+            } catch (err) {
+              alert(err.message || "Erro ao cancelar");
+              btn.disabled = false;
+            }
+          });
+        });
+      } catch (err) {
+        host.innerHTML = `<div class="error">${esc(err.message || "Erro")}</div>`;
+      }
+    }
+
+    function openPartsDrawer(stepId, label) {
+      partsStepId = stepId;
+      partsStepLabel = label || "Etapa";
+      const back = $("partsBack");
+      const title = $("partsTitle");
+      const sub = $("partsSub");
+      if (title) title.textContent = "Entradas · " + partsStepLabel;
+      if (sub) {
+        sub.textContent =
+          "Cliente · valor · resultado — cancele individualmente entradas pendentes (estorna saldo Desafio).";
+      }
+      if (back) {
+        back.classList.add("show");
+        back.setAttribute("aria-hidden", "false");
+      }
+      loadPartsList();
     }
 
     async function load() {
@@ -1271,8 +1484,20 @@
       renderStepsEditor();
     });
     document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && $("partsBack") && $("partsBack").classList.contains("show")) {
+        closePartsDrawer();
+        return;
+      }
       if (e.key === "Escape" && $("drawer").classList.contains("open")) closeDrawer();
     });
+
+    if ($("partsClose")) $("partsClose").addEventListener("click", closePartsDrawer);
+    if ($("partsRefresh")) $("partsRefresh").addEventListener("click", loadPartsList);
+    if ($("partsBack")) {
+      $("partsBack").addEventListener("click", (e) => {
+        if (e.target === $("partsBack")) closePartsDrawer();
+      });
+    }
 
     $("btnRefresh").addEventListener("click", load);
     renderSuggestion();
