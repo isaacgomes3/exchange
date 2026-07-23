@@ -2,7 +2,7 @@
 # Hotfix: visual Desafios + lançamento 1 evento (etapa = falha do cliente)
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=4")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=5")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -58,6 +58,8 @@ curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-desafio-lancar.html" -o "$W
 chmod 0644 "$WEB/admin-desafio-lancar.html"
 grep -q 'fCircuitMax' "$WEB/admin-desafio-lancar.html" || die "página de lançamento sem Máx. etapas"
 grep -q 'Adicionar Etapa' "$WEB/admin-desafio-lancar.html" && die "página de lançamento ainda tem Adicionar Etapa"
+grep -q 'homeSuggest' "$WEB/admin-desafio-lancar.html" || die "página de lançamento sem busca de times"
+grep -q 'searchFootballTeams' "$WEB/admin-desafio-lancar.html" || die "página de lançamento sem searchFootballTeams"
 
 log "v2-shell.js (menu ativo em Lançar Desafio)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/v2-shell.js" -o "$WEB/v2-shell.js"

@@ -336,6 +336,8 @@ function buildStepRow(desafioId, stepIn, isActive) {
     league_name: stepIn.league_name ?? null,
     home_team: stepIn.home_team || null,
     away_team: stepIn.away_team || null,
+    home_logo_url: stepIn.home_logo_url || stepIn.home_logo || null,
+    away_logo_url: stepIn.away_logo_url || stepIn.away_logo || null,
     market_name: stepIn.market_name || stepIn.market_name_casa || null,
     market_name_casa: stepIn.market_name_casa || stepIn.market_name || null,
     market_name_arbishield: stepIn.market_name_arbishield || null,
