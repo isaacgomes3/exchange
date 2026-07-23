@@ -51,8 +51,19 @@ curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-desafios.html" -o "$WEB/adm
 chmod 0644 "$WEB/admin-desafios.html"
 grep -q 'Sugestão de Desafio' "$WEB/admin-desafios.html" && die "botão Sugestão de Desafio ainda presente"
 grep -q 'Adicionar Etapa' "$WEB/admin-desafios.html" && die "botão Adicionar Etapa ainda presente"
-grep -q 'fCircuitMax' "$WEB/admin-desafios.html" || die "admin sem Máx. etapas do circuito"
-grep -q 'append_to_desafio_id' "$WEB/admin-desafios.html" || die "admin sem append próximo jogo"
+grep -q 'admin-desafio-lancar.html' "$WEB/admin-desafios.html" || die "admin sem link para página de lançamento"
+
+log "admin-desafio-lancar.html (página dedicada)"
+curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-desafio-lancar.html" -o "$WEB/admin-desafio-lancar.html"
+chmod 0644 "$WEB/admin-desafio-lancar.html"
+grep -q 'fCircuitMax' "$WEB/admin-desafio-lancar.html" || die "página de lançamento sem Máx. etapas"
+grep -q 'Adicionar Etapa' "$WEB/admin-desafio-lancar.html" && die "página de lançamento ainda tem Adicionar Etapa"
+
+log "v2-shell.js (menu ativo em Lançar Desafio)"
+curl -fsSL "$RAW/deploy/vps-supabase/static/v2/v2-shell.js" -o "$WEB/v2-shell.js"
+chmod 0644 "$WEB/v2-shell.js"
+cp -f "$WEB/v2-shell.js" "$WEB_ROOT/v2-shell.js" 2>/dev/null || true
+grep -q 'admin-desafio-lancar' "$WEB/v2-shell.js" || die "shell sem rota admin-desafio-lancar"
 
 # Sempre atualiza prelive (createDesafio = 1 step + appendDesafioGame)
 if [[ -f /opt/arbishield/arbishield-prelive-events.mjs ]] || [[ -f "${ARBISHIELD_SCRIPTS:-/opt/arbishield}/arbishield-prelive-events.mjs" ]]; then

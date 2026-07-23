@@ -226,7 +226,7 @@
       try {
         var file = (location.pathname.split("/").pop() || "").replace(/\.html$/, "");
         if (file === "admin-jogos") active = "jogos";
-        else if (file === "admin-desafios") active = "desafios";
+        else if (file === "admin-desafios" || file === "admin-desafio-lancar") active = "desafios";
         else if (file === "admin-users") active = "users";
         else if (file === "admin") active = "hub";
         else if (file === "app") active = "home";

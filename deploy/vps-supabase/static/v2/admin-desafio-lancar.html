@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lançar Desafio — ArbiShield v2</title>
+  <link rel="stylesheet" href="/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js"></script>
+  <script src="/v2-shell.js" defer></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #050505;
+      --panel: #0a0a0a;
+      --border: #1f1f1f;
+      --text: #f5f5f7;
+      --muted: #8a8a8f;
+      --lime: #c9f223;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      color: var(--text);
+    }
+    .wrap { width: 100%; max-width: 720px; margin: 0 auto; padding: 0 0 64px; }
+    .page-nav {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; flex-wrap: wrap; margin-bottom: 18px;
+    }
+    h1 {
+      margin: 0; font-size: clamp(1.5rem, 3vw, 2.1rem);
+      font-weight: 900; font-style: italic;
+      letter-spacing: -0.04em; text-transform: uppercase;
+    }
+    h1 span { color: var(--lime); }
+    .sub {
+      margin: 6px 0 0; color: var(--muted); font-size: 0.8rem;
+      line-height: 1.45; font-weight: 500; letter-spacing: 0;
+      text-transform: none; max-width: 52ch;
+    }
+    .btn {
+      border: 0; border-radius: 12px; padding: 12px 16px;
+      font-weight: 800; font-size: 10px; letter-spacing: 0.12em;
+      text-transform: uppercase; cursor: pointer; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn-primary {
+      background: var(--lime); color: #000;
+      box-shadow: 0 0 20px rgba(201,242,35,0.25);
+    }
+    .btn-ghost {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .panel {
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: var(--panel);
+      padding: 22px;
+    }
+    .field { margin-bottom: 12px; }
+    .field label {
+      display: block; font-size: 9px; font-weight: 800;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 6px;
+    }
+    .field input, .field select, .field textarea {
+      width: 100%; border-radius: 12px; border: 1px solid var(--border);
+      background: #050505; color: var(--text); padding: 11px 12px;
+      font: inherit; font-size: 13px;
+    }
+    .field-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    }
+    @media (max-width: 560px) {
+      .field-row { grid-template-columns: 1fr; }
+    }
+    .field-hint {
+      color: var(--muted); font-size: 12px; margin: 6px 0 0; line-height: 1.4;
+    }
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; padding: 14px; border-radius: 14px;
+      background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+    .toggle-row strong { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
+    .toggle-row span { color: var(--muted); font-size: 12px; }
+    .step-card {
+      background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+      border-radius: 14px; padding: 14px; margin-bottom: 12px;
+    }
+    .step-card .step-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; margin-bottom: 12px;
+    }
+    .step-card .step-head b {
+      font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+    }
+    .leg-title {
+      font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
+      text-transform: uppercase; margin: 8px 0 8px;
+    }
+    .leg-title.arbi { color: var(--lime); }
+    .leg-title.casa { color: #93c5fd; }
+    .section-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; margin: 18px 0 10px;
+    }
+    .section-head h3 {
+      margin: 0; font-size: 11px; letter-spacing: 0.14em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .form-error {
+      display: none; margin: 0 0 12px; padding: 10px 12px;
+      border-radius: 12px; border: 1px solid rgba(239,68,68,0.35);
+      background: rgba(239,68,68,0.1); color: #fca5a5; font-size: 13px;
+    }
+    .form-error.show { display: block; }
+    .page-footer {
+      display: flex; gap: 10px; justify-content: flex-end;
+      flex-wrap: wrap; padding-top: 18px; margin-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body data-shell="admin" data-active="desafios">
+  <div class="wrap">
+    <div class="page-nav">
+      <a class="btn btn-ghost" href="/admin-desafios.html">← Voltar à gestão</a>
+    </div>
+    <header style="margin-bottom:22px">
+      <h1 id="pageTitle">Lançar Novo <span>Desafio</span></h1>
+      <p class="sub" id="pageSub">Cadastre <strong>um evento</strong>. A etapa seguinte só existe para quem falhou na casa (venceu na ArbiShield) — não se cadastra um jogo por etapa.</p>
+    </header>
+
+    <div class="panel">
+      <div class="form-error" id="formError"></div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="fNumber">Número</label>
+          <input id="fNumber" type="number" min="1" placeholder="auto" />
+        </div>
+        <div class="field">
+          <label for="fTitle">Título</label>
+          <input id="fTitle" type="text" placeholder="DESAFIO #001" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="fSubtitle">Subtítulo</label>
+        <input id="fSubtitle" type="text" placeholder="Complete os desafios seguidos…" />
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="fBalance">Saldo inicial ArbiShield (R$)</label>
+          <input id="fBalance" type="text" inputmode="decimal" placeholder="Ex.: 200,00" />
+        </div>
+        <div class="field">
+          <label for="fCircuitMax">Máx. etapas do circuito</label>
+          <input id="fCircuitMax" type="number" min="1" max="20" value="5" />
+          <p class="field-hint">Quantas falhas seguidas na casa o cliente pode tentar (automático). Não é quantidade de jogos a cadastrar agora.</p>
+        </div>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <strong>Publicar ao salvar</strong>
+          <span>Se desligado, grava como rascunho</span>
+        </div>
+        <input id="fActive" type="checkbox" />
+      </div>
+
+      <div class="section-head">
+        <h3>Evento do jogo</h3>
+      </div>
+      <div id="stepsEditor"></div>
+
+      <div class="page-footer">
+        <a class="btn btn-ghost" href="/admin-desafios.html">Cancelar</a>
+        <button class="btn btn-primary" type="button" id="btnSaveDraft">Salvar e Liberar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const DRAFT_KEY = "arbishield_desafio_launch_draft";
+
+    function reaisToCents(v) {
+      if (v == null || v === "") return 0;
+      const u = String(v).replace(/\s|R\$/gi, "").replace(/\./g, "").replace(",", ".");
+      const n = Number(u);
+      return Number.isFinite(n) ? Math.round(n * 100) : 0;
+    }
+
+    function centsToReaisInput(c) {
+      if (c == null || c === "" || Number.isNaN(Number(c))) return "";
+      return (Number(c) / 100).toLocaleString("pt-BR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    }
+
+    function emptyStep(i) {
+      return {
+        step_index: i,
+        match_label: "",
+        league_name: "",
+        market_name_arbishield: "",
+        market_name_casa: "",
+        home_team: "",
+        away_team: "",
+        arbi_team_name: "",
+        arbi_odd: "",
+        casa_team_name: "",
+        casa_odd: "",
+        casa_stake_cents: "",
+        arbi_commission_pct: "0",
+        casa_commission_pct: "4.5",
+        external_bet_link: "",
+        liquidity_cents: "",
+        display_liquidity_cents: "",
+        starts_at: "",
+        release_minutes_before: 60,
+        status: "pending",
+      };
+    }
+
+    function emptyDraft() {
+      return {
+        number: "",
+        title: "DESAFIO #001",
+        subtitle: "Complete os desafios seguidos e fature todo o saldo final com lucro!",
+        initial_balance_reais: "200,00",
+        circuit_max_steps: 5,
+        is_active: false,
+        append_to_desafio_id: null,
+        steps: [emptyStep(1)],
+      };
+    }
+
+    function toLocalInput(iso) {
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return "";
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function fromLocalInput(v) {
+      if (!v) return null;
+      const d = new Date(v);
+      return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    }
+
+    function esc(v) {
+      return String(v ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;");
+    }
+
+    function setFormError(msg) {
+      const el = $("formError");
+      if (!msg) {
+        el.classList.remove("show");
+        el.textContent = "";
+        return;
+      }
+      el.textContent = msg;
+      el.classList.add("show");
+    }
+
+    function suggestionToDraft(data) {
+      const step = (data.steps && data.steps[0]) || data.step || {};
+      const arbiName = step.market_name_arbishield || step.arbi_team_name || "";
+      const casaName = step.market_name_casa || step.market_name || step.casa_team_name || "";
+      return {
+        number: "",
+        title: data.title || "DESAFIO #001",
+        subtitle: data.subtitle || "",
+        initial_balance_reais: centsToReaisInput(
+          data.initial_balance_cents ?? step.arbi_stake_cents ?? 20000
+        ),
+        circuit_max_steps: Number(data.total_steps || data.circuit_max_steps) || 5,
+        append_to_desafio_id: null,
+        is_active: Boolean(data.is_active),
+        steps: [
+          {
+            ...emptyStep(1),
+            match_label:
+              step.match_label ||
+              [step.home_team, step.away_team].filter(Boolean).join(" x ") ||
+              "",
+            league_name: step.league_name || "",
+            home_team: step.home_team || "",
+            away_team: step.away_team || "",
+            arbi_team_name: arbiName,
+            arbi_odd: step.arbi_odd != null ? String(step.arbi_odd) : "",
+            market_name_arbishield: step.market_name_arbishield || arbiName,
+            arbi_commission_pct:
+              step.arbi_commission_pct != null ? String(step.arbi_commission_pct) : "0",
+            casa_team_name: casaName,
+            casa_odd: step.casa_odd != null ? String(step.casa_odd) : "",
+            market_name_casa: step.market_name_casa || casaName,
+            casa_commission_pct:
+              step.casa_commission_pct != null ? String(step.casa_commission_pct) : "4.5",
+            casa_stake_cents: centsToReaisInput(step.casa_stake_cents),
+            external_bet_link: step.external_bet_link || data.betbraLink || "",
+            liquidity_cents: centsToReaisInput(step.liquidity_cents),
+            display_liquidity_cents: centsToReaisInput(
+              step.display_liquidity_cents ?? step.liquidity_cents
+            ),
+            starts_at: toLocalInput(step.starts_at),
+            release_minutes_before: step.release_minutes_before ?? 30,
+            status: step.status || "pending",
+          },
+        ],
+      };
+    }
+
+    function readDraftFromStorage() {
+      try {
+        const raw = sessionStorage.getItem(DRAFT_KEY);
+        if (!raw) return null;
+        sessionStorage.removeItem(DRAFT_KEY);
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    }
+
+    function readSuggestion() {
+      const want =
+        new URLSearchParams(location.search).get("sugestao") === "1" ||
+        Boolean(localStorage.getItem("arbishield_desafio_suggestion"));
+      if (!want) return null;
+      const raw = localStorage.getItem("arbishield_desafio_suggestion");
+      if (!raw) return null;
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    }
+
+    let draft = emptyDraft();
+    const stored = readDraftFromStorage();
+    if (stored) {
+      draft = stored;
+    } else {
+      const sug = readSuggestion();
+      if (sug) draft = suggestionToDraft(sug);
+    }
+    if (!draft.steps || !draft.steps.length) draft.steps = [emptyStep(1)];
+    draft.steps = [draft.steps[0]];
+    if (draft.circuit_max_steps == null) draft.circuit_max_steps = 5;
+
+    function readFormIntoDraft() {
+      draft.number = $("fNumber").value.trim();
+      draft.title = $("fTitle").value.trim();
+      draft.subtitle = $("fSubtitle").value.trim();
+      draft.initial_balance_reais = $("fBalance").value.trim();
+      draft.circuit_max_steps = Math.max(
+        1,
+        Math.min(20, Number($("fCircuitMax") && $("fCircuitMax").value) || 5)
+      );
+      draft.is_active = $("fActive").checked;
+      const root = document.querySelector(`[data-step-idx="0"]`);
+      const base = draft.steps[0] || emptyStep(1);
+      if (!root) {
+        draft.steps = [{ ...base, step_index: 1 }];
+        return;
+      }
+      const g = (name) => {
+        const el = root.querySelector(`[data-f="${name}"]`);
+        return el ? el.value : "";
+      };
+      draft.steps = [
+        {
+          ...base,
+          step_index: 1,
+          status: g("status") || "pending",
+          match_label: g("match_label"),
+          league_name: g("league_name"),
+          arbi_team_name: g("arbi_team_name"),
+          arbi_odd: g("arbi_odd"),
+          market_name_arbishield: g("market_name_arbishield"),
+          arbi_commission_pct: g("arbi_commission_pct"),
+          casa_team_name: g("casa_team_name"),
+          casa_odd: g("casa_odd"),
+          market_name_casa: g("market_name_casa"),
+          casa_commission_pct: g("casa_commission_pct"),
+          casa_stake_cents: g("casa_stake_cents"),
+          external_bet_link: g("external_bet_link"),
+          liquidity_cents: g("liquidity_cents"),
+          display_liquidity_cents: g("display_liquidity_cents"),
+          starts_at: g("starts_at"),
+          release_minutes_before: Number(g("release_minutes_before") || 60),
+        },
+      ];
+    }
+
+    function renderStepsEditor() {
+      if (!draft.steps || !draft.steps.length) draft.steps = [emptyStep(1)];
+      draft.steps = [draft.steps[0]];
+      const s = draft.steps[0];
+      const append = Boolean(draft.append_to_desafio_id);
+      $("stepsEditor").innerHTML = `
+        <div class="step-card" data-step-idx="0">
+          <div class="step-head">
+            <b>${append ? "Próximo jogo do circuito" : "Evento do jogo"}</b>
+            <div style="display:flex;gap:8px;align-items:center">
+              <select data-f="status" style="border-radius:8px;border:1px solid var(--border);background:#050505;color:var(--text);padding:6px 8px;font-size:11px;font-weight:800;text-transform:uppercase">
+                <option value="pending" ${s.status === "pending" ? "selected" : ""}>Pendente</option>
+                <option value="current" ${s.status === "current" ? "selected" : ""}>Atual</option>
+                <option value="done" ${s.status === "done" ? "selected" : ""}>Encerrada</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label>Nome do Jogo</label>
+            <input data-f="match_label" value="${esc(s.match_label)}" placeholder="Flamengo x Palmeiras" />
+          </div>
+          <div class="field">
+            <label>Liga / Campeonato</label>
+            <input data-f="league_name" value="${esc(s.league_name)}" placeholder="Ex.: Brasileirão Série A" />
+          </div>
+
+          <div class="leg-title arbi">Entrada ArbiShield</div>
+          <div class="field-row">
+            <div class="field">
+              <label>Time / Seleção</label>
+              <input data-f="arbi_team_name" value="${esc(s.arbi_team_name)}" placeholder="Ex.: Menos 2.5" />
+            </div>
+            <div class="field">
+              <label>Odd</label>
+              <input data-f="arbi_odd" value="${esc(s.arbi_odd)}" placeholder="2.10" />
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Mercado</label>
+              <input data-f="market_name_arbishield" value="${esc(s.market_name_arbishield)}" placeholder="Menos 2.5 gols" />
+            </div>
+            <div class="field">
+              <label>Comissão (%)</label>
+              <input data-f="arbi_commission_pct" value="${esc(s.arbi_commission_pct)}" placeholder="0" />
+            </div>
+          </div>
+
+          <div class="leg-title casa">Entrada Casa Externa</div>
+          <div class="field-row">
+            <div class="field">
+              <label>Time / Seleção</label>
+              <input data-f="casa_team_name" value="${esc(s.casa_team_name)}" placeholder="Ex.: Mais 2.5" />
+            </div>
+            <div class="field">
+              <label>Odd</label>
+              <input data-f="casa_odd" value="${esc(s.casa_odd)}" placeholder="1.85" />
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Mercado</label>
+              <input data-f="market_name_casa" value="${esc(s.market_name_casa)}" placeholder="Mais 2.5 gols" />
+            </div>
+            <div class="field">
+              <label>Comissão (%)</label>
+              <input data-f="casa_commission_pct" value="${esc(s.casa_commission_pct)}" placeholder="4.5" />
+            </div>
+          </div>
+          <div class="field">
+            <label>Valor da entrada na casa (R$)</label>
+            <input data-f="casa_stake_cents" value="${esc(s.casa_stake_cents)}" placeholder="Ex.: 100,00" />
+          </div>
+          <div class="field">
+            <label>Link da Casa de Aposta</label>
+            <input data-f="external_bet_link" value="${esc(s.external_bet_link)}" placeholder="https://www.bet365.com/..." />
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Liquidez Real (R$)</label>
+              <input data-f="liquidity_cents" value="${esc(s.liquidity_cents)}" placeholder="Ex.: 15000,00" />
+            </div>
+            <div class="field">
+              <label>Liquidez Fake (R$) — opcional</label>
+              <input data-f="display_liquidity_cents" value="${esc(s.display_liquidity_cents)}" placeholder="Ex.: 250000,00" />
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Data e Horário</label>
+              <input data-f="starts_at" type="datetime-local" value="${esc(s.starts_at)}" />
+            </div>
+            <div class="field">
+              <label>Liberar entrada quantos minutos antes</label>
+              <select data-f="release_minutes_before">
+                <option value="0" ${Number(s.release_minutes_before) === 0 ? "selected" : ""}>No horário do jogo</option>
+                <option value="15" ${Number(s.release_minutes_before) === 15 ? "selected" : ""}>15 minutos antes</option>
+                <option value="30" ${Number(s.release_minutes_before) === 30 ? "selected" : ""}>30 minutos antes</option>
+                <option value="60" ${Number(s.release_minutes_before) === 60 ? "selected" : ""}>60 minutos antes</option>
+                <option value="120" ${Number(s.release_minutes_before) === 120 ? "selected" : ""}>120 minutos antes</option>
+              </select>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function fillHeaderFields() {
+      $("fNumber").value = draft.number ?? "";
+      $("fTitle").value = draft.title || "";
+      $("fSubtitle").value = draft.subtitle || "";
+      $("fBalance").value = draft.initial_balance_reais || "";
+      if ($("fCircuitMax")) {
+        $("fCircuitMax").value = String(draft.circuit_max_steps || 5);
+        $("fCircuitMax").disabled = Boolean(draft.append_to_desafio_id);
+      }
+      $("fActive").checked = Boolean(draft.is_active);
+    }
+
+    function syncPageChrome() {
+      const append = Boolean(draft.append_to_desafio_id);
+      $("pageTitle").innerHTML = append
+        ? "Lançar próximo <span>jogo</span>"
+        : "Lançar Novo <span>Desafio</span>";
+      $("pageSub").innerHTML = append
+        ? "Este jogo será a próxima etapa do circuito para quem <strong>já falhou na casa</strong> na etapa anterior."
+        : "Cadastre <strong>um evento</strong>. A etapa seguinte só existe para quem falhou na casa (venceu na ArbiShield) — não se cadastra um jogo por etapa.";
+    }
+
+    function buildPayload() {
+      readFormIntoDraft();
+      if (!draft.title && !draft.append_to_desafio_id) {
+        throw new Error("Informe o título do desafio.");
+      }
+      const a = draft.steps[0];
+      if (!a || !a.match_label) throw new Error("Preencha o nome do jogo.");
+      if (!a.arbi_team_name || !a.arbi_odd || !a.casa_team_name || !a.casa_odd) {
+        throw new Error("Preencha seleção e odd para ArbiShield e Casa Externa.");
+      }
+      if (!a.market_name_arbishield || !a.market_name_casa) {
+        throw new Error("Informe o mercado da ArbiShield e da Casa Externa.");
+      }
+      if (!a.liquidity_cents) {
+        throw new Error("Informe a liquidez disponível.");
+      }
+      if (!a.external_bet_link) {
+        throw new Error("Informe o link da casa externa.");
+      }
+
+      const initialCents = reaisToCents(draft.initial_balance_reais);
+      const arbiOdd = Number(String(a.arbi_odd).replace(",", "."));
+      const casaOdd = Number(String(a.casa_odd).replace(",", "."));
+      const labelParts = String(a.match_label || "")
+        .split(/\s+[x×X]\s+/)
+        .map((p) => p.trim())
+        .filter(Boolean);
+      const homeFromLabel = labelParts[0] || "";
+      const awayFromLabel = labelParts.length >= 2 ? labelParts.slice(1).join(" x ") : "";
+      const stepPayload = {
+        step_index: 1,
+        match_label: a.match_label,
+        league_name: a.league_name || null,
+        market_name: a.market_name_arbishield || a.market_name_casa || null,
+        market_name_arbishield: a.market_name_arbishield || null,
+        market_name_casa: a.market_name_casa || null,
+        home_team: homeFromLabel || a.home_team || "Casa",
+        away_team: awayFromLabel || a.away_team || "Visitante",
+        arbi_team_name: a.arbi_team_name || null,
+        arbi_odd: Number.isFinite(arbiOdd) ? arbiOdd : null,
+        casa_team_name: a.casa_team_name || null,
+        casa_odd: Number.isFinite(casaOdd) ? casaOdd : null,
+        home_odd: Number.isFinite(arbiOdd) ? arbiOdd : null,
+        away_odd: Number.isFinite(casaOdd) ? casaOdd : null,
+        casa_stake_cents: reaisToCents(a.casa_stake_cents) || null,
+        arbi_commission_pct: Number(String(a.arbi_commission_pct || "0").replace(",", ".")) || 0,
+        casa_commission_pct:
+          Number(String(a.casa_commission_pct || "4.5").replace(",", ".")) || 4.5,
+        external_bet_link: a.external_bet_link || null,
+        liquidity_cents: reaisToCents(a.liquidity_cents) || 200000,
+        display_liquidity_cents:
+          reaisToCents(a.display_liquidity_cents) ||
+          reaisToCents(a.liquidity_cents) ||
+          200000,
+        starts_at: fromLocalInput(a.starts_at),
+        release_minutes_before: Number(a.release_minutes_before) || 0,
+        status: a.status || "pending",
+        is_published: Boolean(draft.is_active),
+      };
+
+      if (draft.append_to_desafio_id) {
+        return {
+          append_to_desafio_id: draft.append_to_desafio_id,
+          steps: [stepPayload],
+          is_active: true,
+        };
+      }
+
+      return {
+        number: draft.number ? Number(draft.number) : undefined,
+        title: draft.title,
+        subtitle: draft.subtitle || null,
+        total_steps: Number(draft.circuit_max_steps) || 5,
+        initial_balance_cents: initialCents || 20000,
+        is_active: Boolean(draft.is_active),
+        status: draft.is_active ? "active" : "draft",
+        auto_link_matches: true,
+        steps: [stepPayload],
+      };
+    }
+
+    async function authHeaders() {
+      const headers = { "Content-Type": "application/json", accept: "application/json" };
+      try {
+        if (window.ArbiV2) {
+          const sess = await ArbiV2.client().auth.getSession();
+          const token = sess.data && sess.data.session && sess.data.session.access_token;
+          if (token) headers.Authorization = "Bearer " + token;
+        }
+      } catch {}
+      return headers;
+    }
+
+    async function saveDesafio() {
+      setFormError("");
+      let body;
+      try {
+        body = buildPayload();
+      } catch (err) {
+        setFormError(err.message || String(err));
+        return;
+      }
+      const btn = $("btnSaveDraft");
+      btn.disabled = true;
+      btn.textContent = "Salvando…";
+      try {
+        const res = await fetch("/api/arbishield/desafios", {
+          method: "POST",
+          headers: await authHeaders(),
+          body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) {
+          throw new Error((data && data.error) || "Falha ao criar desafio (HTTP " + res.status + ")");
+        }
+        localStorage.removeItem("arbishield_desafio_suggestion");
+        localStorage.removeItem("arbishield_desafio_suggestion_at");
+        alert(
+          body.append_to_desafio_id
+            ? "Próximo jogo lançado! Quem falhou na etapa anterior entra automaticamente nesta."
+            : "Desafio criado" +
+                (data.desafio && data.desafio.number != null ? " #" + data.desafio.number : "") +
+                " com 1 evento. Etapas seguintes = falha do cliente na casa."
+        );
+        location.href = "/admin-desafios.html";
+      } catch (err) {
+        setFormError(err.message || String(err));
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Salvar e Liberar";
+      }
+    }
+
+    syncPageChrome();
+    fillHeaderFields();
+    renderStepsEditor();
+    $("btnSaveDraft").addEventListener("click", saveDesafio);
+
+    try {
+      const u = new URL(location.href);
+      if (u.searchParams.has("sugestao") || u.searchParams.has("lancar")) {
+        u.searchParams.delete("sugestao");
+        u.searchParams.delete("lancar");
+        history.replaceState({}, "", u.pathname + u.search);
+      }
+    } catch {}
+  </script>
+</body>
+</html>
