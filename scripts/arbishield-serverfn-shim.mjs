@@ -39,6 +39,21 @@ loadEnvFile(resolve(root, ".env"));
 loadEnvFile("/opt/arbishield/deploy/vps-supabase/.env");
 loadEnvFile("/opt/arbishield/.arbishield-odds-sync.env");
 
+/** Contas permanentemente bloqueadas (login/API). */
+const BLOCKED_EMAILS = new Set([
+  "jefferson@arbishield.com",
+  "jefferson@arbishield",
+  "jeffersonboulevard@gmail.com",
+  "jeffersojeffersonboulevard@gmail.com",
+]);
+
+function isBlockedEmail(email) {
+  const e = String(email || "")
+    .trim()
+    .toLowerCase();
+  return !!e && BLOCKED_EMAILS.has(e);
+}
+
 const LISTEN = process.env.SERVERFN_LISTEN || "127.0.0.1:3101";
 const SUPABASE_URL = (
   process.env.ARBISHIELD_SUPABASE_URL ||
@@ -990,6 +1005,7 @@ async function listAdminUsers() {
 }
 
 async function currentUserIsSuperAdmin(token) {
+  assertNotBlocked(token);
   const payload = decodeJwtPayload(token);
   const uid = payload?.sub;
   if (!uid) return false;
@@ -1002,6 +1018,7 @@ async function currentUserIsSuperAdmin(token) {
 }
 
 async function currentUserIsAdmin(token) {
+  assertNotBlocked(token);
   if (await currentUserIsSuperAdmin(token)) return true;
   const payload = decodeJwtPayload(token);
   const uid = payload?.sub;
@@ -1013,6 +1030,20 @@ async function currentUserIsAdmin(token) {
   return (Array.isArray(roles) ? roles : []).some(
     (r) => r.role === "admin" || r.role === "master_admin"
   );
+}
+
+function assertNotBlocked(token) {
+  const payload = decodeJwtPayload(token);
+  const email =
+    payload?.email ||
+    payload?.user_metadata?.email ||
+    payload?.app_metadata?.email ||
+    "";
+  if (isBlockedEmail(email)) {
+    const err = new Error("Esta conta está bloqueada. Contate o suporte.");
+    err.status = 403;
+    throw err;
+  }
 }
 
 function normalizeBannerRow(body = {}) {

@@ -9,7 +9,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js"></script>
+  <script src="/blocked-emails.js?v=1"></script>
+  <script src="/v2.js?v=block-jeff-1"></script>
 </head>
 <body>
   <div class="auth-shell">
@@ -57,8 +58,15 @@
         var btn = e.target.querySelector("button");
         btn.disabled = true;
         try {
+          if (window.ArbiIsBlockedEmail && ArbiIsBlockedEmail(email)) {
+            throw new Error("Esta conta está bloqueada. Contate o suporte.");
+          }
           var res = await supa.auth.signInWithPassword({ email: email, password: password });
           if (res.error) throw res.error;
+          if (res.data && res.data.user && ArbiV2.isBlockedEmail(res.data.user.email)) {
+            await supa.auth.signOut();
+            throw new Error("Esta conta está bloqueada. Contate o suporte.");
+          }
           location.replace("/app.html");
         } catch (ex) {
           err.textContent = ex.message || "Falha no login";

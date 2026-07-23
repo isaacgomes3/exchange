@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { isBlockedEmail } from "@/lib/arbishield/blocked-emails";
 
 export function ArbiShieldLoginForm() {
   const router = useRouter();
@@ -17,8 +18,12 @@ export function ArbiShieldLoginForm() {
     setError(null);
 
     try {
+      if (isBlockedEmail(email)) {
+        setError("Esta conta está bloqueada. Contate o suporte.");
+        return;
+      }
       const supabase = createClient();
-      const { error: signError } = await supabase.auth.signInWithPassword({
+      const { data, error: signError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
@@ -28,8 +33,16 @@ export function ArbiShieldLoginForm() {
         setError(
           /failed to fetch|networkerror|fetch failed/i.test(msg)
             ? "Não foi possível falar com o Auth (rede). Confirme que /auth/v1 responde em arbishield.app e rode de novo o deploy Next."
-            : msg
+            : /banned/i.test(msg)
+              ? "Esta conta está bloqueada. Contate o suporte."
+              : msg
         );
+        return;
+      }
+
+      if (isBlockedEmail(data.user?.email)) {
+        await supabase.auth.signOut();
+        setError("Esta conta está bloqueada. Contate o suporte.");
         return;
       }
 

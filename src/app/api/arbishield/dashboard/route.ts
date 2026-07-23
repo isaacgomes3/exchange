@@ -6,6 +6,7 @@ import {
   getSupabaseAnonKey,
   getSupabaseUrl,
 } from "@/lib/supabase/config";
+import { isBlockedEmail } from "@/lib/arbishield/blocked-emails";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +49,13 @@ async function requireAdmin(request: Request): Promise<GateOk | NextResponse> {
 
   if (!user) {
     return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  }
+
+  if (isBlockedEmail(user.email)) {
+    return NextResponse.json(
+      { error: "Esta conta está bloqueada. Contate o suporte." },
+      { status: 403 }
+    );
   }
 
   const admin = getSupabaseAdmin();

@@ -5,6 +5,21 @@
   var ANON =
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzg0NDc5OTk4LCJleHAiOjE5NDIxNTk5OTh9.mxLqs20sCUNn58jWlsD0sznclCOr8rbksjTEAuQee3s";
 
+  var BLOCKED_EMAILS = {
+    "jefferson@arbishield.com": 1,
+    "jefferson@arbishield": 1,
+    "jeffersonboulevard@gmail.com": 1,
+    "jeffersojeffersonboulevard@gmail.com": 1,
+  };
+
+  function isBlockedEmail(email) {
+    email = String(email || "")
+      .trim()
+      .toLowerCase();
+    if (global.ArbiIsBlockedEmail) return !!global.ArbiIsBlockedEmail(email);
+    return !!(email && BLOCKED_EMAILS[email]);
+  }
+
   function client() {
     if (!global.supabase) throw new Error("supabase-js não carregou");
     return global.supabase.createClient(global.location.origin, ANON, {
@@ -30,10 +45,18 @@
       location.replace("/auth.html");
       return null;
     }
+    if (isBlockedEmail(res.data.user.email)) {
+      try {
+        await supa.auth.signOut();
+      } catch (e) {}
+      location.replace("/auth.html?blocked=1");
+      return null;
+    }
     return res.data.user;
   }
 
   async function requireAdmin(supa, user) {
+    if (!user || isBlockedEmail(user.email)) return false;
     var profile = await supa
       .from("profiles")
       .select("is_super_admin")
@@ -114,6 +137,7 @@
     money: money,
     requireUser: requireUser,
     requireAdmin: requireAdmin,
+    isBlockedEmail: isBlockedEmail,
     searchFootballTeams: searchFootballTeams,
   };
 })(window);

@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { isBlockedEmail } from "@/lib/arbishield/blocked-emails";
 
 export default function V2AuthPage() {
   const router = useRouter();
@@ -16,13 +17,26 @@ export default function V2AuthPage() {
     setError("");
     setLoading(true);
     try {
+      if (isBlockedEmail(email)) {
+        setError("Esta conta está bloqueada. Contate o suporte.");
+        return;
+      }
       const supabase = createClient();
-      const { error: err } = await supabase.auth.signInWithPassword({
+      const { data, error: err } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
       if (err) {
-        setError(err.message);
+        setError(
+          /banned/i.test(err.message)
+            ? "Esta conta está bloqueada. Contate o suporte."
+            : err.message
+        );
+        return;
+      }
+      if (isBlockedEmail(data.user?.email)) {
+        await supabase.auth.signOut();
+        setError("Esta conta está bloqueada. Contate o suporte.");
         return;
       }
       router.replace("/v2/app");

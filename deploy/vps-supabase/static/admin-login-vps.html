@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/blocked-emails.js?v=1"></script>
   <style>
     :root {
       --bg: #010b08;
@@ -138,6 +139,11 @@
       const { data } = await client.auth.getSession();
       const session = data?.session;
       if (!session?.user) return false;
+      if (window.ArbiIsBlockedEmail && ArbiIsBlockedEmail(session.user.email)) {
+        await client.auth.signOut();
+        showError("Esta conta está bloqueada. Contate o suporte.");
+        return false;
+      }
       const ok = await isAdmin(session.user.id);
       if (!ok) {
         await client.auth.signOut();
@@ -156,8 +162,15 @@
       try {
         const email = document.getElementById("email").value.trim();
         const password = document.getElementById("password").value;
+        if (window.ArbiIsBlockedEmail && ArbiIsBlockedEmail(email)) {
+          throw new Error("Esta conta está bloqueada. Contate o suporte.");
+        }
         const { data, error } = await client.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        if (data.user && window.ArbiIsBlockedEmail && ArbiIsBlockedEmail(data.user.email)) {
+          await client.auth.signOut();
+          throw new Error("Esta conta está bloqueada. Contate o suporte.");
+        }
         const ok = await isAdmin(data.user.id);
         if (!ok) {
           await client.auth.signOut();

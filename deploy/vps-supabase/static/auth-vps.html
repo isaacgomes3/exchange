@@ -186,6 +186,7 @@
     </section>
   </div>
 
+  <script src="/blocked-emails.js?v=1"></script>
   <script>
     (function () {
       var ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzg0NDc5OTk4LCJleHAiOjE5NDIxNTk5OTh9.mxLqs20sCUNn58jWlsD0sznclCOr8rbksjTEAuQee3s";
@@ -211,6 +212,12 @@
         btn.textContent = "Entrando…";
         var email = document.getElementById("email").value.trim();
         var password = document.getElementById("password").value;
+        if (window.ArbiIsBlockedEmail && ArbiIsBlockedEmail(email)) {
+          show(errEl, "Esta conta está bloqueada. Contate o suporte.");
+          btn.disabled = false;
+          btn.textContent = "Entrar";
+          return;
+        }
         fetch("/auth/v1/token?grant_type=password", {
           method: "POST",
           headers: {
