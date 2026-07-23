@@ -294,8 +294,10 @@
         home_logo_url: "",
         away_logo_url: "",
         arbi_team_name: "",
+        arbi_team_logo_url: "",
         arbi_odd: "",
         casa_team_name: "",
+        casa_team_logo_url: "",
         casa_odd: "",
         casa_stake_cents: "",
         arbi_commission_pct: "0",
@@ -473,10 +475,12 @@
           home_logo_url: g("home_logo_url"),
           away_logo_url: g("away_logo_url"),
           arbi_team_name: g("arbi_team_name"),
+          arbi_team_logo_url: g("arbi_team_logo_url"),
           arbi_odd: g("arbi_odd"),
           market_name_arbishield: g("market_name_arbishield"),
           arbi_commission_pct: g("arbi_commission_pct"),
           casa_team_name: g("casa_team_name"),
+          casa_team_logo_url: g("casa_team_logo_url"),
           casa_odd: g("casa_odd"),
           market_name_casa: g("market_name_casa"),
           casa_commission_pct: g("casa_commission_pct"),
@@ -510,11 +514,48 @@
       else if (a) label.value = a;
     }
 
-    const teamSearchTimers = { home: null, away: null };
-    const teamSearchSeq = { home: 0, away: 0 };
+    const TEAM_PICKERS = {
+      home: {
+        nameField: "home_team",
+        logoField: "home_logo_url",
+        suggestId: "homeSuggest",
+        prevId: "homeLogoPrev",
+        syncMatch: true,
+        fillLeague: true,
+      },
+      away: {
+        nameField: "away_team",
+        logoField: "away_logo_url",
+        suggestId: "awaySuggest",
+        prevId: "awayLogoPrev",
+        syncMatch: true,
+        fillLeague: true,
+      },
+      arbi: {
+        nameField: "arbi_team_name",
+        logoField: "arbi_team_logo_url",
+        suggestId: "arbiSuggest",
+        prevId: "arbiLogoPrev",
+        syncMatch: false,
+        fillLeague: false,
+      },
+      casa: {
+        nameField: "casa_team_name",
+        logoField: "casa_team_logo_url",
+        suggestId: "casaSuggest",
+        prevId: "casaLogoPrev",
+        syncMatch: false,
+        fillLeague: false,
+      },
+    };
+
+    const teamSearchTimers = { home: null, away: null, arbi: null, casa: null };
+    const teamSearchSeq = { home: 0, away: 0, arbi: 0, casa: 0 };
 
     function hideTeamSuggest(side) {
-      const el = document.getElementById(side === "home" ? "homeSuggest" : "awaySuggest");
+      const cfg = TEAM_PICKERS[side];
+      if (!cfg) return;
+      const el = document.getElementById(cfg.suggestId);
       if (!el) return;
       el.classList.remove("show");
       el.hidden = true;
@@ -522,7 +563,9 @@
     }
 
     function showTeamSuggest(side, html) {
-      const el = document.getElementById(side === "home" ? "homeSuggest" : "awaySuggest");
+      const cfg = TEAM_PICKERS[side];
+      if (!cfg) return;
+      const el = document.getElementById(cfg.suggestId);
       if (!el) return;
       el.innerHTML = html;
       el.hidden = false;
@@ -530,28 +573,33 @@
     }
 
     function setTeamLogoPreview(side, url) {
-      const box = document.getElementById(side === "home" ? "homeLogoPrev" : "awayLogoPrev");
+      const cfg = TEAM_PICKERS[side];
+      if (!cfg) return;
+      const box = document.getElementById(cfg.prevId);
       if (box) box.innerHTML = logoPreviewHtml(url);
     }
 
     function selectFootballTeam(side, team) {
+      const cfg = TEAM_PICKERS[side];
       const root = document.querySelector(`[data-step-idx="0"]`);
-      if (!root) return;
-      const nameEl = root.querySelector(`[data-f="${side}_team"]`);
-      const logoEl = root.querySelector(`[data-f="${side}_logo_url"]`);
+      if (!cfg || !root) return;
+      const nameEl = root.querySelector(`[data-f="${cfg.nameField}"]`);
+      const logoEl = root.querySelector(`[data-f="${cfg.logoField}"]`);
       const leagueEl = root.querySelector(`[data-f="league_name"]`);
       if (nameEl) nameEl.value = team.name || "";
       const logo = team.logo || team.logoSvg || team.logoPng || "";
       if (logoEl) logoEl.value = logo;
       setTeamLogoPreview(side, logo);
       hideTeamSuggest(side);
-      if (leagueEl && !(leagueEl.value || "").trim() && team.league) {
+      if (cfg.fillLeague && leagueEl && !(leagueEl.value || "").trim() && team.league) {
         leagueEl.value = team.league;
       }
-      syncMatchLabelFromTeams();
+      if (cfg.syncMatch) syncMatchLabelFromTeams();
     }
 
     async function searchFootballTeams(side, query) {
+      const cfg = TEAM_PICKERS[side];
+      if (!cfg) return;
       const q = String(query || "").trim();
       const seq = ++teamSearchSeq[side];
       if (q.length < 2) {
@@ -594,7 +642,7 @@
             })
             .join("")
         );
-        const box = document.getElementById(side === "home" ? "homeSuggest" : "awaySuggest");
+        const box = document.getElementById(cfg.suggestId);
         box.querySelectorAll(".team-suggest-item").forEach((btn) => {
           btn.addEventListener("mousedown", (ev) => {
             ev.preventDefault();
@@ -612,13 +660,14 @@
     }
 
     function bindTeamPicker(side) {
+      const cfg = TEAM_PICKERS[side];
       const root = document.querySelector(`[data-step-idx="0"]`);
-      if (!root) return;
-      const nameEl = root.querySelector(`[data-f="${side}_team"]`);
-      const logoEl = root.querySelector(`[data-f="${side}_logo_url"]`);
+      if (!cfg || !root) return;
+      const nameEl = root.querySelector(`[data-f="${cfg.nameField}"]`);
+      const logoEl = root.querySelector(`[data-f="${cfg.logoField}"]`);
       if (!nameEl) return;
       nameEl.addEventListener("input", () => {
-        syncMatchLabelFromTeams();
+        if (cfg.syncMatch) syncMatchLabelFromTeams();
         clearTimeout(teamSearchTimers[side]);
         teamSearchTimers[side] = setTimeout(() => {
           searchFootballTeams(side, nameEl.value);
@@ -638,8 +687,7 @@
     }
 
     function bindTeamPickers() {
-      bindTeamPicker("home");
-      bindTeamPicker("away");
+      Object.keys(TEAM_PICKERS).forEach(bindTeamPicker);
     }
 
     function renderStepsEditor() {
@@ -691,47 +739,57 @@
           </div>
 
           <div class="leg-title arbi">Entrada ArbiShield</div>
-          <div class="field-row">
-            <div class="field">
-              <label>Time / Seleção</label>
-              <input data-f="arbi_team_name" value="${esc(s.arbi_team_name)}" placeholder="Ex.: Menos 2.5" />
+          <div class="field team-pick" data-side="arbi">
+            <label>Time / Seleção</label>
+            <div class="team-pick-row">
+              <div class="team-logo-box" id="arbiLogoPrev">${logoPreviewHtml(s.arbi_team_logo_url)}</div>
+              <div style="min-width:0;position:relative">
+                <input data-f="arbi_team_name" value="${esc(s.arbi_team_name)}" placeholder="Buscar time… Ex: Vitória" autocomplete="off" />
+                <div class="team-suggest" id="arbiSuggest" role="listbox" hidden></div>
+              </div>
             </div>
-            <div class="field">
-              <label>Odd</label>
-              <input data-f="arbi_odd" value="${esc(s.arbi_odd)}" placeholder="2.10" />
-            </div>
+            <input type="hidden" data-f="arbi_team_logo_url" value="${esc(s.arbi_team_logo_url || "")}" />
           </div>
           <div class="field-row">
             <div class="field">
-              <label>Mercado</label>
-              <input data-f="market_name_arbishield" value="${esc(s.market_name_arbishield)}" placeholder="Menos 2.5 gols" />
+              <label>Odd</label>
+              <input data-f="arbi_odd" value="${esc(s.arbi_odd)}" placeholder="2.10" />
             </div>
             <div class="field">
               <label>Comissão (%)</label>
               <input data-f="arbi_commission_pct" value="${esc(s.arbi_commission_pct)}" placeholder="0" />
             </div>
           </div>
+          <div class="field">
+            <label>Mercado</label>
+            <input data-f="market_name_arbishield" value="${esc(s.market_name_arbishield)}" placeholder="Menos 2.5 gols" />
+          </div>
 
           <div class="leg-title casa">Entrada Casa Externa</div>
-          <div class="field-row">
-            <div class="field">
-              <label>Time / Seleção</label>
-              <input data-f="casa_team_name" value="${esc(s.casa_team_name)}" placeholder="Ex.: Mais 2.5" />
+          <div class="field team-pick" data-side="casa">
+            <label>Time / Seleção</label>
+            <div class="team-pick-row">
+              <div class="team-logo-box" id="casaLogoPrev">${logoPreviewHtml(s.casa_team_logo_url)}</div>
+              <div style="min-width:0;position:relative">
+                <input data-f="casa_team_name" value="${esc(s.casa_team_name)}" placeholder="Buscar time… Ex: Vitória" autocomplete="off" />
+                <div class="team-suggest" id="casaSuggest" role="listbox" hidden></div>
+              </div>
             </div>
-            <div class="field">
-              <label>Odd</label>
-              <input data-f="casa_odd" value="${esc(s.casa_odd)}" placeholder="1.85" />
-            </div>
+            <input type="hidden" data-f="casa_team_logo_url" value="${esc(s.casa_team_logo_url || "")}" />
           </div>
           <div class="field-row">
             <div class="field">
-              <label>Mercado</label>
-              <input data-f="market_name_casa" value="${esc(s.market_name_casa)}" placeholder="Mais 2.5 gols" />
+              <label>Odd</label>
+              <input data-f="casa_odd" value="${esc(s.casa_odd)}" placeholder="1.85" />
             </div>
             <div class="field">
               <label>Comissão (%)</label>
               <input data-f="casa_commission_pct" value="${esc(s.casa_commission_pct)}" placeholder="4.5" />
             </div>
+          </div>
+          <div class="field">
+            <label>Mercado</label>
+            <input data-f="market_name_casa" value="${esc(s.market_name_casa)}" placeholder="Mais 2.5 gols" />
           </div>
           <div class="field">
             <label>Valor da entrada na casa (R$)</label>
@@ -839,8 +897,10 @@
         home_logo_url: String(a.home_logo_url || "").trim() || null,
         away_logo_url: String(a.away_logo_url || "").trim() || null,
         arbi_team_name: a.arbi_team_name || null,
+        arbi_team_logo_url: String(a.arbi_team_logo_url || "").trim() || null,
         arbi_odd: Number.isFinite(arbiOdd) ? arbiOdd : null,
         casa_team_name: a.casa_team_name || null,
+        casa_team_logo_url: String(a.casa_team_logo_url || "").trim() || null,
         casa_odd: Number.isFinite(casaOdd) ? casaOdd : null,
         home_odd: Number.isFinite(arbiOdd) ? arbiOdd : null,
         away_odd: Number.isFinite(casaOdd) ? casaOdd : null,

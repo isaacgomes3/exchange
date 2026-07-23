@@ -2,7 +2,7 @@
 # Hotfix: visual Desafios + lançamento 1 evento (etapa = falha do cliente)
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=6")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=7")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -58,8 +58,8 @@ curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-desafio-lancar.html" -o "$W
 chmod 0644 "$WEB/admin-desafio-lancar.html"
 grep -q 'fCircuitMax' "$WEB/admin-desafio-lancar.html" || die "página de lançamento sem Máx. etapas"
 grep -q 'Adicionar Etapa' "$WEB/admin-desafio-lancar.html" && die "página de lançamento ainda tem Adicionar Etapa"
-grep -q 'homeSuggest' "$WEB/admin-desafio-lancar.html" || die "página de lançamento sem busca de times"
-grep -q 'searchFootballTeams' "$WEB/admin-desafio-lancar.html" || die "página de lançamento sem searchFootballTeams"
+grep -q 'casaSuggest' "$WEB/admin-desafio-lancar.html" || die "página sem busca na Entrada Casa Externa"
+grep -q 'arbiSuggest' "$WEB/admin-desafio-lancar.html" || die "página sem busca na Entrada ArbiShield"
 grep -q 'max-width: none !important' "$WEB/admin-desafio-lancar.html" || die "página ainda centralizada (sem full-bleed)"
 grep -q '720px' "$WEB/admin-desafio-lancar.html" && die "página ainda tem max-width 720px"
 
