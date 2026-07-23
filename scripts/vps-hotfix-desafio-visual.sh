@@ -2,7 +2,7 @@
 # Hotfix: visual Desafios + lançamento 1 evento (etapa = falha do cliente)
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=11")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=12")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -68,7 +68,9 @@ grep -q 'arbiSuggest' "$WEB/admin-desafio-lancar.html" || die "página sem busca
 grep -q 'casaMarketSuggest' "$WEB/admin-desafio-lancar.html" || die "página sem busca de mercado (casa)"
 grep -q 'arbiMarketSuggest' "$WEB/admin-desafio-lancar.html" || die "página sem busca de mercado (arbi)"
 grep -q 'bindMarketPickers' "$WEB/admin-desafio-lancar.html" || die "página sem bindMarketPickers"
-grep -q 'ArbiMarketCatalog' "$WEB/admin-desafio-lancar.html" || die "página sem catálogo de mercados embutido"
+grep -q 'filterLocalMarkets' "$WEB/admin-desafio-lancar.html" || die "página sem filterLocalMarkets (catálogo local)"
+grep -q 'DESAFIO_MARKET_FLAT' "$WEB/admin-desafio-lancar.html" || die "página sem DESAFIO_MARKET_FLAT"
+grep -q 'Catálogo de mercados indisponível' "$WEB/admin-desafio-lancar.html" && die "página ainda mostra catálogo indisponível"
 grep -q 'Menos 2.5 gols na partida' "$WEB/admin-desafio-lancar.html" || die "página sem opções Menos 2.5 no catálogo"
 grep -q 'fProfitPct' "$WEB/admin-desafio-lancar.html" || die "página sem lucro líquido do evento"
 grep -q 'calcArbiOddFromCasa' "$WEB/admin-desafio-lancar.html" || die "página sem cálculo automático da odd ArbiShield"
@@ -97,5 +99,5 @@ if [[ -f /opt/arbishield/arbishield-prelive-events.mjs ]] || [[ -f "${ARBISHIELD
   grep -q 'appendDesafioGame' "$SCRIPTS_DIR/arbishield-prelive-events.mjs" || die "prelive sem appendDesafioGame"
 fi
 
-log "OK — hotfix desafio visual aplicado (v11: catálogo de mercado embutido na página)"
+log "OK — hotfix desafio visual aplicado (v12: busca de mercado 100% local no HTML)"
 echo "Reinicie o serviço prelive se o script foi atualizado, e faça Ctrl+F5 no browser."
