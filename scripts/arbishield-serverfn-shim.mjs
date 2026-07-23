@@ -1225,14 +1225,15 @@ async function transferRealToDesafio(token, body) {
     throw new Error("Valor inválido");
   }
   const rows = await sb(
-    `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,desafio_balance_cents&id=eq.${userId}&limit=1`,
+    `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents,desafio_balance_cents&id=eq.${userId}&limit=1`,
     { token: SERVICE_KEY }
   );
   const p = Array.isArray(rows) ? rows[0] : null;
   if (!p) throw new Error("Perfil não encontrado");
-  const balance = n(p.balance_cents) + n(p.reusable_balance_cents);
+  // Só saldo real livre. Nunca reusable (legado) nem locked/congelado em proteção.
+  const balance = n(p.balance_cents);
   const desafio = n(p.desafio_balance_cents);
-  const banca = balance; // tudo é saldo real
+  const banca = balance;
   const maxTransfer = Math.floor(banca / 2);
   if (amountCents > maxTransfer) {
     throw new Error(
@@ -1248,7 +1249,6 @@ async function transferRealToDesafio(token, body) {
     token: SERVICE_KEY,
     body: {
       balance_cents: nextBalance,
-      reusable_balance_cents: 0,
       desafio_balance_cents: desafio + amountCents,
       updated_at: new Date().toISOString(),
     },
@@ -1263,7 +1263,11 @@ async function transferRealToDesafio(token, body) {
         type: "transfer_to_desafio",
         amount_cents: -amountCents,
         balance_after_cents: nextBalance,
-        metadata: { destino: "desafio", amount_cents: amountCents },
+        metadata: {
+          destino: "desafio",
+          amount_cents: amountCents,
+          from: "balance_cents",
+        },
       },
     });
   } catch {
@@ -1274,9 +1278,34 @@ async function transferRealToDesafio(token, body) {
     ok: true,
     amountCents,
     balance_cents: nextBalance,
-    reusable_balance_cents: 0,
+    reusable_balance_cents: n(p.reusable_balance_cents),
+    locked_balance_cents: n(p.locked_balance_cents),
     desafio_balance_cents: desafio + amountCents,
   };
+}
+
+/** Remove do saldo usável do Desafio o valor retido/congelado do ciclo (não é stake de entrada). */
+async function clawbackDesafioRetainedFromSpendable(userId, retainedCents) {
+  const takeWanted = Math.max(0, Math.round(Number(retainedCents) || 0));
+  if (!(takeWanted > 0) || !userId) return 0;
+  const pr = await sb(
+    `/rest/v1/profiles?select=desafio_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const cur = Array.isArray(pr) ? pr[0] : null;
+  if (!cur) return 0;
+  const bal = n(cur.desafio_balance_cents);
+  const take = Math.min(bal, takeWanted);
+  if (!(take > 0)) return 0;
+  await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: {
+      desafio_balance_cents: Math.max(0, bal - take),
+      updated_at: new Date().toISOString(),
+    },
+  });
+  return take;
 }
 
 
@@ -1704,7 +1733,10 @@ async function settleDesafioStep(token, body) {
         },
       }
     );
-    if (won && credit > 0 && p.user_id) {
+    // Green na zebra: payout fica RETIDO/CONGELADO no ciclo (não volta para
+    // desafio_balance usável). Entradas seguintes usam retainedCents, não o saldo.
+    // Green no lado casa (participação side=casa): credita lucro no saldo desafio.
+    if (won && credit > 0 && p.user_id && side === "casa") {
       try {
         const pr = await sb(
           `/rest/v1/profiles?select=desafio_balance_cents&id=eq.${encodeURIComponent(p.user_id)}&limit=1`,
@@ -1721,6 +1753,19 @@ async function settleDesafioStep(token, body) {
             },
           });
         }
+      } catch {
+        /* */
+      }
+    }
+    // Bateu casa (zebra perdeu): zera do saldo usável qualquer payout de zebra
+    // que tenha sido creditado por engano (saldo congelado do ciclo).
+    if (!won && side === "arbishield" && p.user_id && winningSide === "casa" && step.desafio_id) {
+      try {
+        const circuit = await getDesafioCircuitForUser(step.desafio_id, p.user_id);
+        await clawbackDesafioRetainedFromSpendable(
+          p.user_id,
+          n(circuit?.retainedCents)
+        );
       } catch {
         /* */
       }
@@ -1845,8 +1890,9 @@ async function registerDesafioEntry(token, body) {
     Number(body?.amountCents ?? body?.amount_cents ?? 0)
   );
 
-  // Entrada 1: cliente define stake na zebra
-  // Entradas 2–5: usa saldo retido (último payout zebra)
+  // Entrada 1: só saldo usável do Desafio (depósitos/transferências).
+  // Entradas 2–5: stake = saldo RETIDO/CONGELADO do ciclo (não é saldo usável).
+  // O congelado NUNCA financia entrada via desafio_balance — fica retido até bateu casa.
   if (entryNumber === 1) {
     if (!(amountCents > 0)) {
       amountCents = n(step.desafios?.initial_balance_cents) || 0;
@@ -1854,14 +1900,6 @@ async function registerDesafioEntry(token, body) {
     if (!(amountCents > 0)) throw new Error("Informe o valor da aposta na zebra");
   } else {
     amountCents = circuit.retainedCents;
-    if (!(amountCents > 0)) {
-      // fallback: saldo desafio atual
-      const prof0 = await sb(
-        `/rest/v1/profiles?select=desafio_balance_cents&id=eq.${userId}&limit=1`,
-        { token: SERVICE_KEY }
-      );
-      amountCents = n(Array.isArray(prof0) ? prof0[0]?.desafio_balance_cents : 0);
-    }
     if (!(amountCents > 0)) {
       throw new Error("Sem saldo retido para a próxima entrada do ciclo");
     }
@@ -1876,12 +1914,11 @@ async function registerDesafioEntry(token, body) {
   }
 
   const prof = await sb(
-    `/rest/v1/profiles?select=desafio_balance_cents&id=eq.${userId}&limit=1`,
+    `/rest/v1/profiles?select=desafio_balance_cents,locked_balance_cents&id=eq.${userId}&limit=1`,
     { token: SERVICE_KEY }
   );
   const profile = Array.isArray(prof) ? prof[0] : null;
   const bal = n(profile?.desafio_balance_cents);
-  if (bal < amountCents) throw new Error("insufficient");
 
   const casaStakeCents = calcCasaStakeFromZebra(
     amountCents,
@@ -1896,14 +1933,22 @@ async function registerDesafioEntry(token, body) {
     targetPct
   );
 
-  await sb(`/rest/v1/profiles?id=eq.${userId}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: {
-      desafio_balance_cents: bal - amountCents,
-      updated_at: new Date().toISOString(),
-    },
-  });
+  if (entryNumber === 1) {
+    // Entrada 1 debita apenas desafio_balance usável — nunca locked/congelado.
+    if (bal < amountCents) throw new Error("insufficient");
+    await sb(`/rest/v1/profiles?id=eq.${userId}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        desafio_balance_cents: bal - amountCents,
+        updated_at: new Date().toISOString(),
+      },
+    });
+  } else {
+    // Retido já saiu do saldo usável na entrada 1 (e não deve voltar).
+    // Se um settle antigo creditou o payout por engano, remove do usável agora.
+    await clawbackDesafioRetainedFromSpendable(userId, amountCents);
+  }
 
   const created = await sb("/rest/v1/desafio_participations", {
     method: "POST",

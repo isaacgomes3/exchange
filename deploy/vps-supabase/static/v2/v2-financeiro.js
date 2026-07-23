@@ -52,6 +52,7 @@
     walletTx: [],
     affBalance: 0,
     realBalance: 0,
+    transferableReal: 0,
     apostadorHeader: 0,
     providerBalance: 0,
     locked: 0,
@@ -679,6 +680,8 @@
     // Saldo Real (carteira) = balance (+ legado reusable consolidado) — sem demo
     var real =
       Number(p.balance_cents || 0) + Number(p.reusable_balance_cents || 0);
+    // Transferência Banca→Desafio: só saldo real livre (nunca reusable/locked).
+    var transferableReal = Number(p.balance_cents || 0);
     // Chip do header "Apostador" = mesma fórmula do shell (inclui demo)
     var apostadorHeader = real + Number(p.demo_balance_cents || 0);
     var provider =
@@ -695,6 +698,7 @@
     if (!locked) locked = activeLocked;
     var aff = affAvailable(state.commissions, state.withdrawals);
     state.realBalance = real;
+    state.transferableReal = transferableReal;
     state.apostadorHeader = apostadorHeader;
     state.providerBalance = provider;
     state.affBalance = aff;
@@ -1190,7 +1194,7 @@
 
   function openTransfer() {
     var modal = document.getElementById("finTransferModal");
-    var banca = state.realBalance;
+    var banca = Number(state.transferableReal != null ? state.transferableReal : state.realBalance) || 0;
     var max = Math.floor(banca / 2);
     setText("finTransferAvail", money(banca));
     setText("finTransferMax", money(max));

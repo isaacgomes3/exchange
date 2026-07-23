@@ -470,7 +470,9 @@
                 if (String(msg).indexOf("already registered") >= 0) {
                   msg = "Você já registrou entrada nesta etapa.";
                 } else if (String(msg).indexOf("insufficient") >= 0) {
-                  msg = "Saldo do Desafio insuficiente. Transfira na Carteira.";
+                  msg = "Saldo do Desafio insuficiente. Deposite ou transfira na Carteira (saldo congelado/retido do ciclo não conta).";
+                } else if (String(msg).indexOf("Sem saldo retido") >= 0) {
+                  msg = "Sem saldo retido do ciclo para esta entrada. Aguarde o green na zebra da etapa anterior.";
                 }
                 throw new Error(msg);
               }
