@@ -5,7 +5,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-desafio-jornada-visivel.sh")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-48c65c6}"
+REF="${ARBISHIELD_REF:-PLACEHOLDER_SHA}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
@@ -32,22 +32,25 @@ chmod 0755 "$PRELIVE_DST"
 systemctl restart arbishield-prelive-events.service 2>/dev/null || \
   systemctl restart arbishield-prelive.service 2>/dev/null || true
 
-log "2/4 UI — jornada como /app-desafio.html"
+log "2/4 UI — jornada como /app-desafio.html (sem painel de sinais)"
 for f in app-desafio.html app-desafio-jornada.html app-desafio-lista.html app-desafio-sinais.html admin-desafios.html desafio-ciclo-math.js v2-shell.js; do
   dl "deploy/vps-supabase/static/v2/$f" "$WEB/$f"
   chmod 0644 "$WEB/$f"
   cp -f "$WEB/$f" "$WEB_ROOT/$f" 2>/dev/null || true
 done
 
-# Garante que a página principal É o mapa (não a lista antiga)
-grep -q 'j-map\|Mapa de campanha\|jornada-v1\|Painel de Sinais &amp; Arbitragem\|aria-label="Mapa do desafio"' \
+# Garante que a página principal É o mapa (não a lista / painel de sinais)
+grep -q 'j-map\|Mapa de campanha\|jornada-v1\|aria-label="Mapa do desafio"' \
   "$WEB/app-desafio.html" \
-  || grep -q 'j-map\|Mapa do desafio' "$WEB/app-desafio.html" \
   || die "app-desafio.html ainda não é o mapa de jornada"
 grep -q 'j-map\|Mapa do desafio' "$WEB/app-desafio.html" || die "falha: app-desafio sem j-map"
 grep -q 'fActive' "$WEB/admin-desafios.html" || die "admin-desafios ausente"
-# Sinais não é mais parte do fluxo do Desafio
+# Sinais não faz parte do fluxo do Desafio
 ! grep -qi 'Abrir painel de sinais' "$WEB/app-desafio.html" || die "app-desafio ainda tem botão de sinais"
+! grep -qi 'Abrir painel de sinais' "$WEB/app-desafio-jornada.html" || die "jornada ainda tem botão de sinais"
+grep -qi 'location.replace.*/app-desafio.html' "$WEB/app-desafio-sinais.html" \
+  || grep -qi 'url=/app-desafio.html' "$WEB/app-desafio-sinais.html" \
+  || die "app-desafio-sinais.html deve redirecionar para o mapa"
 
 log "3/4 Backend shim (register/settle desafio)"
 dl "scripts/arbishield-serverfn-shim.mjs" "$SHIM_DIR/arbishield-serverfn-shim.mjs"
@@ -56,7 +59,7 @@ grep -q 'registerDesafioEntry\|desafio-register' "$SHIM_DIR/arbishield-serverfn-
   || die "shim sem register desafio"
 systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 
-log "4/4 Nginx — /app/desafio → mapa"
+log "4/4 Nginx — /app/desafio → mapa; /sinais → mapa"
 for conf in /etc/nginx/sites-enabled/arbishield.app \
   /etc/nginx/conf.d/arbishield.app.conf \
   /etc/nginx/sites-available/arbishield.app; do
@@ -64,6 +67,10 @@ for conf in /etc/nginx/sites-enabled/arbishield.app \
   # Garante redirect do SPA antigo
   if grep -q 'location = /app/desafio' "$conf"; then
     sed -i 's|location = /app/desafio { return 302 /app-desafio.html; }|location = /app/desafio { return 302 /app-desafio.html; }|g' "$conf" || true
+  fi
+  # Painel de sinais removido do fluxo → redireciona para o mapa
+  if grep -q 'location = /app/desafio/sinais' "$conf"; then
+    sed -i 's|location = /app/desafio/sinais { return 302 /app-desafio-sinais.html; }|location = /app/desafio/sinais { return 302 /app-desafio.html; }|g' "$conf" || true
   fi
   if grep -q 'desafio-register|desafio-settle' "$conf" && ! grep -q 'desafio-jornada' "$conf"; then
     sed -i 's/desafio-sinal-preview|desafio-participations/desafio-sinal-preview|desafio-jornada|desafio-journey|desafio-participations/g' "$conf" || true
@@ -81,10 +88,10 @@ fi
 find "$WEB" "$WEB_ROOT" -maxdepth 1 -name 'app-desafio*.html' -exec touch {} \; 2>/dev/null || true
 
 echo
-echo "OK — mapa de jornada é a tela principal do Desafio"
+echo "OK — mapa de jornada é a tela principal do Desafio (sem painel de sinais)"
 echo "  Abra: https://arbishield.app/app-desafio.html"
 echo "  Ou:   https://arbishield.app/app/desafio"
-echo "  Ctrl+Shift+R (hard refresh) se ainda ver a lista antiga"
+echo "  Ctrl+Shift+R (hard refresh) se ainda ver o botão antigo"
 echo
 # sanity local
 head -c 200 "$WEB/app-desafio.html" | tr '\n' ' '; echo
