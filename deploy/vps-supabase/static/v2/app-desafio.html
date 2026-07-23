@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=dz-market-2x" />
+  <link rel="stylesheet" href="/v2.css?v=dz-markets-sides-1" />
   <style>
     /* Barra Desafio: preto + borda limão (inline p/ não depender de cache do v2.css) */
     body[data-shell="app"] .dz-wallet-bar {
@@ -227,13 +227,18 @@
       opacity: 1 !important;
       color: #fff !important;
     }
-    /* Mercado (ex.: Mais 2.5 gols) · 2× branco negrito */
-    .dz-v2-market {
-      font-size: 20px !important;
+    /* Mercado (ex.: Mais 2.5 gols) · por painel, branco negrito */
+    .dz-v2-panel-market {
+      font-size: 15px !important;
       font-weight: 900 !important;
-      letter-spacing: 0.08em !important;
+      letter-spacing: 0.06em !important;
+      text-transform: uppercase !important;
       color: #fff !important;
+      text-align: center !important;
+      line-height: 1.25 !important;
+      margin: 0 0 12px !important;
     }
+    .dz-v2-market { display: none !important; }
     @media (max-width: 860px) {
       body[data-shell="app"] .dz-wallet-cell {
         border-bottom-color: rgba(201, 242, 35, 0.45) !important;
@@ -952,6 +957,53 @@
         return { total: total, shown: avail };
       }
 
+      function oppositeMarket(name) {
+        var s = String(name || "").trim();
+        if (!s) return "";
+        if (/^Mais\b/i.test(s)) return s.replace(/^Mais\b/i, "Menos");
+        if (/^Menos\b/i.test(s)) return s.replace(/^Menos\b/i, "Mais");
+        if (/marcam SIM$/i.test(s)) return s.replace(/SIM$/i, "NÃO");
+        if (/marcam NÃO$/i.test(s)) return s.replace(/NÃO$/i, "SIM");
+        if (/^Back\b/i.test(s)) return s.replace(/^Back\b/i, "Lay");
+        if (/^Lay\b/i.test(s)) return s.replace(/^Lay\b/i, "Back");
+        return "";
+      }
+
+      function sameMarket(a, b) {
+        return (
+          String(a || "")
+            .trim()
+            .toLowerCase() ===
+          String(b || "")
+            .trim()
+            .toLowerCase()
+        );
+      }
+
+      function resolveSideMarkets(step) {
+        var casa =
+          String(
+            step.market_name_casa ||
+              step.market_name ||
+              step.casa_team_name ||
+              ""
+          ).trim();
+        var arbi = String(
+          step.market_name_arbishield || step.arbi_team_name || ""
+        ).trim();
+        // Apostas contrárias: se faltar um lado, deriva o oposto
+        if (!arbi && casa) arbi = oppositeMarket(casa) || casa;
+        if (!casa && arbi) casa = oppositeMarket(arbi) || arbi;
+        // Se ambos iguais (dado incompleto), Arbi fica o inverso da casa
+        if (arbi && casa && sameMarket(arbi, casa)) {
+          var opp = oppositeMarket(casa);
+          if (opp) arbi = opp;
+        }
+        if (!arbi) arbi = "Mercado ArbiShield";
+        if (!casa) casa = "Mercado casa";
+        return { arbi: arbi, casa: casa };
+      }
+
       function toCardItem(desafio, step) {
         var teams = splitTeams(step || {});
         var defaultEntrada = Number(desafio.initial_balance_cents) || 20000;
@@ -960,12 +1012,7 @@
         var startsAt = step.starts_at || null;
         var startsAtMs = startsAt ? new Date(startsAt).getTime() : null;
         if (startsAtMs != null && isNaN(startsAtMs)) startsAtMs = null;
-        var market =
-          step.market_name_casa ||
-          step.market_name ||
-          step.market_name_arbishield ||
-          step.casa_team_name ||
-          "Resultado Final";
+        var sides = resolveSideMarkets(step);
         var arbiOdd = Number(step.arbi_odd);
         var casaOdd = Number(step.casa_odd);
         if (!Number.isFinite(arbiOdd) || arbiOdd <= 1) arbiOdd = null;
@@ -992,9 +1039,8 @@
             step.away_logo_url ||
             step.away_logo ||
             null,
-          market: market,
-          marketArbi: step.market_name_arbishield || step.arbi_team_name || market,
-          marketCasa: step.market_name_casa || step.casa_team_name || market,
+          marketArbi: sides.arbi,
+          marketCasa: sides.casa,
           startsAt: startsAt,
           startsAtMs: startsAtMs,
           releaseMinutesBefore: Number(step.release_minutes_before) || 0,
@@ -1115,15 +1161,15 @@
           '<span class="dz-v2-team-name">' +
           esc(item.awayTeam) +
           "</span></div></div>" +
-          '<div class="dz-v2-market">' +
-          esc(item.market) +
-          "</div>" +
           '<div class="dz-v2-compare">' +
           '<div class="dz-v2-panel arbi">' +
           '<div class="dz-v2-panel-top">' +
           '<div class="dz-v2-panel-brand">' +
           '<img src="/brand/icon-64.png" alt="" />ArbiShield</div>' +
           '<span class="dz-v2-chip arbi">Maior retorno</span></div>' +
+          '<div class="dz-v2-panel-market">' +
+          esc(item.marketArbi) +
+          "</div>" +
           '<div class="dz-v2-row"><span class="l">Odd</span><span class="v accent">' +
           esc(fmtOdd(item.arbiOdd)) +
           "</span></div>" +
@@ -1149,6 +1195,9 @@
           esc(house) +
           "</div>" +
           '<span class="dz-v2-chip casa">Casa de aposta</span></div>' +
+          '<div class="dz-v2-panel-market">' +
+          esc(item.marketCasa) +
+          "</div>" +
           '<div class="dz-v2-row"><span class="l">Odd</span><span class="v accent">' +
           esc(fmtOdd(item.casaOdd)) +
           "</span></div>" +

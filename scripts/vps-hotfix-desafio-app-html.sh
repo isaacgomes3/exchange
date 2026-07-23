@@ -3,7 +3,7 @@
 # Usa jsDelivr + SHA do tip para evitar HTML antigo em cache.
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=9")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=10")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -44,7 +44,8 @@ grep -q 'data-casa-copy' "$DEST" || die "HTML sem botão Copiar"
 grep -q 'stadium-hero' "$DEST" || die "HTML sem fundo estádio"
 grep -q 'dz-v2-row-stake' "$DEST" || die "HTML sem campo stake alinhado à esquerda"
 grep -q '3.1rem' "$DEST" || die "HTML sem X/horário 2× maior"
-grep -q 'Mercado (ex.: Mais 2.5 gols)' "$DEST" || die "HTML sem mercado 2× branco"
+grep -q 'dz-v2-panel-market' "$DEST" || die "HTML sem mercado por painel (Arbi/Casa)"
+grep -q 'resolveSideMarkets' "$DEST" || die "HTML sem resolveSideMarkets"
 grep -q 'desafio-no-filter-tabs' "$DEST" || die "HTML sem marcador sem-abas"
 grep -q 'dz-section-head' "$DEST" || die "HTML sem título Desafio Disponível/Em andamento"
 grep -q 'data-f="Todos"' "$DEST" && die "HTML ainda tem abas Todos"
