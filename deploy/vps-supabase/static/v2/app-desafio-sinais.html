@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Painel de Sinais · Desafio ArbiShield</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js"></script>
+  <script src="/desafio-ciclo-math.js"></script>
+  <script src="/v2-shell.js" defer></script>
+  <style>
+    .sinais-wrap { max-width: 720px; margin: 0 auto; }
+    .sinais-panel {
+      border: 1px solid rgba(255,255,255,0.1);
+      background: linear-gradient(165deg, rgba(12,40,34,0.95), rgba(6,18,16,0.98));
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.35);
+    }
+    .sinais-head {
+      padding: 18px 20px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      background: rgba(0,0,0,0.25);
+    }
+    .sinais-head h2 {
+      margin: 0;
+      font-size: 13px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--lime, #c6ff00);
+      font-weight: 800;
+    }
+    .sinais-block { padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .sinais-block:last-child { border-bottom: 0; }
+    .sinais-label { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #94a3b8; margin-bottom: 6px; font-weight: 700; }
+    .sinais-status { font-size: 14px; font-weight: 800; color: #fbbf24; line-height: 1.4; }
+    .sinais-status.is-ready { color: var(--lime, #c6ff00); }
+    .sinais-status.is-success { color: #4ade80; }
+    .sinais-balance { font-size: 22px; font-weight: 900; color: #fff; margin-top: 4px; }
+    .sinais-match { font-size: 16px; font-weight: 800; color: #fff; }
+    .sinais-leg {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-top: 10px;
+    }
+    .sinais-leg h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: #cbd5e1; }
+    .sinais-leg.zebra h3 { color: var(--lime, #c6ff00); }
+    .sinais-leg.fav h3 { color: #93c5fd; }
+    .sinais-leg p { margin: 0; font-size: 14px; color: #e2e8f0; line-height: 1.45; }
+    .sinais-leg .exact {
+      margin-top: 10px;
+      font-size: 18px;
+      font-weight: 900;
+      color: #fff;
+    }
+    .sinais-leg .exact em { font-style: normal; color: #93c5fd; }
+    .sinais-leg .auto {
+      display: inline-block;
+      margin-top: 8px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #0b1a16;
+      background: var(--lime, #c6ff00);
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
+    .sinais-proj {
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--lime, #c6ff00);
+    }
+    .sinais-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+    .sinais-actions .btn { flex: 1; min-width: 160px; justify-content: center; }
+    .sinais-stake-field { margin-top: 10px; }
+    .sinais-stake-field label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 6px; }
+    .sinais-stake-field input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.35);
+      color: #fff;
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .sinais-hint { margin-top: 8px; font-size: 12px; color: #94a3b8; line-height: 1.4; }
+    .sinais-err { color: #f87171; font-size: 13px; margin-top: 10px; }
+    .sinais-back { display: inline-block; margin-bottom: 14px; color: #94a3b8; text-decoration: none; font-size: 13px; font-weight: 600; }
+    .sinais-back:hover { color: var(--lime, #c6ff00); }
+  </style>
+</head>
+<body data-shell="app" data-active="desafio">
+  <div class="page-head">
+    <div>
+      <h1>Painel de <span>Sinais</span></h1>
+      <p class="sub">Ciclo de extração · até 5 entradas · lucro alvo 5%</p>
+    </div>
+  </div>
+
+  <div class="sinais-wrap">
+    <a class="sinais-back" href="/app-desafio.html">← Voltar aos desafios</a>
+    <div id="err" class="err"></div>
+    <div class="sinais-panel" id="panel">
+      <div class="sinais-head"><h2>Painel de Sinais &amp; Arbitragem</h2></div>
+      <div class="sinais-block"><div class="loading">Carregando sinal…</div></div>
+    </div>
+  </div>
+
+  <script>
+    (async function () {
+      var money = ArbiV2.money;
+      var MathCiclo = window.ArbiDesafioCiclo;
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+
+      var params = new URLSearchParams(location.search);
+      var stepId = params.get("stepId") || params.get("step") || "";
+      var state = null;
+
+      function $(id) { return document.getElementById(id); }
+      function showErr(msg) {
+        var el = $("err");
+        el.textContent = msg || "";
+        el.classList.toggle("show", !!msg);
+      }
+      function esc(v) {
+        return String(v == null ? "" : v)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/"/g, "&quot;");
+      }
+      function reaisToCents(v) {
+        var s = String(v || "").trim().replace(/\s/g, "");
+        if (!s) return 0;
+        if (s.indexOf(",") >= 0) {
+          s = s.replace(/\./g, "").replace(",", ".");
+        }
+        var n = Number(s);
+        return Number.isFinite(n) ? Math.round(n * 100) : 0;
+      }
+      function centsToInput(c) {
+        return (Number(c || 0) / 100).toFixed(2).replace(".", ",");
+      }
+
+      async function api(path, body) {
+        var session = await supa.auth.getSession();
+        var token = session.data.session && session.data.session.access_token;
+        var res = await fetch(path, {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body || {}),
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok) throw new Error(data.error || "Falha na API");
+        return data;
+      }
+
+      function statusText(st, entry, max) {
+        if (st === "success_closed") return { cls: "is-success", text: "✅ CICLO ENCERRADO — sucesso na casa externa (+5%)" };
+        if (st === "pending_entry") return { cls: "", text: "⏳ ENTRADA ENVIADA — aguardando resultado (Entrada " + entry + " de " + max + ")" };
+        if (st === "extraction_active") return { cls: "", text: "⚠️ CICLO DE EXTRAÇÃO ATIVO (Entrada " + entry + " de " + max + ")" };
+        return { cls: "is-ready", text: "🟢 PRONTO PARA ENTRADA 1 DE " + max };
+      }
+
+      function recomputeLocal(zebraCents) {
+        if (!state || !state.sinal) return null;
+        var s = state.sinal;
+        return MathCiclo.buildSinalPreview({
+          zebraStakeCents: zebraCents,
+          arbiOdd: s.arbiOdd,
+          casaOdd: s.casaOdd,
+          targetProfitPct: s.targetProfitPct || 5,
+        });
+      }
+
+      function paint() {
+        if (!state || !state.sinal) {
+          $("panel").innerHTML =
+            '<div class="sinais-head"><h2>Painel de Sinais &amp; Arbitragem</h2></div>' +
+            '<div class="sinais-block"><p class="sinais-hint">Selecione um desafio em /app-desafio.html</p></div>';
+          return;
+        }
+        var s = state.sinal;
+        var entry = state.entryNumber || 1;
+        var max = state.maxEntries || 5;
+        var st = statusText(state.status, entry, max);
+        var retained = state.retainedCents || 0;
+        var zebra = s.zebraStakeCents || 0;
+        var casa = s.casaStakeCents || 0;
+        var projected = s.projectedReturnCents || 0;
+        var auto = entry > 1 || s.allocatedAutomatically;
+        var canConfirm = state.status === "ready" || state.status === "extraction_active";
+        var stakeEditable = entry === 1 && canConfirm;
+
+        var stakeHtml = stakeEditable
+          ? '<div class="sinais-stake-field">' +
+            "<label>Quanto quer apostar na Zebra (R$)</label>" +
+            '<input id="zebraStakeInput" type="text" inputmode="decimal" value="' +
+            esc(centsToInput(zebra)) +
+            '" />' +
+            '<p class="sinais-hint">O sistema calcula automaticamente quanto apostar na casa externa.</p></div>'
+          : '<div class="exact">' +
+            esc(money(zebra)) +
+            (auto ? ' <span class="auto">Alocado automaticamente</span>' : "") +
+            "</div>";
+
+        $("panel").innerHTML =
+          '<div class="sinais-head"><h2>Painel de Sinais &amp; Arbitragem</h2></div>' +
+          '<div class="sinais-block">' +
+          '<div class="sinais-label">Status do ciclo</div>' +
+          '<div class="sinais-status ' + st.cls + '">' + esc(st.text) + "</div>" +
+          '<div class="sinais-label" style="margin-top:14px">Saldo atual retido na plataforma</div>' +
+          '<div class="sinais-balance" id="retainedBal">' +
+          esc(money(retained > 0 ? retained : state.desafioBalanceCents || 0)) +
+          "</div></div>" +
+          '<div class="sinais-block">' +
+          '<div class="sinais-label">Oportunidade atual</div>' +
+          '<div class="sinais-match">' +
+          esc(s.matchLabel || (s.favoriteTeam + " (Favorito) vs " + s.zebraTeam + " (Zebra)")) +
+          "</div></div>" +
+          '<div class="sinais-block">' +
+          '<div class="sinais-leg zebra">' +
+          "<h3>1. Sua aposta (aqui no site)</h3>" +
+          "<p>Jogo: <strong>" +
+          esc(s.zebraTeam || "Zebra") +
+          "</strong> | Odd: <strong>" +
+          esc(s.arbiOdd) +
+          "</strong></p>" +
+          stakeHtml +
+          "</div>" +
+          '<div class="sinais-leg fav">' +
+          "<h3>2. Aposta na casa externa</h3>" +
+          "<p>Jogo: <strong>" +
+          esc(s.favoriteTeam || "Favorito") +
+          "</strong> | Odd: <strong>" +
+          esc(s.casaOdd) +
+          "</strong></p>" +
+          '<div class="exact">👉 Aposte exatamente: <em id="casaExact">' +
+          esc(money(casa)) +
+          "</em></div>" +
+          (s.externalBetLink
+            ? '<p class="sinais-hint" style="margin-top:10px"><a href="' +
+              esc(s.externalBetLink) +
+              '" target="_blank" rel="noopener">Abrir link da casa externa</a></p>'
+            : "") +
+          "</div></div>" +
+          '<div class="sinais-block">' +
+          '<div class="sinais-label">Retorno projetado (lucro de ' +
+          esc(s.targetProfitPct || 5) +
+          "% garantido)</div>" +
+          '<div class="sinais-proj" id="projReturn">' +
+          esc(money(projected)) +
+          "</div>" +
+          '<div class="sinais-actions" style="margin-top:16px">' +
+          (canConfirm
+            ? '<button type="button" class="btn btn-primary" id="btnConfirm">Confirmar e enviar sinal</button>'
+            : '<button type="button" class="btn btn-ghost" disabled>Aguardando resultado</button>') +
+          '<a class="btn btn-ghost" href="/app-desafio.html">Outros desafios</a>' +
+          "</div>" +
+          '<div class="sinais-err" id="localErr"></div>' +
+          "</div>";
+
+        var input = $("zebraStakeInput");
+        if (input) {
+          input.addEventListener("input", function () {
+            var cents = reaisToCents(input.value);
+            var prev = recomputeLocal(cents);
+            if (!prev) return;
+            $("casaExact").textContent = money(prev.casaStakeCents);
+            $("projReturn").textContent = money(prev.projectedReturnCents);
+          });
+        }
+        var btn = $("btnConfirm");
+        if (btn) {
+          btn.addEventListener("click", async function () {
+            $("localErr").textContent = "";
+            btn.disabled = true;
+            try {
+              var amount = stakeEditable
+                ? reaisToCents(($("zebraStakeInput") && $("zebraStakeInput").value) || "0")
+                : zebra;
+              if (!(amount > 0)) throw new Error("Informe o valor da aposta na zebra");
+              var out = await api("/api/arbishield/desafio-register", {
+                stepId: s.stepId || stepId,
+                side: "arbishield",
+                amountCents: amount,
+              });
+              alert(
+                "Sinal confirmado!\n\nZebra: " +
+                  money(out.sinal && out.sinal.zebraStakeCents) +
+                  "\nCasa externa: " +
+                  money(out.sinal && out.sinal.casaStakeCents) +
+                  "\nRetorno projetado: " +
+                  money(out.sinal && out.sinal.projectedReturnCents)
+              );
+              await load();
+            } catch (ex) {
+              var msg = (ex && ex.message) || "Erro ao confirmar";
+              if (String(msg).indexOf("insufficient") >= 0) {
+                msg = "Saldo do Desafio insuficiente. Transfira na Carteira.";
+              } else if (String(msg).indexOf("already registered") >= 0) {
+                msg = "Você já registrou esta entrada.";
+              }
+              $("localErr").textContent = msg;
+              btn.disabled = false;
+            }
+          });
+        }
+      }
+
+      async function load() {
+        showErr("");
+        if (!stepId) {
+          // Sem step: pega o primeiro desafio ativo com etapa disponível
+          var res = await fetch("/api/arbishield/desafios", {
+            cache: "no-store",
+            headers: { accept: "application/json" },
+          });
+          var data = await res.json().catch(function () { return []; });
+          var rows = Array.isArray(data) ? data : [];
+          var pick = null;
+          rows.forEach(function (d) {
+            if (pick || d.deleted_at || !d.is_active) return;
+            var steps = (d.desafio_steps || []).slice().sort(function (a, b) {
+              return (a.step_index || 0) - (b.step_index || 0);
+            });
+            for (var i = 0; i < steps.length; i++) {
+              if (String(steps[i].status) !== "done") {
+                pick = steps[i].id;
+                break;
+              }
+            }
+          });
+          if (!pick) {
+            $("panel").innerHTML =
+              '<div class="sinais-head"><h2>Painel de Sinais &amp; Arbitragem</h2></div>' +
+              '<div class="sinais-block"><p class="sinais-hint">Nenhum sinal disponível no momento.</p></div>';
+            return;
+          }
+          stepId = pick;
+          history.replaceState(null, "", "?stepId=" + encodeURIComponent(stepId));
+        }
+        state = await api("/api/arbishield/desafio-sinal", {
+          stepId: stepId,
+          amountCents: 0,
+        });
+        paint();
+      }
+
+      try {
+        await load();
+      } catch (ex) {
+        showErr(ex.message || "Erro ao carregar sinal");
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -267,13 +267,78 @@ async function nextDesafioNumber() {
   return (Number.isFinite(cur) ? cur : 0) + 1;
 }
 
+
+/** Matemática ciclo Desafio/Sinais (espelho desafio-ciclo-math) */
+function desafioClampFee(pct) {
+  const x = Number(pct);
+  if (!Number.isFinite(x) || x < 0) return 0;
+  return Math.min(100, x) / 100;
+}
+function desafioEffectiveL(odd, commissionPct) {
+  const o = Number(odd);
+  if (!(o > 1)) return NaN;
+  const fee = desafioClampFee(commissionPct);
+  return 1 + (o - 1) * (1 - fee);
+}
+function desafioOddFromL(L, commissionPct) {
+  const fee = desafioClampFee(commissionPct);
+  if (!(L > 1) || fee >= 1) return NaN;
+  return 1 + (L - 1) / (1 - fee);
+}
+function calcZebraOddFromFavorite(
+  casaOdd,
+  targetProfitPct = 5,
+  casaCommissionPct = 0,
+  arbiCommissionPct = 0
+) {
+  const Lc = desafioEffectiveL(casaOdd, casaCommissionPct);
+  const margin = 1 + Math.max(0, Number(targetProfitPct) || 5) / 100;
+  if (!(Lc > margin)) {
+    const err = new Error(
+      `Odd do favorito (${casaOdd}) baixa demais para lucro de ${targetProfitPct}%.`
+    );
+    err.status = 400;
+    throw err;
+  }
+  const Lz = (margin * Lc) / (Lc - margin);
+  const zebraOdd = desafioOddFromL(Lz, arbiCommissionPct);
+  if (!(zebraOdd > 1)) throw new Error("Não foi possível calcular a odd da zebra");
+  return Math.round(zebraOdd * 100) / 100;
+}
+function calcCasaStakeFromZebra(
+  zebraStakeCents,
+  arbiOdd,
+  casaOdd,
+  arbiCommissionPct = 0,
+  casaCommissionPct = 0
+) {
+  const Sz = Math.max(0, Math.round(Number(zebraStakeCents) || 0));
+  const Lz = desafioEffectiveL(arbiOdd, arbiCommissionPct);
+  const Lc = desafioEffectiveL(casaOdd, casaCommissionPct);
+  if (!(Sz > 0) || !(Lz > 1) || !(Lc > 1)) return 0;
+  return Math.round((Sz * Lz) / Lc);
+}
+function calcZebraPayoutCents(zebraStakeCents, arbiOdd, arbiCommissionPct = 0) {
+  const Sz = Math.max(0, Math.round(Number(zebraStakeCents) || 0));
+  const Lz = desafioEffectiveL(arbiOdd, arbiCommissionPct);
+  if (!(Sz > 0) || !(Lz > 1)) return 0;
+  return Math.round(Sz * Lz);
+}
+function calcProjectedReturnCents(zebraStakeCents, casaStakeCents, targetProfitPct = 5) {
+  const total =
+    Math.max(0, Math.round(Number(zebraStakeCents) || 0)) +
+    Math.max(0, Math.round(Number(casaStakeCents) || 0));
+  const margin = 1 + Math.max(0, Number(targetProfitPct) || 5) / 100;
+  return Math.round(total * margin);
+}
+
 function buildDesafioRow(body) {
   const isActive = Boolean(body.is_active);
   return {
     number: body.number != null ? Number(body.number) : undefined,
     title: body.title || "Desafio",
     subtitle: body.subtitle ?? null,
-    total_steps: Number(body.total_steps) || (body.steps || []).length || 1,
+    total_steps: Number(body.total_steps) || 5,
     initial_balance_cents: Number(body.initial_balance_cents) || 20000,
     is_active: isActive,
     status: body.status || (isActive ? "active" : "draft"),
@@ -298,7 +363,25 @@ function buildStepRow(desafioId, stepIn, isActive) {
     away_odd: stepIn.away_odd != null ? Number(stepIn.away_odd) : null,
     arbi_team_name: stepIn.arbi_team_name ?? null,
     arbi_team_logo_url: stepIn.arbi_team_logo_url ?? null,
-    arbi_odd: stepIn.arbi_odd != null ? Number(stepIn.arbi_odd) : null,
+    arbi_odd: (() => {
+      if (stepIn.arbi_odd != null && Number(stepIn.arbi_odd) > 1) {
+        return Number(stepIn.arbi_odd);
+      }
+      const casa = stepIn.casa_odd != null ? Number(stepIn.casa_odd) : null;
+      if (casa > 1) {
+        try {
+          return calcZebraOddFromFavorite(
+            casa,
+            Number(stepIn.target_profit_pct) || 5,
+            stepIn.casa_commission_pct != null ? Number(stepIn.casa_commission_pct) : 0,
+            stepIn.arbi_commission_pct != null ? Number(stepIn.arbi_commission_pct) : 0
+          );
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    })(),
     casa_team_name: stepIn.casa_team_name ?? null,
     casa_team_logo_url: stepIn.casa_team_logo_url ?? null,
     casa_odd: stepIn.casa_odd != null ? Number(stepIn.casa_odd) : null,

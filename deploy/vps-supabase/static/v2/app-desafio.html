@@ -15,7 +15,7 @@
   <div class="page-head">
     <div>
       <h1>Desafio <span>ArbiShield</span></h1>
-      <p class="sub">Circuito de até 5 etapas · objetivo: bater na casa · falha só na ArbiShield liquida para provedores</p>
+      <p class="sub">Painel de sinais · ciclo de até 5 entradas · lucro alvo 5% na casa externa</p>
     </div>
   </div>
   <div id="err" class="err"></div>
@@ -40,7 +40,7 @@
   </div>
 
   <div class="section-label"><span class="dot" style="background:#c6ff00"></span>Desafios disponíveis</div>
-  <p class="app-desafio-lead">Ganhou na ArbiShield (falha na casa)? Segue no circuito (até +4 eventos) mirando a casa oposta. Sem vitória na casa ao final, o valor acumulado vai aos provedores de liquidez.</p>
+  <p class="app-desafio-lead">Entrada 1: você define o valor na zebra; o sistema calcula a aposta na casa externa. Green na zebra retém o saldo e avança o ciclo (máx. 5). Green no favorito encerra com +5% fora.</p>
   <div id="list" class="app-desafio-grid"><div class="ops-empty">Carregando…</div></div>
 
   <script>
@@ -214,6 +214,7 @@
           startsAtMs: startsAtMs,
           releaseMinutesBefore: Number(step.release_minutes_before) || 0,
           entradaCents: entrada,
+          stepId: step.id,
           lucroMaxPct: pct,
           totalSteps: (desafio.desafio_steps || []).length || Number(desafio.total_steps) || 1,
           isNew: true,
@@ -295,9 +296,9 @@
           cta = '<button type="button" class="dz-cta muted" disabled>Em breve</button>';
         } else {
           cta =
-            '<button type="button" class="dz-cta" data-participate="' +
-            esc(item.id) +
-            '">Participar</button>';
+            '<a class="dz-cta" href="/app-desafio-sinais.html?stepId=' +
+            encodeURIComponent(item.stepId || item.id) +
+            '">Abrir sinal</a>';
         }
 
         return (

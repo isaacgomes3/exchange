@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
+  <script src="/desafio-ciclo-math.js"></script>
   <script src="/v2-shell.js" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -281,7 +282,7 @@
     <header>
       <div>
         <h1>Gestão de <span>Desafios</span></h1>
-        <p class="sub">Cockpit de Desafios ArbiShield</p>
+        <p class="sub">Ciclo de sinais · cadastre favorito · zebra automática · até 5 entradas</p>
       </div>
       <div class="actions">
         <button class="btn btn-primary" type="button" id="btnLaunch">⚡ Lançar Desafio</button>
@@ -390,7 +391,7 @@
         casa_odd: "",
         casa_stake_cents: "",
         arbi_commission_pct: "0",
-        casa_commission_pct: "4.5",
+        casa_commission_pct: "0",
         external_bet_link: "",
         liquidity_cents: "",
         display_liquidity_cents: "",
@@ -553,52 +554,53 @@
             <input data-f="league_name" value="${esc(s.league_name)}" placeholder="Ex.: Brasileirão Série A" />
           </div>
 
-          <div class="leg-title arbi">Entrada ArbiShield</div>
+          <div class="leg-title casa">1. Favorito — Casa Externa (cadastro ADM)</div>
           <div class="field-row">
             <div class="field">
-              <label>Time / Seleção</label>
-              <input data-f="arbi_team_name" value="${esc(s.arbi_team_name)}" placeholder="Ex.: Menos 2.5" />
+              <label>Time / Seleção (Favorito)</label>
+              <input data-f="casa_team_name" value="${esc(s.casa_team_name)}" placeholder="Ex.: Real Madrid" />
             </div>
             <div class="field">
-              <label>Odd</label>
-              <input data-f="arbi_odd" value="${esc(s.arbi_odd)}" placeholder="2.10" />
+              <label>Odd do Favorito</label>
+              <input data-f="casa_odd" class="js-casa-odd" value="${esc(s.casa_odd)}" placeholder="1.50" />
             </div>
           </div>
           <div class="field-row">
             <div class="field">
-              <label>Mercado</label>
-              <input data-f="market_name_arbishield" value="${esc(s.market_name_arbishield)}" placeholder="Menos 2.5 gols" />
+              <label>Mercado (casa)</label>
+              <input data-f="market_name_casa" value="${esc(s.market_name_casa)}" placeholder="Resultado final / Favorito" />
             </div>
             <div class="field">
-              <label>Comissão (%)</label>
-              <input data-f="arbi_commission_pct" value="${esc(s.arbi_commission_pct)}" placeholder="0" />
+              <label>Comissão casa (%)</label>
+              <input data-f="casa_commission_pct" class="js-casa-fee" value="${esc(s.casa_commission_pct)}" placeholder="0" />
             </div>
           </div>
+          <p class="hint" style="margin:0 0 12px">Informe só a odd do favorito. A odd da zebra é calculada para lucro alvo de 5%.</p>
 
-          <div class="leg-title casa">Entrada Casa Externa</div>
+          <div class="leg-title arbi">2. Zebra — ArbiShield (calculada)</div>
           <div class="field-row">
             <div class="field">
-              <label>Time / Seleção</label>
-              <input data-f="casa_team_name" value="${esc(s.casa_team_name)}" placeholder="Ex.: Mais 2.5" />
+              <label>Time / Seleção (Zebra)</label>
+              <input data-f="arbi_team_name" value="${esc(s.arbi_team_name)}" placeholder="Ex.: Osasuna" />
             </div>
             <div class="field">
-              <label>Odd</label>
-              <input data-f="casa_odd" value="${esc(s.casa_odd)}" placeholder="1.85" />
+              <label>Odd da Zebra (auto)</label>
+              <input data-f="arbi_odd" class="js-arbi-odd" value="${esc(s.arbi_odd)}" placeholder="auto" readonly style="opacity:0.85;cursor:default" />
             </div>
           </div>
           <div class="field-row">
             <div class="field">
-              <label>Mercado</label>
-              <input data-f="market_name_casa" value="${esc(s.market_name_casa)}" placeholder="Mais 2.5 gols" />
+              <label>Mercado (ArbiShield)</label>
+              <input data-f="market_name_arbishield" value="${esc(s.market_name_arbishield)}" placeholder="Resultado final / Zebra" />
             </div>
             <div class="field">
-              <label>Comissão (%)</label>
-              <input data-f="casa_commission_pct" value="${esc(s.casa_commission_pct)}" placeholder="4.5" />
+              <label>Comissão Arbi (%)</label>
+              <input data-f="arbi_commission_pct" class="js-arbi-fee" value="${esc(s.arbi_commission_pct)}" placeholder="0" />
             </div>
           </div>
           <div class="field">
-            <label>Valor da entrada na casa (R$)</label>
-            <input data-f="casa_stake_cents" value="${esc(s.casa_stake_cents)}" placeholder="Ex.: 100,00" />
+            <label>Stake sugerido na casa (R$) — opcional / referência</label>
+            <input data-f="casa_stake_cents" value="${esc(s.casa_stake_cents)}" placeholder="Calculado no painel do cliente" />
           </div>
           <div class="field">
             <label>Link da Casa de Aposta</label>
@@ -644,6 +646,36 @@
           if (!draft.steps.length) draft.steps = [emptyStep(1)];
           renderStepsEditor();
         });
+      });
+      // Auto odd zebra a partir do favorito
+      $("stepsEditor").querySelectorAll(".step-card").forEach((card) => {
+        const syncZebra = () => {
+          if (!window.ArbiDesafioCiclo) return;
+          const casaEl = card.querySelector(".js-casa-odd");
+          const arbiEl = card.querySelector(".js-arbi-odd");
+          const casaFeeEl = card.querySelector(".js-casa-fee");
+          const arbiFeeEl = card.querySelector(".js-arbi-fee");
+          if (!casaEl || !arbiEl) return;
+          const casaOdd = Number(String(casaEl.value || "").replace(",", "."));
+          if (!(casaOdd > 1)) return;
+          try {
+            const z = window.ArbiDesafioCiclo.calcZebraOddFromFavorite(
+              casaOdd,
+              5,
+              Number(String((casaFeeEl && casaFeeEl.value) || "0").replace(",", ".")) || 0,
+              Number(String((arbiFeeEl && arbiFeeEl.value) || "0").replace(",", ".")) || 0
+            );
+            arbiEl.value = String(z);
+          } catch (e) {
+            arbiEl.value = "";
+            arbiEl.placeholder = (e && e.message) || "odd inválida";
+          }
+        };
+        card.querySelectorAll(".js-casa-odd, .js-casa-fee, .js-arbi-fee").forEach((el) => {
+          el.addEventListener("input", syncZebra);
+          el.addEventListener("change", syncZebra);
+        });
+        syncZebra();
       });
     }
 
@@ -716,7 +748,7 @@
             casa_odd: step.casa_odd != null ? String(step.casa_odd) : "",
             market_name_casa: step.market_name_casa || casaName,
             casa_commission_pct:
-              step.casa_commission_pct != null ? String(step.casa_commission_pct) : "4.5",
+              step.casa_commission_pct != null ? String(step.casa_commission_pct) : "0",
             casa_stake_cents: centsToReaisInput(step.casa_stake_cents),
             external_bet_link: step.external_bet_link || data.betbraLink || "",
             liquidity_cents: centsToReaisInput(step.liquidity_cents),
@@ -736,10 +768,29 @@
       if (!draft.title) throw new Error("Informe o título do desafio.");
       for (const a of draft.steps) {
         if (!a.match_label) throw new Error(`Etapa ${a.step_index}: preencha o nome do jogo.`);
-        if (!a.arbi_team_name || !a.arbi_odd || !a.casa_team_name || !a.casa_odd) {
+        if (!a.casa_team_name || !a.casa_odd) {
           throw new Error(
-            `Etapa ${a.step_index}: preencha time e odd para ArbiShield e Casa Externa.`
+            `Etapa ${a.step_index}: informe o favorito e a odd da casa externa.`
           );
+        }
+        if (!a.arbi_team_name) {
+          throw new Error(`Etapa ${a.step_index}: informe o time/seleção da zebra.`);
+        }
+        // Odd zebra: auto se vazia
+        if (!a.arbi_odd && window.ArbiDesafioCiclo) {
+          try {
+            const casaOdd = Number(String(a.casa_odd).replace(",", "."));
+            const casaFee = Number(String(a.casa_commission_pct || "0").replace(",", ".")) || 0;
+            const arbiFee = Number(String(a.arbi_commission_pct || "0").replace(",", ".")) || 0;
+            a.arbi_odd = String(
+              window.ArbiDesafioCiclo.calcZebraOddFromFavorite(casaOdd, 5, casaFee, arbiFee)
+            );
+          } catch (e) {
+            throw new Error(`Etapa ${a.step_index}: ${e.message || e}`);
+          }
+        }
+        if (!a.arbi_odd) {
+          throw new Error(`Etapa ${a.step_index}: não foi possível calcular a odd da zebra.`);
         }
         if (!a.market_name_arbishield || !a.market_name_casa) {
           throw new Error(
@@ -759,10 +810,11 @@
         number: draft.number ? Number(draft.number) : undefined,
         title: draft.title,
         subtitle: draft.subtitle || null,
-        total_steps: draft.steps.length,
+        total_steps: Math.max(5, draft.steps.length),
         initial_balance_cents: initialCents || 20000,
         is_active: Boolean(draft.is_active),
         status: draft.is_active ? "active" : "draft",
+        target_profit_pct: 5,
         auto_link_matches: true,
         steps: draft.steps.map((a) => {
           const arbiOdd = Number(String(a.arbi_odd).replace(",", "."));
@@ -785,7 +837,7 @@
             casa_stake_cents: reaisToCents(a.casa_stake_cents) || null,
             arbi_commission_pct: Number(String(a.arbi_commission_pct || "0").replace(",", ".")) || 0,
             casa_commission_pct:
-              Number(String(a.casa_commission_pct || "4.5").replace(",", ".")) || 4.5,
+              Number(String(a.casa_commission_pct || "0").replace(",", ".")) || 0,
             external_bet_link: a.external_bet_link || null,
             liquidity_cents: reaisToCents(a.liquidity_cents) || 200000,
             display_liquidity_cents:
@@ -1022,7 +1074,7 @@
               casa_odd: s.casa_odd != null ? String(s.casa_odd) : "",
               market_name_casa: s.market_name_casa || "",
               casa_commission_pct:
-                s.casa_commission_pct != null ? String(s.casa_commission_pct) : "4.5",
+                s.casa_commission_pct != null ? String(s.casa_commission_pct) : "0",
               casa_stake_cents: centsToReaisInput(s.casa_stake_cents),
               external_bet_link: s.external_bet_link || "",
               liquidity_cents: centsToReaisInput(s.liquidity_cents),
