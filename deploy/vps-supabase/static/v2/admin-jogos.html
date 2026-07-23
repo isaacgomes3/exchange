@@ -289,19 +289,39 @@
     .v2-nav a.active, .v2-nav a:hover {
       color: #000; background: var(--lime); border-color: transparent;
     }
+    /* Página normal justificada (não modal centralizado) */
     .drawer-backdrop {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.78);
-      display: none; z-index: 60; justify-content: center; align-items: center;
-      padding: 18px;
+      display: none;
+      position: static;
+      inset: auto;
+      width: 100%;
+      max-width: none;
+      margin: 0;
+      padding: 0 0 48px;
+      background: transparent;
+      z-index: auto;
+      justify-content: flex-start;
+      align-items: stretch;
+      min-height: 100vh;
+      box-sizing: border-box;
     }
-    .drawer-backdrop.show { display: flex; }
+    .drawer-backdrop.show { display: block; }
     .drawer {
-      width: min(1100px, 96vw); max-height: 94vh; height: auto;
-      background: #0a0a0a;
-      border: 1px solid var(--border); border-radius: 18px;
-      padding: 22px 24px 40px;
-      overflow-y: auto;
-      box-shadow: 0 24px 80px rgba(0,0,0,0.55);
+      width: 100%;
+      max-width: none;
+      max-height: none;
+      height: auto;
+      margin: 0;
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      padding: 0;
+      overflow: visible;
+      box-shadow: none;
+      text-align: left;
+    }
+    .drawer .page-back {
+      margin: 0 0 16px;
     }
     .drawer h3 {
       margin: 0; font-size: 1.35rem; font-weight: 900; font-style: italic;
@@ -587,10 +607,13 @@
     </div>
   </div>
 
-  <div class="drawer-backdrop" id="manualDrawer">
-    <div class="drawer">
+  <div class="drawer-backdrop" id="manualDrawer" aria-hidden="true">
+    <div class="drawer wrap" style="padding-top:0">
+      <div class="page-back">
+        <button type="button" class="btn btn-ghost btn-sm" id="btnBackManual">← Voltar à lista</button>
+      </div>
       <h3>Lançar evento <span>manual</span></h3>
-      <p class="hint">Mesmo formulário do site antigo · Gestão de Jogos (não é Desafio)</p>
+      <p class="hint">Página completa · mesmo formulário do site antigo · Gestão de Jogos (não é Desafio)</p>
 
       <div class="toggle-row">
         <div>
@@ -1981,11 +2004,18 @@
         // Mercado padrão oculto — só cria no save se a lista estiver vazia
         manualMarkets = [];
         renderManualMarkets();
+        var app = $("app");
+        if (app) app.hidden = true;
         $("manualDrawer").classList.add("show");
+        $("manualDrawer").setAttribute("aria-hidden", "false");
+        window.scrollTo(0, 0);
       }
 
       function closeManualDrawer() {
         $("manualDrawer").classList.remove("show");
+        $("manualDrawer").setAttribute("aria-hidden", "true");
+        var app = $("app");
+        if (app) app.hidden = false;
       }
 
       function manualIsPublished() {
@@ -2344,9 +2374,8 @@
           });
           renderManualMarkets();
         });
-        $("manualDrawer").addEventListener("click", function (e) {
-          if (e.target === $("manualDrawer")) closeManualDrawer();
-        });
+        var btnBack = $("btnBackManual");
+        if (btnBack) btnBack.addEventListener("click", closeManualDrawer);
 
         await loadPrelive();
         auth = await resolveAuth();

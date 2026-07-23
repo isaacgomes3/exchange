@@ -9,7 +9,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-restaurar-lancar-form.sh")
 set -euo pipefail
 
-REF="6d32d69319388821b0c71264cd6e341340463e5c"
+REF="7bb0255ebbb304858b80fb254e14fbe6ff8b4c10"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
@@ -39,14 +39,14 @@ grep -q 'bindTeamPicker\|football-teams\|Buscar time\|manHomeLogo' "$WEB/admin-j
   || die "admin-jogos sem busca de time/logo"
 grep -q 'bindMarketNamePicker\|market-suggest\|ARBISHIELD_MARKET_CATALOG' "$WEB/admin-jogos.html" \
   || die "admin-jogos sem autocomplete de mercados"
-grep -q 'min(1100px' "$WEB/admin-jogos.html" \
-  || die "admin-jogos sem painel expandido"
+grep -q 'btnBackManual\|Página completa\|app.hidden = true' "$WEB/admin-jogos.html" \
+  || die "admin-jogos sem página justificada (ainda modal?)"
 grep -q 'bindDesafioLaunchPickers\|football-teams' "$WEB/admin-desafios.html" \
   || die "admin-desafios sem busca de time"
 grep -q 'market-suggest\|market-catalog.js' "$WEB/admin-desafios.html" \
   || die "admin-desafios sem autocomplete de mercados"
-grep -q 'min(1100px' "$WEB/admin-desafios.html" \
-  || die "admin-desafios sem painel expandido"
+grep -q 'desafio-launch-open\|btnBackDraft\|Página completa' "$WEB/admin-desafios.html" \
+  || die "admin-desafios sem página justificada (ainda modal?)"
 grep -q 'ARBISHIELD_MARKET_CATALOG' "$WEB/market-catalog.js" \
   || die "market-catalog.js ausente/ inválido"
 

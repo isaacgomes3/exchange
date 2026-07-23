@@ -270,29 +270,39 @@
     .suggest .hint { color: var(--muted); font-size: 13px; margin: 0 0 4px; }
     .suggest .actions { margin-top: 14px; }
 
-    /* Painel expandido — Lançar Desafio (não lateral estreito) */
+    /* Página normal justificada — Lançar Desafio (não modal) */
     .drawer-backdrop {
       display: none;
-      position: fixed; inset: 0; z-index: 80;
-      background: rgba(0,0,0,0.78);
-      justify-content: center; align-items: center;
-      padding: 18px;
+      position: static;
+      inset: auto;
+      z-index: auto;
+      background: transparent;
+      justify-content: flex-start;
+      align-items: stretch;
+      padding: 0;
     }
-    .drawer-backdrop.open { display: flex; }
+    .drawer-backdrop.open { display: none; }
     .drawer {
-      position: relative; z-index: 90;
-      width: min(1100px, 96vw); max-height: 94vh;
-      background: #0a0a0a; border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 18px;
-      color: var(--text); overflow-y: auto;
+      display: none;
+      position: static;
+      z-index: auto;
+      width: 100%;
+      max-width: none;
+      max-height: none;
+      margin: 0;
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      color: var(--text);
+      overflow: visible;
       transform: none;
-      padding: 24px;
-      box-shadow: 0 24px 80px rgba(0,0,0,0.55);
+      padding: 0 0 48px;
+      box-shadow: none;
+      text-align: left;
     }
-    @media (max-width: 720px) {
-      .drawer { width: 100%; max-height: 100vh; border-radius: 0; }
-    }
-    .drawer.open { transform: none; }
+    .drawer.open { display: block; transform: none; }
+    body.desafio-launch-open .wrap { display: none; }
+    .drawer .page-back { margin: 0 0 16px; }
     .team-pick { position: relative; }
     .team-pick-row {
       display: grid; grid-template-columns: 44px 1fr; gap: 10px; align-items: start;
@@ -473,9 +483,12 @@
   </div>
 
   <div class="drawer-backdrop" id="drawerBackdrop" aria-hidden="true"></div>
-  <aside class="drawer" id="drawer" aria-hidden="true" role="dialog" aria-labelledby="drawerTitle">
+  <section class="drawer" id="drawer" aria-hidden="true" aria-labelledby="drawerTitle">
+    <div class="page-back">
+      <button type="button" class="btn btn-ghost" id="btnBackDraft" style="padding:8px 12px">← Voltar à lista</button>
+    </div>
     <h2 id="drawerTitle">Lançar Novo <span>Desafio</span></h2>
-    <p class="drawer-sub">Formulário expandido · busca de time com logo · autocomplete de mercados.</p>
+    <p class="drawer-sub">Página completa · busca de time com logo · autocomplete de mercados.</p>
     <div class="form-error" id="formError"></div>
 
     <div class="field-row">
@@ -514,7 +527,7 @@
       <button class="btn btn-ghost" type="button" id="btnCancelDraft">Cancelar</button>
       <button class="btn btn-primary" type="button" id="btnSaveDraft">Salvar e Liberar</button>
     </div>
-  </aside>
+  </section>
 
   <script src="/market-catalog.js"></script>
   <script>
@@ -1146,14 +1159,17 @@
       setFormError("");
       fillHeaderFields();
       renderStepsEditor();
+      document.body.classList.add("desafio-launch-open");
       $("drawer").classList.add("open");
-      $("drawerBackdrop").classList.add("open");
       $("drawer").setAttribute("aria-hidden", "false");
-      $("drawerBackdrop").setAttribute("aria-hidden", "false");
-      document.body.style.overflow = "hidden";
+      $("drawerBackdrop").classList.remove("open");
+      $("drawerBackdrop").setAttribute("aria-hidden", "true");
+      document.body.style.overflow = "";
+      window.scrollTo(0, 0);
     }
 
     function closeDrawer() {
+      document.body.classList.remove("desafio-launch-open");
       $("drawer").classList.remove("open");
       $("drawerBackdrop").classList.remove("open");
       $("drawer").setAttribute("aria-hidden", "true");
@@ -1936,6 +1952,8 @@
 
     $("btnLaunch").addEventListener("click", () => openDrawer(emptyDraft()));
     $("btnCancelDraft").addEventListener("click", closeDrawer);
+    const btnBack = $("btnBackDraft");
+    if (btnBack) btnBack.addEventListener("click", closeDrawer);
     $("drawerBackdrop").addEventListener("click", closeDrawer);
     $("btnSaveDraft").addEventListener("click", saveDesafio);
     $("btnAddStep").addEventListener("click", () => {
