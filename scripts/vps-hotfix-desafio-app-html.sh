@@ -48,6 +48,7 @@ grep -q 'dz-v2-panel-market' "$DEST" || die "HTML sem mercado por painel (Arbi/C
 grep -q 'resolveSideMarkets' "$DEST" || die "HTML sem resolveSideMarkets"
 grep -q 'dz-v2-retorno' "$DEST" || die "HTML sem barra RETORNO CERTO"
 grep -q 'background: #c9f223' "$DEST" || die "HTML sem barra retorno em verde limão"
+grep -q 'dz-wallet-progress-stack\|dz-wallet-cell-progress' "$DEST" || die "HTML sem progresso empilhado (texto cima / bolinhas baixo)"
 grep -q 'desafioCompound\|stepIndex > 1\|Etapa 2+' "$DEST" || grep -q 'lucroCents' "$DEST" || die "HTML sem cálculo composto etapa 2+"
 grep -q 'desafio-no-filter-tabs' "$DEST" || die "HTML sem marcador sem-abas"
 grep -q 'dz-section-head' "$DEST" || die "HTML sem título Desafio Disponível/Em andamento"
@@ -94,6 +95,8 @@ fetch "deploy/vps-supabase/static/v2/admin-desafio-lancar.html" "$WEB/admin-desa
 chmod 0644 "$WEB/admin-desafio-lancar.html"
 cp -f "$WEB/admin-desafio-lancar.html" "$WEB_ROOT/admin-desafio-lancar.html" 2>/dev/null || true
 grep -q 'casa_commission_pct: "0"' "$WEB/admin-desafio-lancar.html" || die "lançar sem comissão casa padrão 0"
+grep -q 'invSum\|1 / (1 + p' "$WEB/admin-desafio-lancar.html" || die "lançar sem fórmula surebet"
+grep -q 'data-odd-mode' "$WEB/admin-desafio-lancar.html" || die "lançar sem toggle Auto/Manual"
 
 # Shim (lucro composto etapa 2+)
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
