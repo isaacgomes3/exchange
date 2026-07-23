@@ -2,7 +2,7 @@
 # Bloqueia contas Jefferson no Auth + remove roles admin + remove bypass SPA.
 #
 # Na VPS (como root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-ban-jefferson-emails.sh?v=1")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-ban-jefferson-emails.sh?v=2")
 #
 # NÃO cole SQL puro no bash — este script roda via psql no container.
 set -euo pipefail
@@ -52,7 +52,7 @@ WHERE lower(u.email) IN (
 
 UPDATE public.profiles p
 SET is_super_admin = false,
-    account_status = 'banned',
+    account_status = 'blocked',
     updated_at = now()
 FROM auth.users u
 WHERE p.id = u.id
