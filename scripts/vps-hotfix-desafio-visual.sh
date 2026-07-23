@@ -2,7 +2,7 @@
 # Hotfix: visual Desafios + lançamento 1 evento (etapa = falha do cliente)
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=13")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=14")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -104,36 +104,154 @@ if [[ -f /opt/arbishield/arbishield-prelive-events.mjs ]] || [[ -f "$SCRIPTS_DIR
 fi
 
 # Shim :3101 — excluir / cancelar desafio (devolver saldo)
-SHIM_DIR="${ARBISHIELD_SHIM:-$SCRIPTS_DIR}"
-if [[ -f "$SHIM_DIR/arbishield-serverfn-shim.mjs" ]] || [[ -f /opt/arbishield/arbishield-serverfn-shim.mjs ]]; then
-  SHIM_DIR="$(dirname "$(ls -1 /opt/arbishield/arbishield-serverfn-shim.mjs "$SHIM_DIR/arbishield-serverfn-shim.mjs" 2>/dev/null | head -1)")"
-  log "Atualizando shim (desafio-delete / desafio-cancel)"
-  curl -fsSL "$RAW/scripts/arbishield-serverfn-shim.mjs" -o "$SHIM_DIR/arbishield-serverfn-shim.mjs"
-  chmod 0644 "$SHIM_DIR/arbishield-serverfn-shim.mjs"
-  grep -q 'cancelDesafio' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || die "shim sem cancelDesafio"
-  grep -q 'desafio-delete' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || die "shim sem rota desafio-delete"
-  grep -q 'desafio_cancel_refund' "$SHIM_DIR/arbishield-serverfn-shim.mjs" || die "shim sem reembolso carteira Desafio"
-  if systemctl list-unit-files 2>/dev/null | grep -q arbishield-serverfn-shim; then
-    systemctl restart arbishield-serverfn-shim.service || true
+SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield}"
+mkdir -p "$SCRIPTS_DIR"
+SHIM_PATH=""
+# Descobre o arquivo real usado pelo systemd (se existir)
+if command -v systemctl >/dev/null 2>&1; then
+  EXEC_LINE="$(systemctl show -p ExecStart --value arbishield-serverfn-shim.service 2>/dev/null || true)"
+  if [[ "$EXEC_LINE" == *arbishield-serverfn-shim.mjs* ]]; then
+    SHIM_PATH="$(echo "$EXEC_LINE" | grep -oE '/[^ ]+arbishield-serverfn-shim\.mjs' | head -1 || true)"
   fi
 fi
+if [[ -z "${SHIM_PATH:-}" ]]; then
+  for cand in \
+    "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs" \
+    /opt/arbishield/arbishield-serverfn-shim.mjs \
+    /opt/arbishield/scripts/arbishield-serverfn-shim.mjs
+  do
+    if [[ -f "$cand" ]]; then SHIM_PATH="$cand"; break; fi
+  done
+fi
+if [[ -z "${SHIM_PATH:-}" ]]; then
+  SHIM_PATH="$SCRIPTS_DIR/arbishield-serverfn-shim.mjs"
+fi
+log "Atualizando shim em $SHIM_PATH"
+curl -fsSL "$RAW/scripts/arbishield-serverfn-shim.mjs" -o "$SHIM_PATH"
+chmod 0755 "$SHIM_PATH"
+# Espelho em /opt/arbishield caso o serviço use outro path
+cp -f "$SHIM_PATH" /opt/arbishield/arbishield-serverfn-shim.mjs 2>/dev/null || true
+grep -q 'cancelDesafio' "$SHIM_PATH" || die "shim sem cancelDesafio"
+grep -q 'desafio-delete' "$SHIM_PATH" || die "shim sem rota desafio-delete"
+grep -q 'desafio_cancel_refund' "$SHIM_PATH" || die "shim sem reembolso carteira Desafio"
+systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
+sleep 1
 
-# Nginx — proxy das novas rotas para :3101
-for conf in /etc/nginx/sites-enabled/*arbishield* /etc/nginx/conf.d/*arbishield* /etc/nginx/sites-available/*arbishield*; do
+# Nginx — location = explícitas (não depende só do regex)
+inject_nginx_locations() {
+  local conf="$1"
+  python3 - "$conf" <<'PY'
+import sys
+path = sys.argv[1]
+block = '''
+    location = /api/arbishield/desafio-delete {
+        proxy_pass http://127.0.0.1:3101;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Authorization $http_authorization;
+        proxy_pass_request_headers on;
+        proxy_read_timeout 120s;
+    }
+
+    location = /api/arbishield/desafio-cancel {
+        proxy_pass http://127.0.0.1:3101;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Authorization $http_authorization;
+        proxy_pass_request_headers on;
+        proxy_read_timeout 120s;
+    }
+
+    location = /api/arbishield/desafio-pending-counts {
+        proxy_pass http://127.0.0.1:3101;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Authorization $http_authorization;
+        proxy_pass_request_headers on;
+        proxy_read_timeout 120s;
+    }
+'''
+text = open(path, encoding="utf-8", errors="ignore").read()
+if "location = /api/arbishield/desafio-delete" in text:
+    # ainda assim atualiza o regex se existir
+    pass
+else:
+    # inserir após desafios ou match-settle
+    for needle in (
+        "location = /api/arbishield/match-settle",
+        "location = /api/arbishield/desafios",
+        "desafio-settle",
+    ):
+        i = text.find(needle)
+        if i < 0:
+            continue
+        # achar fim do bloco location atual
+        k = i
+        depth = 0
+        end = None
+        started = False
+        while k < len(text):
+            ch = text[k]
+            if ch == "{":
+                depth += 1
+                started = True
+            elif ch == "}":
+                depth -= 1
+                if started and depth == 0:
+                    end = k + 1
+                    break
+            k += 1
+        if end is None:
+            continue
+        text = text[:end] + "\n" + block + text[end:]
+        break
+    else:
+        raise SystemExit("não achou ponto de inserção nginx")
+
+# Atualiza regex antiga se ainda não tiver desafio-delete
+if "desafio-settle" in text and "desafio-delete" not in text.split("desafio-settle")[0] + text.split("desafio-settle")[1][:200]:
+    text2 = text.replace(
+        "desafio-participations|",
+        "desafio-participations|desafio-delete|desafio-cancel|desafio-pending-counts|",
+        1,
+    )
+    if text2 == text:
+        text2 = text.replace(
+            "desafio-register|desafio-settle|desafio-participations",
+            "desafio-register|desafio-settle|desafio-participations|desafio-delete|desafio-cancel|desafio-pending-counts",
+            1,
+        )
+    text = text2
+
+open(path, "w", encoding="utf-8").write(text)
+if "location = /api/arbishield/desafio-delete" not in open(path, encoding="utf-8").read():
+    raise SystemExit("falha ao gravar location desafio-delete")
+print("ok", path)
+PY
+}
+
+NGINX_UPDATED=0
+for conf in /etc/nginx/sites-enabled/* /etc/nginx/conf.d/* /etc/nginx/sites-available/*; do
   [[ -f "$conf" ]] || continue
-  if grep -q 'desafio-settle' "$conf" && ! grep -q 'desafio-delete' "$conf"; then
-    log "Atualizando nginx ($conf) com desafio-delete/cancel"
+  if grep -qE 'arbishield|desafio-settle|location = /api/arbishield/desafios' "$conf" 2>/dev/null; then
+    log "Nginx: garantindo rotas delete/cancel em $conf"
     cp -a "$conf" "$conf.bak.desafio-cancel-$(date +%s)" || true
-    sed -i -E 's#desafio-participations\|#desafio-participations|desafio-delete|desafio-cancel|desafio-pending-counts|#g' "$conf" || true
-    if ! grep -q 'desafio-delete' "$conf"; then
-      sed -i -E 's#(desafio-register\|desafio-settle\|desafio-participations)#\1|desafio-delete|desafio-cancel|desafio-pending-counts#g' "$conf" || true
-    fi
-    grep -q 'desafio-delete' "$conf" || die "falha ao inserir desafio-delete em $conf"
+    inject_nginx_locations "$conf" || die "falha nginx inject em $conf"
+    NGINX_UPDATED=1
   fi
 done
-if command -v nginx >/dev/null && nginx -t 2>/dev/null; then
-  systemctl reload nginx 2>/dev/null || true
+if [[ "$NGINX_UPDATED" -eq 1 ]]; then
+  nginx -t
+  systemctl reload nginx
 fi
 
-log "OK — hotfix desafio visual aplicado (v13: Excluir + Cancelar com devolução à carteira Desafio)"
-echo "Reinicie o serviço prelive se o script foi atualizado, e faça Ctrl+F5 no browser."
+# Smoke: shim deve conhecer a rota (sem auth → Acesso negado, NÃO not_found)
+log "Smoke test :3101 desafio-delete"
+SMOKE="$(curl -sS -X POST http://127.0.0.1:3101/api/arbishield/desafio-delete \
+  -H 'Content-Type: application/json' -d '{}' || true)"
+echo "  resposta: $SMOKE"
+echo "$SMOKE" | grep -q 'not_found' && die "shim ainda responde not_found — serviço não reiniciou com o arquivo novo"
+echo "$SMOKE" | grep -Eqi 'Acesso negado|id obrigatório|ok' || die "resposta inesperada do shim: $SMOKE"
+
+log "OK — hotfix desafio visual aplicado (v14: rotas Excluir/Cancelar no nginx+shim)"
+echo "Faça Ctrl+F5 no admin de Desafios e tente Excluir de novo."

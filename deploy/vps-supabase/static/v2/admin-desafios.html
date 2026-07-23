@@ -662,7 +662,15 @@
               body: JSON.stringify({ id }),
             });
             const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.error || "Falha ao excluir");
+            if (!res.ok) {
+              const errMsg = data.error || "Falha ao excluir";
+              if (String(errMsg) === "not_found") {
+                throw new Error(
+                  "API Excluir ainda não está no servidor. Rode o hotfix v14 na VPS e Ctrl+F5."
+                );
+              }
+              throw new Error(errMsg);
+            }
             alert("Desafio excluído.");
             await load();
           } catch (err) {
@@ -698,7 +706,15 @@
               body: JSON.stringify({ id }),
             });
             const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.error || "Falha ao cancelar");
+            if (!res.ok) {
+              const errMsg = data.error || "Falha ao cancelar";
+              if (String(errMsg) === "not_found") {
+                throw new Error(
+                  "API Cancelar ainda não está no servidor. Rode o hotfix v14 na VPS e Ctrl+F5."
+                );
+              }
+              throw new Error(errMsg);
+            }
             const reais = ((Number(data.refundedCents) || 0) / 100).toLocaleString(
               "pt-BR",
               { style: "currency", currency: "BRL" }
