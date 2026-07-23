@@ -20,6 +20,8 @@ log "app-desafio.html (visual mockup)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/app-desafio.html" -o "$WEB/app-desafio.html"
 chmod 0644 "$WEB/app-desafio.html"
 grep -q 'dz-v2-compare' "$WEB/app-desafio.html" || die "HTML sem dz-v2-compare"
+grep -q 'dz-wallet-bar' "$WEB/app-desafio.html" || die "HTML sem dz-wallet-bar"
+grep -q 'Depositar Desafio' "$WEB/app-desafio.html" || die "HTML sem Depositar Desafio"
 grep -q 'Maior retorno' "$WEB/app-desafio.html" || die "HTML sem Maior retorno"
 grep -q 'resolveTeamLogo' "$WEB/app-desafio.html" || die "HTML sem resolveTeamLogo"
 
