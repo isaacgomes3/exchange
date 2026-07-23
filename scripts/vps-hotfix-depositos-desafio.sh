@@ -37,11 +37,18 @@ chmod 0644 "$WEB/admin-depositos-desafio.html"
 grep -q 'desafio-deposits' "$WEB/admin-depositos-desafio.html" || die "HTML sem API desafio-deposits"
 grep -q 'Pendentes de ativação' "$WEB/admin-depositos-desafio.html" || die "HTML sem KPI pendentes"
 
-log "v2-shell.js (menu Financeiro)"
+log "v2-shell.js (menu Financeiro + seções recolhíveis)"
 fetch "deploy/vps-supabase/static/v2/v2-shell.js" "$WEB/v2-shell.js"
 chmod 0644 "$WEB/v2-shell.js"
 grep -q 'depositos-desafio' "$WEB/v2-shell.js" || die "shell sem Depósitos Desafio"
+grep -q 'v2-nav-group' "$WEB/v2-shell.js" || die "shell sem seções recolhíveis"
 cp -f "$WEB/v2-shell.js" "$WEB_ROOT/v2-shell.js" 2>/dev/null || true
+
+log "v2.css (acordeão do menu)"
+fetch "deploy/vps-supabase/static/v2/v2.css" "$WEB/v2.css"
+chmod 0644 "$WEB/v2.css"
+grep -q 'v2-nav-group.is-open' "$WEB/v2.css" || die "CSS sem acordeão do menu"
+cp -f "$WEB/v2.css" "$WEB_ROOT/v2.css" 2>/dev/null || true
 
 log "em-breve.html"
 fetch "deploy/vps-supabase/static/v2/em-breve.html" "$WEB/em-breve.html" || true

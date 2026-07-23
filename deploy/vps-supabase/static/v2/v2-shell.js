@@ -165,11 +165,51 @@
       .replace(/"/g, "&quot;");
   }
 
+  function sectionKey(title) {
+    return String(title || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+  }
+
+  function loadOpenSections(shell) {
+    try {
+      var raw = localStorage.getItem("arbishield.navSections." + shell);
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveOpenSections(shell, map) {
+    try {
+      localStorage.setItem("arbishield.navSections." + shell, JSON.stringify(map));
+    } catch (e) {}
+  }
+
   function renderSections(sections, active, opts) {
     opts = opts || {};
     var withIcons = !!opts.withIcons;
+    var shellKind = opts.shell || "admin";
+    var saved = loadOpenSections(shellKind);
     return sections
       .map(function (sec) {
+        var key = sectionKey(sec.title);
+        var hasActive = sec.items.some(function (item) {
+          return item.id === active;
+        });
+        var isOpen =
+          hasActive ||
+          (saved ? !!saved[key] : shellKind === "app" ? true : hasActive);
+        // Admin: só abre a seção ativa por padrão; se saved existe, respeita saved (+ força ativa)
+        if (shellKind === "admin") {
+          if (saved) isOpen = hasActive || !!saved[key];
+          else isOpen = hasActive;
+        }
         var links = sec.items
           .map(function (item) {
             var cls =
@@ -204,14 +244,27 @@
           })
           .join("");
         return (
-          '<div class="v2-nav-section">' +
+          '<div class="v2-nav-group' +
+          (isOpen ? " is-open" : "") +
+          '" data-sec="' +
+          esc(key) +
+          '">' +
+          '<button type="button" class="v2-nav-section" aria-expanded="' +
+          (isOpen ? "true" : "false") +
+          '" title="Mostrar/ocultar ' +
+          esc(sec.title) +
+          '">' +
           (opts.hideDots
             ? ""
             : '<span class="dot" style="background:' + esc(sec.color) + '"></span>') +
           '<span class="sec-lbl">' +
           esc(sec.title) +
-          "</span></div>" +
-          links
+          "</span>" +
+          '<span class="sec-chev" aria-hidden="true">▾</span>' +
+          "</button>" +
+          '<div class="v2-nav-links">' +
+          links +
+          "</div></div>"
         );
       })
       .join("");
@@ -360,6 +413,7 @@
       renderSections(sections, active, {
         withIcons: shell === "app",
         hideDots: shell === "app",
+        shell: shell,
       }) +
       "</div>" +
       (shell === "app"
@@ -378,6 +432,28 @@
         : '<div class="v2-sidebar-foot">' +
           '<a class="v2-nav-link" href="#" id="v2LogoutLink">Sair</a>' +
           "</div>");
+
+    // Seções do menu: clique no título para expandir/recolher subitens
+    (function bindSectionToggles() {
+      var groups = sidebar.querySelectorAll(".v2-nav-group");
+      if (!groups.length) return;
+      function persist() {
+        var map = {};
+        groups.forEach(function (g) {
+          map[g.getAttribute("data-sec") || ""] = g.classList.contains("is-open");
+        });
+        saveOpenSections(shell, map);
+      }
+      groups.forEach(function (g) {
+        var btn = g.querySelector(".v2-nav-section");
+        if (!btn) return;
+        btn.addEventListener("click", function () {
+          var open = g.classList.toggle("is-open");
+          btn.setAttribute("aria-expanded", open ? "true" : "false");
+          persist();
+        });
+      });
+    })();
 
     var collapseBtn = document.getElementById("v2CollapseBtn");
     if (collapseBtn) {
