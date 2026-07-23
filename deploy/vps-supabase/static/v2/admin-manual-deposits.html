@@ -129,6 +129,11 @@
         reject: "97fbb202a39627b7eeade54ac383dd1197c5a76c5f392f3046ee5875fef4da50",
         proofUrl: "c1d2e3f4a5b697887766554433221100ffeeddccbbaa99887766554433221100",
       };
+      var API = {
+        approve: "/api/arbishield/manual-deposit-approve",
+        credited: "/api/arbishield/manual-deposit-mark-credited",
+        reject: "/api/arbishield/manual-deposit-reject",
+      };
 
       var rows = [];
       var errEl = document.getElementById("err");
@@ -335,25 +340,17 @@
         }
       }
 
-      async function callFn(kind, payload) {
-        var t = await token();
-        if (!t) throw new Error("Sessão expirada");
-        var fnId = FN[kind];
-        if (!fnId) throw new Error("Ação inválida: " + kind);
-        var res = await fetch("/_serverFn/" + fnId, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-arbishield-plain": "1",
-            Authorization: "Bearer " + t,
-          },
-          body: JSON.stringify({ data: payload }),
-        });
-        var text = await res.text();
+      function parseActionResponse(res, text) {
         var data = {};
         try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 180) }; }
-        // TSR wrap
+        // TSR wrap (shim/Next)
         if (data && data.result != null && data.error == null) data = data.result;
+        // Stub vazio do shim: {"t":10,..., result:null} — NÃO é aprovação
+        if (data && typeof data.t === "number" && data.ok !== true) {
+          throw new Error(
+            "Resposta inválida do servidor (shim desatualizado). Rode o hotfix de depósitos na VPS."
+          );
+        }
         var errMsg =
           (typeof data.error === "string" && data.error) ||
           (data.error && data.error.message) ||
@@ -363,7 +360,40 @@
         if (data && data.ok === true) return data;
         if (errMsg) throw new Error(errMsg);
         if (!res.ok) throw new Error("HTTP " + res.status + (text ? ": " + text.slice(0, 120) : ""));
-        return data;
+        throw new Error("Resposta sem confirmação (ok). O depósito NÃO foi creditado.");
+      }
+
+      async function callFn(kind, payload) {
+        var t = await token();
+        if (!t) throw new Error("Sessão expirada");
+        var apiPath = API[kind];
+        var headers = {
+          "Content-Type": "application/json",
+          "x-arbishield-plain": "1",
+          Authorization: "Bearer " + t,
+        };
+        var body = JSON.stringify({ data: payload });
+
+        // 1) REST no shim (caminho confiável)
+        if (apiPath) {
+          var apiRes = await fetch(apiPath, { method: "POST", headers: headers, body: body });
+          var apiText = await apiRes.text();
+          // 404/405 = nginx antigo sem rota — cai no serverFn
+          if (!(apiRes.status === 404 || apiRes.status === 405 || /not allowed|not_found/i.test(apiText))) {
+            return parseActionResponse(apiRes, apiText);
+          }
+        }
+
+        // 2) fallback /_serverFn
+        var fnId = FN[kind];
+        if (!fnId) throw new Error("Ação inválida: " + kind);
+        var res = await fetch("/_serverFn/" + fnId, {
+          method: "POST",
+          headers: headers,
+          body: body,
+        });
+        var text = await res.text();
+        return parseActionResponse(res, text);
       }
 
       async function rejectViaSupabase(r, reason) {

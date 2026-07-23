@@ -5162,13 +5162,18 @@ async function handleServerFn(req, res, id, rawBody = "") {
     return sendTsrOk(res, { ok: true });
   }
 
-  // Stubs: não lançar erro (travava o admin). Geo/session e mutações
-  // ainda não portadas — retornam sucesso vazio.
-  // IMPORTANTE: GET default = null (não []). [] corrompe cache do dashboard
-  // (dash:critical / dash:secondary) porque [] é truthy e sem .profile.
+  // Stubs: GET vazio (não []). POST com plain JSON deve falhar — senão o admin
+  // de depósitos mostra "aprovado" sem creditar (falso sucesso).
   console.log("[serverfn-shim]", req.method, id.slice(0, 12));
   if (req.method === "GET") {
     return sendTsrOk(res, null);
+  }
+  if (wantsPlainJson(req)) {
+    return replyFnError(
+      req,
+      res,
+      "serverFn não implementado no shim: " + id.slice(0, 16)
+    );
   }
   return sendTsrOk(res, null);
 }
@@ -5606,6 +5611,73 @@ const server = createServer(async (req, res) => {
         return sendJson(res, 400, { error: "JSON inválido" });
       }
       const result = await uploadDepositProof(token, body.data || body);
+      return sendJson(res, 200, result);
+    } catch (err) {
+      return sendJson(res, 400, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  // Depósitos manuais — REST estável (evita /_serverFn stub com falso sucesso)
+  if (url.pathname === "/api/arbishield/manual-deposit-approve" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      if (!token) return sendJson(res, 401, { error: "Não autorizado" });
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = raw ? JSON.parse(raw) : {};
+      } catch {
+        return sendJson(res, 400, { error: "JSON inválido" });
+      }
+      const result = await approveManualDeposit(token, body.data || body);
+      return sendJson(res, 200, result);
+    } catch (err) {
+      return sendJson(res, 400, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (
+    url.pathname === "/api/arbishield/manual-deposit-mark-credited" &&
+    req.method === "POST"
+  ) {
+    try {
+      const token = bearerFromReq(req);
+      if (!token) return sendJson(res, 401, { error: "Não autorizado" });
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = raw ? JSON.parse(raw) : {};
+      } catch {
+        return sendJson(res, 400, { error: "JSON inválido" });
+      }
+      const result = await markManualDepositCredited(token, body.data || body);
+      return sendJson(res, 200, result);
+    } catch (err) {
+      return sendJson(res, 400, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/manual-deposit-reject" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      if (!token) return sendJson(res, 401, { error: "Não autorizado" });
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = raw ? JSON.parse(raw) : {};
+      } catch {
+        return sendJson(res, 400, { error: "JSON inválido" });
+      }
+      const result = await rejectManualDeposit(token, body.data || body);
       return sendJson(res, 200, result);
     } catch (err) {
       return sendJson(res, 400, {
