@@ -14,6 +14,7 @@ SHIM_DIR="${ARBISHIELD_SHIM_DIR:-/opt/arbishield}"
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null 2>&1 || die "$1 não encontrado"; }
 need curl
 mkdir -p "$WEB" "$WEB_ROOT" "$SHIM_DIR"
 
