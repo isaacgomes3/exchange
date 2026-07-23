@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Desafios disponíveis · ArbiShield</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js"></script>
+  <script src="/v2-shell.js" defer></script>
+</head>
+<body data-shell="app" data-active="desafio">
+  <div class="page-head">
+    <div>
+      <h1>Desafio <span>ArbiShield</span></h1>
+      <p class="sub">Painel de sinais · ciclo de até 5 entradas · lucro alvo 5% na casa externa</p>
+    </div>
+    <div class="actions">
+      <a class="btn btn-primary" href="/app-desafio.html">Mapa da jornada</a>
+    </div>
+  </div>
+  <div id="err" class="err"></div>
+
+  <!-- Banner do Desafio (mesmo fluxo do SPA DesafioScreen · variant=desafio) -->
+  <div id="desafioBanner" class="dz-banner" aria-live="polite">
+    <div class="dz-banner-placeholder">Banner do Desafio · aguardando publicação</div>
+  </div>
+
+  <div class="app-kpi-row">
+    <div class="app-kpi"><div class="l">Jogos liberados</div><div class="v lime" id="kAvail">—</div></div>
+    <div class="app-kpi"><div class="l">Desafios ativos</div><div class="v" id="kActive">—</div></div>
+    <div class="app-kpi"><div class="l">Etapas</div><div class="v" id="kTotal">—</div></div>
+  </div>
+
+  <div class="dz-filters" id="filters" role="tablist">
+    <button type="button" class="dz-filter is-on" data-f="Todos">Todos</button>
+    <button type="button" class="dz-filter" data-f="Futebol">Futebol</button>
+    <button type="button" class="dz-filter" data-f="Hoje">Hoje</button>
+    <button type="button" class="dz-filter" data-f="Amanhã">Amanhã</button>
+    <button type="button" class="dz-filter" data-f="Alta">Alta</button>
+  </div>
+
+  <div class="section-label"><span class="dot" style="background:#c6ff00"></span>Desafios disponíveis</div>
+  <p class="app-desafio-lead">Entrada 1: você define o valor na zebra; o sistema calcula a aposta na casa externa. Green na zebra retém o saldo e avança o ciclo (máx. 5). Green no favorito encerra com +5% fora.</p>
+  <div id="list" class="app-desafio-grid"><div class="ops-empty">Carregando…</div></div>
+
+  <script>
+    (async function () {
+      var money = ArbiV2.money;
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+
+      var filter = "Todos";
+      var items = [];
+      var tickTimer = null;
+
+      function showErr(msg) {
+        var el = document.getElementById("err");
+        el.textContent = msg || "";
+        el.classList.toggle("show", !!msg);
+      }
+
+      function esc(v) {
+        return String(v == null ? "" : v)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function looksLikeMatchLabel(s) {
+        return /\s+[x×X]\s+/.test(String(s || ""));
+      }
+
+      /** Espelha SPA: homeTeam / awayTeam separados — nunca o label inteiro nos dois lados */
+      function splitTeams(step) {
+        var home = String(step.home_team || "").trim();
+        var away = String(step.away_team || "").trim();
+        var label = String(step.match_label || "").trim();
+
+        if (home && away && home !== away && !looksLikeMatchLabel(home) && !looksLikeMatchLabel(away)) {
+          return { home: home, away: away };
+        }
+
+        var raw = label || (looksLikeMatchLabel(home) ? home : looksLikeMatchLabel(away) ? away : "");
+        if (raw) {
+          var parts = raw.split(/\s+[x×X]\s+/);
+          if (parts.length >= 2) {
+            return {
+              home: parts[0].trim() || "Casa",
+              away: parts.slice(1).join(" x ").trim() || "Visitante",
+            };
+          }
+        }
+        if (home && away && home !== away) return { home: home, away: away };
+        return { home: home || "Casa", away: away || "Visitante" };
+      }
+
+      function initials(name) {
+        return String(name || "?")
+          .split(/\s+/)
+          .map(function (w) { return w[0] || ""; })
+          .join("")
+          .slice(0, 3)
+          .toUpperCase() || "?";
+      }
+
+      function teamBlock(name, logo) {
+        var avatar = logo
+          ? '<img class="dz-logo" src="' + esc(logo) + '" alt="' + esc(name) + '" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'" />' +
+            '<div class="dz-logo-fallback" style="display:none">' + esc(initials(name)) + "</div>"
+          : '<div class="dz-logo-fallback">' + esc(initials(name)) + "</div>";
+        return (
+          '<div class="dz-team">' +
+          avatar +
+          '<span class="dz-team-name">' +
+          esc(name) +
+          "</span></div>"
+        );
+      }
+
+      function fmtKick(iso) {
+        if (!iso) return "A definir";
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return "A definir";
+        var now = new Date();
+        var tomorrow = new Date(now);
+        tomorrow.setDate(now.getDate() + 1);
+        var time = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+        if (d.toDateString() === now.toDateString()) return "Hoje • " + time;
+        if (d.toDateString() === tomorrow.toDateString()) return "Amanhã • " + time;
+        return (
+          d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) +
+          " • " +
+          time
+        );
+      }
+
+      function fmtCountdown(ms) {
+        if (ms <= 0) return "00:00:00";
+        var s = Math.floor(ms / 1000);
+        var days = Math.floor(s / 86400);
+        var h = Math.floor((s % 86400) / 3600);
+        var m = Math.floor((s % 3600) / 60);
+        var sec = s % 60;
+        var pad = function (n) { return String(n).padStart(2, "0"); };
+        if (days > 0) return days + "d " + pad(h) + ":" + pad(m) + ":" + pad(sec);
+        return pad(h) + ":" + pad(m) + ":" + pad(sec);
+      }
+
+      function phaseOf(item, now) {
+        var start = item.startsAtMs;
+        if (start == null) return "ativo";
+        var unlock = start - (item.releaseMinutesBefore || 0) * 6e4;
+        if (now >= start) return "live";
+        if (now < unlock) return "soon";
+        return "ativo";
+      }
+
+      function profitCents(entrada, pct) {
+        var e = Number(entrada) || 0;
+        var p = Number(pct);
+        if (!Number.isFinite(p) || p <= 0) p = 5;
+        return Math.round((e * p) / 100);
+      }
+
+      function liquidityShown(item, now) {
+        var total = Math.max(
+          Number(item.displayLiquidityCents) || 0,
+          Number(item.liquidityCents) || 0
+        );
+        if (total <= 0) return null;
+        var used = Number(item.usedLiquidityCents) || 0;
+        var avail = Math.max(0, total - used);
+        // SPA: liquidez “some” após liberação; aproximação simples
+        var start = item.startsAtMs;
+        var unlock =
+          start != null ? start - (item.releaseMinutesBefore || 0) * 6e4 : null;
+        if (unlock != null && now >= unlock && start != null && now < start) {
+          var span = Math.max(1, start - unlock);
+          var ratio = Math.max(0, Math.min(1, (start - now) / span));
+          avail = Math.round(avail * (0.35 + 0.65 * ratio));
+        }
+        return { total: total, shown: avail };
+      }
+
+      function toCardItem(desafio, step) {
+        var teams = splitTeams(step || {});
+        var entrada = Number(desafio.initial_balance_cents) || 0;
+        var pct = Number(desafio.target_profit_pct);
+        if (!Number.isFinite(pct) || pct <= 0) pct = 5;
+        var lucro = profitCents(entrada, pct);
+        var startsAt = step.starts_at || null;
+        var startsAtMs = startsAt ? new Date(startsAt).getTime() : null;
+        if (startsAtMs != null && isNaN(startsAtMs)) startsAtMs = null;
+        var market =
+          step.market_name_casa ||
+          step.market_name ||
+          step.market_name_arbishield ||
+          step.casa_team_name ||
+          "Resultado Final";
+
+        return {
+          id: desafio.id + ":" + (step.id || step.step_index || 1),
+          desafioId: desafio.id,
+          desafioTitle: desafio.title || "Desafio",
+          desafioNumber: desafio.number,
+          stepIndex: step.step_index || 1,
+          homeTeam: teams.home,
+          awayTeam: teams.away,
+          homeLogo: step.home_logo_url || step.casa_team_logo_url || null,
+          awayLogo: step.away_logo_url || step.arbi_team_logo_url || null,
+          market: market,
+          startsAt: startsAt,
+          startsAtMs: startsAtMs,
+          releaseMinutesBefore: Number(step.release_minutes_before) || 0,
+          entradaCents: entrada,
+          stepId: step.id,
+          lucroMaxPct: pct,
+          totalSteps: (desafio.desafio_steps || []).length || Number(desafio.total_steps) || 1,
+          isNew: true,
+          isActiveDesafio: !!desafio.is_active,
+          liquidityCents: Number(step.liquidity_cents) || 0,
+          displayLiquidityCents: Number(step.display_liquidity_cents) || Number(step.liquidity_cents) || 0,
+          usedLiquidityCents: Number(step.used_liquidity_cents) || 0,
+          guaranteedProfitCents: lucro,
+          profitArbiCents: lucro,
+          profitCasaCents: lucro,
+          arbiOdd: step.arbi_odd,
+          casaOdd: step.casa_odd,
+        };
+      }
+
+      function cardHtml(item, now) {
+        var phase = phaseOf(item, now);
+        var locked = phase === "soon" || phase === "live" || !item.isActiveDesafio;
+        var lucro = item.guaranteedProfitCents || 0;
+        var retorno = (item.entradaCents || 0) + lucro;
+        var unlockMs =
+          item.startsAtMs != null
+            ? item.startsAtMs - (item.releaseMinutesBefore || 0) * 6e4
+            : null;
+        var waitMs = unlockMs != null ? unlockMs - now : null;
+        var waiting = phase === "soon" && waitMs != null && waitMs > 0;
+
+        var badge;
+        if (phase === "live") {
+          badge = '<span class="dz-badge live"><span class="dz-dot"></span>Ao vivo</span>';
+        } else if (!item.isActiveDesafio) {
+          badge = '<span class="dz-badge muted">Em breve</span>';
+        } else if (item.isNew && phase !== "soon") {
+          badge = '<span class="dz-badge on">Nova</span>';
+        } else if (phase === "soon") {
+          badge = '<span class="dz-badge muted">Em breve</span>';
+        } else {
+          badge = '<span class="dz-badge on">Nova</span>';
+        }
+
+        var liq = phase !== "live" ? liquidityShown(item, now) : null;
+        var liqHtml = "";
+        if (liq && liq.total > 0) {
+          var pctLeft = Math.round(Math.max(0, Math.min(1, liq.shown / liq.total)) * 100);
+          var barClass = pctLeft < 20 ? "low" : pctLeft < 50 ? "mid" : "ok";
+          liqHtml =
+            '<div class="dz-liq">' +
+            '<div class="dz-liq-top"><span>Liquidez</span><span>Inicial ' +
+            money(liq.total) +
+            "</span></div>" +
+            '<div class="dz-liq-mid"><span>Disponível agora</span><strong class="' +
+            barClass +
+            '">' +
+            money(liq.shown) +
+            "</strong></div>" +
+            '<div class="dz-liq-bar"><i class="' +
+            barClass +
+            '" style="width:' +
+            pctLeft +
+            '%"></i></div>' +
+            '<div class="dz-liq-pct">' +
+            pctLeft +
+            "% restante</div></div>";
+        }
+
+        var cta;
+        if (waiting) {
+          cta =
+            '<button type="button" class="dz-cta wait" disabled>' +
+            '<span class="dz-cta-label">Disponível em</span>' +
+            '<span class="dz-cta-time" data-countdown="' +
+            esc(unlockMs) +
+            '">' +
+            esc(fmtCountdown(waitMs)) +
+            "</span></button>";
+        } else if (phase === "live") {
+          cta = '<button type="button" class="dz-cta muted" disabled>Jogo ao vivo</button>';
+        } else if (!item.isActiveDesafio) {
+          cta = '<button type="button" class="dz-cta muted" disabled>Em breve</button>';
+        } else {
+          cta =
+            '<a class="dz-cta" href="/app-desafio-sinais.html?stepId=' +
+            encodeURIComponent(item.stepId || item.id) +
+            '">Abrir sinal</a>';
+        }
+
+        return (
+          '<article class="dz-card" data-card="' +
+          esc(item.id) +
+          '">' +
+          '<div class="dz-card-top">' +
+          badge +
+          '<span class="dz-kick">' +
+          esc(fmtKick(item.startsAt)) +
+          " ★</span></div>" +
+          '<div class="dz-match">' +
+          teamBlock(item.homeTeam, item.homeLogo) +
+          '<span class="dz-vs">×</span>' +
+          teamBlock(item.awayTeam, item.awayLogo) +
+          "</div>" +
+          '<div class="dz-market">' +
+          esc(item.market) +
+          "</div>" +
+          '<div class="dz-meta">' +
+          '<div><span class="l">Entrada</span><span class="v">' +
+          money(item.entradaCents) +
+          "</span></div>" +
+          '<div><span class="l">Lucro</span><span class="v lime">+' +
+          esc(item.lucroMaxPct) +
+          "%</span></div>" +
+          '<div><span class="l">Etapas</span><span class="v">' +
+          esc(item.totalSteps) +
+          "</span></div></div>" +
+          '<div class="dz-legs">' +
+          '<div class="dz-leg arbi"><div class="l">Se bater na ArbiShield</div><div class="v">+' +
+          money(item.profitArbiCents) +
+          "</div></div>" +
+          '<div class="dz-leg casa"><div class="l">Se bater na Casa Externa</div><div class="v">+' +
+          money(item.profitCasaCents) +
+          "</div></div></div>" +
+          '<div class="dz-return"><span>↗ Retorno estimado</span><strong>' +
+          money(retorno) +
+          ' <small>(+' +
+          money(lucro) +
+          ")</small></strong></div>" +
+          liqHtml +
+          '<div class="dz-foot">' +
+          cta +
+          "</div></article>"
+        );
+      }
+
+      function applyFilter(list) {
+        var now = new Date();
+        var tomorrow = new Date(now);
+        tomorrow.setDate(now.getDate() + 1);
+        return list.filter(function (it) {
+          if (filter === "Todos" || filter === "Futebol") return true;
+          if (!it.startsAtMs) return filter !== "Hoje" && filter !== "Amanhã";
+          var d = new Date(it.startsAtMs);
+          if (filter === "Hoje") return d.toDateString() === now.toDateString();
+          if (filter === "Amanhã") return d.toDateString() === tomorrow.toDateString();
+          if (filter === "Alta") return Number(it.lucroMaxPct) >= 15;
+          return true;
+        });
+      }
+
+      function render() {
+        var now = Date.now();
+        var visible = applyFilter(items);
+        var host = document.getElementById("list");
+        if (!visible.length) {
+          host.innerHTML =
+            '<div class="ops-empty"><h2>Nenhum desafio disponível no momento</h2><p>Aguarde o lançamento de um novo desafio pela equipe ArbiShield.</p></div>';
+          return;
+        }
+        host.innerHTML = visible.map(function (it) { return cardHtml(it, now); }).join("");
+        host.querySelectorAll("[data-participate]").forEach(function (btn) {
+          btn.addEventListener("click", async function () {
+            var stepId = btn.getAttribute("data-participate");
+            var item = items.find(function (x) {
+              return String(x.id) === String(stepId);
+            });
+            if (!item) return;
+            if (
+              !confirm(
+                "Registrar entrada no lado ArbiShield?\n\nCircuito: se ganhar só na ArbiShield até o fim das etapas sem bater na casa, o valor acumulado vai para os provedores de liquidez."
+              )
+            ) {
+              return;
+            }
+            btn.disabled = true;
+            try {
+              var session = await ArbiV2.client().auth.getSession();
+              var token = session.data.session && session.data.session.access_token;
+              var res = await fetch("/api/arbishield/desafio-register", {
+                method: "POST",
+                headers: {
+                  Authorization: "Bearer " + token,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  stepId: stepId,
+                  side: "arbishield",
+                  amountCents: item.entradaCents,
+                }),
+              });
+              var data = await res.json().catch(function () {
+                return {};
+              });
+              if (!res.ok) {
+                var msg = data.error || "Falha ao participar";
+                if (String(msg).indexOf("already registered") >= 0) {
+                  msg = "Você já registrou entrada nesta etapa.";
+                } else if (String(msg).indexOf("insufficient") >= 0) {
+                  msg = "Saldo do Desafio insuficiente. Transfira na Carteira.";
+                }
+                throw new Error(msg);
+              }
+              alert("Entrada registrada no Desafio!");
+              location.reload();
+            } catch (ex) {
+              alert((ex && ex.message) || "Erro ao participar");
+              btn.disabled = false;
+            }
+          });
+        });
+      }
+
+      function tickCountdowns() {
+        var now = Date.now();
+        document.querySelectorAll("[data-countdown]").forEach(function (el) {
+          var unlock = Number(el.getAttribute("data-countdown"));
+          if (!Number.isFinite(unlock)) return;
+          var left = unlock - now;
+          if (left <= 0) {
+            render();
+            return;
+          }
+          el.textContent = fmtCountdown(left);
+        });
+      }
+
+      document.querySelectorAll(".dz-filter").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          document.querySelectorAll(".dz-filter").forEach(function (b) {
+            b.classList.remove("is-on");
+          });
+          btn.classList.add("is-on");
+          filter = btn.getAttribute("data-f") || "Todos";
+          render();
+        });
+      });
+
+      function paintDesafioBanner(imageUrl, title, ctaUrl, useBrandWebp) {
+        var host = document.getElementById("desafioBanner");
+        if (!host || !imageUrl) return false;
+        var href = ctaUrl || "#";
+        var external = /^https?:\/\//i.test(href);
+        var media = useBrandWebp
+          ? '<picture><source type="image/webp" srcset="/brand/desafio-banner.webp" />' +
+            '<img src="' +
+            esc(imageUrl) +
+            '" alt="' +
+            esc(title || "Desafio ArbiShield") +
+            '" width="1600" height="680" loading="eager" decoding="async" fetchpriority="high" /></picture>'
+          : '<img src="' +
+            esc(imageUrl) +
+            '" alt="' +
+            esc(title || "Desafio ArbiShield") +
+            '" loading="eager" decoding="async" fetchpriority="high" />';
+        host.innerHTML =
+          '<a class="dz-banner-link" href="' +
+          esc(href) +
+          '"' +
+          (external ? ' target="_blank" rel="noreferrer"' : "") +
+          ">" +
+          media +
+          "</a>";
+        return true;
+      }
+
+      async function loadDesafioBanner() {
+        var host = document.getElementById("desafioBanner");
+        if (!host) return;
+        var FALLBACK = "/brand/desafio-banner.jpg";
+
+        // 1) Banner cadastrado no admin (variant=desafio)
+        try {
+          var ban = await supa
+            .from("banners")
+            .select("id,title,image_url,cta_url,variant,active,sort_order,created_at")
+            .eq("active", true)
+            .order("sort_order", { ascending: true })
+            .limit(20);
+          if (!ban.error && Array.isArray(ban.data)) {
+            var row =
+              ban.data.find(function (b) {
+                return String(b.variant || "").toLowerCase() === "desafio" && b.image_url;
+              }) || null;
+            if (row && paintDesafioBanner(row.image_url, row.title, row.cta_url, false)) {
+              return;
+            }
+          } else if (ban.error) {
+            console.warn("[desafio] banners REST", ban.error.message || ban.error);
+          }
+        } catch (ex) {
+          console.warn("[desafio] banner", ex);
+        }
+
+        // 2) Arte padrão do SPA (deploy em /brand/desafio-banner.*)
+        if (paintDesafioBanner(FALLBACK, "Desafio ArbiShield", "#", true)) {
+          var img = host.querySelector("img");
+          if (img) {
+            img.onerror = function () {
+              host.innerHTML =
+                '<div class="dz-banner-placeholder">Banner do Desafio · aguardando publicação</div>';
+            };
+          }
+          return;
+        }
+
+        host.innerHTML =
+          '<div class="dz-banner-placeholder">Banner do Desafio · aguardando publicação</div>';
+      }
+
+      try {
+        await loadDesafioBanner();
+        var res = await fetch("/api/arbishield/desafios", {
+          cache: "no-store",
+          headers: { accept: "application/json" },
+        });
+        var data = await res.json().catch(function () { return []; });
+        if (!res.ok) throw new Error((data && data.error) || "Falha ao carregar desafios");
+        var rows = Array.isArray(data) ? data : [];
+        var alive = rows.filter(function (d) { return !d.deleted_at; });
+        var active = alive.filter(function (d) { return d.is_active; });
+
+        items = [];
+        active.forEach(function (d) {
+          var steps = (d.desafio_steps || [])
+            .slice()
+            .sort(function (a, b) { return (a.step_index || 0) - (b.step_index || 0); });
+          if (!steps.length) return;
+          steps.forEach(function (s) {
+            items.push(toCardItem(d, s));
+          });
+        });
+
+        // Preferir jogos ainda jogáveis; ao vivo ficam no fim
+        items.sort(function (a, b) {
+          var na = a.startsAtMs || 0;
+          var nb = b.startsAtMs || 0;
+          return na - nb;
+        });
+
+        document.getElementById("kAvail").textContent = String(
+          items.filter(function (it) {
+            return phaseOf(it, Date.now()) === "ativo" || phaseOf(it, Date.now()) === "soon";
+          }).length
+        );
+        document.getElementById("kActive").textContent = String(active.length);
+        document.getElementById("kTotal").textContent = String(items.length);
+
+        render();
+        if (tickTimer) clearInterval(tickTimer);
+        tickTimer = setInterval(tickCountdowns, 1000);
+      } catch (ex) {
+        showErr(ex.message || "Erro");
+        document.getElementById("list").innerHTML = "";
+      }
+    })();
+  </script>
+</body>
+</html>

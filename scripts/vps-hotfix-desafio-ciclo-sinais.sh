@@ -43,15 +43,15 @@ systemctl restart arbishield-prelive-events.service 2>/dev/null || \
   systemctl restart arbishield-prelive.service 2>/dev/null || true
 
 log "2/3 UI — admin + sinais + mapa jornada"
-for f in admin-desafios.html app-desafio.html app-desafio-sinais.html app-desafio-jornada.html desafio-ciclo-math.js v2-shell.js; do
+for f in admin-desafios.html app-desafio.html app-desafio-jornada.html app-desafio-lista.html app-desafio-sinais.html desafio-ciclo-math.js v2-shell.js; do
   dl "deploy/vps-supabase/static/v2/$f" "$WEB/$f"
   chmod 0644 "$WEB/$f"
   cp -f "$WEB/$f" "$WEB_ROOT/$f" 2>/dev/null || true
 done
 grep -q 'Odd do Favorito\|js-casa-odd' "$WEB/admin-desafios.html" || die "admin sem fluxo favorito"
 grep -q 'Painel de Sinais' "$WEB/app-desafio-sinais.html" || die "página sinais ausente"
-grep -q 'Mapa de campanha\|j-map\|Desafio' "$WEB/app-desafio-jornada.html" || die "jornada ausente"
-grep -q 'Abrir sinal\|Mapa da jornada' "$WEB/app-desafio.html" || die "app-desafio sem links"
+grep -q 'j-map\|Mapa do desafio' "$WEB/app-desafio.html" || die "app-desafio.html deve ser o mapa de jornada"
+grep -q 'j-map\|Mapa do desafio' "$WEB/app-desafio-jornada.html" || die "jornada ausente"
 
 log "3/3 Nginx — desafio-sinal + desafio-jornada → :3101"
 for conf in /etc/nginx/sites-enabled/arbishield.app \
