@@ -4,7 +4,8 @@
 # - Soft-delete em todos (deleted_at)
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-wipe-desafios.sh?v=2")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-wipe-desafios.sh?v=3")
+#   ENV_FILE=/opt/arbishield/deploy/vps-supabase/.env bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-wipe-desafios.sh?v=3")
 set -euo pipefail
 
 log() { echo "==> $*"; }
@@ -22,6 +23,7 @@ load_env_file() {
 
 # Candidatos conhecidos na VPS ArbiShield
 CANDIDATES=(
+  "${ENV_FILE:-}"
   /opt/arbishield/deploy/vps-supabase/.env
   /opt/arbishield/.env
   /opt/arbishield/arbishield.env
