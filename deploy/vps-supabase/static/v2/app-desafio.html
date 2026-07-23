@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=dz-stage2-compound-1" />
+  <link rel="stylesheet" href="/v2.css?v=dz-progress-stack-1" />
   <style>
     /* Barra Desafio: preto + borda limão (inline p/ não depender de cache do v2.css) */
     body[data-shell="app"] .dz-wallet-bar {
@@ -17,6 +17,26 @@
     body[data-shell="app"] .dz-wallet-cell {
       background: #000 !important;
       border-right-color: rgba(201, 242, 35, 0.45) !important;
+    }
+    body[data-shell="app"] .dz-wallet-cell-progress {
+      flex-direction: column !important;
+      align-items: stretch !important;
+    }
+    body[data-shell="app"] .dz-wallet-progress-stack {
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: flex-start !important;
+      width: 100% !important;
+      min-width: 0 !important;
+    }
+    body[data-shell="app"] .dz-wallet-progress-stack .dz-wallet-hint {
+      margin-top: 8px !important;
+      max-width: 16rem !important;
+      order: 0 !important;
+    }
+    body[data-shell="app"] .dz-wallet-steps {
+      margin-top: 12px !important;
+      order: 1 !important;
     }
     body[data-shell="app"] .dz-wallet-v,
     body[data-shell="app"] .dz-wallet-v.sm {
@@ -301,11 +321,13 @@
       </div>
       <button type="button" class="dz-wallet-deposit" id="dzDepositBtn">Depositar Desafio</button>
     </div>
-    <div class="dz-wallet-cell">
-      <div class="dz-wallet-l">Progresso no desafio atual</div>
-      <div class="dz-wallet-v sm" id="dzWalletProgress">Nenhuma etapa contabilizada</div>
-      <div class="dz-wallet-steps" id="dzWalletSteps" aria-hidden="true"></div>
-      <p class="dz-wallet-hint" id="dzWalletProgressHint">Confirme a entrada no primeiro evento para iniciar o progresso</p>
+    <div class="dz-wallet-cell dz-wallet-cell-progress">
+      <div class="dz-wallet-progress-stack">
+        <div class="dz-wallet-l">Progresso no desafio atual</div>
+        <div class="dz-wallet-v sm" id="dzWalletProgress">Nenhuma etapa contabilizada</div>
+        <p class="dz-wallet-hint" id="dzWalletProgressHint">Confirme a entrada no primeiro evento para iniciar o progresso</p>
+        <div class="dz-wallet-steps" id="dzWalletSteps" aria-hidden="true"></div>
+      </div>
     </div>
     <div class="dz-wallet-cell">
       <div class="dz-wallet-ico lime" aria-hidden="true">↗</div>

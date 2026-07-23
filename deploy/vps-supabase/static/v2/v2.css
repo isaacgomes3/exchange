@@ -3823,11 +3823,28 @@ body[data-shell="app"] .dz-wallet-cell,
   white-space: nowrap;
 }
 .dz-wallet-deposit:hover { filter: brightness(1.06); }
+.dz-wallet-cell-progress {
+  flex-direction: column;
+  align-items: stretch;
+}
+.dz-wallet-progress-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  min-width: 0;
+  width: 100%;
+}
+.dz-wallet-progress-stack .dz-wallet-hint {
+  margin-top: 8px;
+  max-width: 16rem;
+}
 .dz-wallet-steps {
   display: flex;
   gap: 6px;
   margin-top: 12px;
   flex-wrap: wrap;
+  justify-content: flex-start;
 }
 .dz-wallet-steps span {
   width: 10px;
