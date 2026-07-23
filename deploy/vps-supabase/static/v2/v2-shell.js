@@ -381,6 +381,9 @@
     var collapseBtn = document.getElementById("v2CollapseBtn");
     if (collapseBtn) {
       collapseBtn.addEventListener("click", function () {
+        if (window.matchMedia && window.matchMedia("(max-width: 960px)").matches) {
+          return;
+        }
         body.classList.toggle("v2-sidebar-collapsed");
         try {
           localStorage.setItem(
@@ -426,6 +429,22 @@
     }
     bindMenu(document.getElementById("v2MenuBtn"));
     bindMenu(document.getElementById("v2MenuBtnHeader"));
+
+    function isMobileShell() {
+      return window.matchMedia && window.matchMedia("(max-width: 960px)").matches;
+    }
+    // Fecha o drawer ao navegar / Escape (cliente + ADM)
+    sidebar.querySelectorAll(
+      "a.v2-nav-link, a.v2-sidebar-brand, #v2LogoutLink, #v2AdminLogout"
+    ).forEach(function (a) {
+      a.addEventListener("click", closeNav);
+    });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape") closeNav();
+    });
+    window.addEventListener("resize", function () {
+      if (!isMobileShell()) closeNav();
+    });
 
     if (shell === "app") {
       var bottomNav = document.getElementById("v2BottomNav");

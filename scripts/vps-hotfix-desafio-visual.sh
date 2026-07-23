@@ -138,6 +138,8 @@ grep -q 'dz-v2-panel' "$WEB/v2.css" || die "CSS sem dz-v2-panel"
 grep -q 'dz-wallet-bar' "$WEB/v2.css" || die "CSS sem dz-wallet-bar"
 grep -q 'background: #000' "$WEB/v2.css" || die "CSS sem background preto da barra"
 grep -q 'border: 1.5px solid #c9f223' "$WEB/v2.css" || die "CSS sem borda limão da barra"
+grep -q '\.pf-page' "$WEB/v2.css" || die "CSS sem Meu Perfil (.pf-page) — não sobrescrever sem estilos de perfil"
+grep -q 'Mobile: drawer fixo' "$WEB/v2.css" || die "CSS sem drawer responsivo"
 
 grep -q 'dz-wallet-black' "$WEB/app-desafio.html" || die "HTML sem cache-bust da barra"
 grep -q 'background: #000 !important' "$WEB/app-desafio.html" || die "HTML sem estilo inline preto"
