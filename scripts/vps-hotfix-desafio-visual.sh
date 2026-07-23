@@ -24,6 +24,13 @@ grep -q 'dz-wallet-bar' "$WEB/app-desafio.html" || die "HTML sem dz-wallet-bar"
 grep -q 'Depositar Desafio' "$WEB/app-desafio.html" || die "HTML sem Depositar Desafio"
 grep -q 'Maior retorno' "$WEB/app-desafio.html" || die "HTML sem Maior retorno"
 grep -q 'resolveTeamLogo' "$WEB/app-desafio.html" || die "HTML sem resolveTeamLogo"
+grep -q 'searchFootballTeams' "$WEB/app-desafio.html" || die "HTML sem searchFootballTeams"
+
+log "v2.js (busca de times + fallback TheSportsDB)"
+curl -fsSL "$RAW/deploy/vps-supabase/static/v2/v2.js" -o "$WEB/v2.js"
+chmod 0644 "$WEB/v2.js"
+cp -f "$WEB/v2.js" "$WEB_ROOT/v2.js" 2>/dev/null || true
+grep -q 'thesportsdb.com' "$WEB/v2.js" || die "v2.js sem fallback TheSportsDB"
 
 log "v2.css (barra preta + borda limão)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/v2.css" -o "$WEB/v2.css"

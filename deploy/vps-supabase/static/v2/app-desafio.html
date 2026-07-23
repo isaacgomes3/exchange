@@ -37,7 +37,7 @@
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js"></script>
+  <script src="/v2.js?v=teams-search-1"></script>
   <script src="/v2-shell.js" defer></script>
 </head>
 <body data-shell="app" data-active="desafio">
@@ -429,15 +429,21 @@
           return logoCache[key];
         }
         try {
-          var res = await fetch(
-            "/api/arbishield/football-teams?q=" + encodeURIComponent(name),
-            { cache: "no-store" }
-          );
-          var data = await res.json().catch(function () {
-            return {};
-          });
-          var teams = Array.isArray(data.teams) ? data.teams : [];
-          var logo = teams[0] && teams[0].logo ? String(teams[0].logo) : null;
+          var teams =
+            window.ArbiV2 && typeof ArbiV2.searchFootballTeams === "function"
+              ? await ArbiV2.searchFootballTeams(name)
+              : [];
+          var best = null;
+          for (var i = 0; i < teams.length; i++) {
+            var n = String(teams[i].name || "").trim().toLowerCase();
+            if (n === key) {
+              best = teams[i];
+              break;
+            }
+            if (!best && n.indexOf(key) >= 0) best = teams[i];
+          }
+          if (!best && teams[0]) best = teams[0];
+          var logo = best && best.logo ? String(best.logo) : null;
           logoCache[key] = logo;
           return logo;
         } catch (e) {

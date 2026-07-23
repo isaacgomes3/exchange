@@ -6,7 +6,9 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta name="arbishield-vps-page" content="jogos" />
   <title>Gestão de Jogos — ArbiShield v2</title>
-  <link rel="stylesheet" href="/v2.css" />
+  <link rel="stylesheet" href="/v2.css?v=dz-wallet-black-1" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js?v=teams-search-1"></script>
   <script src="/v2-shell.js" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -886,11 +888,16 @@
           '<div class="team-suggest-loading">Buscando times…</div>'
         );
         try {
-          var data = await apiGet(
-            "/api/arbishield/football-teams?q=" + encodeURIComponent(q)
-          );
+          var teams = [];
+          if (window.ArbiV2 && typeof ArbiV2.searchFootballTeams === "function") {
+            teams = await ArbiV2.searchFootballTeams(q);
+          } else {
+            var data = await apiGet(
+              "/api/arbishield/football-teams?q=" + encodeURIComponent(q)
+            );
+            teams = Array.isArray(data.teams) ? data.teams : [];
+          }
           if (seq !== teamSearchSeq[side]) return;
-          var teams = Array.isArray(data.teams) ? data.teams : [];
           if (!teams.length) {
             showTeamSuggest(
               side,
