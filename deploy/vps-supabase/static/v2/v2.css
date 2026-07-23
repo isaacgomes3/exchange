@@ -3624,24 +3624,26 @@ body.dep-open { overflow: hidden; }
 }
 
 /* Barra saldo / depósito do Desafio */
+body[data-shell="app"] .dz-wallet-bar,
 .dz-wallet-bar {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
   margin: 0 0 18px;
-  border: 1px solid #c9f223;
+  border: 1.5px solid #c9f223;
   border-radius: 14px;
   background: #000;
   overflow: hidden;
-  box-shadow: 0 0 0 1px rgba(201, 242, 35, 0.12);
+  box-shadow: 0 0 0 1px rgba(201, 242, 35, 0.18);
 }
+body[data-shell="app"] .dz-wallet-cell,
 .dz-wallet-cell {
   display: flex;
   align-items: flex-start;
   gap: 12px;
   padding: 18px 16px;
   min-width: 0;
-  border-right: 1px solid rgba(201, 242, 35, 0.35);
+  border-right: 1px solid rgba(201, 242, 35, 0.45);
   position: relative;
   background: #000;
 }

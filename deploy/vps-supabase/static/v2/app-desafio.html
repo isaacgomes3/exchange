@@ -6,7 +6,36 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css" />
+  <link rel="stylesheet" href="/v2.css?v=dz-wallet-black-1" />
+  <style>
+    /* Barra Desafio: preto + borda limão (inline p/ não depender de cache do v2.css) */
+    body[data-shell="app"] .dz-wallet-bar {
+      background: #000 !important;
+      border: 1.5px solid #c9f223 !important;
+      box-shadow: 0 0 0 1px rgba(201, 242, 35, 0.18) !important;
+    }
+    body[data-shell="app"] .dz-wallet-cell {
+      background: #000 !important;
+      border-right-color: rgba(201, 242, 35, 0.45) !important;
+    }
+    body[data-shell="app"] .dz-wallet-v,
+    body[data-shell="app"] .dz-wallet-v.sm {
+      color: #fff !important;
+      font-weight: 900 !important;
+    }
+    body[data-shell="app"] .dz-wallet-v.lime {
+      color: #c9f223 !important;
+      font-weight: 900 !important;
+    }
+    body[data-shell="app"] .dz-wallet-l {
+      font-weight: 900 !important;
+    }
+    @media (max-width: 860px) {
+      body[data-shell="app"] .dz-wallet-cell {
+        border-bottom-color: rgba(201, 242, 35, 0.45) !important;
+      }
+    }
+  </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
   <script src="/v2-shell.js" defer></script>

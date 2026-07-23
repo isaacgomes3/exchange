@@ -25,11 +25,18 @@ grep -q 'Depositar Desafio' "$WEB/app-desafio.html" || die "HTML sem Depositar D
 grep -q 'Maior retorno' "$WEB/app-desafio.html" || die "HTML sem Maior retorno"
 grep -q 'resolveTeamLogo' "$WEB/app-desafio.html" || die "HTML sem resolveTeamLogo"
 
-log "v2.css (estilos do card v2)"
+log "v2.css (barra preta + borda limão)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/v2.css" -o "$WEB/v2.css"
 chmod 0644 "$WEB/v2.css"
+# Espelha também na raiz caso o nginx sirva /v2.css de outro path
+cp -f "$WEB/v2.css" "$WEB_ROOT/v2.css" 2>/dev/null || true
 grep -q 'dz-v2-panel' "$WEB/v2.css" || die "CSS sem dz-v2-panel"
 grep -q 'dz-wallet-bar' "$WEB/v2.css" || die "CSS sem dz-wallet-bar"
+grep -q 'background: #000' "$WEB/v2.css" || die "CSS sem background preto da barra"
+grep -q 'border: 1.5px solid #c9f223' "$WEB/v2.css" || die "CSS sem borda limão da barra"
+
+grep -q 'dz-wallet-black' "$WEB/app-desafio.html" || die "HTML sem cache-bust da barra"
+grep -q 'background: #000 !important' "$WEB/app-desafio.html" || die "HTML sem estilo inline preto"
 
 log "admin-desafios.html (home/away a partir do nome do jogo; sem botão Sugestão)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-desafios.html" -o "$WEB/admin-desafios.html"
