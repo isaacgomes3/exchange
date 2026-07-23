@@ -9,7 +9,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-restaurar-lancar-form.sh")
 set -euo pipefail
 
-REF="1231aa9616293ebd6c1e8843dfe0b0bbd5ef86ee"
+REF="6d32d69319388821b0c71264cd6e341340463e5c"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
