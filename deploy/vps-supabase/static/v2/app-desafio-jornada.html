@@ -62,7 +62,7 @@
       display: grid;
       grid-template-columns: minmax(0, 1fr) 280px;
       gap: 22px;
-      align-items: start;
+      align-items: stretch;
     }
     @media (max-width: 900px) {
       .j-layout { grid-template-columns: 1fr; }
@@ -71,6 +71,8 @@
     /* —— Mapa de campanha —— */
     .j-map {
       position: relative;
+      height: 100%;
+      box-sizing: border-box;
       border: 1px solid rgba(255,255,255,0.06);
       border-radius: 20px;
       background:
@@ -79,6 +81,11 @@
       padding: 28px 16px 36px;
       overflow: hidden;
       min-height: 640px;
+      display: flex;
+      flex-direction: column;
+    }
+    .j-map .j-legend {
+      margin-top: auto;
     }
     .j-map-title {
       text-align: center;
@@ -256,12 +263,19 @@
 
     /* Progress rail */
     .j-progress {
-      position: sticky;
-      top: 16px;
+      height: 100%;
+      min-height: 100%;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
       border-radius: 18px;
       border: 1px solid rgba(255,255,255,0.07);
       background: linear-gradient(165deg, rgba(12,28,24,0.95), rgba(8,12,11,0.98));
       padding: 18px 16px;
+    }
+    .j-progress .j-actions {
+      margin-top: auto;
+      padding-top: 20px;
     }
     .j-progress h2 {
       margin: 0 0 14px;
