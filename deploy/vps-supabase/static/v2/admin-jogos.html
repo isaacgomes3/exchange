@@ -1,0 +1,2158 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <meta name="arbishield-vps-page" content="jogos" />
+  <title>Gestão de Jogos — ArbiShield v2</title>
+  <link rel="stylesheet" href="/v2.css" />
+  <script src="/v2-shell.js" defer></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #050505;
+      --panel: #0a0a0a;
+      --border: #1f1f1f;
+      --text: #f5f5f7;
+      --muted: #8a8a8f;
+      --lime: #c9f223;
+      --danger: #ef4444;
+      --amber: #f59e0b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      color: var(--text);
+    }
+    .v2-main .wrap { width: 100%; max-width: none; }
+    .wrap {
+      width: 100%;
+      max-width: none;
+      margin: 0;
+      padding: 0 0 48px;
+    }
+    header {
+      display: flex; flex-wrap: wrap; gap: 14px;
+      align-items: flex-start; justify-content: space-between;
+      margin-bottom: 22px;
+      width: 100%;
+    }
+    h1 {
+      margin: 0; font-size: clamp(1.5rem, 3vw, 2.1rem);
+      font-weight: 900; font-style: italic;
+      letter-spacing: -0.04em; text-transform: uppercase;
+    }
+    h1 span { color: var(--lime); }
+    .sub {
+      margin: 6px 0 0; color: var(--muted); font-size: 0.72rem;
+      letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;
+    }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn {
+      border: 0; border-radius: 12px; padding: 12px 16px;
+      font-weight: 800; font-size: 10px; letter-spacing: 0.12em;
+      text-transform: uppercase; cursor: pointer; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn-primary { background: var(--lime); color: #000; }
+    .btn-ghost {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-sm { padding: 8px 12px; font-size: 9px; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+      width: 100%;
+    }
+    .stat {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; padding: 14px 16px;
+      min-width: 0;
+    }
+    .stat .l {
+      font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted); font-weight: 700;
+    }
+    .stat .v { font-size: 1.5rem; font-weight: 800; margin-top: 4px; }
+    .stat .v.lime { color: var(--lime); }
+    .stat .v.red { color: var(--danger); }
+    .stat .v.amber { color: var(--amber); }
+    .tabs {
+      display: flex; flex-wrap: wrap; gap: 6px; flex: 1;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; padding: 6px;
+      min-width: min(100%, 280px);
+    }
+    .tab {
+      border: 0; background: transparent; color: var(--muted);
+      border-radius: 10px; padding: 10px 14px;
+      font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
+      text-transform: uppercase; cursor: pointer;
+    }
+    .tab.active { background: var(--lime); color: #000; }
+    .search {
+      flex: 1 1 240px;
+      width: auto;
+      max-width: none;
+      min-width: 200px;
+      margin-left: 0;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 12px; padding: 10px 14px; color: var(--text);
+      font-size: 10px; font-weight: 800; letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .toolbar {
+      display: flex; flex-wrap: wrap; gap: 12px;
+      align-items: stretch; justify-content: space-between;
+      margin-bottom: 16px;
+      width: 100%;
+    }
+    .panel {
+      border: 1px solid var(--border); border-radius: 16px;
+      background: var(--panel); overflow: hidden;
+      width: 100%;
+      max-width: none;
+      margin: 0;
+      padding: 0;
+    }
+    .panel-head {
+      padding: 14px 18px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    #preliveContent, #platformContent {
+      width: 100%;
+    }
+    .panel-head h2 {
+      margin: 0; font-size: 11px; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--lime);
+    }
+    .panel-head .hint { color: var(--muted); font-size: 11px; }
+    .breadcrumb {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .breadcrumb button {
+      border: 0; background: none; color: var(--lime); cursor: pointer;
+      font: inherit; padding: 0;
+    }
+    .list { display: flex; flex-direction: column; width: 100%; }
+    .row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border);
+      cursor: pointer; transition: background 0.15s;
+      width: 100%;
+    }
+    .row:last-child { border-bottom: 0; }
+    .row:hover { background: rgba(201,242,35,0.04); }
+    .row .teams { font-weight: 800; font-size: 14px; flex: 1; min-width: 0; }
+    .row .meta {
+      color: var(--muted); font-size: 10px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase; margin-top: 4px;
+    }
+    .row .time { text-align: right; white-space: nowrap; flex-shrink: 0; }
+    .row .time .kick {
+      font-size: 10px; color: var(--lime); font-weight: 800;
+      letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .row .time .when {
+      font-size: 11px; color: var(--muted); margin-top: 4px;
+    }
+    .market-row { cursor: default; flex-direction: column; align-items: stretch; }
+    .market-row:hover { background: transparent; }
+    .market-title {
+      font-weight: 800; font-size: 12px; margin-bottom: 10px;
+      letter-spacing: 0.04em;
+    }
+    .runners {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 10px;
+      width: 100%;
+    }
+    .runner {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px; border-radius: 12px;
+      border: 1px solid var(--border); background: rgba(255,255,255,0.02);
+      min-width: 0;
+    }
+    .runner .name { font-size: 11px; font-weight: 700; flex: 1; min-width: 0; }
+    .runner .odd { color: var(--lime); font-weight: 800; font-size: 14px; flex-shrink: 0; }
+    .runner .odd.muted { color: var(--muted); font-weight: 700; font-size: 12px; }
+    .runner.is-dry { opacity: 0.55; }
+    .odds-toolbar {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+      padding: 0 16px 12px; color: var(--muted); font-size: 12px;
+    }
+    .odds-toolbar label {
+      display: inline-flex; align-items: center; gap: 8px;
+      cursor: pointer; font-weight: 700; letter-spacing: 0.04em;
+      text-transform: uppercase; font-size: 10px;
+    }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    @media (max-width: 720px) {
+      .stats { grid-template-columns: 1fr; }
+    }
+    .empty, .loading, .error {
+      border: 1px dashed var(--border); border-radius: 16px;
+      padding: 36px 20px; text-align: center; color: var(--muted);
+      margin: 16px;
+    }
+    .error { border-color: rgba(239,68,68,0.4); color: #fca5a5; }
+    .gate {
+      min-height: 60vh; display: grid; place-items: center;
+      color: var(--muted);
+    }
+    .gate.gone { display: none !important; }
+    .auth-banner {
+      display: none;
+      margin-bottom: 16px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(245,158,11,0.35);
+      background: rgba(245,158,11,0.08);
+      color: #fcd34d;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .auth-banner.show { display: block; }
+    .auth-banner a { color: var(--lime); font-weight: 800; }
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+      display: none; align-items: center; justify-content: center;
+      z-index: 50; padding: 20px;
+    }
+    .modal-backdrop.show { display: flex; }
+    .modal {
+      width: min(480px, 100%); background: #0a0a0a;
+      border: 1px solid var(--border); border-radius: 18px; padding: 22px;
+    }
+    .modal h3 {
+      margin: 0 0 8px; font-size: 1rem; text-transform: uppercase;
+      letter-spacing: -0.02em;
+    }
+    .modal p { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 0 0 16px; }
+    .modal .grid {
+      display: grid; gap: 8px; margin-bottom: 18px;
+      font-size: 12px;
+    }
+    .modal .grid div {
+      display: flex; justify-content: space-between; gap: 10px;
+      padding: 8px 0; border-bottom: 1px solid var(--border);
+    }
+    .modal .grid span:first-child { color: var(--muted); text-transform: uppercase; font-size: 10px; font-weight: 700; }
+    .modal .grid span:last-child { font-weight: 700; text-align: right; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+    .platform-list { margin-top: 24px; }
+    .badge {
+      font-size: 9px; font-weight: 800; letter-spacing: 0.08em;
+      text-transform: uppercase; padding: 4px 8px; border-radius: 999px;
+      border: 1px solid var(--border); color: var(--muted);
+    }
+    .badge.pub { color: var(--lime); border-color: rgba(201,242,35,0.35); }
+    .badge.draft { color: var(--amber); border-color: rgba(245,158,11,0.35); }
+    .badge.done { color: #93c5fd; border-color: rgba(59,130,246,0.35); }
+    .badge.live { color: #fca5a5; border-color: rgba(239,68,68,0.4); }
+    .platform-filters {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      padding: 0 16px 12px;
+    }
+    .chip {
+      border: 1px solid var(--border); background: transparent; color: var(--muted);
+      border-radius: 999px; padding: 8px 12px; cursor: pointer;
+      font-size: 10px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+    }
+    .chip.is-on {
+      color: #000; background: var(--lime); border-color: transparent;
+    }
+    .row .entries {
+      margin-top: 6px; font-size: 11px; color: var(--muted);
+    }
+    .v2-nav {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px;
+    }
+    .v2-nav a {
+      text-decoration: none; font-size: 10px; font-weight: 800; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--muted); border: 1px solid var(--border);
+      border-radius: 999px; padding: 8px 12px;
+    }
+    .v2-nav a.active, .v2-nav a:hover {
+      color: #000; background: var(--lime); border-color: transparent;
+    }
+    .drawer-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.72);
+      display: none; z-index: 60; justify-content: flex-end;
+    }
+    .drawer-backdrop.show { display: flex; }
+    .drawer {
+      width: min(640px, 100%); height: 100%; background: #0a0a0a;
+      border-left: 1px solid var(--border); padding: 22px 20px 40px;
+      overflow-y: auto;
+    }
+    .drawer h3 {
+      margin: 0; font-size: 1.35rem; font-weight: 900; font-style: italic;
+      text-transform: uppercase; letter-spacing: -0.03em;
+    }
+    .drawer h3 span { color: var(--lime); }
+    .drawer .hint {
+      margin: 6px 0 18px; color: var(--muted); font-size: 10px;
+      font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+    }
+    .field { display: grid; gap: 6px; margin-bottom: 12px; }
+    .field label {
+      font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .field input, .field select, .field textarea {
+      width: 100%; border-radius: 12px; border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04); color: var(--text);
+      padding: 11px 12px; font: inherit;
+    }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } }
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 12px 14px; border-radius: 14px; margin-bottom: 10px;
+      background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+    }
+    .toggle-row .t { font-size: 12px; font-weight: 800; text-transform: uppercase; }
+    .toggle-row .s { font-size: 10px; color: var(--muted); margin-top: 3px; font-weight: 600; }
+    .switch {
+      width: 44px; height: 26px; border-radius: 999px; border: 0; cursor: pointer;
+      background: #3f3f46; position: relative; flex-shrink: 0;
+    }
+    .switch.on { background: var(--lime); }
+    .switch::after {
+      content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px;
+      border-radius: 50%; background: #fff; transition: transform .15s ease;
+    }
+    .switch.on::after { transform: translateX(18px); background: #000; }
+    .market-card {
+      border: 1px solid var(--border); border-radius: 14px; padding: 12px;
+      background: rgba(255,255,255,0.03); margin-bottom: 10px;
+    }
+    .market-card .mh {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+    }
+    .market-card .mh strong {
+      font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    }
+    .drawer-actions {
+      display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;
+      position: sticky; bottom: 0; padding-top: 12px; background: linear-gradient(transparent, #0a0a0a 30%);
+    }
+    .sec-label {
+      margin: 18px 0 10px; font-size: 11px; font-weight: 900; font-style: italic;
+      letter-spacing: 0.08em; text-transform: uppercase; color: var(--lime);
+    }
+    .team-pick { position: relative; }
+    .team-pick-row {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 10px;
+      align-items: start;
+    }
+    .team-logo-box {
+      width: 44px; height: 44px; border-radius: 12px;
+      border: 1px solid var(--border); background: rgba(255,255,255,0.04);
+      display: grid; place-items: center; overflow: hidden; flex-shrink: 0;
+    }
+    .team-logo-box img {
+      width: 100%; height: 100%; object-fit: contain; display: block;
+      background: #fff;
+    }
+    .team-logo-box .ph {
+      font-size: 10px; font-weight: 800; color: var(--muted);
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .team-suggest {
+      position: absolute; left: 0; right: 0; top: calc(100% + 4px);
+      z-index: 20; max-height: 240px; overflow: auto;
+      border: 1px solid var(--border); border-radius: 12px;
+      background: #111; box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+      display: none;
+    }
+    .team-suggest.show { display: block; }
+    .team-suggest-item {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; border: 0; background: transparent; color: var(--text);
+      text-align: left; padding: 10px 12px; cursor: pointer;
+      border-bottom: 1px solid var(--border);
+    }
+    .team-suggest-item:last-child { border-bottom: 0; }
+    .team-suggest-item:hover, .team-suggest-item:focus {
+      background: rgba(201,242,35,0.08); outline: none;
+    }
+    .team-suggest-item img {
+      width: 28px; height: 28px; object-fit: contain; border-radius: 6px;
+      background: #fff; flex-shrink: 0;
+    }
+    .team-suggest-item .meta { min-width: 0; }
+    .team-suggest-item .name {
+      font-size: 13px; font-weight: 800; line-height: 1.2;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .team-suggest-item .sub {
+      margin-top: 2px; font-size: 10px; color: var(--muted); font-weight: 700;
+      letter-spacing: 0.04em; text-transform: uppercase;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .team-suggest-empty, .team-suggest-loading {
+      padding: 12px; color: var(--muted); font-size: 11px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .team-logo-url { margin-top: 8px; }
+    .row-teams-with-logos {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .row-teams-with-logos img {
+      width: 22px; height: 22px; object-fit: contain; border-radius: 4px;
+      background: #fff;
+    }
+  </style>
+</head>
+<body data-shell="admin" data-active="jogos" data-vps-page="jogos" data-arbishield-v2="1">
+  <div class="gate" id="gate">Carregando…</div>
+
+  <div class="wrap" id="app" hidden>
+    <div class="auth-banner" id="authBanner">
+      Sessão admin não detectada.
+      <a id="loginLink" href="/auth.html">Fazer login</a>
+      para criar eventos e ver a lista da plataforma.
+    </div>
+<header>
+      <div>
+        <h1>Gestão de <span>Jogos</span></h1>
+        <p class="sub">Cockpit de Eventos e Risco · Catálogo Pré-Live BetBra</p>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" id="btnManualMatch" type="button">Lançar evento manual</button>
+        <button class="btn btn-ghost" id="btnAddMatch" type="button">+ BetBra (cadastrar)</button>
+        <button class="btn btn-ghost" id="btnRefresh" type="button">Atualizar</button>
+      </div>
+    </header>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="toolbar">
+      <div class="tabs" id="viewTabs">
+        <button class="tab active" data-view="platform" type="button">Encerrar / Eventos ArbiShield</button>
+        <button class="tab" data-view="prelive" type="button">Próximos jogos (cadastrar)</button>
+      </div>
+      <input class="search" id="search" type="search" placeholder="Buscar time ou liga…" />
+    </div>
+
+    <div id="settleHint" class="auth-banner show" style="margin-bottom:14px;border-color:rgba(201,242,35,0.35);background:rgba(201,242,35,0.08)">
+      <strong style="color:var(--lime)">Lançar jogo:</strong>
+      use <strong>Lançar evento manual</strong> (mesmo formulário do site antigo) ou
+      <strong>+ BetBra (cadastrar)</strong> para puxar da casa.
+      Isso <em>não</em> é Desafio — Desafios ficam em Gestão de Desafios.
+      <span style="display:block;margin-top:6px">
+        <strong>Encerrar:</strong> aba Encerrar / Eventos ArbiShield → filtro A liquidar → Encerrar partida.
+      </span>
+    </div>
+
+    <section class="panel platform-list" id="platformPanel">
+      <div class="panel-head">
+        <h2>Eventos cadastrados na plataforma</h2>
+        <span class="hint" id="platformMeta">—</span>
+      </div>
+      <p class="hint" style="margin:0 0 12px">
+        Jogos com proteção aberta no Monitor aparecem em <strong style="color:var(--lime)">A liquidar</strong> — mesmo depois de +3h do kickoff.
+      </p>
+      <div class="platform-filters" id="platformFilters">
+        <button type="button" class="chip is-on" data-pf="settle">A liquidar</button>
+        <button type="button" class="chip" data-pf="fila">Fila (atuais)</button>
+        <button type="button" class="chip" data-pf="draft">Rascunhos</button>
+        <button type="button" class="chip" data-pf="done">Finalizados</button>
+        <button type="button" class="chip" data-pf="all">Todos</button>
+      </div>
+      <div id="platformContent">
+        <div class="loading">Carregando eventos…</div>
+      </div>
+    </section>
+
+    <section class="panel" id="prelivePanel" hidden>
+      <div class="panel-head">
+        <div>
+          <h2>Próximos jogos (BetBra) — só cadastro</h2>
+          <div class="breadcrumb" id="breadcrumb">
+            <span>Lista do dia</span>
+          </div>
+        </div>
+        <span class="hint" id="preliveMeta">—</span>
+      </div>
+      <div class="odds-toolbar" id="oddsToolbar" hidden>
+        <label>
+          <input type="checkbox" id="onlyWithOdds" checked />
+          Só seleções com odd
+        </label>
+        <span id="oddsCoverage">—</span>
+      </div>
+      <div id="preliveContent">
+        <div class="loading">Carregando jogos da API BetBra…</div>
+      </div>
+    </section>
+  </div>
+
+  <div class="modal-backdrop" id="settleModal">
+    <div class="modal" style="width:min(560px,100%)">
+      <h3>Encerrar <span style="color:var(--lime)">partida</span></h3>
+      <p id="settleSummary" class="hint">Registre o placar e onde o jogo bateu.</p>
+      <div class="grid" style="margin-top:12px">
+        <div class="field"><label>Placar casa</label><input id="settleHome" type="number" min="0" step="1" placeholder="0" /></div>
+        <div class="field"><label>Placar fora</label><input id="settleAway" type="number" min="0" step="1" placeholder="0" /></div>
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label>Onde bateu?</label>
+        <div id="settleOutcomeBox" style="display:grid;gap:10px;margin-top:8px">
+          <button type="button" class="btn btn-ghost" id="btnOutcomeArbi" data-outcome="arbishield" style="justify-content:flex-start;text-align:left;padding:14px 16px;border-color:rgba(201,242,35,0.45)">
+            <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU ARBISHIELD</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção válida · devolver só o stake/responsabilidade</span>
+            <span id="settleRefundHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">A reembolsar: —</span>
+          </button>
+          <button type="button" class="btn btn-ghost" id="btnOutcomeExch" data-outcome="exchange" style="justify-content:flex-start;text-align:left;padding:14px 16px">
+            <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU CASA EXTERNA (EXCHANGE)</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção perde · sem reembolso ao usuário</span>
+            <span id="settleDeductHint" style="display:block;margin-top:8px;color:var(--amber);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Dedução / margem ArbiShield: —</span>
+            <span id="settleStakeKeepHint" style="display:block;margin-top:4px;color:var(--muted);font-size:11px;font-weight:600;text-transform:none;letter-spacing:0"></span>
+          </button>
+        </div>
+        <input type="hidden" id="settleOutcome" value="arbishield" />
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="btnCancelSettle" type="button">Cancelar</button>
+        <button class="btn btn-primary btn-sm" id="btnConfirmSettle" type="button">Liquidar jogo</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="createModal">
+    <div class="modal">
+      <h3>Lançar evento na plataforma</h3>
+      <p>O mercado selecionado da BetBra será incluído na ArbiShield. Marque publicar para o cliente ver em Proteger Aposta.</p>
+      <div class="grid" id="createSummary"></div>
+      <label class="publish-opt" style="display:flex;gap:10px;align-items:flex-start;margin:0 0 16px;font-size:12px;line-height:1.4;cursor:pointer">
+        <input type="checkbox" id="publishNow" checked style="margin-top:2px;accent-color:var(--lime)" />
+        <span><strong>Publicar agora</strong> — aparece na conta do cliente (Proteger Aposta). Desmarque só se quiser deixar em rascunho.</span>
+      </label>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="btnCancelCreate" type="button">Cancelar</button>
+        <button class="btn btn-primary btn-sm" id="btnConfirmCreate" type="button">Confirmar lançamento</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="drawer-backdrop" id="manualDrawer">
+    <div class="drawer">
+      <h3>Lançar evento <span>manual</span></h3>
+      <p class="hint">Mesmo formulário do site antigo · Gestão de Jogos (não é Desafio)</p>
+
+      <div class="toggle-row">
+        <div>
+          <div class="t">Liberar proteção</div>
+          <div class="s">Cliente pode proteger neste jogo (publicar na fila)</div>
+        </div>
+        <button type="button" class="switch on" id="manLiberarProtecao" aria-pressed="true"></button>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div class="t">Liberar live</div>
+          <div class="s">Exibe o selo AO VIVO no card do jogo</div>
+        </div>
+        <button type="button" class="switch" id="manLiberarLive" aria-pressed="false"></button>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div class="t">Esconder do site</div>
+          <div class="s">Não aparece para o cliente (rascunho / oculto)</div>
+        </div>
+        <button type="button" class="switch" id="manEsconder" aria-pressed="false"></button>
+      </div>
+
+      <div class="sec-label">Dados da partida</div>
+      <div class="field">
+        <label for="manLeague">Nome do evento</label>
+        <input id="manLeague" placeholder="Ex: SERIE B" />
+      </div>
+      <div class="field team-pick" data-side="home">
+        <label for="manHome">Time de casa</label>
+        <div class="team-pick-row">
+          <div class="team-logo-box" id="manHomeLogoPrev"><span class="ph">logo</span></div>
+          <div style="min-width:0;position:relative">
+            <input id="manHome" required placeholder="Buscar time… Ex: Flamengo" autocomplete="off" />
+            <div class="team-suggest" id="manHomeSuggest" role="listbox" hidden></div>
+          </div>
+        </div>
+        <div class="team-logo-url field" style="margin:8px 0 0">
+          <label for="manHomeLogo">URL logo (preenchida automaticamente)</label>
+          <input id="manHomeLogo" placeholder="URL Logo" />
+        </div>
+      </div>
+      <div class="field team-pick" data-side="away">
+        <label for="manAway">Time de fora</label>
+        <div class="team-pick-row">
+          <div class="team-logo-box" id="manAwayLogoPrev"><span class="ph">logo</span></div>
+          <div style="min-width:0;position:relative">
+            <input id="manAway" required placeholder="Buscar time… Ex: Palmeiras" autocomplete="off" />
+            <div class="team-suggest" id="manAwaySuggest" role="listbox" hidden></div>
+          </div>
+        </div>
+        <div class="team-logo-url field" style="margin:8px 0 0">
+          <label for="manAwayLogo">URL logo (preenchida automaticamente)</label>
+          <input id="manAwayLogo" placeholder="URL Logo" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="manStarts">Data e hora início</label>
+        <input id="manStarts" type="datetime-local" required />
+        <p class="hint" style="margin:6px 0 0">Formato: DD/MM/AAAA HH:MM (seletor do navegador)</p>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label for="manSport">Esporte</label>
+          <select id="manSport">
+            <option value="futebol">Futebol</option>
+            <option value="basquete">Basquete</option>
+            <option value="volei">Vôlei</option>
+            <option value="tenis">Tênis</option>
+            <option value="mma">MMA</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="manStatus">Estado do jogo</label>
+          <select id="manStatus">
+            <option value="open">Aberto</option>
+            <option value="live">Ao vivo</option>
+            <option value="suspended">Suspenso</option>
+            <option value="postponed">Adiado</option>
+            <option value="cancelled">Cancelado</option>
+            <option value="review">Em revisão</option>
+            <option value="settled">Encerrado</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="manExternalId">ID do jogo</label>
+        <input id="manExternalId" placeholder="Ex: 10574843" />
+      </div>
+
+      <details style="margin:18px 0 8px;border-top:1px solid var(--border);padding-top:14px">
+        <summary style="cursor:pointer;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted)">
+          Mercados de proteção (opcional)
+        </summary>
+        <p class="hint" style="margin:10px 0">Se vazio, cria LAY HOME @ 2.00 com R$ 2.000 de liquidez.</p>
+        <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+          <button type="button" class="btn btn-primary btn-sm" id="btnAddMarket">+ Adicionar mercado</button>
+        </div>
+        <div id="manMarkets"></div>
+      </details>
+
+      <div class="drawer-actions">
+        <button type="button" class="btn btn-ghost" id="btnCancelManual">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btnSaveManual">Lançar evento</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script>
+    (function () {
+      var ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzg0NDc5OTk4LCJleHAiOjE5NDIxNTk5OTh9.mxLqs20sCUNn58jWlsD0sznclCOr8rbksjTEAuQee3s";
+      var STORAGE_KEY = "sb-arbishield-auth-token";
+      var supa = window.supabase.createClient(location.origin, ANON, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: false,
+          storageKey: STORAGE_KEY,
+        },
+      });
+
+      var auth = null;
+      var view = "platform";
+      var preliveEvents = [];
+      var selectedEvent = null;
+      var selectedMarket = null;
+      var selectedRunner = null;
+      var platformMatches = [];
+      var platformFilter = "settle";
+      var platformLoaded = false;
+      var platformLoading = false;
+      var searchTerm = "";
+
+      var gate = document.getElementById("gate");
+      var app = document.getElementById("app");
+
+      function $(id) { return document.getElementById(id); }
+
+      function money(cents) {
+        if (cents == null) return "—";
+        return (Number(cents) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      }
+
+      function fmtDate(iso) {
+        try {
+          return new Date(iso).toLocaleString("pt-BR", {
+            day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+          });
+        } catch (e) { return iso; }
+      }
+
+      function withTimeout(promise, ms, label) {
+        return Promise.race([
+          promise,
+          new Promise(function (_, reject) {
+            setTimeout(function () {
+              reject(new Error((label || "Operação") + " demorou demais"));
+            }, ms);
+          }),
+        ]);
+      }
+
+      function showAppShell() {
+        document.body.dataset.vpsPage = "jogos";
+        gate.classList.add("gone");
+        gate.hidden = true;
+        app.hidden = false;
+      }
+
+      function showAuthBanner(show) {
+        $("authBanner").classList.toggle("show", !!show);
+      }
+
+      async function rest(path, token, options) {
+        options = options || {};
+        var headers = {
+          apikey: ANON,
+          Authorization: "Bearer " + token,
+          Accept: "application/json",
+        };
+        if (options.body) {
+          headers["Content-Type"] = "application/json";
+          headers.Prefer = "return=representation";
+        }
+        var res = await fetch("/rest/v1/" + path, {
+          method: options.method || "GET",
+          headers: headers,
+          body: options.body ? JSON.stringify(options.body) : undefined,
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          var errText = await res.text().catch(function () { return ""; });
+          throw new Error("REST " + res.status + (errText ? ": " + errText.slice(0, 120) : ""));
+        }
+        if (res.status === 204) return null;
+        return res.json();
+      }
+
+      async function isAdmin(token, userId) {
+        var profile = await rest("profiles?select=is_super_admin&id=eq." + encodeURIComponent(userId), token);
+        if (profile && profile[0] && profile[0].is_super_admin) return true;
+        var roles = await rest("user_roles?select=role&user_id=eq." + encodeURIComponent(userId), token);
+        return (roles || []).some(function (r) {
+          return r.role === "admin" || r.role === "master_admin";
+        });
+      }
+
+      async function resolveAuth(forceRefresh) {
+        try {
+          var session = null;
+          if (forceRefresh) {
+            var refreshed = await withTimeout(supa.auth.refreshSession(), 8000, "Sessão");
+            session = refreshed.data && refreshed.data.session;
+          }
+          if (!session) {
+            var current = await withTimeout(supa.auth.getSession(), 5000, "Sessão");
+            session = current.data && current.data.session;
+          }
+          if (!session || !session.user) return null;
+          var ok = await withTimeout(isAdmin(session.access_token, session.user.id), 8000, "Permissões");
+          if (!ok) return null;
+          return { token: session.access_token, user: session.user };
+        } catch (err) {
+          console.warn("[jogos-vps] auth", err);
+          return null;
+        }
+      }
+
+      async function apiGet(path) {
+        var res = await fetch(path, { cache: "no-store" });
+        var text = await res.text();
+        var data;
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch (e) {
+          if (res.status === 502) {
+            throw new Error("502 — API offline. Rode vps-stabilize-arbishield.sh na VPS.");
+          }
+          throw new Error("Resposta inválida (" + res.status + ")");
+        }
+        if (!res.ok || data.ok === false) {
+          throw new Error(data.error || ("HTTP " + res.status));
+        }
+        return data;
+      }
+
+      async function apiPost(path, body) {
+        var res = await fetch(path, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + auth.token,
+          },
+          body: JSON.stringify(body),
+        });
+        var data = await res.json();
+        if (!res.ok || data.ok === false) {
+          throw new Error(data.error || ("HTTP " + res.status));
+        }
+        return data;
+      }
+
+      function escHtml(value) {
+        return String(value == null ? "" : value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function setTeamLogoPreview(side, url) {
+        var box = $(side === "home" ? "manHomeLogoPrev" : "manAwayLogoPrev");
+        if (!box) return;
+        var src = String(url || "").trim();
+        if (!src) {
+          box.innerHTML = '<span class="ph">logo</span>';
+          return;
+        }
+        box.innerHTML =
+          '<img src="' +
+          escHtml(src) +
+          '" alt="" onerror="this.parentNode.innerHTML=\'<span class=ph>logo</span>\'" />';
+      }
+
+      function hideTeamSuggest(side) {
+        var el = $(side === "home" ? "manHomeSuggest" : "manAwaySuggest");
+        if (!el) return;
+        el.classList.remove("show");
+        el.hidden = true;
+        el.innerHTML = "";
+      }
+
+      function showTeamSuggest(side, html) {
+        var el = $(side === "home" ? "manHomeSuggest" : "manAwaySuggest");
+        if (!el) return;
+        el.innerHTML = html;
+        el.hidden = false;
+        el.classList.add("show");
+      }
+
+      var teamSearchTimers = { home: null, away: null };
+      var teamSearchSeq = { home: 0, away: 0 };
+
+      function selectFootballTeam(side, team) {
+        var nameEl = $(side === "home" ? "manHome" : "manAway");
+        var logoEl = $(side === "home" ? "manHomeLogo" : "manAwayLogo");
+        if (nameEl) nameEl.value = team.name || "";
+        var logo = team.logo || team.logoSvg || team.logoPng || "";
+        if (logoEl) logoEl.value = logo;
+        setTeamLogoPreview(side, logo);
+        hideTeamSuggest(side);
+        if (!($("manLeague").value || "").trim() && team.league) {
+          $("manLeague").value = team.league;
+        }
+      }
+
+      async function searchFootballTeams(side, query) {
+        var q = String(query || "").trim();
+        var seq = ++teamSearchSeq[side];
+        if (q.length < 2) {
+          hideTeamSuggest(side);
+          return;
+        }
+        showTeamSuggest(
+          side,
+          '<div class="team-suggest-loading">Buscando times…</div>'
+        );
+        try {
+          var data = await apiGet(
+            "/api/arbishield/football-teams?q=" + encodeURIComponent(q)
+          );
+          if (seq !== teamSearchSeq[side]) return;
+          var teams = Array.isArray(data.teams) ? data.teams : [];
+          if (!teams.length) {
+            showTeamSuggest(
+              side,
+              '<div class="team-suggest-empty">Nenhum time encontrado — digite o nome manualmente</div>'
+            );
+            return;
+          }
+          showTeamSuggest(
+            side,
+            teams
+              .map(function (t, idx) {
+                var sub = [t.country, t.league].filter(Boolean).join(" · ");
+                return (
+                  '<button type="button" class="team-suggest-item" data-idx="' +
+                  idx +
+                  '" role="option">' +
+                  (t.logo
+                    ? '<img src="' + escHtml(t.logo) + '" alt="" />'
+                    : "") +
+                  '<span class="meta"><span class="name">' +
+                  escHtml(t.name) +
+                  "</span>" +
+                  (sub
+                    ? '<span class="sub">' + escHtml(sub) + "</span>"
+                    : "") +
+                  "</span></button>"
+                );
+              })
+              .join("")
+          );
+          var box = $(side === "home" ? "manHomeSuggest" : "manAwaySuggest");
+          box.querySelectorAll(".team-suggest-item").forEach(function (btn) {
+            btn.addEventListener("mousedown", function (ev) {
+              ev.preventDefault();
+              var i = Number(btn.getAttribute("data-idx"));
+              if (Number.isFinite(i) && teams[i]) selectFootballTeam(side, teams[i]);
+            });
+          });
+        } catch (err) {
+          if (seq !== teamSearchSeq[side]) return;
+          showTeamSuggest(
+            side,
+            '<div class="team-suggest-empty">' +
+              escHtml(err.message || "Falha na busca") +
+              "</div>"
+          );
+        }
+      }
+
+      function bindTeamPicker(side) {
+        var nameEl = $(side === "home" ? "manHome" : "manAway");
+        var logoEl = $(side === "home" ? "manHomeLogo" : "manAwayLogo");
+        if (!nameEl) return;
+        nameEl.addEventListener("input", function () {
+          clearTimeout(teamSearchTimers[side]);
+          teamSearchTimers[side] = setTimeout(function () {
+            searchFootballTeams(side, nameEl.value);
+          }, 280);
+        });
+        nameEl.addEventListener("focus", function () {
+          if (String(nameEl.value || "").trim().length >= 2) {
+            searchFootballTeams(side, nameEl.value);
+          }
+        });
+        nameEl.addEventListener("blur", function () {
+          setTimeout(function () {
+            hideTeamSuggest(side);
+          }, 180);
+        });
+        nameEl.addEventListener("keydown", function (ev) {
+          if (ev.key === "Escape") hideTeamSuggest(side);
+        });
+        if (logoEl) {
+          logoEl.addEventListener("input", function () {
+            setTeamLogoPreview(side, logoEl.value);
+          });
+        }
+      }
+
+      bindTeamPicker("home");
+      bindTeamPicker("away");
+
+      function filterText(ev) {
+        if (!searchTerm) return true;
+        var q = searchTerm.toLowerCase();
+        return (
+          (ev.homeTeam || ev.home_team || "").toLowerCase().includes(q) ||
+          (ev.awayTeam || ev.away_team || "").toLowerCase().includes(q) ||
+          (ev.league || "").toLowerCase().includes(q) ||
+          (ev.eventName || "").toLowerCase().includes(q)
+        );
+      }
+
+      function renderStats() {
+        var pre = preliveEvents.length;
+        var plat = platformMatches.length;
+        var liq = platformMatches.reduce(function (a, m) {
+          return a + Math.max(0, Number(m.max_protection_cents || 0) - Number(m.used_protection_cents || 0));
+        }, 0);
+        var items = [
+          ["Pré-live hoje", pre, ""],
+          ["Na plataforma", plat, "lime"],
+          ["Liquidez", money(liq), "lime"],
+        ];
+        $("stats").innerHTML = items.map(function (it) {
+          return '<div class="stat"><div class="l">' + it[0] + '</div><div class="v' +
+            (it[2] ? " " + it[2] : "") + '">' + it[1] + "</div></div>";
+        }).join("");
+      }
+
+      function setBreadcrumb(parts) {
+        $("breadcrumb").innerHTML = parts.map(function (p, i) {
+          if (i === parts.length - 1) return "<span>" + p.label + "</span>";
+          return '<button type="button" data-step="' + p.step + '">' + p.label + "</button><span>›</span>";
+        }).join("");
+        $("breadcrumb").querySelectorAll("button").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var step = btn.getAttribute("data-step");
+            if (step === "list") {
+              selectedEvent = null;
+              selectedMarket = null;
+              renderPreliveList();
+            } else if (step === "event") {
+              selectedMarket = null;
+              if (selectedEvent) loadMarkets(selectedEvent);
+            }
+          });
+        });
+      }
+
+      function renderPreliveList() {
+        selectedEvent = null;
+        selectedMarket = null;
+        if ($("oddsToolbar")) $("oddsToolbar").hidden = true;
+        setBreadcrumb([{ label: "Lista do dia", step: "list" }]);
+        var filtered = preliveEvents.filter(filterText);
+        $("preliveMeta").textContent = filtered.length + " jogos · BetBra";
+
+        if (!filtered.length) {
+          $("preliveContent").innerHTML = '<div class="empty">Nenhum jogo pré-live encontrado para hoje</div>';
+          return;
+        }
+
+        $("preliveContent").innerHTML = '<div class="list">' + filtered.map(function (ev) {
+          return (
+            '<div class="row" data-event="' + ev.eventId + '">' +
+              '<div><div class="teams">' + ev.homeTeam + " vs " + ev.awayTeam + '</div>' +
+              '<div class="meta">' + (ev.league || "—") + '</div></div>' +
+              '<div class="time"><div class="kick">em ' + ev.minutesToKickoff + " min</div>" +
+              '<div class="when">' + fmtDate(ev.startsAt) + "</div></div></div>"
+          );
+        }).join("") + "</div>";
+
+        $("preliveContent").querySelectorAll(".row[data-event]").forEach(function (row) {
+          row.addEventListener("click", function () {
+            var id = row.getAttribute("data-event");
+            var ev = preliveEvents.find(function (e) { return e.eventId === id; });
+            if (ev) loadMarkets(ev);
+          });
+        });
+      }
+
+      async function loadMarkets(ev) {
+        selectedEvent = ev;
+        $("preliveContent").innerHTML = '<div class="loading">Carregando mercados…</div>';
+        setBreadcrumb([
+          { label: "Lista do dia", step: "list" },
+          { label: ev.homeTeam + " vs " + ev.awayTeam, step: "event" },
+        ]);
+        try {
+          var data = await apiGet(
+            "/api/arbishield/prelive-events?eventId=" +
+            encodeURIComponent(ev.eventId) +
+            "&sportId=" + encodeURIComponent(ev.sportId)
+          );
+          renderMarkets(data);
+        } catch (err) {
+          $("preliveContent").innerHTML = '<div class="error">' + err.message + "</div>";
+        }
+      }
+
+      function renderMarkets(data) {
+        selectedEvent = data.event;
+        window.__preliveMarketsData = data;
+        var markets = data.markets || [];
+        var meta = data.oddsMeta || {};
+        var onlyOdds = $("onlyWithOdds") && $("onlyWithOdds").checked;
+        $("oddsToolbar").hidden = false;
+        $("oddsCoverage").textContent =
+          (meta.withOdd != null
+            ? meta.withOdd + "/" + meta.runnersTotal + " com odd (" + (meta.coveragePct || 0) + "%)"
+            : "") +
+          (meta.withPrices != null ? " · BetBra prices em " + meta.withPrices : "");
+        $("preliveMeta").textContent = markets.length + " mercados";
+
+        if (!markets.length) {
+          $("preliveContent").innerHTML = '<div class="empty">Nenhum mercado disponível</div>';
+          return;
+        }
+
+        var html = markets.map(function (market) {
+          var runners = (market.runners || []).filter(function (runner) {
+            return !onlyOdds || runner.odd != null;
+          });
+          if (!runners.length) return "";
+          var runnersHtml = runners.map(function (runner) {
+            var hasOdd = runner.odd != null;
+            var odd = hasOdd ? Number(runner.odd).toFixed(2) : "sem liquidez";
+            return (
+              '<div class="runner' + (hasOdd ? "" : " is-dry") + '">' +
+                '<span class="name">' + runner.name + '</span>' +
+                '<span class="odd' + (hasOdd ? "" : " muted") + '">@ ' + odd + '</span>' +
+                '<button class="btn btn-primary btn-sm" type="button" data-market="' + market.marketId + '" data-runner="' + runner.runnerId + '"' +
+                  (hasOdd ? "" : " disabled title=\"Sem odd na BetBra — não é possível lançar\"") +
+                '>Lançar evento</button>' +
+              "</div>"
+            );
+          }).join("");
+          return (
+            '<div class="row market-row">' +
+              '<div class="market-title">' + market.name + '</div>' +
+              '<div class="runners">' + runnersHtml + "</div></div>"
+          );
+        }).filter(Boolean).join("");
+
+        if (!html) {
+          $("preliveContent").innerHTML =
+            '<div class="empty">Nenhuma seleção com odd neste momento. ' +
+            'Desmarque “Só seleções com odd” para ver mercados sem liquidez, ' +
+            'ou escolha outro jogo (ex.: Resultado / Mais-Menos 2.5).</div>';
+          return;
+        }
+
+        $("preliveContent").innerHTML = html;
+
+        $("preliveContent").querySelectorAll("button[data-market]:not([disabled])").forEach(function (btn) {
+          btn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            var marketId = btn.getAttribute("data-market");
+            var runnerId = btn.getAttribute("data-runner");
+            var market = markets.find(function (m) { return m.marketId === marketId; });
+            var runner = market && (market.runners || []).find(function (r) { return r.runnerId === runnerId; });
+            if (market && runner) {
+              if (runner.odd == null) {
+                alert("Esta seleção está sem odd/liquidez na BetBra.");
+                return;
+              }
+              if (!auth) {
+                showAuthBanner(true);
+                alert("Faça login admin para incluir eventos.");
+                return;
+              }
+              openCreateModal(market, runner);
+            }
+          });
+        });
+      }
+
+      function openCreateModal(market, runner) {
+        selectedMarket = market;
+        selectedRunner = runner;
+        var ev = selectedEvent;
+        var link = ev.betbraLink + "/market/" + market.marketId;
+        $("createSummary").innerHTML = [
+          ["Jogo", ev.homeTeam + " vs " + ev.awayTeam],
+          ["Liga", ev.league || "—"],
+          ["Horário", fmtDate(ev.startsAt)],
+          ["Mercado", market.name],
+          ["Seleção", runner.name],
+          ["Odd", runner.odd != null ? runner.odd.toFixed(2) : "—"],
+        ].map(function (row) {
+          return "<div><span>" + row[0] + "</span><span>" + row[1] + "</span></div>";
+        }).join("");
+        $("createModal").classList.add("show");
+        $("btnConfirmCreate").onclick = function () {
+          confirmCreate(link);
+        };
+      }
+
+      async function confirmCreate(betbraLink) {
+        if (!auth) {
+          alert("Faça login admin para incluir eventos.");
+          showAuthBanner(true);
+          return;
+        }
+        var ev = selectedEvent;
+        var market = selectedMarket;
+        var runner = selectedRunner;
+        $("btnConfirmCreate").disabled = true;
+        $("btnConfirmCreate").textContent = "Criando…";
+        var publishNow = !($("publishNow") && !$("publishNow").checked);
+        try {
+          var result = await apiPost("/api/arbishield/matches", {
+            eventId: ev.eventId,
+            sportId: ev.sportId,
+            homeTeam: ev.homeTeam,
+            awayTeam: ev.awayTeam,
+            league: ev.league,
+            startsAt: ev.startsAt,
+            marketId: market.marketId,
+            marketName: market.name,
+            runnerId: runner.runnerId,
+            runnerName: runner.name,
+            odd: runner.odd,
+            betbraLink: betbraLink,
+            isPublished: publishNow,
+          });
+          $("createModal").classList.remove("show");
+          var msg =
+            result.action === "market_added"
+              ? "Entrada adicionada ao jogo existente (" +
+                (result.match && result.match.home_team) +
+                " vs " +
+                (result.match && result.match.away_team) +
+                ")" +
+                (result.marketsCount
+                  ? " · " + result.marketsCount + " entrada(s) no total."
+                  : ".")
+              : publishNow
+                ? "Evento publicado! Já aparece em Proteger Aposta para o cliente."
+                : "Evento criado como rascunho. Publique na aba Rascunhos para o cliente ver.";
+          alert(msg);
+          platformLoaded = false;
+          await loadPlatformMatches({ force: true });
+          setView("platform");
+          if (!publishNow) {
+            platformFilter = "draft";
+            document.querySelectorAll("#platformFilters .chip").forEach(function (c) {
+              c.classList.toggle("is-on", c.getAttribute("data-pf") === "draft");
+            });
+            renderPlatformList();
+          }
+        } catch (err) {
+          alert(err.message || "Erro ao criar evento");
+        } finally {
+          $("btnConfirmCreate").disabled = false;
+          $("btnConfirmCreate").textContent = "Confirmar lançamento";
+        }
+      }
+
+      function matchNeedsSettle(m) {
+        if (!m) return false;
+        if (m.settled_at || m.final_score) return false;
+        var st = String(m.status || m.status_v2 || "").toLowerCase();
+        if (["settled", "finished", "closed", "cancelled", "finalizado"].indexOf(st) >= 0) {
+          return false;
+        }
+        return Number(m.used_protection_cents || 0) > 0 || Number(m._openProtections || 0) > 0;
+      }
+
+      function matchBucket(m) {
+        var st = String(m.status || m.status_v2 || "").toLowerCase();
+        var finished =
+          !!m.final_score ||
+          !!m.settled_at ||
+          ["settled", "finished", "closed", "cancelled", "finalizado"].indexOf(st) >= 0;
+        if (finished) return "done";
+        // Com proteção aberta: permanece liquidável (não some da fila após 3h)
+        if (matchNeedsSettle(m)) {
+          var startLive = m.starts_at ? new Date(m.starts_at).getTime() : NaN;
+          if (Number.isFinite(startLive) && startLive <= Date.now()) return "settle";
+          return "settle";
+        }
+        var start = m.starts_at ? new Date(m.starts_at).getTime() : NaN;
+        if (Number.isFinite(start) && start <= Date.now() - 3 * 60 * 60 * 1000) {
+          return "done";
+        }
+        if (!m.is_published) return "draft";
+        if (Number.isFinite(start) && start <= Date.now()) return "live";
+        return "open";
+      }
+
+      function sortPlatform(rows) {
+        var rank = { settle: 0, live: 1, open: 2, draft: 3, done: 4 };
+        return rows.slice().sort(function (a, b) {
+          var ba = matchBucket(a);
+          var bb = matchBucket(b);
+          if (rank[ba] !== rank[bb]) return rank[ba] - rank[bb];
+          var ta = new Date(a.starts_at || 0).getTime();
+          var tb = new Date(b.starts_at || 0).getTime();
+          if (ba === "done" && bb === "done") return tb - ta;
+          return ta - tb;
+        });
+      }
+
+      function renderPlatformList() {
+        var filtered = sortPlatform(
+          platformMatches.filter(function (m) {
+            if (!filterText(m)) return false;
+            var bucket = matchBucket(m);
+            if (platformFilter === "fila") {
+              return (
+                bucket === "open" ||
+                bucket === "live" ||
+                bucket === "settle"
+              );
+            }
+            if (platformFilter === "settle") return bucket === "settle";
+            if (platformFilter === "draft") return bucket === "draft";
+            if (platformFilter === "done") return bucket === "done";
+            return true;
+          })
+        );
+        var counts = { fila: 0, settle: 0, draft: 0, done: 0, all: platformMatches.length };
+        platformMatches.forEach(function (m) {
+          var b = matchBucket(m);
+          if (b === "open" || b === "live" || b === "settle") counts.fila += 1;
+          if (b === "settle") counts.settle += 1;
+          if (b === "draft") counts.draft += 1;
+          if (b === "done") counts.done += 1;
+        });
+        $("platformMeta").textContent =
+          filtered.length +
+          " na vista · fila " +
+          counts.fila +
+          " · a liquidar " +
+          counts.settle +
+          " · rascunhos " +
+          counts.draft +
+          " · finalizados " +
+          counts.done;
+
+        if (!filtered.length) {
+          $("platformContent").innerHTML =
+            '<div class="empty">' +
+            (platformFilter === "fila"
+              ? "Nenhum jogo atual/próximo na fila. Use a aba “A liquidar” para jogos com proteção ainda aberta."
+              : platformFilter === "settle"
+                ? "Nenhum jogo pendente de liquidação (com proteção aberta)."
+                : "Nenhum jogo encontrado nesta categoria") +
+            "</div>";
+          return;
+        }
+        $("platformContent").innerHTML =
+          '<div class="list">' +
+          filtered
+            .map(function (m) {
+              var bucket = matchBucket(m);
+              var badge =
+                bucket === "settle"
+                  ? '<span class="badge live">A liquidar</span>'
+                  : bucket === "live"
+                    ? '<span class="badge live">Ao vivo</span>'
+                    : bucket === "done"
+                      ? '<span class="badge done">Finalizado</span>'
+                      : m.is_published
+                        ? '<span class="badge pub">Na fila</span>'
+                        : '<span class="badge draft">Rascunho</span>';
+              var markets = Array.isArray(m.markets) ? m.markets : [];
+              var names = markets
+                .map(function (x) { return x && x.name; })
+                .filter(Boolean)
+                .slice(0, 3)
+                .join(" · ");
+              var extra =
+                markets.length > 3 ? " + " + (markets.length - 3) + " mais" : "";
+              var publishBtn =
+                bucket === "draft"
+                  ? '<button class="btn btn-primary btn-sm" type="button" data-publish="' +
+                    m.id +
+                    '" style="margin-top:8px">Publicar</button>'
+                  : "";
+              var settleBtn =
+                bucket === "settle" || bucket === "live"
+                  ? '<button class="btn btn-primary btn-sm" type="button" data-settle="' +
+                    m.id +
+                    '" style="margin-top:8px">Encerrar partida</button>'
+                  : "";
+              var used = Number(m.used_protection_cents || 0);
+              var openN = Number(m._openProtections || 0);
+              var homeLogo = m.home_logo
+                ? '<img src="' +
+                  escHtml(m.home_logo) +
+                  '" alt="" onerror="this.style.display=\'none\'" />'
+                : "";
+              var awayLogo = m.away_logo
+                ? '<img src="' +
+                  escHtml(m.away_logo) +
+                  '" alt="" onerror="this.style.display=\'none\'" />'
+                : "";
+              return (
+                '<div class="row" style="cursor:default">' +
+                "<div><div class=\"teams row-teams-with-logos\">" +
+                homeLogo +
+                "<span>" +
+                escHtml(m.home_team) +
+                "</span><span>vs</span>" +
+                awayLogo +
+                "<span>" +
+                escHtml(m.away_team) +
+                "</span></div>" +
+                '<div class="meta">' +
+                escHtml(m.league || "—") +
+                (names ? " · " + escHtml(names) + extra : "") +
+                "</div>" +
+                '<div class="entries">' +
+                markets.length +
+                " entrada(s) · liquidez " +
+                money(m.max_protection_cents) +
+                (used > 0 ? " · protegido " + money(used) : "") +
+                (openN > 0 ? " · " + openN + " proteção(ões) aberta(s)" : "") +
+                "</div>" +
+                publishBtn +
+                settleBtn +
+                "</div>" +
+                '<div class="time">' +
+                badge +
+                '<div class="when">' +
+                fmtDate(m.starts_at) +
+                "</div></div></div>"
+              );
+            })
+            .join("") +
+          "</div>";
+
+        $("platformContent").querySelectorAll("button[data-publish]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            publishMatch(btn.getAttribute("data-publish"), btn);
+          });
+        });
+        $("platformContent").querySelectorAll("button[data-settle]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            openSettleModal(btn.getAttribute("data-settle"));
+          });
+        });
+      }
+
+      async function publishMatch(matchId, btn) {
+        if (!auth) {
+          alert("Faça login admin para publicar.");
+          return;
+        }
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "Publicando…";
+        }
+        try {
+          await rest("matches?id=eq." + encodeURIComponent(matchId), auth.token, {
+            method: "PATCH",
+            body: {
+              is_published: true,
+              updated_at: new Date().toISOString(),
+            },
+          });
+          var row = platformMatches.find(function (m) { return m.id === matchId; });
+          if (row) row.is_published = true;
+          alert("Publicado! O jogo já aparece em Proteger Aposta para o cliente.");
+          renderPlatformList();
+          renderStats();
+        } catch (err) {
+          alert(err.message || "Falha ao publicar");
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Publicar";
+          }
+        }
+      }
+
+      // (filterText já cobre home_team/away_team da plataforma)
+
+      async function loadPrelive() {
+        $("preliveContent").innerHTML = '<div class="loading">Consultando BetBra…</div>';
+        try {
+          var data = await apiGet("/api/arbishield/prelive-events");
+          preliveEvents = data.events || [];
+          $("preliveMeta").textContent = (data.total || 0) + " jogos · janela até " + fmtDate(data.window && data.window.to);
+          if (selectedEvent) {
+            var still = preliveEvents.find(function (e) { return e.eventId === selectedEvent.eventId; });
+            if (still) loadMarkets(still);
+            else { selectedEvent = null; renderPreliveList(); }
+          } else {
+            renderPreliveList();
+          }
+        } catch (err) {
+          $("preliveContent").innerHTML = '<div class="error">' + err.message + "</div>";
+        }
+        renderStats();
+      }
+
+      async function loadPlatformMatches(options) {
+        options = options || {};
+        var force = !!options.force;
+        if (platformLoading) return;
+        if (!auth) {
+          platformLoaded = false;
+          platformMatches = [];
+          $("platformContent").innerHTML =
+            '<div class="empty">Login admin necessário para listar eventos da plataforma.</div>';
+          renderStats();
+          return;
+        }
+        if (platformLoaded && !force && platformMatches.length) {
+          renderPlatformList();
+          renderStats();
+          return;
+        }
+        platformLoading = true;
+        if (!platformLoaded || force) {
+          $("platformContent").innerHTML = '<div class="loading">Carregando…</div>';
+        }
+        try {
+          platformMatches = await rest(
+            "matches?deleted_at=is.null&select=id,home_team,away_team,home_logo,away_logo,league,starts_at,is_published,status,status_v2,final_score,settled_at,max_protection_cents,used_protection_cents,markets&order=starts_at.desc&limit=500",
+            auth.token
+          );
+          // Marca jogos com proteção ainda aberta (LAY + BACK)
+          var openByMatch = {};
+          try {
+            var openProt = await rest(
+              "protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,responsibility_cents,platform_deduction_cents,locked_deduction_cents&limit=2000",
+              auth.token
+            );
+            (openProt || []).forEach(function (p) {
+              if (!p.match_id) return;
+              if (!openByMatch[p.match_id]) {
+                openByMatch[p.match_id] = {
+                  count: 0,
+                  cents: 0,
+                  refund: 0,
+                  margin: 0,
+                };
+              }
+              var amt = Number(p.responsibility_cents || p.amount_cents || 0);
+              var margin = Number(
+                p.platform_deduction_cents != null
+                  ? p.platform_deduction_cents
+                  : p.locked_deduction_cents || 0
+              );
+              openByMatch[p.match_id].count += 1;
+              openByMatch[p.match_id].cents += amt;
+              // Reembolso ArbiShield = só stake/responsabilidade (sem lucro)
+              openByMatch[p.match_id].refund += amt;
+              openByMatch[p.match_id].margin += Math.max(0, margin);
+            });
+          } catch (e1) {}
+          try {
+            var openBack = await rest(
+              "back_protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,platform_deduction_cents,locked_deduction_cents&limit=1000",
+              auth.token
+            );
+            (openBack || []).forEach(function (p) {
+              if (!p.match_id) return;
+              if (!openByMatch[p.match_id]) {
+                openByMatch[p.match_id] = {
+                  count: 0,
+                  cents: 0,
+                  refund: 0,
+                  margin: 0,
+                };
+              }
+              var amt = Number(p.amount_cents || 0);
+              var margin = Number(
+                p.platform_deduction_cents != null
+                  ? p.platform_deduction_cents
+                  : p.locked_deduction_cents || 0
+              );
+              openByMatch[p.match_id].count += 1;
+              openByMatch[p.match_id].cents += amt;
+              openByMatch[p.match_id].refund += amt;
+              openByMatch[p.match_id].margin += Math.max(0, margin);
+            });
+          } catch (e2) {}
+
+          var known = {};
+          platformMatches.forEach(function (m) {
+            known[m.id] = true;
+            var op = openByMatch[m.id];
+            if (op) {
+              m._openProtections = op.count;
+              m._openStakeCents = op.cents;
+              m._openRefundCents = op.refund;
+              m._openMarginCents = op.margin;
+              if (!(Number(m.used_protection_cents) > 0)) {
+                m.used_protection_cents = op.cents;
+              }
+            }
+          });
+
+          // Inclui jogos que têm proteção aberta mas ficaram de fora do limit
+          var missingIds = Object.keys(openByMatch).filter(function (id) {
+            return !known[id];
+          });
+          if (missingIds.length) {
+            var extra = await rest(
+              "matches?id=in.(" +
+                missingIds.map(encodeURIComponent).join(",") +
+                ")&deleted_at=is.null&select=id,home_team,away_team,home_logo,away_logo,league,starts_at,is_published,status,status_v2,final_score,settled_at,max_protection_cents,used_protection_cents,markets",
+              auth.token
+            );
+            (extra || []).forEach(function (m) {
+              var op = openByMatch[m.id];
+              m._openProtections = op ? op.count : 0;
+              m._openStakeCents = op ? op.cents : 0;
+              m._openRefundCents = op ? op.refund : 0;
+              m._openMarginCents = op ? op.margin : 0;
+              if (!(Number(m.used_protection_cents) > 0) && op) {
+                m.used_protection_cents = op.cents;
+              }
+              platformMatches.push(m);
+            });
+          }
+
+          platformLoaded = true;
+          // Mantém A liquidar na 1ª carga se houver jogos; senão cai na fila
+          var settleN = platformMatches.filter(function (m) {
+            return matchBucket(m) === "settle";
+          }).length;
+          if (!force) {
+            platformFilter = settleN > 0 ? "settle" : "fila";
+            document.querySelectorAll("#platformFilters .chip").forEach(function (c) {
+              c.classList.toggle("is-on", c.getAttribute("data-pf") === platformFilter);
+            });
+          }
+          renderPlatformList();
+        } catch (err) {
+          platformLoaded = false;
+          $("platformContent").innerHTML = '<div class="error">' + err.message + "</div>";
+        } finally {
+          platformLoading = false;
+        }
+        renderStats();
+      }
+
+      function setView(next) {
+        view = next;
+        document.querySelectorAll("#viewTabs .tab").forEach(function (tab) {
+          tab.classList.toggle("active", tab.getAttribute("data-view") === next);
+        });
+        $("prelivePanel").hidden = next !== "prelive";
+        $("platformPanel").hidden = next !== "platform";
+        var hint = $("settleHint");
+        if (hint) hint.style.display = "block";
+        if (next === "platform") renderPlatformList();
+        else if (!selectedEvent) renderPreliveList();
+      }
+
+      /** Fluxo normal de cadastro: catálogo BetBra (não drawer manual / não desafio). */
+      function openNormalLaunch() {
+        closeManualDrawer();
+        selectedEvent = null;
+        setView("prelive");
+        if (!preliveEvents.length) loadPrelive();
+        else renderPreliveList();
+        try {
+          $("prelivePanel").scrollIntoView({ behavior: "smooth", block: "start" });
+        } catch (e) {}
+      }
+
+      var manualMarkets = [];
+
+      function bindSwitch(id, onChange) {
+        var el = $(id);
+        if (!el) return;
+        el.addEventListener("click", function () {
+          var on = !el.classList.contains("on");
+          el.classList.toggle("on", on);
+          el.setAttribute("aria-pressed", on ? "true" : "false");
+          if (onChange) onChange(on);
+        });
+      }
+
+      function parseMoneyToNumber(raw) {
+        if (raw == null || raw === "") return null;
+        var s = String(raw).trim();
+        if (!s) return null;
+        // 25.000,00 → 25000.00 · 25000 → 25000
+        if (s.indexOf(",") >= 0) {
+          s = s.replace(/\./g, "").replace(",", ".");
+        } else {
+          s = s.replace(/[^\d.]/g, "");
+        }
+        var n = Number(s);
+        return Number.isFinite(n) ? n : null;
+      }
+
+      function renderManualMarkets() {
+        var host = $("manMarkets");
+        if (!host) return;
+        if (!manualMarkets.length) {
+          host.innerHTML = '<div class="empty" style="margin:0">Nenhum mercado. Clique em Adicionar mercado.</div>';
+          return;
+        }
+        host.innerHTML = manualMarkets
+          .map(function (m, idx) {
+            return (
+              '<div class="market-card" data-idx="' + idx + '">' +
+              '<div class="mh"><strong>Mercado ' + (idx + 1) + "</strong>" +
+              '<button type="button" class="btn btn-ghost btn-sm" data-rm="' + idx + '">Remover</button></div>' +
+              '<div class="grid2">' +
+              '<div class="field"><label>Tipo</label><select data-f="market_type">' +
+              '<option value="LAY"' + (m.market_type === "LAY" ? " selected" : "") + ">LAY</option>" +
+              '<option value="BACK"' + (m.market_type === "BACK" ? " selected" : "") + ">BACK</option>" +
+              "</select></div>" +
+              '<div class="field"><label>Nome do mercado</label>' +
+              '<input data-f="name" value="' + String(m.name || "").replace(/"/g, "&quot;") + '" placeholder="Digite o mercado (ex.: LAY HOME)" /></div>' +
+              '</div><div class="grid2">' +
+              '<div class="field"><label>ID externo</label>' +
+              '<input data-f="external_id" value="' + String(m.external_id || "").replace(/"/g, "&quot;") + '" placeholder="Ex: 1.22456" /></div>' +
+              '<div class="field"><label>Odd</label>' +
+              '<input data-f="odd" value="' + (m.odd != null ? m.odd : "") + '" placeholder="Ex: 2.00" /></div>' +
+              '</div><div class="grid2">' +
+              '<div class="field"><label>Liquidez real (R$)</label>' +
+              '<input data-f="liquidity_brl" value="' + (m.liquidity_brl != null ? m.liquidity_brl : "2000") + '" placeholder="Controla a entrada" /></div>' +
+              '<div class="field"><label>Liquidez exibida (R$) — opcional</label>' +
+              '<input data-f="display_brl" value="' + (m.display_brl != null ? m.display_brl : "") + '" placeholder="O que o usuário vê" /></div>' +
+              "</div></div>"
+            );
+          })
+          .join("");
+
+        host.querySelectorAll("[data-rm]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            syncManualMarketsFromDom();
+            manualMarkets.splice(Number(btn.getAttribute("data-rm")), 1);
+            renderManualMarkets();
+          });
+        });
+        host.querySelectorAll("[data-f]").forEach(function (input) {
+          input.addEventListener("change", syncManualMarketsFromDom);
+          input.addEventListener("input", syncManualMarketsFromDom);
+        });
+      }
+
+      function syncManualMarketsFromDom() {
+        var cards = $("manMarkets").querySelectorAll(".market-card");
+        manualMarkets = Array.prototype.map.call(cards, function (card) {
+          var get = function (f) {
+            var el = card.querySelector('[data-f="' + f + '"]');
+            return el ? el.value : "";
+          };
+          return {
+            market_type: get("market_type") || "LAY",
+            name: get("name"),
+            external_id: get("external_id"),
+            odd: get("odd"),
+            liquidity_brl: get("liquidity_brl"),
+            display_brl: get("display_brl"),
+          };
+        });
+      }
+
+      function openManualDrawer() {
+        if (!auth) {
+          alert("Faça login admin para adicionar jogos.");
+          showAuthBanner(true);
+          return;
+        }
+        $("manHome").value = "";
+        $("manAway").value = "";
+        $("manHomeLogo").value = "";
+        $("manAwayLogo").value = "";
+        setTeamLogoPreview("home", "");
+        setTeamLogoPreview("away", "");
+        hideTeamSuggest("home");
+        hideTeamSuggest("away");
+        $("manLeague").value = "";
+        $("manExternalId").value = "";
+        $("manSport").value = "futebol";
+        $("manStatus").value = "open";
+        $("manStarts").value = "";
+        ["manLiberarProtecao", "manLiberarLive", "manEsconder"].forEach(function (id) {
+          var el = $(id);
+          if (!el) return;
+          el.classList.remove("on");
+          el.setAttribute("aria-pressed", "false");
+        });
+        // Liberar proteção ON por padrão (igual site antigo)
+        if ($("manLiberarProtecao")) {
+          $("manLiberarProtecao").classList.add("on");
+          $("manLiberarProtecao").setAttribute("aria-pressed", "true");
+        }
+        // Mercado padrão oculto — só cria no save se a lista estiver vazia
+        manualMarkets = [];
+        renderManualMarkets();
+        $("manualDrawer").classList.add("show");
+      }
+
+      function closeManualDrawer() {
+        $("manualDrawer").classList.remove("show");
+      }
+
+      function manualIsPublished() {
+        var liberar = $("manLiberarProtecao") && $("manLiberarProtecao").classList.contains("on");
+        var esconder = $("manEsconder") && $("manEsconder").classList.contains("on");
+        return Boolean(liberar && !esconder);
+      }
+
+      async function saveManualMatch() {
+        if (!auth) {
+          alert("Faça login admin para adicionar jogos.");
+          return;
+        }
+        syncManualMarketsFromDom();
+        var home = $("manHome").value.trim();
+        var away = $("manAway").value.trim();
+        var starts = $("manStarts").value;
+        if (!home || !away) {
+          alert("Informe time de casa e time de fora.");
+          return;
+        }
+        if (!starts) {
+          alert("Informe data e hora início.");
+          return;
+        }
+        if (!manualMarkets.length) {
+          manualMarkets = [
+            {
+              market_type: "LAY",
+              name: "LAY HOME",
+              external_id: "",
+              odd: "2.00",
+              liquidity_brl: "2000",
+              display_brl: "",
+            },
+          ];
+        }
+        var markets = manualMarkets.map(function (m) {
+          var odd = Number(String(m.odd).replace(",", "."));
+          var liqBrl = parseMoneyToNumber(m.liquidity_brl);
+          var dispBrl = parseMoneyToNumber(m.display_brl);
+          return {
+            name: m.name || "LAY HOME",
+            market_type: m.market_type || "LAY",
+            external_id: m.external_id || null,
+            odd: odd,
+            liquidity_brl: liqBrl != null ? liqBrl : 2000,
+            display_liquidity: dispBrl != null ? Math.round(dispBrl * 100) : null,
+          };
+        });
+        var published = manualIsPublished();
+        var btn = $("btnSaveManual");
+        btn.disabled = true;
+        btn.textContent = "Salvando…";
+        try {
+          var result = await apiPost("/api/arbishield/matches", {
+            mode: "manual",
+            home_team: home,
+            away_team: away,
+            home_logo: $("manHomeLogo").value.trim() || null,
+            away_logo: $("manAwayLogo").value.trim() || null,
+            league: $("manLeague").value.trim() || null,
+            external_id: $("manExternalId").value.trim() || null,
+            starts_at: new Date(starts).toISOString(),
+            sport_type: $("manSport").value,
+            status: $("manStatus").value,
+            is_published: published,
+            score_sync_enabled: false,
+            has_live_stream: $("manLiberarLive") && $("manLiberarLive").classList.contains("on"),
+            hide_from_site: $("manEsconder") && $("manEsconder").classList.contains("on"),
+            external_bet_link: null,
+            markets: markets,
+          });
+          closeManualDrawer();
+          alert(
+            result.action === "created"
+              ? "Jogo criado com sucesso!" +
+                (result.match && result.match.is_published
+                  ? " Proteção liberada na fila do cliente."
+                  : " Salvo oculto / sem liberar proteção.")
+              : "Evento salvo."
+          );
+          platformLoaded = false;
+          await loadPlatformMatches({ force: true });
+          setView("platform");
+          platformFilter = result.match && result.match.is_published ? "fila" : "draft";
+          document.querySelectorAll("#platformFilters .chip").forEach(function (c) {
+            c.classList.toggle("is-on", c.getAttribute("data-pf") === platformFilter);
+          });
+          renderPlatformList();
+        } catch (err) {
+          alert(err.message || "Erro ao criar jogo");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Lançar evento";
+        }
+      }
+
+      var settleMatchId = null;
+
+      function setSettleOutcome(outcome) {
+        $("settleOutcome").value = outcome;
+        var arbi = $("btnOutcomeArbi");
+        var exch = $("btnOutcomeExch");
+        if (arbi) {
+          arbi.style.borderColor =
+            outcome === "arbishield" ? "rgba(201,242,35,0.8)" : "var(--border)";
+          arbi.style.background =
+            outcome === "arbishield" ? "rgba(201,242,35,0.1)" : "transparent";
+        }
+        if (exch) {
+          exch.style.borderColor =
+            outcome === "exchange" ? "rgba(245,158,11,0.8)" : "var(--border)";
+          exch.style.background =
+            outcome === "exchange" ? "rgba(245,158,11,0.1)" : "transparent";
+        }
+      }
+
+      function openSettleModal(matchId) {
+        var m = platformMatches.find(function (x) { return String(x.id) === String(matchId); });
+        if (!m) return;
+        settleMatchId = matchId;
+        var stake = Number(m._openStakeCents || m.used_protection_cents || 0);
+        var refund = Number(m._openRefundCents || stake);
+        var margin = Number(m._openMarginCents || 0);
+        var openN = Number(m._openProtections || 0);
+        $("settleSummary").textContent =
+          (m.home_team || "?") +
+          " vs " +
+          (m.away_team || "?") +
+          " · " +
+          openN +
+          " proteção(ões) · protegido " +
+          money(stake);
+        if ($("settleRefundHint")) {
+          $("settleRefundHint").textContent =
+            "A reembolsar: " + money(refund) + "  ·  só stake/responsabilidade";
+        }
+        if ($("settleDeductHint")) {
+          $("settleDeductHint").textContent =
+            margin > 0
+              ? "Dedução / margem ArbiShield: " + money(margin)
+              : "Dedução / margem ArbiShield: — (sem platform_deduction nesta proteção)";
+        }
+        if ($("settleStakeKeepHint")) {
+          $("settleStakeKeepHint").textContent =
+            "Stake do usuário (" +
+            money(stake) +
+            ") já foi debitado na entrada e permanece na plataforma — não é a “dedução”.";
+        }
+        $("settleHome").value = "";
+        $("settleAway").value = "";
+        setSettleOutcome("arbishield");
+        $("settleModal").classList.add("show");
+      }
+
+      async function postSettle(payload) {
+        async function call(url, body) {
+          var res = await fetch(url, {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer " + auth.token,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+          });
+          var data = await res.json().catch(function () { return {}; });
+          return { res: res, data: data };
+        }
+
+        function isRealOk(data) {
+          if (!data || data.error || data.ok === false) return false;
+          // exige evidência real de liquidação
+          return (
+            data.ok === true ||
+            (data.settledCount != null && Number(data.settledCount) >= 0 && data.matchId) ||
+            (data.matchId && data.outcome)
+          );
+        }
+
+        // 1) match-settle (shim) — pode estar sem nginx
+        var a = await call("/api/arbishield/match-settle", payload);
+        if (a.res.ok && isRealOk(a.data)) return a.data;
+
+        // 2) matches?mode=settle — já roteado para :3098 em produção
+        var b = await call("/api/arbishield/matches", Object.assign({ mode: "settle" }, payload));
+        if (b.res.ok && isRealOk(b.data)) return b.data;
+
+        var errMsg =
+          (b.data && (b.data.error || b.data.message)) ||
+          (a.data && (a.data.error || a.data.message)) ||
+          "Falha ao liquidar — API não liquidou proteções. Rode o hotfix na VPS.";
+        if (/odd\s*inv[aá]lida/i.test(String(errMsg))) {
+          errMsg =
+            "Servidor ainda sem liquidação (versão antiga). Rode na VPS: vps-hotfix-encerrar-odd-invalida.sh";
+        }
+        throw new Error(errMsg);
+      }
+
+      async function confirmSettle() {
+        if (!settleMatchId || !auth) {
+          alert("Faça login admin.");
+          return;
+        }
+        var home = String($("settleHome").value || "0").trim() || "0";
+        var away = String($("settleAway").value || "0").trim() || "0";
+        var outcome = $("settleOutcome").value;
+        if (outcome !== "arbishield" && outcome !== "exchange") {
+          alert("Selecione onde bateu: ArbiShield ou Casa externa.");
+          return;
+        }
+        $("btnConfirmSettle").disabled = true;
+        $("btnConfirmSettle").textContent = "Liquidando…";
+        try {
+          var data = await postSettle({
+            matchId: settleMatchId,
+            outcome: outcome,
+            finalScore: home + "-" + away,
+            homeScore: Number(home),
+            awayScore: Number(away),
+            winner: "home",
+          });
+          if (!(Number(data.settledCount) >= 0) || !data.matchId) {
+            throw new Error("Liquidação sem confirmação do servidor.");
+          }
+          // Confere se ainda há proteção ativa neste jogo
+          try {
+            var still = await rest(
+              "protections?match_id=eq." +
+                encodeURIComponent(settleMatchId) +
+                "&status=in.(active,pending,review_odd)&select=id&limit=5",
+              auth.token
+            );
+            if (still && still.length) {
+              throw new Error(
+                "Partida marcada, mas ainda há " +
+                  still.length +
+                  " proteção(ões) ATIVA(s). Tente de novo ou rode o hotfix."
+              );
+            }
+          } catch (verifyErr) {
+            if (/ainda há/.test(verifyErr.message || "")) throw verifyErr;
+          }
+          alert(
+            "Partida encerrada · " +
+              Number(data.settledCount || 0) +
+              " proteção(ões) · " +
+              (outcome === "arbishield"
+                ? "reembolso " + money(data.refundedCents || 0)
+                : "sem reembolso (casa externa)")
+          );
+          $("settleModal").classList.remove("show");
+          platformLoaded = false;
+          await loadPlatformMatches({ force: true });
+          platformFilter = "done";
+          document.querySelectorAll("#platformFilters .chip").forEach(function (c) {
+            c.classList.toggle("is-on", c.getAttribute("data-pf") === "done");
+          });
+          renderPlatformList();
+        } catch (err) {
+          alert(err.message || "Erro ao encerrar partida");
+        } finally {
+          $("btnConfirmSettle").disabled = false;
+          $("btnConfirmSettle").textContent = "Liquidar jogo";
+        }
+      }
+
+      async function boot() {
+        showAppShell();
+
+        $("btnRefresh").addEventListener("click", function () {
+          loadPrelive();
+          resolveAuth(false).then(function (next) {
+            auth = next;
+            showAuthBanner(!auth);
+            loadPlatformMatches({ force: true });
+          });
+        });
+        $("search").addEventListener("input", function (e) {
+          searchTerm = e.target.value.trim();
+          if (view === "prelive" && !selectedEvent) renderPreliveList();
+          else if (view === "platform") renderPlatformList();
+        });
+        document.querySelectorAll("#viewTabs .tab").forEach(function (tab) {
+          tab.addEventListener("click", function () {
+            var next = tab.getAttribute("data-view");
+            setView(next);
+            if (next === "platform" && auth && !platformLoaded) {
+              loadPlatformMatches();
+            }
+          });
+        });
+        $("btnCancelCreate").addEventListener("click", function () {
+          $("createModal").classList.remove("show");
+        });
+        $("createModal").addEventListener("click", function (e) {
+          if (e.target === $("createModal")) $("createModal").classList.remove("show");
+        });
+        if ($("btnCancelSettle")) {
+          $("btnCancelSettle").addEventListener("click", function () {
+            $("settleModal").classList.remove("show");
+          });
+        }
+        if ($("btnConfirmSettle")) {
+          $("btnConfirmSettle").addEventListener("click", confirmSettle);
+        }
+        if ($("btnOutcomeArbi")) {
+          $("btnOutcomeArbi").addEventListener("click", function () {
+            setSettleOutcome("arbishield");
+          });
+        }
+        if ($("btnOutcomeExch")) {
+          $("btnOutcomeExch").addEventListener("click", function () {
+            setSettleOutcome("exchange");
+          });
+        }
+        if ($("settleModal")) {
+          $("settleModal").addEventListener("click", function (e) {
+            if (e.target === $("settleModal")) $("settleModal").classList.remove("show");
+          });
+        }
+        if ($("onlyWithOdds")) {
+          $("onlyWithOdds").addEventListener("change", function () {
+            if (window.__preliveMarketsData) renderMarkets(window.__preliveMarketsData);
+          });
+        }
+        document.querySelectorAll("#platformFilters .chip").forEach(function (chip) {
+          chip.addEventListener("click", function () {
+            document.querySelectorAll("#platformFilters .chip").forEach(function (c) {
+              c.classList.remove("is-on");
+            });
+            chip.classList.add("is-on");
+            platformFilter = chip.getAttribute("data-pf") || "fila";
+            renderPlatformList();
+          });
+        });
+
+        bindSwitch("manLiberarProtecao");
+        bindSwitch("manLiberarLive");
+        bindSwitch("manEsconder");
+        $("btnAddMatch").addEventListener("click", openNormalLaunch);
+        if ($("btnManualMatch")) {
+          $("btnManualMatch").addEventListener("click", openManualDrawer);
+        }
+        $("btnCancelManual").addEventListener("click", closeManualDrawer);
+        $("btnSaveManual").addEventListener("click", saveManualMatch);
+        $("btnAddMarket").addEventListener("click", function () {
+          syncManualMarketsFromDom();
+          manualMarkets.push({
+            market_type: "LAY",
+            name: "LAY HOME",
+            external_id: "",
+            odd: "2.00",
+            liquidity_brl: "2000",
+            display_brl: "",
+          });
+          renderManualMarkets();
+        });
+        $("manualDrawer").addEventListener("click", function (e) {
+          if (e.target === $("manualDrawer")) closeManualDrawer();
+        });
+
+        await loadPrelive();
+        auth = await resolveAuth();
+        showAuthBanner(!auth);
+        setView("platform");
+        await loadPlatformMatches();
+      }
+
+      boot().catch(function (err) {
+        showAppShell();
+        $("preliveContent").innerHTML = '<div class="error">' + (err.message || "Erro ao iniciar") + "</div>";
+      });
+
+      window.addEventListener("pageshow", function (ev) {
+        if (!ev.persisted) return;
+        resolveAuth(false).then(function (next) {
+          auth = next;
+          showAuthBanner(!auth);
+          if (auth) loadPlatformMatches({ force: true });
+        });
+      });
+    })();
+  </script>
+</body>
+</html>
