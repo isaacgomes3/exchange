@@ -333,9 +333,9 @@
     <div class="dz-wallet-cell">
       <div class="dz-wallet-ico lime" aria-hidden="true">↗</div>
       <div>
-        <div class="dz-wallet-l">Saldo do desafio atual</div>
+        <div class="dz-wallet-l">Saldo desafio congelado</div>
         <div class="dz-wallet-v lime" id="dzWalletSaldo">—</div>
-        <p class="dz-wallet-hint">Acumula os lucros das vitórias na ArbiShield.</p>
+        <p class="dz-wallet-hint">Lucro do resultado “Bateu ArbiShield” — fica no circuito, fora da banca PIX.</p>
       </div>
     </div>
   </section>
@@ -391,6 +391,8 @@
       function renderWalletBar() {
         setTxt("dzWalletBanca", money(walletState.desafioWalletCents));
         setTxt("dzWalletSaldo", money(walletState.desafioSaldoCents));
+        // Top nav DESAFIO = só banca liberada (PIX), sem o congelado do circuito
+        setTxt("v2BalDesafio", money(walletState.desafioWalletCents));
         var stepsHost = document.getElementById("dzWalletSteps");
         var hint = document.getElementById("dzWalletProgressHint");
         renderSectionHead();
@@ -579,7 +581,7 @@
           var p = profileRes.data || {};
           walletState.bancaCents =
             Number(p.balance_cents || 0) + Number(p.reusable_balance_cents || 0);
-          walletState.desafioWalletCents = Number(p.desafio_balance_cents || 0);
+          var rawDesafioBal = Number(p.desafio_balance_cents || 0);
 
           var active = Array.isArray(activeDesafios) ? activeDesafios[0] : null;
           var steps = active
@@ -613,7 +615,7 @@
             return stepIds[String(p.step_id)];
           });
 
-          var saldo = 0;
+          var frozen = 0;
           var states = [];
           for (var si = 0; si < circuitMax; si++) states.push("pending");
           var hasPendingEntry = false;
@@ -627,10 +629,11 @@
             if (result === "won" || result === "win") {
               if (side === "arbishield") {
                 states[idx] = "done";
-                saldo += Number(p.profit_cents || 0);
+                // Lucro do “Bateu ArbiShield” → saldo desafio congelado (circuito)
+                frozen += Number(p.profit_cents || 0);
               } else if (side === "casa" || side === "exchange") {
                 states[idx] = "lost";
-                saldo = 0;
+                frozen = 0;
               }
             } else if (result === "lost" || result === "lose") {
               states[idx] = side === "arbishield" ? "lost" : "done";
@@ -652,7 +655,12 @@
                 ) ||
                 1
               : 0;
-          walletState.desafioSaldoCents = saldo;
+          // Congelado = lucro ArbiShield; banca PIX = saldo total menos o congelado
+          walletState.desafioSaldoCents = Math.max(0, frozen);
+          walletState.desafioWalletCents = Math.max(
+            0,
+            rawDesafioBal - walletState.desafioSaldoCents
+          );
           walletState.desafioActive = Boolean(active && myParts.length > 0);
           walletState.inProgress = Boolean(hasPendingEntry);
         } catch (ex) {
@@ -907,10 +915,19 @@
         };
       }
 
+      /** Etapa 1 = banca PIX; etapa 2+ = saldo desafio congelado (lucro ArbiShield). */
+      function stakeBudgetCents(stepIndex) {
+        var idx = Number(stepIndex) || 1;
+        if (idx > 1) {
+          return Math.max(0, Number(walletState.desafioSaldoCents) || 0);
+        }
+        return Math.max(0, Number(walletState.desafioWalletCents) || 0);
+      }
+
       function applyStakeToCard(cardEl, item, entradaCents) {
         if (!cardEl || !item) return;
         var capped = Math.max(0, Number(entradaCents) || 0);
-        var maxWallet = Math.max(0, Number(walletState.desafioWalletCents) || 0);
+        var maxWallet = stakeBudgetCents(item.stepIndex);
         if (maxWallet > 0 && capped > maxWallet) capped = maxWallet;
         stakeEdits[item.id] = capped;
         item.entradaCents = capped;
@@ -1037,8 +1054,8 @@
         var teams = splitTeams(step || {});
         var stepIndex = Number(step.step_index) || 1;
         var initialEntrada = Number(desafio.initial_balance_cents) || 20000;
-        var walletEntrada = Math.max(0, Number(walletState.desafioWalletCents) || 0);
-        // Etapa 2+: entrada padrão = saldo atual do desafio (após ganho na ArbiShield)
+        // Etapa 2+: entrada padrão = saldo desafio congelado (lucro “Bateu ArbiShield”)
+        var walletEntrada = stakeBudgetCents(stepIndex);
         var defaultEntrada =
           stepIndex > 1 && walletEntrada > 0 ? walletEntrada : initialEntrada;
         var pct = Number(desafio.target_profit_pct);
@@ -1330,7 +1347,7 @@
             applyStakeToCard(
               cardEl,
               item,
-              Math.max(0, Number(walletState.desafioWalletCents) || 0)
+              stakeBudgetCents(item.stepIndex)
             );
           });
         });
@@ -1380,10 +1397,12 @@
               alert("Informe um valor de entrada maior que zero.");
               return;
             }
-            var maxWallet = Math.max(0, Number(walletState.desafioWalletCents) || 0);
+            var maxWallet = stakeBudgetCents(item.stepIndex);
             if (amountCents > maxWallet) {
               alert(
-                "Saldo da banca do Desafio insuficiente. Deposite ou use MAX com o saldo disponível."
+                Number(item.stepIndex) > 1
+                  ? "Saldo desafio congelado insuficiente para esta etapa."
+                  : "Saldo da banca do Desafio insuficiente. Deposite ou use MAX com o saldo disponível."
               );
               return;
             }
