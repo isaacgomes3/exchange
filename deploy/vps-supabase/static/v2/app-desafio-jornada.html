@@ -25,10 +25,21 @@
       --j-muted: #8b9690;
     }
 
-    .j-page { max-width: 1100px; margin: 0 auto; padding-bottom: 48px; }
+    .j-page {
+      width: 100%;
+      max-width: none;
+      margin: 0;
+      padding: 0 0 32px;
+      box-sizing: border-box;
+    }
+    /* Ocupa toda a área útil do .v2-main, sem laterais largas */
+    body[data-shell="app"] .v2-page:has(.j-page) {
+      padding-left: 10px;
+      padding-right: 10px;
+    }
     .j-hero {
       text-align: center;
-      margin: 8px 0 28px;
+      margin: 4px 0 14px;
       position: relative;
     }
     .j-hero::before {
@@ -60,12 +71,13 @@
 
     .j-layout {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 280px;
-      gap: 22px;
+      grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
+      gap: 12px;
       align-items: stretch;
+      width: 100%;
     }
     @media (max-width: 900px) {
-      .j-layout { grid-template-columns: 1fr; }
+      .j-layout { grid-template-columns: 1fr; gap: 14px; }
     }
 
     /* —— Mapa de campanha —— */
@@ -80,7 +92,7 @@
         linear-gradient(180deg, #07140f 0%, #050505 40%, #080808 100%);
       padding: 28px 16px 36px;
       overflow: hidden;
-      min-height: 640px;
+      min-height: 520px;
       display: flex;
       flex-direction: column;
     }
