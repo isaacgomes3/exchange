@@ -301,6 +301,7 @@
           '<a class="v2-bal-chip v2-bal-afiliado" href="/app-afiliados.html"><span class="l">Afiliado</span><span class="v" id="v2BalAfiliado">—</span></a>' +
           '<a class="v2-bal-chip v2-bal-desafio" href="/app-desafio.html"><span class="l">Desafio</span><span class="v" id="v2BalDesafio">—</span></a>' +
           '<a class="v2-bal-chip v2-bal-congelado" href="/app-carteira.html" title="Capital bloqueado em proteções"><span class="l">Congelado</span><span class="v" id="v2BalCongelado">—</span></a>' +
+          '<a class="v2-bal-chip v2-bal-provedor" href="/app-partners.html"><span class="l">Provedor</span><span class="v" id="v2BalProvedor">—</span></a>' +
           "</div>";
         main.appendChild(balBar);
       }
@@ -557,8 +558,7 @@
             setTxt("v2BalDesafio", desafio);
             setTxt("v2BalAfiliado", afiliado);
             setTxt("v2BalCongelado", congelado);
-            // compat: se HTML antigo ainda tiver Provedor
-            setTxt("v2BalProvedor", congelado);
+            setTxt("v2BalProvedor", provedor);
             var displayName =
               p.full_name ||
               (appUser.email ? appUser.email.split("@")[0] : "Membro");

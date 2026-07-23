@@ -781,7 +781,7 @@
     var hdrCongelado = document.getElementById("v2BalCongelado");
     if (hdrCongelado) hdrCongelado.textContent = money(state.locked);
     var hdrProv = document.getElementById("v2BalProvedor");
-    if (hdrProv) hdrProv.textContent = money(state.locked);
+    if (hdrProv) hdrProv.textContent = money(state.providerBalance);
     var hdrDesafio = document.getElementById("v2BalDesafio");
     if (hdrDesafio) hdrDesafio.textContent = money(state.desafio);
     var hdrAff = document.getElementById("v2BalAfiliado");
