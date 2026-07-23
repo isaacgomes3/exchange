@@ -2,7 +2,7 @@
 # Hotfix: visual Desafios + lançamento 1 evento (etapa = falha do cliente)
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=18")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=19")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -68,6 +68,7 @@ grep -q 'em andamento' "$WEB/app-desafio.html" || die "HTML sem progresso em and
 grep -q 'desafio-no-filter-tabs' "$WEB/app-desafio.html" || die "HTML sem marcador desafio-no-filter-tabs"
 grep -q 'data-f="Todos"' "$WEB/app-desafio.html" && die "abas de filtro ainda presentes no Desafio"
 grep -q 'id="filters"' "$WEB/app-desafio.html" && die "bloco #filters ainda presente no Desafio"
+grep -q 'data-casa-copy' "$WEB/app-desafio.html" || die "HTML sem botão Copiar do valor da casa"
 
 log "v2.js (busca de times + fallback TheSportsDB)"
 curl -fsSL "${RAW}/deploy/vps-supabase/static/v2/v2.js${BUST}" -o "$WEB/v2.js"

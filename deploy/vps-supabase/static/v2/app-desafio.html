@@ -78,6 +78,32 @@
       cursor: pointer;
     }
     .dz-stake-max:hover { background: rgba(201, 242, 35, 0.22); }
+    .dz-casa-stake {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+    .dz-stake-copy {
+      border: 1px solid rgba(59, 130, 246, 0.55);
+      background: rgba(59, 130, 246, 0.14);
+      color: #93c5fd;
+      border-radius: 8px;
+      padding: 7px 10px;
+      font-size: 9px;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .dz-stake-copy:hover { background: rgba(59, 130, 246, 0.28); }
+    .dz-stake-copy.is-ok {
+      border-color: rgba(201, 242, 35, 0.55);
+      background: rgba(201, 242, 35, 0.14);
+      color: #c9f223;
+    }
     @media (max-width: 860px) {
       body[data-shell="app"] .dz-wallet-cell {
         border-bottom-color: rgba(201, 242, 35, 0.45) !important;
@@ -732,6 +758,34 @@
         if (arbiRecv) arbiRecv.textContent = money(calc.receiveCents);
         if (casaStakeEl) casaStakeEl.textContent = money(calc.casaStakeCents);
         if (casaRecv) casaRecv.textContent = money(calc.casaReceiveCents);
+        var copyBtn = cardEl.querySelector("[data-casa-copy]");
+        if (copyBtn) {
+          copyBtn.setAttribute("data-copy-cents", String(calc.casaStakeCents));
+        }
+      }
+
+      function copyText(text) {
+        var t = String(text == null ? "" : text);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          return navigator.clipboard.writeText(t);
+        }
+        return new Promise(function (resolve, reject) {
+          try {
+            var ta = document.createElement("textarea");
+            ta.value = t;
+            ta.setAttribute("readonly", "");
+            ta.style.position = "fixed";
+            ta.style.left = "-9999px";
+            document.body.appendChild(ta);
+            ta.select();
+            var ok = document.execCommand("copy");
+            document.body.removeChild(ta);
+            if (ok) resolve();
+            else reject(new Error("copy failed"));
+          } catch (e) {
+            reject(e);
+          }
+        });
       }
 
       function liquidityShown(item, now) {
@@ -954,9 +1008,17 @@
           '<div class="dz-v2-row"><span class="l">Odd</span><span class="v accent">' +
           esc(fmtOdd(item.casaOdd)) +
           "</span></div>" +
-          '<div class="dz-v2-row"><span class="l">Aposte exatamente</span><span class="v sm" data-casa-stake>' +
+          '<div class="dz-v2-row"><span class="l">Aposte exatamente</span><span class="v sm">' +
+          '<span class="dz-casa-stake">' +
+          '<span data-casa-stake>' +
           money(item.casaStakeCents) +
-          "</span></div>" +
+          "</span>" +
+          '<button type="button" class="dz-stake-copy" data-casa-copy="' +
+          esc(item.id) +
+          '" data-copy-cents="' +
+          esc(String(item.casaStakeCents || 0)) +
+          '" title="Copiar valor exato" aria-label="Copiar valor exato">Copiar</button>' +
+          "</span></span></div>" +
           '<div class="dz-v2-row"><span class="l">Você recebe</span><span class="v accent" data-casa-receive>' +
           money(item.casaReceiveCents) +
           "</span></div>" +
@@ -1012,6 +1074,34 @@
               item,
               Math.max(0, Number(walletState.desafioWalletCents) || 0)
             );
+          });
+        });
+
+        host.querySelectorAll("[data-casa-copy]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var cents =
+              Number(btn.getAttribute("data-copy-cents")) ||
+              (function () {
+                var cardId = btn.getAttribute("data-casa-copy");
+                var it = items.find(function (x) {
+                  return String(x.id) === String(cardId);
+                });
+                return it ? Number(it.casaStakeCents) || 0 : 0;
+              })();
+            var plain = centsToInput(cents);
+            copyText(plain)
+              .then(function () {
+                var prev = btn.textContent;
+                btn.textContent = "Copiado";
+                btn.classList.add("is-ok");
+                setTimeout(function () {
+                  btn.textContent = prev || "Copiar";
+                  btn.classList.remove("is-ok");
+                }, 1400);
+              })
+              .catch(function () {
+                alert("Não foi possível copiar. Valor: " + plain);
+              });
           });
         });
 
