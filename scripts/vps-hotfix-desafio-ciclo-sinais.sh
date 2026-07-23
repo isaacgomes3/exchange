@@ -42,18 +42,19 @@ systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 systemctl restart arbishield-prelive-events.service 2>/dev/null || \
   systemctl restart arbishield-prelive.service 2>/dev/null || true
 
-log "2/3 UI — admin + sinais + mapa jornada"
+log "2/3 UI — admin + lista principal + mapa jornada"
 for f in admin-desafios.html app-desafio.html app-desafio-jornada.html app-desafio-lista.html app-desafio-sinais.html desafio-ciclo-math.js v2-shell.js; do
   dl "deploy/vps-supabase/static/v2/$f" "$WEB/$f"
   chmod 0644 "$WEB/$f"
   cp -f "$WEB/$f" "$WEB_ROOT/$f" 2>/dev/null || true
 done
 grep -q 'Odd do Favorito\|js-casa-odd' "$WEB/admin-desafios.html" || die "admin sem fluxo favorito"
-grep -q 'Painel de Sinais' "$WEB/app-desafio-sinais.html" || die "página sinais ausente"
-grep -q 'j-map\|Mapa do desafio' "$WEB/app-desafio.html" || die "app-desafio.html deve ser o mapa de jornada"
+grep -q 'Desafios disponíveis\|Iniciar desafio\|app-desafio-grid' "$WEB/app-desafio.html" \
+  || die "app-desafio.html deve ser a lista de desafios"
 grep -q 'j-map\|Mapa do desafio' "$WEB/app-desafio-jornada.html" || die "jornada ausente"
+grep -qi 'app-desafio-jornada.html' "$WEB/app-desafio.html" || die "lista deve abrir a jornada"
 
-log "3/3 Nginx — desafio-sinal + desafio-jornada → :3101"
+log "3/3 Nginx — desafio-jornada → :3101"
 for conf in /etc/nginx/sites-enabled/arbishield.app \
   /etc/nginx/conf.d/arbishield.app.conf \
   /etc/nginx/sites-available/arbishield.app; do
@@ -65,6 +66,12 @@ for conf in /etc/nginx/sites-enabled/arbishield.app \
     if ! grep -q 'desafio-jornada' "$conf"; then
       sed -i 's/desafio-sinal-preview|desafio-participations/desafio-sinal-preview|desafio-jornada|desafio-journey|desafio-participations/g' "$conf" || true
     fi
+    if grep -q 'location = /app/desafio/jornada' "$conf"; then
+      sed -i 's|location = /app/desafio/jornada { return 302 /app-desafio.html; }|location = /app/desafio/jornada { return 302 /app-desafio-jornada.html; }|g' "$conf" || true
+    fi
+    if grep -q 'location = /app/desafio/lista' "$conf"; then
+      sed -i 's|location = /app/desafio/lista { return 302 /app-desafio-lista.html; }|location = /app/desafio/lista { return 302 /app-desafio.html; }|g' "$conf" || true
+    fi
     echo "checked $conf"
   fi
 done
@@ -73,8 +80,8 @@ if command -v nginx >/dev/null && nginx -t 2>/dev/null; then
 fi
 
 echo
-echo "OK — ciclo Desafio / Sinais / Jornada"
+echo "OK — ciclo Desafio: lista principal + jornada ao clicar"
 echo "  Admin:   https://arbishield.app/admin/desafios"
+echo "  Lista:   https://arbishield.app/app-desafio.html"
 echo "  Jornada: https://arbishield.app/app-desafio-jornada.html"
-echo "  Sinais:  https://arbishield.app/app-desafio-sinais.html"
 echo "  Ctrl+F5 nas telas do cliente"
