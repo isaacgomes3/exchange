@@ -2080,9 +2080,10 @@ async function searchFootballTeams(query) {
       const data = JSON.parse(text);
       for (const t of Array.isArray(data.teams) ? data.teams : []) {
         if (String(t.strSport || "").toLowerCase() === "motorsport") continue;
+        // Badge (escudo quadrado) primeiro — strLogo é faixa larga e fica "descentralizada"
         const logo =
-          t.strLogo ||
           t.strBadge ||
+          t.strLogo ||
           (t.idAPIfootball
             ? `https://media.api-sports.io/football/teams/${t.idAPIfootball}.png`
             : null);

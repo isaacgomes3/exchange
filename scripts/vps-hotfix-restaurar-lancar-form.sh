@@ -9,7 +9,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-restaurar-lancar-form.sh")
 set -euo pipefail
 
-REF="6dcbb7454d76f97e942d040625b1b9ca70b73b14"
+REF="6ad0354d02051484acebcb303ab37d5a94126384"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
@@ -58,6 +58,8 @@ dl "scripts/arbishield-prelive-events.mjs" "$PRELIVE_DST"
 chmod 0755 "$PRELIVE_DST"
 grep -q 'searchFootballTeams\|/api/arbishield/football-teams' "$PRELIVE_DST" \
   || die "prelive sem endpoint football-teams"
+grep -q 'strBadge ||' "$PRELIVE_DST" \
+  || die "prelive não prioriza escudo (strBadge) — logo fica descentralizada"
 systemctl restart arbishield-prelive-events.service 2>/dev/null || \
   systemctl restart arbishield-prelive.service 2>/dev/null || true
 
