@@ -33,7 +33,7 @@ systemctl restart arbishield-prelive-events.service 2>/dev/null || \
   systemctl restart arbishield-prelive.service 2>/dev/null || true
 
 log "2/4 UI — lista = /app-desafio.html; jornada = /app-desafio-jornada.html"
-for f in app-desafio.html app-desafio-jornada.html app-desafio-lista.html app-desafio-sinais.html admin-desafios.html desafio-ciclo-math.js v2-shell.js; do
+for f in app-desafio.html app-desafio-jornada.html app-desafio-lista.html app-desafio-sinais.html admin-desafios.html admin-manual-deposits.html desafio-ciclo-math.js v2-shell.js v2-deposit.js v2.css; do
   dl "deploy/vps-supabase/static/v2/$f" "$WEB/$f"
   chmod 0644 "$WEB/$f"
   cp -f "$WEB/$f" "$WEB_ROOT/$f" 2>/dev/null || true
@@ -45,6 +45,11 @@ grep -q 'Desafios disponíveis\|app-desafio-grid\|Iniciar desafio\|dz-card' \
   || die "app-desafio.html deve ser a lista de desafios"
 ! grep -q 'j-map\|aria-label="Mapa do desafio"' "$WEB/app-desafio.html" \
   || die "app-desafio.html ainda é o mapa (deveria ser a lista)"
+! grep -q 'Jogos liberados\|kAvail\|app-kpi-row' "$WEB/app-desafio.html" \
+  || die "app-desafio ainda tem KPIs antigos"
+grep -q 'dz-access\|data-deposit-dest="desafio"' "$WEB/app-desafio.html" \
+  || die "app-desafio sem barra de acesso/saldo/PIX"
+grep -q 'dz-access' "$WEB/v2.css" || die "v2.css sem estilos dz-access"
 # Jornada = mapa ao clicar no evento
 grep -q 'j-map\|Mapa do desafio\|aria-label="Mapa do desafio"' \
   "$WEB/app-desafio-jornada.html" \
@@ -63,11 +68,15 @@ grep -qi 'location.replace.*/app-desafio.html' "$WEB/app-desafio-sinais.html" \
   || grep -qi 'url=/app-desafio.html' "$WEB/app-desafio-sinais.html" \
   || die "app-desafio-sinais.html deve redirecionar para a lista"
 
-log "3/4 Backend shim (register/settle desafio)"
+log "3/4 Backend shim (register/settle + crédito depósito Desafio)"
 dl "scripts/arbishield-serverfn-shim.mjs" "$SHIM_DIR/arbishield-serverfn-shim.mjs"
 chmod 0644 "$SHIM_DIR/arbishield-serverfn-shim.mjs"
 grep -q 'registerDesafioEntry\|desafio-register' "$SHIM_DIR/arbishield-serverfn-shim.mjs" \
   || die "shim sem register desafio"
+grep -q 'desafio_balance_cents' "$SHIM_DIR/arbishield-serverfn-shim.mjs" \
+  || die "shim sem crédito desafio_balance"
+grep -q 'isDesafio\|dtype === "desafio"' "$SHIM_DIR/arbishield-serverfn-shim.mjs" \
+  || die "shim não credita depósito tipo desafio"
 systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 
 log "4/4 Nginx — /app/desafio → lista; /jornada → mapa"

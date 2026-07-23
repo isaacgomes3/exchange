@@ -153,6 +153,15 @@
         var t = String(r.deposit_type || "").toLowerCase();
         return t === "investor" || t === "provider" || t === "partner";
       }
+      function isDesafio(r) {
+        var t = String(r.deposit_type || "").toLowerCase();
+        return t === "desafio" || t === "challenge";
+      }
+      function depositDestLabel(r) {
+        if (isDesafio(r)) return "Desafio";
+        if (isInvestor(r)) return "Provedor";
+        return "Usuário";
+      }
       function statusClass(st) {
         st = String(st || "").toUpperCase();
         if (st === "PENDING" || st === "PROCESSING") return "pending";
@@ -235,7 +244,7 @@
                 '<div class="muted">' + String(r.user_id || "").slice(0, 8) + "…</div></td>" +
               "<td>" + money(r.amount_cents) + "</td>" +
               "<td>" + (r.network || "—") + "</td>" +
-              "<td>" + (isInvestor(r) ? "Provedor" : "Usuário") + "</td>" +
+              "<td>" + depositDestLabel(r) + "</td>" +
               '<td><span class="tag ' + statusClass(r.status) + '">' + statusLabel(r.status) + "</span></td>" +
               "<td>" + (r.proof_url
                 ? '<a class="proof-link" href="#" data-proof="' + idx + '">Ver comprovante</a>'
@@ -369,7 +378,7 @@
         if (!r) return;
         try {
           if (kind === "approve") {
-            if (!window.confirm("Confirmar e creditar " + money(r.amount_cents) + " no saldo " + (isInvestor(r) ? "do provedor" : "do usuário") + "?")) return;
+            if (!window.confirm("Confirmar e creditar " + money(r.amount_cents) + " no saldo " + (isDesafio(r) ? "do Desafio" : isInvestor(r) ? "do provedor" : "do usuário") + "?")) return;
             await callFn("approve", { id: r.id });
             showOk("Depósito aprovado com sucesso!");
           } else if (kind === "credited") {

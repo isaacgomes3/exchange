@@ -421,7 +421,7 @@
           state.step = "amount";
           paint();
         } else if (act === "back-network") {
-          state.step = "network";
+          state.step = state.dest === "desafio" && state.network === "PIX" ? "amount" : "network";
           paint();
         } else if (act === "to-network") {
           var mm = minMax();
@@ -439,7 +439,12 @@
             );
             return;
           }
-          state.step = "network";
+          // Depósito do Desafio pela barra: PIX direto (mesmo QR / chave)
+          if (state.dest === "desafio" && state.network === "PIX") {
+            state.step = "payment";
+          } else {
+            state.step = "network";
+          }
           state.err = "";
           paint();
         } else if (act === "copy") {
@@ -657,7 +662,7 @@
     state.step = "destination";
     state.dest = opts.dest || null;
     state.amountCents = 50000;
-    state.network = null;
+    state.network = opts.network || null;
     state.depositId = null;
     state.file = null;
     if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
@@ -667,7 +672,8 @@
     state.ok = "";
     await loadConfig();
     await loadPending();
-    if (state.dest) state.step = "instructions";
+    if (state.dest && state.network) state.step = "amount";
+    else if (state.dest) state.step = "instructions";
     paint();
     document.body.classList.add("dep-open");
   }
@@ -687,7 +693,10 @@
       }
       if (t.classList.contains("v2-deposit-btn") || t.hasAttribute("data-open-deposit")) {
         e.preventDefault();
-        open({ dest: t.getAttribute("data-deposit-dest") || null });
+        open({
+          dest: t.getAttribute("data-deposit-dest") || null,
+          network: t.getAttribute("data-deposit-network") || null,
+        });
       }
     });
     window.addEventListener("open-deposit", function () {

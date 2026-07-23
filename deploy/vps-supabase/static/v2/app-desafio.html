@@ -26,11 +26,26 @@
     <div class="dz-banner-placeholder">Banner do Desafio · aguardando publicação</div>
   </div>
 
-  <div class="app-kpi-row">
-    <div class="app-kpi"><div class="l">Jogos liberados</div><div class="v lime" id="kAvail">—</div></div>
-    <div class="app-kpi"><div class="l">Desafios ativos</div><div class="v" id="kActive">—</div></div>
-    <div class="app-kpi"><div class="l">Etapas</div><div class="v" id="kTotal">—</div></div>
-  </div>
+  <section class="dz-access" id="dzAccess" aria-label="Acesso e saldo do Desafio">
+    <div class="dz-access-ico" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="5" y="11" width="14" height="10" rx="2"></rect>
+        <path d="M8 11V8a4 4 0 0 1 8 0v3"></path>
+      </svg>
+    </div>
+    <div class="dz-access-copy">
+      <div class="dz-access-title" id="dzAccessTitle">Acesso aos desafios</div>
+      <div class="dz-access-bal">Saldo disponível <strong id="dzAccessBal">—</strong></div>
+      <div class="dz-access-hint" id="dzAccessHint">
+        Deposite via PIX para creditar a carteira exclusiva do Desafio e liberar as entradas.
+      </div>
+    </div>
+    <div class="dz-access-actions">
+      <button type="button" class="dz-access-deposit" data-open-deposit="1" data-deposit-dest="desafio" data-deposit-network="PIX">
+        Depositar
+      </button>
+    </div>
+  </section>
 
   <div class="dz-filters" id="filters" role="tablist">
     <button type="button" class="dz-filter is-on" data-f="Todos">Todos</button>
@@ -54,6 +69,47 @@
       var filter = "Todos";
       var items = [];
       var tickTimer = null;
+      var MIN_ACCESS_CENTS = 20000; // R$ 200 — entrada típica do ciclo
+
+      async function refreshAccessBar() {
+        var titleEl = document.getElementById("dzAccessTitle");
+        var balEl = document.getElementById("dzAccessBal");
+        var hintEl = document.getElementById("dzAccessHint");
+        var box = document.getElementById("dzAccess");
+        try {
+          var prof = await supa
+            .from("profiles")
+            .select("desafio_balance_cents")
+            .eq("id", user.id)
+            .maybeSingle();
+          var cents = Number(prof.data && prof.data.desafio_balance_cents) || 0;
+          if (balEl) balEl.textContent = money(cents);
+          var unlocked = cents >= MIN_ACCESS_CENTS;
+          if (titleEl) {
+            titleEl.textContent = unlocked
+              ? "Acesso aos desafios liberado"
+              : "Acesso aos desafios";
+          }
+          if (hintEl) {
+            hintEl.textContent = unlocked
+              ? "Saldo exclusivo do Desafio. Use nas entradas do ciclo — separado do saldo do apostador."
+              : "Deposite via PIX o valor mínimo para liberar o acesso completo aos desafios.";
+          }
+          if (box) box.classList.toggle("is-unlocked", unlocked);
+        } catch (ex) {
+          if (balEl) balEl.textContent = "—";
+          console.warn("[desafio] saldo", ex);
+        }
+      }
+
+      await refreshAccessBar();
+      // Atualiza saldo após depósito (evento do modal)
+      window.addEventListener("focus", function () {
+        refreshAccessBar();
+      });
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) refreshAccessBar();
+      });
 
       function showErr(msg) {
         var el = document.getElementById("err");
@@ -555,14 +611,6 @@
           var nb = b.startsAtMs || 0;
           return na - nb;
         });
-
-        document.getElementById("kAvail").textContent = String(
-          items.filter(function (it) {
-            return phaseOf(it, Date.now()) === "ativo" || phaseOf(it, Date.now()) === "soon";
-          }).length
-        );
-        document.getElementById("kActive").textContent = String(active.length);
-        document.getElementById("kTotal").textContent = String(items.length);
 
         render();
         if (tickTimer) clearInterval(tickTimer);

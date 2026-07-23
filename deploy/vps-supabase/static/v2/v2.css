@@ -3768,6 +3768,114 @@ body.dep-open { overflow: hidden; }
   letter-spacing: -0.03em;
 }
 .app-kpi .v.lime { color: var(--lime-hot); }
+
+/* Barra de acesso / saldo exclusivo do Desafio */
+.dz-access {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(34, 197, 160, 0.28);
+  background:
+    radial-gradient(420px 120px at 0% 50%, rgba(34, 197, 160, 0.12), transparent 55%),
+    linear-gradient(165deg, rgba(8, 28, 24, 0.98), rgba(5, 14, 12, 0.98));
+}
+.dz-access.is-unlocked {
+  border-color: rgba(198, 255, 0, 0.28);
+}
+.dz-access-ico {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #2dd4bf;
+  background: rgba(45, 212, 191, 0.12);
+  border: 1px solid rgba(45, 212, 191, 0.28);
+}
+.dz-access.is-unlocked .dz-access-ico {
+  color: #c6ff00;
+  background: rgba(198, 255, 0, 0.1);
+  border-color: rgba(198, 255, 0, 0.3);
+}
+.dz-access-copy {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.dz-access-title {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+.dz-access-bal {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2dd4bf;
+}
+.dz-access-bal strong {
+  font-weight: 900;
+  color: #5eead4;
+}
+.dz-access.is-unlocked .dz-access-bal,
+.dz-access.is-unlocked .dz-access-bal strong {
+  color: #c6ff00;
+}
+.dz-access-hint {
+  margin-top: 8px;
+  display: inline-block;
+  max-width: 100%;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: rgba(255, 232, 180, 0.92);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  background: rgba(212, 175, 55, 0.06);
+  box-shadow: 0 0 18px rgba(212, 175, 55, 0.08);
+}
+.dz-access-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.dz-access-deposit {
+  appearance: none;
+  border: 0;
+  cursor: pointer;
+  border-radius: 10px;
+  padding: 11px 18px;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #1a0a00;
+  background: linear-gradient(180deg, #ff9a3c, #f97316);
+  box-shadow: 0 8px 20px rgba(249, 115, 22, 0.28);
+}
+.dz-access-deposit:hover {
+  filter: brightness(1.06);
+}
+@media (max-width: 720px) {
+  .dz-access-actions {
+    width: 100%;
+    margin-left: 0;
+  }
+  .dz-access-deposit {
+    width: 100%;
+  }
+  .dz-access-hint {
+    border-radius: 12px;
+  }
+}
+
 .app-wallet-hero {
   background:
     radial-gradient(500px 200px at 80% 0%, rgba(198, 255, 0, 0.18), transparent 60%),

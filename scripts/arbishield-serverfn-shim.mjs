@@ -2738,16 +2738,25 @@ async function approveManualDeposit(token, body) {
 
   const dtype = String(row.deposit_type || "user_balance").toLowerCase();
   const isInvestor = dtype === "investor" || dtype === "provider" || dtype === "partner";
+  const isDesafio = dtype === "desafio" || dtype === "challenge";
   const prof = await sb(
-    `/rest/v1/profiles?select=balance_cents,investor_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    `/rest/v1/profiles?select=balance_cents,investor_balance_cents,desafio_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`,
     { token: SERVICE_KEY }
   );
   const p = Array.isArray(prof) ? prof[0] : null;
   if (!p) throw new Error("Perfil do usuário não encontrado");
 
   const patch = { updated_at: new Date().toISOString() };
-  if (isInvestor) {
+  let creditBucket = "user_balance";
+  let txType = "deposit";
+  if (isDesafio) {
+    patch.desafio_balance_cents = n(p.desafio_balance_cents) + amount;
+    creditBucket = "desafio";
+    txType = "desafio_deposit";
+  } else if (isInvestor) {
     patch.investor_balance_cents = n(p.investor_balance_cents) + amount;
+    creditBucket = "investor";
+    txType = "provider_deposit";
   } else {
     patch.balance_cents = n(p.balance_cents) + amount;
   }
@@ -2774,12 +2783,13 @@ async function approveManualDeposit(token, body) {
       token: SERVICE_KEY,
       body: {
         user_id: userId,
-        type: isInvestor ? "provider_deposit" : "deposit",
+        type: txType,
         amount_cents: amount,
         metadata: {
           manual_deposit_id: id,
           network: row.network || null,
           deposit_type: row.deposit_type || "user_balance",
+          credit_bucket: creditBucket,
         },
       },
     });
@@ -2800,7 +2810,7 @@ async function approveManualDeposit(token, body) {
     id,
     status: "APPROVED",
     creditedCents: amount,
-    depositType: isInvestor ? "investor" : "user_balance",
+    depositType: creditBucket,
   };
 }
 
