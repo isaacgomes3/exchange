@@ -187,6 +187,77 @@
     .suggest .v { font-weight: 700; margin-top: 2px; word-break: break-word; }
     .suggest .hint { color: var(--muted); font-size: 13px; margin: 0 0 4px; }
     .suggest .actions { margin-top: 14px; }
+    .clients-box {
+      margin-top: 14px;
+      border: 1px solid rgba(201,242,35,0.28);
+      border-radius: 14px;
+      background: rgba(201,242,35,0.05);
+      padding: 12px 14px;
+      overflow: auto;
+    }
+    .clients-box h4 {
+      margin: 0 0 10px;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--lime);
+      font-weight: 900;
+    }
+    .clients-box .clients-empty {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .clients-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      min-width: 520px;
+    }
+    .clients-table th {
+      text-align: left;
+      padding: 8px 8px;
+      color: var(--muted);
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .clients-table td {
+      padding: 10px 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      vertical-align: top;
+    }
+    .clients-table tr:last-child td { border-bottom: 0; }
+    .clients-table .name { font-weight: 800; color: #fff; }
+    .clients-table .subname {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .clients-table .amt { font-weight: 900; color: var(--lime); white-space: nowrap; }
+    .clients-table .when {
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      color: rgba(255,255,255,0.75);
+      font-size: 11px;
+    }
+    .clients-table .etapa {
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .clients-table .etapa .wait {
+      display: block;
+      margin-top: 2px;
+      color: #fcd34d;
+      font-size: 10px;
+      font-weight: 700;
+    }
   </style>
 </head>
 <body data-shell="admin" data-active="desafios">
@@ -337,6 +408,81 @@
       if (Number.isNaN(d.getTime())) return "";
       const pad = (n) => String(n).padStart(2, "0");
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function money(cents) {
+      return new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+      }).format((Number(cents) || 0) / 100);
+    }
+
+    function fmtWhen(iso) {
+      if (!iso) return "—";
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return "—";
+      return d.toLocaleString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    }
+
+    function clientsBlockHtml(desafioId, isActive) {
+      if (!isActive) return "";
+      const rows = (window.__desafioActiveClients && window.__desafioActiveClients[desafioId]) || null;
+      if (!rows) {
+        return `<div class="clients-box" data-clients-for="${esc(desafioId)}">
+          <h4>Clientes ativos no desafio</h4>
+          <p class="clients-empty">Carregando clientes…</p>
+        </div>`;
+      }
+      if (!rows.length) {
+        return `<div class="clients-box" data-clients-for="${esc(desafioId)}">
+          <h4>Clientes ativos no desafio</h4>
+          <p class="clients-empty">Nenhum cliente ativo neste circuito no momento.</p>
+        </div>`;
+      }
+      const body = rows
+        .map((c) => {
+          const name =
+            String(c.full_name || "").trim() ||
+            "Cliente " + String(c.user_id || "").slice(0, 8);
+          const etapa =
+            "Etapa " +
+            (c.step_index || 1) +
+            " de " +
+            (c.total_steps || 5);
+          const wait = c.waiting_next_game
+            ? `<span class="wait">Aguardando próximo jogo</span>`
+            : c.step_label
+              ? `<span class="subname">${esc(c.step_label)}</span>`
+              : "";
+          return `<tr>
+            <td><span class="name">${esc(name)}</span></td>
+            <td class="amt">${esc(money(c.amount_cents))}</td>
+            <td class="when">${esc(fmtWhen(c.entered_at))}</td>
+            <td class="etapa">${esc(etapa)}${wait}</td>
+          </tr>`;
+        })
+        .join("");
+      return `<div class="clients-box" data-clients-for="${esc(desafioId)}">
+        <h4>Clientes ativos no desafio · ${rows.length}</h4>
+        <table class="clients-table">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Valor da entrada</th>
+              <th>Data e hora</th>
+              <th>Etapa</th>
+            </tr>
+          </thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>`;
     }
 
     function esc(v) {
@@ -514,6 +660,7 @@
               <div class="mini"><div class="l">Lucro líquido</div><div class="v lime">${Number(d.target_profit_pct) || 5}%</div></div>
             </div>
             ${stepBlocks || '<div class="steps">Sem jogos</div>'}
+            ${clientsBlockHtml(d.id, Boolean(d.is_active) && !isCancelled && !d.deleted_at)}
             <div class="card-actions">
               ${
                 canAppend
@@ -769,6 +916,33 @@
       return {};
     }
 
+    async function loadActiveClients(rows) {
+      const ids = (rows || [])
+        .filter(
+          (x) =>
+            !x.deleted_at &&
+            String(x.status) !== "cancelled" &&
+            x.is_active
+        )
+        .map((x) => x.id)
+        .filter(Boolean);
+      window.__desafioActiveClients = {};
+      if (!ids.length) return {};
+      try {
+        const res = await fetch("/api/arbishield/desafio-active-clients", {
+          method: "POST",
+          headers: await authHeaders(),
+          body: JSON.stringify({ desafioIds: ids }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data && data.byDesafio) {
+          window.__desafioActiveClients = data.byDesafio;
+          return data.byDesafio;
+        }
+      } catch {}
+      return {};
+    }
+
     async function load() {
       $("list").innerHTML = `<div class="loading">Carregando desafios…</div>`;
       $("meta").textContent = "Buscando…";
@@ -788,6 +962,7 @@
         if (!Array.isArray(data)) throw new Error("Resposta inválida da API");
         window.__desafioRows = data;
         await loadPendingCounts(data);
+        await loadActiveClients(data);
         render(data);
       } catch (err) {
         $("stats").innerHTML = "";
