@@ -4156,14 +4156,15 @@ body[data-shell="app"] .dz-wallet-cell,
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.55);
+  color: #fff;
   white-space: nowrap;
 }
 .dz-v2-when svg {
   width: 24px;
   height: 24px;
   flex-shrink: 0;
-  opacity: 0.8;
+  opacity: 1;
+  color: #fff;
 }
 .dz-v2-market {
   text-align: center;
