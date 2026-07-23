@@ -357,7 +357,7 @@
         act(btn.getAttribute("data-act"), btn.getAttribute("data-id"));
       });
 
-      await ArbiV2.requireUser(ArbiV2.client());
+      await ArbiV2.requireAdmin(ArbiV2.client(), await ArbiV2.requireUser(ArbiV2.client()));
       await load();
     })();
   </script>

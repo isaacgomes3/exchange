@@ -1401,7 +1401,7 @@ async function listDesafioDeposits(token) {
     const chunk = userIds.slice(0, 200);
     try {
       const profiles = await sb(
-        `/rest/v1/profiles?select=id,full_name,email,phone&id=in.(${chunk.join(
+        `/rest/v1/profiles?select=id,full_name,phone&id=in.(${chunk.join(
           ","
         )})`,
         { token: SERVICE_KEY }
@@ -1418,7 +1418,6 @@ async function listDesafioDeposits(token) {
     const p = profileMap[String(uid)] || {};
     return (
       String(p.full_name || "").trim() ||
-      String(p.email || "").trim() ||
       String(p.phone || "").trim() ||
       String(uid || "").slice(0, 8) ||
       "Cliente"
