@@ -675,6 +675,179 @@ function bearerFromReq(req) {
   return m?.[1] || null;
 }
 
+function normalizeTeamName(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function teamNamesMatch(a, b) {
+  const na = normalizeTeamName(a);
+  const nb = normalizeTeamName(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  return na.includes(nb) || nb.includes(na);
+}
+
+function crestUrlsFrom(crest) {
+  const raw = String(crest || "").trim();
+  if (!raw) return { logo: "", logoPng: null, logoSvg: null };
+  if (raw.endsWith(".svg")) {
+    return {
+      logo: raw,
+      logoSvg: raw,
+      logoPng: raw.replace(/\.svg$/i, ".png"),
+    };
+  }
+  if (raw.endsWith(".png")) {
+    const svg = raw.replace(/\.png$/i, ".svg");
+    return { logo: svg, logoSvg: svg, logoPng: raw };
+  }
+  return { logo: raw, logoPng: raw, logoSvg: null };
+}
+
+async function searchTheSportsDbTeams(query) {
+  const url =
+    "https://www.thesportsdb.com/api/v1/json/123/searchteams.php?t=" +
+    encodeURIComponent(query);
+  const res = await fetch(url, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`TheSportsDB ${res.status}`);
+  const data = await res.json();
+  const teams = Array.isArray(data?.teams) ? data.teams : [];
+  return teams
+    .filter((t) => String(t.strSport || "").toLowerCase() === "soccer")
+    .map((t) => {
+      const logoPng = String(t.strBadge || t.strLogo || "").trim() || null;
+      return {
+        id: `tsdb:${t.idTeam || normalizeTeamName(t.strTeam || query)}`,
+        name: String(t.strTeam || "").trim(),
+        shortName: String(t.strTeamShort || "").trim() || null,
+        country: String(t.strCountry || "").trim() || null,
+        league: String(t.strLeague || "").trim() || null,
+        logo: logoPng || "",
+        logoPng,
+        logoSvg: null,
+        source: "thesportsdb",
+      };
+    })
+    .filter((t) => t.name && t.logo);
+}
+
+async function searchFootballDataTeams(query, token) {
+  const url =
+    "https://api.football-data.org/v4/teams?limit=25&name=" +
+    encodeURIComponent(query);
+  const res = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      "X-Auth-Token": token,
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`football-data.org ${res.status}: ${text.slice(0, 120)}`);
+  }
+  const data = await res.json();
+  const teams = Array.isArray(data?.teams) ? data.teams : [];
+  return teams
+    .map((t) => {
+      const crests = crestUrlsFrom(t.crest);
+      return {
+        id: `fd:${t.id ?? normalizeTeamName(t.name || query)}`,
+        name: String(t.name || "").trim(),
+        shortName: String(t.shortName || t.tla || "").trim() || null,
+        country: String(t.area?.name || "").trim() || null,
+        league: null,
+        logo: crests.logo,
+        logoPng: crests.logoPng,
+        logoSvg: crests.logoSvg,
+        source: "football-data",
+      };
+    })
+    .filter((t) => t.name && t.logo);
+}
+
+function mergeFootballTeams(primary, secondary) {
+  const out = [];
+  const used = new Set();
+  for (const a of primary) {
+    const match = secondary.find(
+      (b) => !used.has(b.id) && teamNamesMatch(a.name, b.name)
+    );
+    if (match) {
+      used.add(match.id);
+      const logoSvg = match.logoSvg || a.logoSvg;
+      const logoPng = a.logoPng || match.logoPng;
+      out.push({
+        id: a.id,
+        name: a.name,
+        shortName: a.shortName || match.shortName,
+        country: a.country || match.country,
+        league: a.league || match.league,
+        logo: logoSvg || logoPng || a.logo || match.logo,
+        logoPng,
+        logoSvg,
+        source: "merged",
+      });
+    } else {
+      out.push(a);
+    }
+  }
+  for (const b of secondary) {
+    if (!used.has(b.id)) out.push(b);
+  }
+  return out;
+}
+
+async function searchFootballTeams(rawQuery) {
+  const query = String(rawQuery || "").trim();
+  if (query.length < 2) {
+    return { teams: [], providers: [] };
+  }
+
+  const providers = [];
+  let sportsDb = [];
+  let footballData = [];
+
+  const sportsDbPromise = searchTheSportsDbTeams(query)
+    .then((rows) => {
+      sportsDb = rows;
+      providers.push("thesportsdb");
+    })
+    .catch((err) => {
+      console.warn("[football-teams] thesportsdb", err);
+    });
+
+  const token =
+    process.env.FOOTBALL_DATA_API_TOKEN ||
+    process.env.FOOTBALL_DATA_API_KEY ||
+    "";
+  const footballDataPromise = token
+    ? searchFootballDataTeams(query, token)
+        .then((rows) => {
+          footballData = rows;
+          providers.push("football-data");
+        })
+        .catch((err) => {
+          console.warn("[football-teams] football-data", err);
+        })
+    : Promise.resolve();
+
+  await Promise.all([sportsDbPromise, footballDataPromise]);
+
+  const teams = mergeFootballTeams(
+    footballData.length ? footballData : sportsDb,
+    footballData.length ? sportsDb : []
+  ).slice(0, 20);
+
+  return { teams, providers };
+}
+
 async function listDesafios() {
   if (!SERVICE_KEY) {
     throw new Error("SERVICE_ROLE_KEY ausente no .env da VPS");
@@ -1382,6 +1555,33 @@ async function handleApi(req, res) {
       }
       const result = await listPreliveEventsForDay();
       return sendJson(res, 200, { ok: true, ...result });
+    } catch (err) {
+      return sendJson(res, 500, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (
+    (url.pathname === "/api/arbishield/football-teams" ||
+      url.pathname === "/api/arbishield/football-teams/") &&
+    req.method === "GET"
+  ) {
+    try {
+      const q = String(
+        url.searchParams.get("q") || url.searchParams.get("name") || ""
+      ).trim();
+      if (q.length < 2) {
+        return sendJson(res, 200, {
+          ok: true,
+          teams: [],
+          providers: [],
+          hint: "Digite pelo menos 2 caracteres",
+        });
+      }
+      const result = await searchFootballTeams(q);
+      return sendJson(res, 200, { ok: true, query: q, ...result });
     } catch (err) {
       return sendJson(res, 500, {
         ok: false,

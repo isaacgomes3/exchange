@@ -2967,10 +2967,24 @@ body.dep-open { overflow: hidden; }
   animation: dash-pulse 1.2s ease-in-out infinite;
 }
 .term-col-match strong {
-  display: block;
+  display: inline;
   font-size: 14px;
   font-weight: 800;
   color: #fff;
+}
+.term-match-teams {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.term-team-logo {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  border-radius: 4px;
+  background: #fff;
+  flex-shrink: 0;
 }
 .term-col-match strong span { color: rgba(255, 255, 255, 0.35); font-weight: 700; }
 .term-col-match small {

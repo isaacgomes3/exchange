@@ -437,11 +437,23 @@
               whenHtml +
               "</div>" +
               '<div class="term-col-match">' +
+              '<div class="term-match-teams">' +
+              (m.home_logo
+                ? '<img class="term-team-logo" src="' +
+                  esc(m.home_logo) +
+                  '" alt="" onerror="this.style.display=\'none\'" />'
+                : "") +
               "<strong>" +
               esc(m.home_team || "?") +
               " <span>×</span> " +
               esc(m.away_team || "?") +
               "</strong>" +
+              (m.away_logo
+                ? '<img class="term-team-logo" src="' +
+                  esc(m.away_logo) +
+                  '" alt="" onerror="this.style.display=\'none\'" />'
+                : "") +
+              "</div>" +
               "<small>" +
               esc(m.league || "—") +
               (primary && primary.name ? " · " + esc(primary.name) : "") +
@@ -507,7 +519,7 @@
           var matchesRes = await supa
             .from("matches")
             .select(
-              "id,home_team,away_team,league,starts_at,status,status_v2,sport_type,is_published,markets,max_protection_cents,used_protection_cents,protection_odds"
+              "id,home_team,away_team,home_logo,away_logo,league,starts_at,status,status_v2,sport_type,is_published,markets,max_protection_cents,used_protection_cents,protection_odds"
             )
             .is("deleted_at", null)
             .eq("is_published", true)

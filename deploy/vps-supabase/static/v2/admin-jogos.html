@@ -355,6 +355,70 @@
       margin: 18px 0 10px; font-size: 11px; font-weight: 900; font-style: italic;
       letter-spacing: 0.08em; text-transform: uppercase; color: var(--lime);
     }
+    .team-pick { position: relative; }
+    .team-pick-row {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 10px;
+      align-items: start;
+    }
+    .team-logo-box {
+      width: 44px; height: 44px; border-radius: 12px;
+      border: 1px solid var(--border); background: rgba(255,255,255,0.04);
+      display: grid; place-items: center; overflow: hidden; flex-shrink: 0;
+    }
+    .team-logo-box img {
+      width: 100%; height: 100%; object-fit: contain; display: block;
+      background: #fff;
+    }
+    .team-logo-box .ph {
+      font-size: 10px; font-weight: 800; color: var(--muted);
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .team-suggest {
+      position: absolute; left: 0; right: 0; top: calc(100% + 4px);
+      z-index: 20; max-height: 240px; overflow: auto;
+      border: 1px solid var(--border); border-radius: 12px;
+      background: #111; box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+      display: none;
+    }
+    .team-suggest.show { display: block; }
+    .team-suggest-item {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; border: 0; background: transparent; color: var(--text);
+      text-align: left; padding: 10px 12px; cursor: pointer;
+      border-bottom: 1px solid var(--border);
+    }
+    .team-suggest-item:last-child { border-bottom: 0; }
+    .team-suggest-item:hover, .team-suggest-item:focus {
+      background: rgba(201,242,35,0.08); outline: none;
+    }
+    .team-suggest-item img {
+      width: 28px; height: 28px; object-fit: contain; border-radius: 6px;
+      background: #fff; flex-shrink: 0;
+    }
+    .team-suggest-item .meta { min-width: 0; }
+    .team-suggest-item .name {
+      font-size: 13px; font-weight: 800; line-height: 1.2;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .team-suggest-item .sub {
+      margin-top: 2px; font-size: 10px; color: var(--muted); font-weight: 700;
+      letter-spacing: 0.04em; text-transform: uppercase;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .team-suggest-empty, .team-suggest-loading {
+      padding: 12px; color: var(--muted); font-size: 11px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .team-logo-url { margin-top: 8px; }
+    .row-teams-with-logos {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .row-teams-with-logos img {
+      width: 22px; height: 22px; object-fit: contain; border-radius: 4px;
+      background: #fff;
+    }
   </style>
 </head>
 <body data-shell="admin" data-active="jogos" data-vps-page="jogos" data-arbishield-v2="1">
@@ -521,23 +585,31 @@
         <label for="manLeague">Nome do evento</label>
         <input id="manLeague" placeholder="Ex: SERIE B" />
       </div>
-      <div class="grid2">
-        <div class="field">
-          <label for="manHome">Time de casa</label>
-          <input id="manHome" required placeholder="Ex: Flamengo" />
+      <div class="field team-pick" data-side="home">
+        <label for="manHome">Time de casa</label>
+        <div class="team-pick-row">
+          <div class="team-logo-box" id="manHomeLogoPrev"><span class="ph">logo</span></div>
+          <div style="min-width:0;position:relative">
+            <input id="manHome" required placeholder="Buscar time… Ex: Flamengo" autocomplete="off" />
+            <div class="team-suggest" id="manHomeSuggest" role="listbox" hidden></div>
+          </div>
         </div>
-        <div class="field">
-          <label for="manHomeLogo">URL logo</label>
+        <div class="team-logo-url field" style="margin:8px 0 0">
+          <label for="manHomeLogo">URL logo (preenchida automaticamente)</label>
           <input id="manHomeLogo" placeholder="URL Logo" />
         </div>
       </div>
-      <div class="grid2">
-        <div class="field">
-          <label for="manAway">Time de fora</label>
-          <input id="manAway" required placeholder="Ex: Palmeiras" />
+      <div class="field team-pick" data-side="away">
+        <label for="manAway">Time de fora</label>
+        <div class="team-pick-row">
+          <div class="team-logo-box" id="manAwayLogoPrev"><span class="ph">logo</span></div>
+          <div style="min-width:0;position:relative">
+            <input id="manAway" required placeholder="Buscar time… Ex: Palmeiras" autocomplete="off" />
+            <div class="team-suggest" id="manAwaySuggest" role="listbox" hidden></div>
+          </div>
         </div>
-        <div class="field">
-          <label for="manAwayLogo">URL logo</label>
+        <div class="team-logo-url field" style="margin:8px 0 0">
+          <label for="manAwayLogo">URL logo (preenchida automaticamente)</label>
           <input id="manAwayLogo" placeholder="URL Logo" />
         </div>
       </div>
@@ -747,6 +819,159 @@
         }
         return data;
       }
+
+      function escHtml(value) {
+        return String(value == null ? "" : value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function setTeamLogoPreview(side, url) {
+        var box = $(side === "home" ? "manHomeLogoPrev" : "manAwayLogoPrev");
+        if (!box) return;
+        var src = String(url || "").trim();
+        if (!src) {
+          box.innerHTML = '<span class="ph">logo</span>';
+          return;
+        }
+        box.innerHTML =
+          '<img src="' +
+          escHtml(src) +
+          '" alt="" onerror="this.parentNode.innerHTML=\'<span class=ph>logo</span>\'" />';
+      }
+
+      function hideTeamSuggest(side) {
+        var el = $(side === "home" ? "manHomeSuggest" : "manAwaySuggest");
+        if (!el) return;
+        el.classList.remove("show");
+        el.hidden = true;
+        el.innerHTML = "";
+      }
+
+      function showTeamSuggest(side, html) {
+        var el = $(side === "home" ? "manHomeSuggest" : "manAwaySuggest");
+        if (!el) return;
+        el.innerHTML = html;
+        el.hidden = false;
+        el.classList.add("show");
+      }
+
+      var teamSearchTimers = { home: null, away: null };
+      var teamSearchSeq = { home: 0, away: 0 };
+
+      function selectFootballTeam(side, team) {
+        var nameEl = $(side === "home" ? "manHome" : "manAway");
+        var logoEl = $(side === "home" ? "manHomeLogo" : "manAwayLogo");
+        if (nameEl) nameEl.value = team.name || "";
+        var logo = team.logo || team.logoSvg || team.logoPng || "";
+        if (logoEl) logoEl.value = logo;
+        setTeamLogoPreview(side, logo);
+        hideTeamSuggest(side);
+        if (!($("manLeague").value || "").trim() && team.league) {
+          $("manLeague").value = team.league;
+        }
+      }
+
+      async function searchFootballTeams(side, query) {
+        var q = String(query || "").trim();
+        var seq = ++teamSearchSeq[side];
+        if (q.length < 2) {
+          hideTeamSuggest(side);
+          return;
+        }
+        showTeamSuggest(
+          side,
+          '<div class="team-suggest-loading">Buscando times…</div>'
+        );
+        try {
+          var data = await apiGet(
+            "/api/arbishield/football-teams?q=" + encodeURIComponent(q)
+          );
+          if (seq !== teamSearchSeq[side]) return;
+          var teams = Array.isArray(data.teams) ? data.teams : [];
+          if (!teams.length) {
+            showTeamSuggest(
+              side,
+              '<div class="team-suggest-empty">Nenhum time encontrado — digite o nome manualmente</div>'
+            );
+            return;
+          }
+          showTeamSuggest(
+            side,
+            teams
+              .map(function (t, idx) {
+                var sub = [t.country, t.league].filter(Boolean).join(" · ");
+                return (
+                  '<button type="button" class="team-suggest-item" data-idx="' +
+                  idx +
+                  '" role="option">' +
+                  (t.logo
+                    ? '<img src="' + escHtml(t.logo) + '" alt="" />'
+                    : "") +
+                  '<span class="meta"><span class="name">' +
+                  escHtml(t.name) +
+                  "</span>" +
+                  (sub
+                    ? '<span class="sub">' + escHtml(sub) + "</span>"
+                    : "") +
+                  "</span></button>"
+                );
+              })
+              .join("")
+          );
+          var box = $(side === "home" ? "manHomeSuggest" : "manAwaySuggest");
+          box.querySelectorAll(".team-suggest-item").forEach(function (btn) {
+            btn.addEventListener("mousedown", function (ev) {
+              ev.preventDefault();
+              var i = Number(btn.getAttribute("data-idx"));
+              if (Number.isFinite(i) && teams[i]) selectFootballTeam(side, teams[i]);
+            });
+          });
+        } catch (err) {
+          if (seq !== teamSearchSeq[side]) return;
+          showTeamSuggest(
+            side,
+            '<div class="team-suggest-empty">' +
+              escHtml(err.message || "Falha na busca") +
+              "</div>"
+          );
+        }
+      }
+
+      function bindTeamPicker(side) {
+        var nameEl = $(side === "home" ? "manHome" : "manAway");
+        var logoEl = $(side === "home" ? "manHomeLogo" : "manAwayLogo");
+        if (!nameEl) return;
+        nameEl.addEventListener("input", function () {
+          clearTimeout(teamSearchTimers[side]);
+          teamSearchTimers[side] = setTimeout(function () {
+            searchFootballTeams(side, nameEl.value);
+          }, 280);
+        });
+        nameEl.addEventListener("focus", function () {
+          if (String(nameEl.value || "").trim().length >= 2) {
+            searchFootballTeams(side, nameEl.value);
+          }
+        });
+        nameEl.addEventListener("blur", function () {
+          setTimeout(function () {
+            hideTeamSuggest(side);
+          }, 180);
+        });
+        nameEl.addEventListener("keydown", function (ev) {
+          if (ev.key === "Escape") hideTeamSuggest(side);
+        });
+        if (logoEl) {
+          logoEl.addEventListener("input", function () {
+            setTeamLogoPreview(side, logoEl.value);
+          });
+        }
+      }
+
+      bindTeamPicker("home");
+      bindTeamPicker("away");
 
       function filterText(ev) {
         if (!searchTerm) return true;
@@ -1136,16 +1361,30 @@
                   : "";
               var used = Number(m.used_protection_cents || 0);
               var openN = Number(m._openProtections || 0);
+              var homeLogo = m.home_logo
+                ? '<img src="' +
+                  escHtml(m.home_logo) +
+                  '" alt="" onerror="this.style.display=\'none\'" />'
+                : "";
+              var awayLogo = m.away_logo
+                ? '<img src="' +
+                  escHtml(m.away_logo) +
+                  '" alt="" onerror="this.style.display=\'none\'" />'
+                : "";
               return (
                 '<div class="row" style="cursor:default">' +
-                "<div><div class=\"teams\">" +
-                m.home_team +
-                " vs " +
-                m.away_team +
-                "</div>" +
+                "<div><div class=\"teams row-teams-with-logos\">" +
+                homeLogo +
+                "<span>" +
+                escHtml(m.home_team) +
+                "</span><span>vs</span>" +
+                awayLogo +
+                "<span>" +
+                escHtml(m.away_team) +
+                "</span></div>" +
                 '<div class="meta">' +
-                (m.league || "—") +
-                (names ? " · " + names + extra : "") +
+                escHtml(m.league || "—") +
+                (names ? " · " + escHtml(names) + extra : "") +
                 "</div>" +
                 '<div class="entries">' +
                 markets.length +
@@ -1254,7 +1493,7 @@
         }
         try {
           platformMatches = await rest(
-            "matches?deleted_at=is.null&select=id,home_team,away_team,league,starts_at,is_published,status,status_v2,final_score,settled_at,max_protection_cents,used_protection_cents,markets&order=starts_at.desc&limit=500",
+            "matches?deleted_at=is.null&select=id,home_team,away_team,home_logo,away_logo,league,starts_at,is_published,status,status_v2,final_score,settled_at,max_protection_cents,used_protection_cents,markets&order=starts_at.desc&limit=500",
             auth.token
           );
           // Marca jogos com proteção ainda aberta (LAY + BACK)
@@ -1338,7 +1577,7 @@
             var extra = await rest(
               "matches?id=in.(" +
                 missingIds.map(encodeURIComponent).join(",") +
-                ")&deleted_at=is.null&select=id,home_team,away_team,league,starts_at,is_published,status,status_v2,final_score,settled_at,max_protection_cents,used_protection_cents,markets",
+                ")&deleted_at=is.null&select=id,home_team,away_team,home_logo,away_logo,league,starts_at,is_published,status,status_v2,final_score,settled_at,max_protection_cents,used_protection_cents,markets",
               auth.token
             );
             (extra || []).forEach(function (m) {
@@ -1503,6 +1742,10 @@
         $("manAway").value = "";
         $("manHomeLogo").value = "";
         $("manAwayLogo").value = "";
+        setTeamLogoPreview("home", "");
+        setTeamLogoPreview("away", "");
+        hideTeamSuggest("home");
+        hideTeamSuggest("away");
         $("manLeague").value = "";
         $("manExternalId").value = "";
         $("manSport").value = "futebol";
