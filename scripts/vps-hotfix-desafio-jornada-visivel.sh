@@ -45,9 +45,9 @@ grep -q 'j-map\|Mapa de campanha\|jornada-v1\|Painel de Sinais &amp; Arbitragem\
   || grep -q 'j-map\|Mapa do desafio' "$WEB/app-desafio.html" \
   || die "app-desafio.html ainda não é o mapa de jornada"
 grep -q 'j-map\|Mapa do desafio' "$WEB/app-desafio.html" || die "falha: app-desafio sem j-map"
-grep -q 'buildManualSinalState\|evento do Desafio\|fetchDesafios' "$WEB/app-desafio-sinais.html" \
-  || die "sinais ainda depende de API antiga"
 grep -q 'fActive' "$WEB/admin-desafios.html" || die "admin-desafios ausente"
+# Sinais não é mais parte do fluxo do Desafio
+! grep -qi 'Abrir painel de sinais' "$WEB/app-desafio.html" || die "app-desafio ainda tem botão de sinais"
 
 log "3/4 Backend shim (register/settle desafio)"
 dl "scripts/arbishield-serverfn-shim.mjs" "$SHIM_DIR/arbishield-serverfn-shim.mjs"
