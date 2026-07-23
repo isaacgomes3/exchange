@@ -44,8 +44,9 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      justify-content: flex-end;
+      justify-content: flex-start;
       flex-wrap: wrap;
+      width: 100%;
     }
     .dz-stake-edit input {
       width: 7.5rem;
@@ -58,12 +59,17 @@
       font-size: 1.05rem;
       font-weight: 900;
       padding: 8px 10px;
-      text-align: right;
+      text-align: left;
     }
     .dz-stake-edit input:focus {
       outline: none;
       border-color: #c9f223;
       box-shadow: 0 0 0 2px rgba(201, 242, 35, 0.2);
+    }
+    .dz-v2-row-stake .v.sm {
+      display: block;
+      width: 100%;
+      text-align: left;
     }
     .dz-stake-max {
       border: 1px solid rgba(201, 242, 35, 0.55);
@@ -1095,7 +1101,7 @@
           '<div class="dz-v2-row"><span class="l">Odd</span><span class="v accent">' +
           esc(fmtOdd(item.arbiOdd)) +
           "</span></div>" +
-          '<div class="dz-v2-row"><span class="l">Entrar com</span><span class="v sm">' +
+          '<div class="dz-v2-row dz-v2-row-stake"><span class="l">Entrar com</span><span class="v sm">' +
           '<span class="dz-stake-edit">' +
           '<input type="text" inputmode="decimal" autocomplete="off" data-stake-input="' +
           esc(item.id) +
