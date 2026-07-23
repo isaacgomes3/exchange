@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/v2.css?v=desafio-lancar-left-1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
+  <script src="/market-catalog.js?v=desafio-market-1"></script>
   <script src="/v2-shell.js" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -696,6 +697,122 @@
       Object.keys(TEAM_PICKERS).forEach(bindTeamPicker);
     }
 
+    const MARKET_PICKERS = {
+      casa: {
+        field: "market_name_casa",
+        suggestId: "casaMarketSuggest",
+        pairField: "market_name_arbishield",
+      },
+      arbi: {
+        field: "market_name_arbishield",
+        suggestId: "arbiMarketSuggest",
+        pairField: "market_name_casa",
+      },
+    };
+
+    function hideMarketSuggest(side) {
+      const cfg = MARKET_PICKERS[side];
+      if (!cfg) return;
+      const el = document.getElementById(cfg.suggestId);
+      if (!el) return;
+      el.classList.remove("show");
+      el.hidden = true;
+      el.innerHTML = "";
+    }
+
+    function showMarketSuggest(side, html) {
+      const cfg = MARKET_PICKERS[side];
+      if (!cfg) return;
+      const el = document.getElementById(cfg.suggestId);
+      if (!el) return;
+      el.innerHTML = html;
+      el.hidden = false;
+      el.classList.add("show");
+    }
+
+    function selectMarket(side, name) {
+      const cfg = MARKET_PICKERS[side];
+      const root = document.querySelector(`[data-step-idx="0"]`);
+      if (!cfg || !root || !name) return;
+      const el = root.querySelector(`[data-f="${cfg.field}"]`);
+      if (el) el.value = name;
+      hideMarketSuggest(side);
+      const pairEl = root.querySelector(`[data-f="${cfg.pairField}"]`);
+      if (pairEl && !(pairEl.value || "").trim()) {
+        const cat = window.ArbiMarketCatalog;
+        const opposite =
+          cat && typeof cat.opposite === "function" ? cat.opposite(name) : "";
+        if (opposite) pairEl.value = opposite;
+      }
+    }
+
+    function searchMarkets(side, query) {
+      const cfg = MARKET_PICKERS[side];
+      if (!cfg) return;
+      const cat = window.ArbiMarketCatalog;
+      if (!cat || typeof cat.search !== "function") {
+        showMarketSuggest(
+          side,
+          '<div class="team-suggest-empty">Catálogo de mercados indisponível</div>'
+        );
+        return;
+      }
+      const q = String(query || "").trim();
+      const items = cat.search(q, 18);
+      if (!items.length) {
+        showMarketSuggest(
+          side,
+          '<div class="team-suggest-empty">Nenhum mercado — digite manualmente</div>'
+        );
+        return;
+      }
+      showMarketSuggest(
+        side,
+        items
+          .map((item, idx) => {
+            return (
+              `<button type="button" class="team-suggest-item" data-idx="${idx}" role="option">` +
+              `<span class="meta"><span class="name">${esc(item.name)}</span>` +
+              (item.group ? `<span class="sub">${esc(item.group)}</span>` : "") +
+              `</span></button>`
+            );
+          })
+          .join("")
+      );
+      const box = document.getElementById(cfg.suggestId);
+      box.querySelectorAll(".team-suggest-item").forEach((btn) => {
+        btn.addEventListener("mousedown", (ev) => {
+          ev.preventDefault();
+          const i = Number(btn.getAttribute("data-idx"));
+          if (Number.isFinite(i) && items[i]) selectMarket(side, items[i].name);
+        });
+      });
+    }
+
+    function bindMarketPicker(side) {
+      const cfg = MARKET_PICKERS[side];
+      const root = document.querySelector(`[data-step-idx="0"]`);
+      if (!cfg || !root) return;
+      const el = root.querySelector(`[data-f="${cfg.field}"]`);
+      if (!el) return;
+      el.addEventListener("input", () => {
+        searchMarkets(side, el.value);
+      });
+      el.addEventListener("focus", () => {
+        searchMarkets(side, el.value);
+      });
+      el.addEventListener("blur", () => {
+        setTimeout(() => hideMarketSuggest(side), 180);
+      });
+      el.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape") hideMarketSuggest(side);
+      });
+    }
+
+    function bindMarketPickers() {
+      Object.keys(MARKET_PICKERS).forEach(bindMarketPicker);
+    }
+
     function renderStepsEditor() {
       if (!draft.steps || !draft.steps.length) draft.steps = [emptyStep(1)];
       draft.steps = [draft.steps[0]];
@@ -767,9 +884,13 @@
               <input data-f="casa_commission_pct" value="${esc(s.casa_commission_pct)}" placeholder="4.5" />
             </div>
           </div>
-          <div class="field">
+          <div class="field team-pick" data-market-side="casa">
             <label>Mercado</label>
-            <input data-f="market_name_casa" value="${esc(s.market_name_casa)}" placeholder="Mais 2.5 gols" />
+            <div style="position:relative">
+              <input data-f="market_name_casa" value="${esc(s.market_name_casa)}" placeholder="Buscar… Ex: Menos 2.5 gols" autocomplete="off" />
+              <div class="team-suggest" id="casaMarketSuggest" role="listbox" hidden></div>
+            </div>
+            <p class="field-hint">Digite para buscar no catálogo (Mais/Menos, escanteios, cartões…).</p>
           </div>
           <div class="field">
             <label>Valor da entrada na casa (R$)</label>
@@ -803,9 +924,13 @@
               <input data-f="arbi_commission_pct" value="${esc(s.arbi_commission_pct)}" placeholder="0" />
             </div>
           </div>
-          <div class="field">
+          <div class="field team-pick" data-market-side="arbi">
             <label>Mercado</label>
-            <input data-f="market_name_arbishield" value="${esc(s.market_name_arbishield)}" placeholder="Menos 2.5 gols" />
+            <div style="position:relative">
+              <input data-f="market_name_arbishield" value="${esc(s.market_name_arbishield)}" placeholder="Buscar… Ex: Mais 2.5 gols" autocomplete="off" />
+              <div class="team-suggest" id="arbiMarketSuggest" role="listbox" hidden></div>
+            </div>
+            <p class="field-hint">Ao escolher um lado, o oposto preenche automaticamente se estiver vazio.</p>
           </div>
           <div class="field-row">
             <div class="field">
@@ -835,6 +960,7 @@
           </div>
         </div>`;
       bindTeamPickers();
+      bindMarketPickers();
       bindOddAutoCalc();
     }
 
