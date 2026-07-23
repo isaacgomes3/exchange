@@ -315,7 +315,7 @@
   <div class="drawer-backdrop" id="drawerBackdrop" aria-hidden="true"></div>
   <aside class="drawer" id="drawer" aria-hidden="true" role="dialog" aria-labelledby="drawerTitle">
     <h2 id="drawerTitle">Lançar Novo <span>Desafio</span></h2>
-    <p class="drawer-sub">Insira o evento e as etapas manualmente (mesmo fluxo do painel antigo).</p>
+    <p class="drawer-sub">Cadastre <strong>um evento</strong>. A etapa seguinte só existe para quem falhou na casa (venceu na ArbiShield) — não se cadastra um jogo por etapa.</p>
     <div class="form-error" id="formError"></div>
 
     <div class="field-row">
@@ -332,9 +332,16 @@
       <label for="fSubtitle">Subtítulo</label>
       <input id="fSubtitle" type="text" placeholder="Complete os desafios seguidos…" />
     </div>
-    <div class="field">
-      <label for="fBalance">Saldo inicial ArbiShield (R$)</label>
-      <input id="fBalance" type="text" inputmode="decimal" placeholder="Ex.: 200,00" />
+    <div class="field-row">
+      <div class="field">
+        <label for="fBalance">Saldo inicial ArbiShield (R$)</label>
+        <input id="fBalance" type="text" inputmode="decimal" placeholder="Ex.: 200,00" />
+      </div>
+      <div class="field">
+        <label for="fCircuitMax">Máx. etapas do circuito</label>
+        <input id="fCircuitMax" type="number" min="1" max="20" value="5" />
+        <p class="drawer-sub" style="margin:6px 0 0">Quantas falhas seguidas na casa o cliente pode tentar (automático). Não é quantidade de jogos a cadastrar agora.</p>
+      </div>
     </div>
     <div class="toggle-row">
       <div>
@@ -345,8 +352,7 @@
     </div>
 
     <div class="section-head">
-      <h3>Etapas do Desafio</h3>
-      <button class="btn btn-primary" type="button" id="btnAddStep">+ Adicionar Etapa</button>
+      <h3>Evento do jogo</h3>
     </div>
     <div id="stepsEditor"></div>
 
@@ -407,7 +413,9 @@
         title: "DESAFIO #001",
         subtitle: "Complete os desafios seguidos e fature todo o saldo final com lucro!",
         initial_balance_reais: "200,00",
+        circuit_max_steps: 5,
         is_active: false,
+        append_to_desafio_id: null,
         steps: [emptyStep(1)],
       };
     }
@@ -493,17 +501,26 @@
       draft.title = $("fTitle").value.trim();
       draft.subtitle = $("fSubtitle").value.trim();
       draft.initial_balance_reais = $("fBalance").value.trim();
+      draft.circuit_max_steps = Math.max(
+        1,
+        Math.min(20, Number($("fCircuitMax") && $("fCircuitMax").value) || 5)
+      );
       draft.is_active = $("fActive").checked;
-      draft.steps = draft.steps.map((s, idx) => {
-        const root = document.querySelector(`[data-step-idx="${idx}"]`);
-        if (!root) return s;
-        const g = (name) => {
-          const el = root.querySelector(`[data-f="${name}"]`);
-          return el ? el.value : "";
-        };
-        return {
-          ...s,
-          step_index: idx + 1,
+      // Sempre 1 evento no formulário de lançamento / próximo jogo
+      const root = document.querySelector(`[data-step-idx="0"]`);
+      const base = draft.steps[0] || emptyStep(1);
+      if (!root) {
+        draft.steps = [{ ...base, step_index: 1 }];
+        return;
+      }
+      const g = (name) => {
+        const el = root.querySelector(`[data-f="${name}"]`);
+        return el ? el.value : "";
+      };
+      draft.steps = [
+        {
+          ...base,
+          step_index: 1,
           status: g("status") || "pending",
           match_label: g("match_label"),
           league_name: g("league_name"),
@@ -521,28 +538,26 @@
           display_liquidity_cents: g("display_liquidity_cents"),
           starts_at: g("starts_at"),
           release_minutes_before: Number(g("release_minutes_before") || 60),
-        };
-      });
+        },
+      ];
     }
 
     function renderStepsEditor() {
-      $("stepsEditor").innerHTML = draft.steps
-        .map(
-          (s, idx) => `
-        <div class="step-card" data-step-idx="${idx}">
+      // Sempre um único evento — etapa 2+ nasce da falha do cliente + próximo jogo lançado depois
+      if (!draft.steps || !draft.steps.length) draft.steps = [emptyStep(1)];
+      draft.steps = [draft.steps[0]];
+      const s = draft.steps[0];
+      const append = Boolean(draft.append_to_desafio_id);
+      $("stepsEditor").innerHTML = `
+        <div class="step-card" data-step-idx="0">
           <div class="step-head">
-            <b>Etapa #${idx + 1}</b>
+            <b>${append ? "Próximo jogo do circuito" : "Evento do jogo"}</b>
             <div style="display:flex;gap:8px;align-items:center">
               <select data-f="status" style="border-radius:8px;border:1px solid var(--border);background:#050505;color:var(--text);padding:6px 8px;font-size:11px;font-weight:800;text-transform:uppercase">
                 <option value="pending" ${s.status === "pending" ? "selected" : ""}>Pendente</option>
                 <option value="current" ${s.status === "current" ? "selected" : ""}>Atual</option>
                 <option value="done" ${s.status === "done" ? "selected" : ""}>Encerrada</option>
               </select>
-              ${
-                draft.steps.length > 1
-                  ? `<button type="button" class="btn btn-ghost" data-remove-step="${idx}" style="padding:6px 10px">Remover</button>`
-                  : ""
-              }
             </div>
           </div>
           <div class="field">
@@ -631,21 +646,7 @@
               </select>
             </div>
           </div>
-        </div>`
-        )
-        .join("");
-
-      $("stepsEditor").querySelectorAll("[data-remove-step]").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          readFormIntoDraft();
-          const i = Number(btn.getAttribute("data-remove-step"));
-          draft.steps = draft.steps
-            .filter((_, idx) => idx !== i)
-            .map((s, idx) => ({ ...s, step_index: idx + 1 }));
-          if (!draft.steps.length) draft.steps = [emptyStep(1)];
-          renderStepsEditor();
-        });
-      });
+        </div>`;
     }
 
     function esc(v) {
@@ -660,13 +661,22 @@
       $("fTitle").value = draft.title || "";
       $("fSubtitle").value = draft.subtitle || "";
       $("fBalance").value = draft.initial_balance_reais || "";
+      if ($("fCircuitMax")) {
+        $("fCircuitMax").value = String(draft.circuit_max_steps || 5);
+        $("fCircuitMax").disabled = Boolean(draft.append_to_desafio_id);
+      }
       $("fActive").checked = Boolean(draft.is_active);
     }
 
     function openDrawer(prefill) {
       draft = prefill ? structuredClone(prefill) : emptyDraft();
       if (!draft.steps || !draft.steps.length) draft.steps = [emptyStep(1)];
-      $("drawerTitle").innerHTML = "Lançar Novo <span>Desafio</span>";
+      draft.steps = [draft.steps[0]];
+      if (draft.circuit_max_steps == null) draft.circuit_max_steps = 5;
+      const append = Boolean(draft.append_to_desafio_id);
+      $("drawerTitle").innerHTML = append
+        ? "Lançar próximo <span>jogo</span>"
+        : "Lançar Novo <span>Desafio</span>";
       setFormError("");
       fillHeaderFields();
       renderStepsEditor();
@@ -697,6 +707,8 @@
         initial_balance_reais: centsToReaisInput(
           data.initial_balance_cents ?? step.arbi_stake_cents ?? 20000
         ),
+        circuit_max_steps: Number(data.total_steps || data.circuit_max_steps) || 5,
+        append_to_desafio_id: null,
         is_active: Boolean(data.is_active),
         steps: [
           {
@@ -734,77 +746,82 @@
 
     function buildPayload() {
       readFormIntoDraft();
-      if (!draft.title) throw new Error("Informe o título do desafio.");
-      for (const a of draft.steps) {
-        if (!a.match_label) throw new Error(`Etapa ${a.step_index}: preencha o nome do jogo.`);
-        if (!a.arbi_team_name || !a.arbi_odd || !a.casa_team_name || !a.casa_odd) {
-          throw new Error(
-            `Etapa ${a.step_index}: preencha time e odd para ArbiShield e Casa Externa.`
-          );
-        }
-        if (!a.market_name_arbishield || !a.market_name_casa) {
-          throw new Error(
-            `Etapa ${a.step_index}: informe o mercado da ArbiShield e da Casa Externa.`
-          );
-        }
-        if (!a.liquidity_cents) {
-          throw new Error(`Etapa ${a.step_index}: informe a liquidez disponível.`);
-        }
-        if (!a.external_bet_link) {
-          throw new Error(`Etapa ${a.step_index}: informe o link da casa externa.`);
-        }
+      if (!draft.title && !draft.append_to_desafio_id) {
+        throw new Error("Informe o título do desafio.");
+      }
+      const a = draft.steps[0];
+      if (!a || !a.match_label) throw new Error("Preencha o nome do jogo.");
+      if (!a.arbi_team_name || !a.arbi_odd || !a.casa_team_name || !a.casa_odd) {
+        throw new Error("Preencha seleção e odd para ArbiShield e Casa Externa.");
+      }
+      if (!a.market_name_arbishield || !a.market_name_casa) {
+        throw new Error("Informe o mercado da ArbiShield e da Casa Externa.");
+      }
+      if (!a.liquidity_cents) {
+        throw new Error("Informe a liquidez disponível.");
+      }
+      if (!a.external_bet_link) {
+        throw new Error("Informe o link da casa externa.");
       }
 
       const initialCents = reaisToCents(draft.initial_balance_reais);
+      const arbiOdd = Number(String(a.arbi_odd).replace(",", "."));
+      const casaOdd = Number(String(a.casa_odd).replace(",", "."));
+      const labelParts = String(a.match_label || "")
+        .split(/\s+[x×X]\s+/)
+        .map((p) => p.trim())
+        .filter(Boolean);
+      const homeFromLabel = labelParts[0] || "";
+      const awayFromLabel = labelParts.length >= 2 ? labelParts.slice(1).join(" x ") : "";
+      const stepPayload = {
+        step_index: 1,
+        match_label: a.match_label,
+        league_name: a.league_name || null,
+        market_name: a.market_name_arbishield || a.market_name_casa || null,
+        market_name_arbishield: a.market_name_arbishield || null,
+        market_name_casa: a.market_name_casa || null,
+        home_team: homeFromLabel || a.home_team || "Casa",
+        away_team: awayFromLabel || a.away_team || "Visitante",
+        arbi_team_name: a.arbi_team_name || null,
+        arbi_odd: Number.isFinite(arbiOdd) ? arbiOdd : null,
+        casa_team_name: a.casa_team_name || null,
+        casa_odd: Number.isFinite(casaOdd) ? casaOdd : null,
+        home_odd: Number.isFinite(arbiOdd) ? arbiOdd : null,
+        away_odd: Number.isFinite(casaOdd) ? casaOdd : null,
+        casa_stake_cents: reaisToCents(a.casa_stake_cents) || null,
+        arbi_commission_pct: Number(String(a.arbi_commission_pct || "0").replace(",", ".")) || 0,
+        casa_commission_pct:
+          Number(String(a.casa_commission_pct || "4.5").replace(",", ".")) || 4.5,
+        external_bet_link: a.external_bet_link || null,
+        liquidity_cents: reaisToCents(a.liquidity_cents) || 200000,
+        display_liquidity_cents:
+          reaisToCents(a.display_liquidity_cents) ||
+          reaisToCents(a.liquidity_cents) ||
+          200000,
+        starts_at: fromLocalInput(a.starts_at),
+        release_minutes_before: Number(a.release_minutes_before) || 0,
+        status: a.status || "pending",
+        is_published: Boolean(draft.is_active),
+      };
+
+      if (draft.append_to_desafio_id) {
+        return {
+          append_to_desafio_id: draft.append_to_desafio_id,
+          steps: [stepPayload],
+          is_active: true,
+        };
+      }
+
       return {
         number: draft.number ? Number(draft.number) : undefined,
         title: draft.title,
         subtitle: draft.subtitle || null,
-        total_steps: draft.steps.length,
+        total_steps: Number(draft.circuit_max_steps) || 5,
         initial_balance_cents: initialCents || 20000,
         is_active: Boolean(draft.is_active),
         status: draft.is_active ? "active" : "draft",
         auto_link_matches: true,
-        steps: draft.steps.map((a) => {
-          const arbiOdd = Number(String(a.arbi_odd).replace(",", "."));
-          const casaOdd = Number(String(a.casa_odd).replace(",", "."));
-          const labelParts = String(a.match_label || "")
-            .split(/\s+[x×X]\s+/)
-            .map((p) => p.trim())
-            .filter(Boolean);
-          const homeFromLabel = labelParts[0] || "";
-          const awayFromLabel = labelParts.length >= 2 ? labelParts.slice(1).join(" x ") : "";
-          return {
-            step_index: a.step_index,
-            match_label: a.match_label,
-            league_name: a.league_name || null,
-            market_name: a.market_name_arbishield || a.market_name_casa || null,
-            market_name_arbishield: a.market_name_arbishield || null,
-            market_name_casa: a.market_name_casa || null,
-            home_team: homeFromLabel || a.home_team || "Casa",
-            away_team: awayFromLabel || a.away_team || "Visitante",
-            arbi_team_name: a.arbi_team_name || null,
-            arbi_odd: Number.isFinite(arbiOdd) ? arbiOdd : null,
-            casa_team_name: a.casa_team_name || null,
-            casa_odd: Number.isFinite(casaOdd) ? casaOdd : null,
-            home_odd: Number.isFinite(arbiOdd) ? arbiOdd : null,
-            away_odd: Number.isFinite(casaOdd) ? casaOdd : null,
-            casa_stake_cents: reaisToCents(a.casa_stake_cents) || null,
-            arbi_commission_pct: Number(String(a.arbi_commission_pct || "0").replace(",", ".")) || 0,
-            casa_commission_pct:
-              Number(String(a.casa_commission_pct || "4.5").replace(",", ".")) || 4.5,
-            external_bet_link: a.external_bet_link || null,
-            liquidity_cents: reaisToCents(a.liquidity_cents) || 200000,
-            display_liquidity_cents:
-              reaisToCents(a.display_liquidity_cents) ||
-              reaisToCents(a.liquidity_cents) ||
-              200000,
-            starts_at: fromLocalInput(a.starts_at),
-            release_minutes_before: Number(a.release_minutes_before) || 0,
-            status: a.status || "pending",
-            is_published: Boolean(draft.is_active),
-          };
-        }),
+        steps: [stepPayload],
       };
     }
 
@@ -848,9 +865,11 @@
         renderSuggestion();
         await load();
         alert(
-          "Desafio criado" +
-            (data.desafio && data.desafio.number != null ? " #" + data.desafio.number : "") +
-            "!"
+          body.append_to_desafio_id
+            ? "Próximo jogo lançado! Quem falhou na etapa anterior entra automaticamente nesta."
+            : "Desafio criado" +
+                (data.desafio && data.desafio.number != null ? " #" + data.desafio.number : "") +
+                " com 1 evento. Etapas seguintes = falha do cliente na casa."
         );
       } catch (err) {
         setFormError(err.message || String(err));
@@ -930,7 +949,7 @@
                   </div>
                   <p style="margin:6px 0 0;font-size:10px;color:var(--muted)">Circuito: vitórias só na ArbiShield até o fim → ganhos vão aos provedores de liquidez.</p>`;
               return `<div class="step-box">
-                <strong>Etapa ${s.step_index}</strong> · ${label}
+                <strong>Jogo ${s.step_index}</strong> · ${label}
                 <div class="tags">
                   <span class="tag-arbi">Arbi: ${s.market_name_arbishield || s.market_name || "—"} @ ${s.arbi_odd ?? "—"}</span>
                   <span class="tag-casa">Casa: ${s.market_name_casa || "—"} @ ${s.casa_odd ?? "—"}</span>
@@ -942,6 +961,9 @@
           const live = steps.filter((s) => stepState(s) === "live").length;
           const pending = steps.filter((s) => stepState(s) === "pending").length;
           const upcoming = steps.filter((s) => stepState(s) === "upcoming").length;
+          const circuitMax = Number(d.total_steps) || Math.max(steps.length, 5);
+          const canAppend =
+            Boolean(d.is_active) && !d.deleted_at && steps.length < circuitMax;
           return `<article class="card">
             <div class="card-top">
               <div class="title">${esc(d.title || "Desafio")} <span style="color:var(--muted);font-weight:700">#${String(d.number ?? "—").padStart(3, "0")}</span></div>
@@ -949,20 +971,43 @@
             </div>
             <div class="steps">${esc(d.subtitle || "Complete os desafios seguidos e fature o saldo final com lucro.")}</div>
             <div class="mini-grid">
-              <div class="mini"><div class="l">Etapas</div><div class="v">${steps.length}</div></div>
+              <div class="mini"><div class="l">Jogos lançados</div><div class="v">${steps.length}</div></div>
+              <div class="mini"><div class="l">Circuito até</div><div class="v">${circuitMax}</div></div>
               <div class="mini"><div class="l">Agendadas</div><div class="v">${upcoming}</div></div>
               <div class="mini"><div class="l">Ao Vivo</div><div class="v ${live ? "lime" : ""}">${live}</div></div>
               <div class="mini"><div class="l">Pendente</div><div class="v">${pending}</div></div>
               <div class="mini"><div class="l">Saldo inicial</div><div class="v lime">${money(d.initial_balance_cents)}</div></div>
             </div>
-            ${stepBlocks || '<div class="steps">Sem etapas</div>'}
+            ${stepBlocks || '<div class="steps">Sem jogos</div>'}
             <div class="card-actions">
+              ${
+                canAppend
+                  ? `<button class="btn btn-primary" type="button" data-next-game="${esc(d.id)}">Lançar próximo jogo</button>`
+                  : ""
+              }
               <button class="btn btn-ghost" type="button" data-clone="${esc(d.id)}">Usar como base</button>
             </div>
           </article>`;
         })
         .join("");
 
+      $("list").querySelectorAll("[data-next-game]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const id = btn.getAttribute("data-next-game");
+          const d = rows.find((x) => String(x.id) === String(id));
+          if (!d) return;
+          openDrawer({
+            ...emptyDraft(),
+            title: d.title || "DESAFIO",
+            subtitle: d.subtitle || "",
+            initial_balance_reais: centsToReaisInput(d.initial_balance_cents),
+            circuit_max_steps: Number(d.total_steps) || 5,
+            is_active: true,
+            append_to_desafio_id: d.id,
+            steps: [emptyStep(1)],
+          });
+        });
+      });
       $("list").querySelectorAll("[data-settle]").forEach((btn) => {
         btn.addEventListener("click", async () => {
           const stepId = btn.getAttribute("data-settle");
@@ -1011,42 +1056,47 @@
           const id = btn.getAttribute("data-clone");
           const row = (window.__desafioRows || []).find((x) => String(x.id) === String(id));
           if (!row) return;
-          const steps = (row.desafio_steps || [])
+          const first = (row.desafio_steps || [])
             .slice()
-            .sort((a, b) => a.step_index - b.step_index)
-            .map((s, i) => ({
-              ...emptyStep(i + 1),
-              match_label: s.match_label || "",
-              league_name: s.league_name || "",
-              home_team: s.home_team || "",
-              away_team: s.away_team || "",
-              arbi_team_name: s.arbi_team_name || s.market_name_arbishield || "",
-              arbi_odd: s.arbi_odd != null ? String(s.arbi_odd) : "",
-              market_name_arbishield: s.market_name_arbishield || "",
-              arbi_commission_pct:
-                s.arbi_commission_pct != null ? String(s.arbi_commission_pct) : "0",
-              casa_team_name: s.casa_team_name || s.market_name_casa || "",
-              casa_odd: s.casa_odd != null ? String(s.casa_odd) : "",
-              market_name_casa: s.market_name_casa || "",
-              casa_commission_pct:
-                s.casa_commission_pct != null ? String(s.casa_commission_pct) : "4.5",
-              casa_stake_cents: centsToReaisInput(s.casa_stake_cents),
-              external_bet_link: s.external_bet_link || "",
-              liquidity_cents: centsToReaisInput(s.liquidity_cents),
-              display_liquidity_cents: centsToReaisInput(
-                s.display_liquidity_cents ?? s.liquidity_cents
-              ),
-              starts_at: toLocalInput(s.starts_at),
-              release_minutes_before: s.release_minutes_before ?? 60,
-              status: "pending",
-            }));
+            .sort((a, b) => a.step_index - b.step_index)[0];
+          const s = first || {};
           openDrawer({
+            ...emptyDraft(),
             number: "",
-            title: row.title || "DESAFIO",
+            title: (row.title || "DESAFIO") + " (cópia)",
             subtitle: row.subtitle || "",
             initial_balance_reais: centsToReaisInput(row.initial_balance_cents || 20000),
+            circuit_max_steps: Number(row.total_steps) || 5,
+            append_to_desafio_id: null,
             is_active: false,
-            steps: steps.length ? steps : [emptyStep(1)],
+            steps: [
+              {
+                ...emptyStep(1),
+                match_label: s.match_label || "",
+                league_name: s.league_name || "",
+                home_team: s.home_team || "",
+                away_team: s.away_team || "",
+                arbi_team_name: s.arbi_team_name || s.market_name_arbishield || "",
+                arbi_odd: s.arbi_odd != null ? String(s.arbi_odd) : "",
+                market_name_arbishield: s.market_name_arbishield || "",
+                arbi_commission_pct:
+                  s.arbi_commission_pct != null ? String(s.arbi_commission_pct) : "0",
+                casa_team_name: s.casa_team_name || s.market_name_casa || "",
+                casa_odd: s.casa_odd != null ? String(s.casa_odd) : "",
+                market_name_casa: s.market_name_casa || "",
+                casa_commission_pct:
+                  s.casa_commission_pct != null ? String(s.casa_commission_pct) : "4.5",
+                casa_stake_cents: centsToReaisInput(s.casa_stake_cents),
+                external_bet_link: s.external_bet_link || "",
+                liquidity_cents: centsToReaisInput(s.liquidity_cents),
+                display_liquidity_cents: centsToReaisInput(
+                  s.display_liquidity_cents ?? s.liquidity_cents
+                ),
+                starts_at: toLocalInput(s.starts_at),
+                release_minutes_before: s.release_minutes_before ?? 60,
+                status: "pending",
+              },
+            ],
           });
         });
       });
@@ -1169,12 +1219,6 @@
     $("btnCancelDraft").addEventListener("click", closeDrawer);
     $("drawerBackdrop").addEventListener("click", closeDrawer);
     $("btnSaveDraft").addEventListener("click", saveDesafio);
-    $("btnAddStep").addEventListener("click", () => {
-      readFormIntoDraft();
-      const n = draft.steps.length + 1;
-      draft.steps.push(emptyStep(n));
-      renderStepsEditor();
-    });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && $("drawer").classList.contains("open")) closeDrawer();
     });

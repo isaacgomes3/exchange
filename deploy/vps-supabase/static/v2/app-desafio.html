@@ -44,7 +44,7 @@
   <div class="page-head">
     <div>
       <h1>Desafio <span>ArbiShield</span></h1>
-      <p class="sub">Circuito de até 5 etapas · objetivo: bater na casa · falha só na ArbiShield liquida para provedores</p>
+      <p class="sub">Um jogo por vez · falhou na casa (venceu na ArbiShield)? Você avança sozinho para a próxima etapa</p>
     </div>
   </div>
   <div id="err" class="err"></div>
@@ -89,7 +89,7 @@
   </div>
 
   <div class="section-label"><span class="dot" style="background:#c6ff00"></span>Desafios disponíveis</div>
-  <p class="app-desafio-lead">Ganhou na ArbiShield (falha na casa)? Segue no circuito (até +4 eventos) mirando a casa oposta. Sem vitória na casa ao final, o valor acumulado vai aos provedores de liquidez.</p>
+  <p class="app-desafio-lead">Cada desafio nasce com um evento. A “etapa 2” não é cadastrada no lançamento — ela abre automaticamente para quem falhou na casa na etapa anterior. Objetivo: bater na casa; se só vencer na ArbiShield até o fim do circuito, o acumulado vai aos provedores.</p>
   <div id="list" class="app-desafio-grid"><div class="ops-empty">Carregando…</div></div>
 
   <div class="dz-modal" id="dzTransferModal" aria-hidden="true">
@@ -131,6 +131,7 @@
       var filter = "Todos";
       var items = [];
       var tickTimer = null;
+      var waitingNextGame = false;
       var walletState = {
         bancaCents: 0,
         desafioWalletCents: 0,
@@ -236,6 +237,101 @@
         }
       }
 
+      /** Progresso pessoal: etapa 2+ = falhou na casa (venceu ArbiShield) na anterior — não é cadastro prévio. */
+      function personalProgress(desafio, parts) {
+        var empty = {
+          circuitMax: 5,
+          eligibleStepIndex: 1,
+          wonCasa: false,
+          waitingNextGame: false,
+        };
+        if (!desafio) return empty;
+        var steps = (desafio.desafio_steps || [])
+          .slice()
+          .sort(function (a, b) {
+            return (a.step_index || 0) - (b.step_index || 0);
+          });
+        var circuitMax = Math.max(
+          1,
+          Number(desafio.total_steps) || steps.length || 5
+        );
+        var byId = {};
+        steps.forEach(function (s) {
+          byId[String(s.id)] = s;
+        });
+        var advancedPast = 0;
+        var wonCasa = false;
+        var openStepIndex = null;
+        var eliminated = false;
+        (parts || []).forEach(function (p) {
+          var step = byId[String(p.step_id)];
+          if (!step) return;
+          var idx = Number(step.step_index) || 1;
+          var side = String(p.side || "").toLowerCase();
+          var result = String(p.result || "").toLowerCase();
+          if (!result || result === "pending" || result === "open") {
+            openStepIndex = idx;
+            return;
+          }
+          if (result === "won" || result === "win") {
+            if (side === "casa" || side === "exchange") {
+              wonCasa = true;
+              advancedPast = Math.max(advancedPast, idx);
+            } else if (side === "arbishield") {
+              // Falhou na casa → avança automaticamente para a próxima etapa
+              advancedPast = Math.max(advancedPast, idx);
+            }
+          } else if (result === "lost" || result === "lose") {
+            if (side === "arbishield") {
+              // Perdeu na ArbiShield — não entra na etapa seguinte
+              eliminated = true;
+            }
+          }
+        });
+        if (wonCasa) {
+          return {
+            circuitMax: circuitMax,
+            eligibleStepIndex: null,
+            wonCasa: true,
+            waitingNextGame: false,
+          };
+        }
+        if (eliminated && openStepIndex == null) {
+          return {
+            circuitMax: circuitMax,
+            eligibleStepIndex: null,
+            wonCasa: false,
+            waitingNextGame: false,
+          };
+        }
+        if (openStepIndex != null) {
+          return {
+            circuitMax: circuitMax,
+            eligibleStepIndex: openStepIndex,
+            wonCasa: false,
+            waitingNextGame: false,
+          };
+        }
+        var next = advancedPast + 1;
+        if (next > circuitMax) {
+          return {
+            circuitMax: circuitMax,
+            eligibleStepIndex: null,
+            wonCasa: false,
+            waitingNextGame: false,
+          };
+        }
+        var hasGame = steps.some(function (s) {
+          return Number(s.step_index) === next;
+        });
+        return {
+          circuitMax: circuitMax,
+          eligibleStepIndex: hasGame ? next : null,
+          wonCasa: false,
+          waitingNextGame: !hasGame && next > 1,
+        };
+      }
+
       async function loadWalletBar(activeDesafios) {
         try {
           var profileRes = await supa
@@ -259,7 +355,11 @@
                   return (a.step_index || 0) - (b.step_index || 0);
                 })
             : [];
-          walletState.totalSteps = steps.length || Number(active && active.total_steps) || 5;
+          var circuitMax = Math.max(
+            1,
+            Number(active && active.total_steps) || steps.length || 5
+          );
+          walletState.totalSteps = circuitMax;
 
           var partRes = await supa
             .from("desafio_participations")
@@ -268,7 +368,9 @@
             .order("created_at", { ascending: true })
             .limit(200);
           var parts = !partRes.error && Array.isArray(partRes.data) ? partRes.data : [];
+          window.__desafioParts = parts;
 
+          var progress = personalProgress(active, parts);
           var stepIds = {};
           steps.forEach(function (s) {
             stepIds[String(s.id)] = s;
@@ -278,46 +380,40 @@
           });
 
           var saldo = 0;
-          var states = steps.map(function () {
-            return "pending";
-          });
-          var current = 0;
+          var states = [];
+          for (var si = 0; si < circuitMax; si++) states.push("pending");
           myParts.forEach(function (p) {
-            var idx = steps.findIndex(function (s) {
-              return String(s.id) === String(p.step_id);
-            });
-            if (idx < 0) return;
+            var step = stepIds[String(p.step_id)];
+            if (!step) return;
+            var idx = Math.max(0, Number(step.step_index || 1) - 1);
+            if (idx >= states.length) return;
             var side = String(p.side || "").toLowerCase();
             var result = String(p.result || "").toLowerCase();
             if (result === "won" || result === "win") {
               if (side === "arbishield") {
                 states[idx] = "done";
                 saldo += Number(p.profit_cents || 0);
-                current = Math.max(current, idx + 1);
               } else if (side === "casa" || side === "exchange") {
                 states[idx] = "lost";
                 saldo = 0;
-                current = Math.max(current, idx + 1);
               }
             } else if (result === "lost" || result === "lose") {
               states[idx] = side === "arbishield" ? "lost" : "done";
-              current = Math.max(current, idx + 1);
             } else {
               states[idx] = "current";
-              current = Math.max(current, idx + 1);
             }
           });
-
-          if (!current && myParts.length) current = 1;
-          if (states.indexOf("current") < 0 && current < states.length && myParts.length) {
-            // next pending becomes current visual
+          if (progress.eligibleStepIndex != null && progress.eligibleStepIndex <= circuitMax) {
+            var curIdx = progress.eligibleStepIndex - 1;
+            if (states[curIdx] === "pending") states[curIdx] = "current";
           }
-          walletState.stepStates = states.length
-            ? states
-            : ["pending", "pending", "pending", "pending", "pending"];
-          walletState.currentStep = current || (myParts.length ? 1 : 0);
+
+          walletState.stepStates = states;
+          walletState.currentStep = progress.wonCasa
+            ? circuitMax
+            : progress.eligibleStepIndex || (myParts.length ? 1 : 0);
           walletState.desafioSaldoCents = saldo;
-          walletState.desafioActive = Boolean(active && myParts.length);
+          walletState.desafioActive = Boolean(active && (myParts.length || progress.eligibleStepIndex));
         } catch (ex) {
           console.warn("[desafio] wallet bar", ex);
         }
@@ -583,7 +679,7 @@
           releaseMinutesBefore: Number(step.release_minutes_before) || 0,
           entradaCents: entrada,
           lucroMaxPct: pct,
-          totalSteps: (desafio.desafio_steps || []).length || Number(desafio.total_steps) || 1,
+          totalSteps: Number(desafio.total_steps) || (desafio.desafio_steps || []).length || 1,
           isNew: true,
           isActiveDesafio: !!desafio.is_active,
           liquidityCents: Number(step.liquidity_cents) || 0,
@@ -759,8 +855,9 @@
         var visible = applyFilter(items);
         var host = document.getElementById("list");
         if (!visible.length) {
-          host.innerHTML =
-            '<div class="ops-empty"><h2>Nenhum desafio disponível no momento</h2><p>Aguarde o lançamento de um novo desafio pela equipe ArbiShield.</p></div>';
+          host.innerHTML = waitingNextGame
+            ? '<div class="ops-empty"><h2>Aguardando próximo jogo</h2><p>Você avançou de etapa ao falhar na casa. Assim que o próximo evento for liberado, ele aparece aqui automaticamente.</p></div>'
+            : '<div class="ops-empty"><h2>Nenhum desafio disponível no momento</h2><p>Aguarde o lançamento de um novo desafio pela equipe ArbiShield.</p></div>';
           return;
         }
         host.innerHTML = visible.map(function (it) { return cardHtml(it, now); }).join("");
@@ -771,9 +868,12 @@
               return String(x.id) === String(stepId);
             });
             if (!item) return;
+            var realStepId = String(stepId).indexOf(":") >= 0
+              ? String(stepId).split(":").slice(1).join(":")
+              : stepId;
             if (
               !confirm(
-                "Registrar entrada no lado ArbiShield?\n\nCircuito: se ganhar só na ArbiShield até o fim das etapas sem bater na casa, o valor acumulado vai para os provedores de liquidez."
+                "Registrar entrada no lado ArbiShield?\n\nSe você ganhar só na ArbiShield (falhar na casa), avança automaticamente para a próxima etapa — não é preciso cadastrar etapas no lançamento."
               )
             ) {
               return;
@@ -789,7 +889,7 @@
                   "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                  stepId: stepId,
+                  stepId: realStepId,
                   side: "arbishield",
                   amountCents: item.entradaCents,
                 }),
@@ -925,25 +1025,29 @@
         var alive = rows.filter(function (d) { return !d.deleted_at; });
         var active = alive.filter(function (d) { return d.is_active; });
 
+        await loadWalletBar(active);
+        var parts = window.__desafioParts || [];
+        waitingNextGame = false;
         items = [];
         active.forEach(function (d) {
           var steps = (d.desafio_steps || [])
             .slice()
             .sort(function (a, b) { return (a.step_index || 0) - (b.step_index || 0); });
           if (!steps.length) return;
-          steps.forEach(function (s) {
-            items.push(toCardItem(d, s));
+          var progress = personalProgress(d, parts);
+          if (progress.waitingNextGame) waitingNextGame = true;
+          if (progress.wonCasa || progress.eligibleStepIndex == null) return;
+          var step = steps.find(function (s) {
+            return Number(s.step_index) === Number(progress.eligibleStepIndex);
           });
+          if (!step) return;
+          // Só o jogo da etapa pessoal atual — etapa 2+ vem da falha na casa, não do cadastro
+          items.push(toCardItem(d, step));
         });
 
-        // Preferir jogos ainda jogáveis; ao vivo ficam no fim
         items.sort(function (a, b) {
-          var na = a.startsAtMs || 0;
-          var nb = b.startsAtMs || 0;
-          return na - nb;
+          return (a.startsAtMs || 0) - (b.startsAtMs || 0);
         });
-
-        await loadWalletBar(active);
 
         render();
         enrichLogos(items)

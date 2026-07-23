@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Hotfix: visual Desafios disponíveis (mockup confronto + painéis Arbi/Casa)
+# Hotfix: visual Desafios + lançamento 1 evento (etapa = falha do cliente)
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=3")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-visual.sh?v=4")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -16,7 +16,7 @@ need() { command -v "$1" >/dev/null || die "$1 não encontrado"; }
 need curl
 mkdir -p "$WEB"
 
-log "app-desafio.html (visual mockup)"
+log "app-desafio.html (visual mockup + etapa pessoal)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/app-desafio.html" -o "$WEB/app-desafio.html"
 chmod 0644 "$WEB/app-desafio.html"
 grep -q 'dz-v2-compare' "$WEB/app-desafio.html" || die "HTML sem dz-v2-compare"
@@ -25,6 +25,7 @@ grep -q 'Depositar Desafio' "$WEB/app-desafio.html" || die "HTML sem Depositar D
 grep -q 'Maior retorno' "$WEB/app-desafio.html" || die "HTML sem Maior retorno"
 grep -q 'resolveTeamLogo' "$WEB/app-desafio.html" || die "HTML sem resolveTeamLogo"
 grep -q 'searchFootballTeams' "$WEB/app-desafio.html" || die "HTML sem searchFootballTeams"
+grep -q 'personalProgress' "$WEB/app-desafio.html" || die "HTML sem personalProgress (etapa = falha do cliente)"
 
 log "v2.js (busca de times + fallback TheSportsDB)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/v2.js" -o "$WEB/v2.js"
@@ -45,24 +46,25 @@ grep -q 'border: 1.5px solid #c9f223' "$WEB/v2.css" || die "CSS sem borda limão
 grep -q 'dz-wallet-black' "$WEB/app-desafio.html" || die "HTML sem cache-bust da barra"
 grep -q 'background: #000 !important' "$WEB/app-desafio.html" || die "HTML sem estilo inline preto"
 
-log "admin-desafios.html (home/away a partir do nome do jogo; sem botão Sugestão)"
+log "admin-desafios.html (1 evento no lançamento; sem Adicionar Etapa)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-desafios.html" -o "$WEB/admin-desafios.html"
 chmod 0644 "$WEB/admin-desafios.html"
 grep -q 'Sugestão de Desafio' "$WEB/admin-desafios.html" && die "botão Sugestão de Desafio ainda presente"
+grep -q 'Adicionar Etapa' "$WEB/admin-desafios.html" && die "botão Adicionar Etapa ainda presente"
+grep -q 'fCircuitMax' "$WEB/admin-desafios.html" || die "admin sem Máx. etapas do circuito"
+grep -q 'append_to_desafio_id' "$WEB/admin-desafios.html" || die "admin sem append próximo jogo"
 
-# Garante API de logos (dependência do visual)
+# Sempre atualiza prelive (createDesafio = 1 step + appendDesafioGame)
 if [[ -f /opt/arbishield/arbishield-prelive-events.mjs ]] || [[ -f "${ARBISHIELD_SCRIPTS:-/opt/arbishield}/arbishield-prelive-events.mjs" ]]; then
   SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield}"
-  if grep -q 'searchFootballTeams' "$SCRIPTS_DIR/arbishield-prelive-events.mjs" 2>/dev/null; then
-    log "API football-teams já presente no prelive"
-  else
-    log "Atualizando prelive para football-teams"
-    curl -fsSL "$RAW/scripts/arbishield-prelive-events.mjs" -o "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
-    chmod 0755 "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
-    systemctl restart arbishield-prelive-events.service 2>/dev/null || true
-  fi
+  log "Atualizando prelive (1 evento no create + append próximo jogo)"
+  curl -fsSL "$RAW/scripts/arbishield-prelive-events.mjs" -o "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
+  chmod 0755 "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
+  grep -q 'appendDesafioGame' "$SCRIPTS_DIR/arbishield-prelive-events.mjs" || die "prelive sem appendDesafioGame"
+  systemctl restart arbishield-prelive-events.service 2>/dev/null || true
 fi
 
 echo
-echo "OK — Desafios disponíveis com visual do mockup"
+echo "OK — Lançar Desafio = 1 evento; etapa 2+ = falha do cliente na casa"
 echo "  https://arbishield.app/app-desafio.html  (Ctrl+F5)"
+echo "  https://arbishield.app/admin-desafios.html  (Ctrl+F5)"

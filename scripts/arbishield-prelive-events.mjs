@@ -935,8 +935,25 @@ function buildStepRow(desafioId, stepIn, isActive) {
 async function createDesafio(body, token) {
   if (!SERVICE_KEY) throw new Error("SERVICE_ROLE_KEY ausente no .env da VPS");
   const auth = token || SERVICE_KEY;
+
+  // Próximo jogo de um desafio já existente (não cria etapas no lançamento inicial)
+  const appendId = String(
+    body.append_to_desafio_id || body.appendToDesafioId || ""
+  ).trim();
+  if (appendId) {
+    return appendDesafioGame(appendId, body, auth);
+  }
+
   const stepIn = body.step || (body.steps && body.steps[0]) || {};
-  const desafioRow = buildDesafioRow(body);
+  // Lançamento = 1 evento; total_steps = tamanho máximo do circuito (padrão 5)
+  const circuitMax = Math.max(
+    1,
+    Math.min(20, Number(body.total_steps) || Number(body.circuit_max_steps) || 5)
+  );
+  const desafioRow = buildDesafioRow({
+    ...body,
+    total_steps: circuitMax,
+  });
   if (desafioRow.number == null) {
     desafioRow.number = await nextDesafioNumber();
   }
@@ -950,11 +967,12 @@ async function createDesafio(body, token) {
   if (!desafio?.id) throw new Error("Falha ao criar desafio");
 
   const stepsOut = [];
-  for (const step of body.steps || [stepIn]) {
-    if (!step || (!step.match_label && !step.home_team && !step.market_name_casa)) {
-      continue;
-    }
-    const stepRow = buildStepRow(desafio.id, step, desafioRow.is_active);
+  const first =
+    stepIn && (stepIn.match_label || stepIn.home_team || stepIn.market_name_casa)
+      ? { ...stepIn, step_index: 1 }
+      : null;
+  if (first) {
+    const stepRow = buildStepRow(desafio.id, first, desafioRow.is_active);
     const inserted = await sb("/rest/v1/desafio_steps", {
       method: "POST",
       token: auth,
@@ -963,6 +981,51 @@ async function createDesafio(body, token) {
     stepsOut.push(Array.isArray(inserted) ? inserted[0] : inserted);
   }
   return { ...desafio, desafio_steps: stepsOut.filter(Boolean) };
+}
+
+async function appendDesafioGame(desafioId, body, auth) {
+  const rows = await sb(
+    `/rest/v1/desafios?id=eq.${encodeURIComponent(desafioId)}&select=*,desafio_steps(*)&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const desafio = Array.isArray(rows) ? rows[0] : null;
+  if (!desafio?.id) {
+    const err = new Error("Desafio não encontrado");
+    err.status = 404;
+    throw err;
+  }
+  const existing = Array.isArray(desafio.desafio_steps)
+    ? desafio.desafio_steps.slice().sort((a, b) => a.step_index - b.step_index)
+    : [];
+  const circuitMax = Math.max(
+    1,
+    Number(desafio.total_steps) || Number(body.total_steps) || 5
+  );
+  if (existing.length >= circuitMax) {
+    const err = new Error(
+      `Circuito já tem ${existing.length} jogo(s). Máximo: ${circuitMax}.`
+    );
+    err.status = 400;
+    throw err;
+  }
+  const stepIn = body.step || (body.steps && body.steps[0]) || body;
+  const nextIndex = existing.length + 1;
+  const stepRow = buildStepRow(
+    desafio.id,
+    { ...stepIn, step_index: nextIndex },
+    Boolean(desafio.is_active)
+  );
+  const inserted = await sb("/rest/v1/desafio_steps", {
+    method: "POST",
+    token: auth,
+    body: stepRow,
+  });
+  const step = Array.isArray(inserted) ? inserted[0] : inserted;
+  return {
+    ...desafio,
+    desafio_steps: [...existing, step].filter(Boolean),
+    appended: true,
+  };
 }
 
 function nCents(v) {
