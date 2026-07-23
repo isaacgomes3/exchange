@@ -1882,13 +1882,22 @@ async function rejectDesafioDeposit(token, body) {
   return { ok: true, deposit: Array.isArray(updated) ? updated[0] : updated };
 }
 
-/** Lucro surebet aproximado (lado vencedor). */
+/** Lucro surebet aproximado (lado vencedor) — só o ganho líquido. */
 function desafioProfitCents(amountCents, odd, commissionPct) {
   const stake = Math.max(0, Math.round(Number(amountCents) || 0));
   const o = Number(odd);
   if (!(stake > 0) || !(o > 1)) return 0;
   const fee = Math.max(0, Math.min(100, Number(commissionPct) || 0)) / 100;
   return Math.round(stake * (o - 1) * (1 - fee));
+}
+
+/**
+ * Retorno total da aposta (“Você recebe”) = stake + lucro.
+ * No settle este valor volta à carteira (o stake já foi debitado na entrada).
+ */
+function desafioReceiveCents(amountCents, odd, commissionPct) {
+  const stake = Math.max(0, Math.round(Number(amountCents) || 0));
+  return stake + desafioProfitCents(amountCents, odd, commissionPct);
 }
 
 /**
@@ -1903,6 +1912,12 @@ function desafioCompoundProfitCents(amountCents, profitPct, commissionPct) {
   const pctGain = Math.round((stake * pct) / 100);
   const lucro = stake + pctGain;
   return Math.round(lucro * (1 - fee));
+}
+
+/** Etapa 2+: “Você recebe” = stake + lucro composto. */
+function desafioCompoundReceiveCents(amountCents, profitPct, commissionPct) {
+  const stake = Math.max(0, Math.round(Number(amountCents) || 0));
+  return stake + desafioCompoundProfitCents(amountCents, profitPct, commissionPct);
 }
 
 async function listDesafioParticipations(token, body) {
@@ -2044,10 +2059,7 @@ async function maybeForfeitCircuitToProviders(desafioId, userId) {
       String(p.side).toLowerCase() === "arbishield" &&
       String(p.result).toLowerCase() === "won"
   );
-  const wonAmount = arbiWins.reduce(
-    (a, p) => a + n(p.profit_cents) + n(p.amount_cents),
-    0
-  );
+  const wonAmount = arbiWins.reduce((a, p) => a + n(p.profit_cents), 0);
   if (!(wonAmount > 0)) return { forfeited: false, reason: "sem_ganhos" };
 
   const prof = await sb(
@@ -2143,11 +2155,17 @@ async function settleDesafioStep(token, body) {
     if (prevResult && !isPendingResult(prevResult)) continue;
     const won = side === winningSide;
     let profit = 0;
+    let payout = 0;
     if (won) {
       if (side === "arbishield") {
         // Etapa 2+: stake + (stake × %) — saldo composto após vitória ArbiShield
         if (stepIndex > 1 && Number.isFinite(targetProfitPct) && targetProfitPct > 0) {
           profit = desafioCompoundProfitCents(
+            p.amount_cents,
+            targetProfitPct,
+            step.arbi_commission_pct
+          );
+          payout = desafioCompoundReceiveCents(
             p.amount_cents,
             targetProfitPct,
             step.arbi_commission_pct
@@ -2158,9 +2176,19 @@ async function settleDesafioStep(token, body) {
             step.arbi_odd ?? step.home_odd,
             step.arbi_commission_pct
           );
+          payout = desafioReceiveCents(
+            p.amount_cents,
+            step.arbi_odd ?? step.home_odd,
+            step.arbi_commission_pct
+          );
         }
       } else {
         profit = desafioProfitCents(
+          p.amount_cents,
+          step.casa_odd ?? step.away_odd,
+          step.casa_commission_pct
+        );
+        payout = desafioReceiveCents(
           p.amount_cents,
           step.casa_odd ?? step.away_odd,
           step.casa_commission_pct
@@ -2176,7 +2204,8 @@ async function settleDesafioStep(token, body) {
           token: SERVICE_KEY,
           body: {
             result: resultValue,
-            profit_cents: won ? profit : 0,
+            // profit_cents guarda o retorno total (“Você recebe”) — base do saldo congelado
+            profit_cents: won ? payout : 0,
             updated_at: new Date().toISOString(),
           },
         }
@@ -2192,7 +2221,7 @@ async function settleDesafioStep(token, body) {
             token: SERVICE_KEY,
             body: {
               result: won ? "win" : "lose",
-              profit_cents: won ? profit : 0,
+              profit_cents: won ? payout : 0,
               updated_at: new Date().toISOString(),
             },
           }
@@ -2207,7 +2236,8 @@ async function settleDesafioStep(token, body) {
         throw err;
       }
     }
-    if (won && profit > 0 && p.user_id) {
+    // Stake já saiu na entrada → credita o retorno total da aposta
+    if (won && payout > 0 && p.user_id) {
       try {
         const pr = await sb(
           `/rest/v1/profiles?select=desafio_balance_cents&id=eq.${encodeURIComponent(p.user_id)}&limit=1`,
@@ -2219,7 +2249,7 @@ async function settleDesafioStep(token, body) {
             method: "PATCH",
             token: SERVICE_KEY,
             body: {
-              desafio_balance_cents: n(cur.desafio_balance_cents) + profit,
+              desafio_balance_cents: n(cur.desafio_balance_cents) + payout,
               updated_at: new Date().toISOString(),
             },
           });

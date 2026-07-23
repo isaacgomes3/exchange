@@ -3,7 +3,7 @@
 # Usa jsDelivr + SHA do tip para evitar HTML antigo em cache.
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=29")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-visual-disponivel-6aef/scripts/vps-hotfix-desafio-app-html.sh?v=30")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/desafio-visual-disponivel-6aef}"
@@ -146,6 +146,7 @@ if [[ -n "${SHIM_PATH:-}" ]]; then
   fetch "scripts/arbishield-serverfn-shim.mjs" "$SHIM_PATH"
   chmod 0644 "$SHIM_PATH"
   grep -q 'desafioCompoundProfitCents' "$SHIM_PATH" || die "shim sem desafioCompoundProfitCents"
+  grep -q 'desafioReceiveCents\|desafioCompoundReceiveCents' "$SHIM_PATH" || die "shim sem crédito de retorno total"
   grep -q 'listDesafioActiveClients' "$SHIM_PATH" || die "shim sem listDesafioActiveClients"
   grep -q 'desafio-active-clients' "$SHIM_PATH" || die "shim sem rota desafio-active-clients"
   grep -q 'só aceita depósito PIX\|Transferência da banca não é permitida' "$SHIM_PATH" || die "shim sem bloqueio transfer→desafio"

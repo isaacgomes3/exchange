@@ -387,7 +387,7 @@
       <div class="dz-wallet-copy">
         <div class="dz-wallet-l">Saldo desafio congelado</div>
         <div class="dz-wallet-v" id="dzWalletSaldo">—</div>
-        <p class="dz-wallet-hint">Lucro do resultado “Bateu ArbiShield” — fica no circuito, fora da banca PIX.</p>
+        <p class="dz-wallet-hint">Retorno total (“Você recebe”) do “Bateu ArbiShield” — fica no circuito, fora da banca PIX.</p>
       </div>
     </div>
   </section>
@@ -681,8 +681,16 @@
             if (result === "won" || result === "win") {
               if (side === "arbishield") {
                 states[idx] = "done";
-                // Lucro do “Bateu ArbiShield” → saldo desafio congelado (circuito)
-                frozen += Number(p.profit_cents || 0);
+                // “Você recebe” (retorno total) → saldo desafio congelado.
+                // Settle novo grava o payout em profit_cents.
+                // Legado etapa 1 gravava só o lucro líquido (< stake se odd<2).
+                var stakeAmt = Number(p.amount_cents || 0);
+                var stored = Number(p.profit_cents || 0);
+                var payout =
+                  stored > 0 && stakeAmt > 0 && stored < stakeAmt
+                    ? stakeAmt + stored
+                    : stored;
+                frozen = Math.max(0, payout);
               } else if (side === "casa" || side === "exchange") {
                 states[idx] = "lost";
                 frozen = 0;
@@ -707,7 +715,7 @@
                 ) ||
                 1
               : 0;
-          // Congelado = lucro ArbiShield; banca PIX = saldo total menos o congelado
+          // Congelado = retorno total (“Você recebe”) do Bateu ArbiShield
           walletState.desafioSaldoCents = Math.max(0, frozen);
           walletState.desafioWalletCents = Math.max(
             0,
