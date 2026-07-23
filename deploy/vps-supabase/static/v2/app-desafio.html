@@ -101,18 +101,13 @@
         return n.toFixed(2).replace(".", ",");
       }
 
-      /** Lucro % sobre o stake (ex.: +142,8%). */
-      function fmtReturnPct(stakeCents, recebeCents) {
-        var stake = Math.max(0, Number(stakeCents) || 0);
-        var recebe = Math.max(0, Number(recebeCents) || 0);
-        if (!(stake > 0)) return "—";
-        var pct = ((recebe - stake) / stake) * 100;
-        if (!Number.isFinite(pct)) return "—";
+      /** % de lucro alvo definido pelo admin no lançamento (target_profit_pct). */
+      function fmtTargetProfitPct(item) {
+        var pct = Number(item && item.lucroMaxPct);
+        if (!Number.isFinite(pct) || pct <= 0) pct = 5;
         var rounded = Math.round(pct * 10) / 10;
         var body = String(rounded).replace(".", ",");
-        if (rounded > 0) return "+" + body + "%";
-        if (rounded < 0) return body + "%";
-        return "0%";
+        return "+" + body + "%";
       }
 
       function calcSides(item, stakeCents) {
@@ -408,7 +403,7 @@
 
         var defaultStake = item.entradaCents || MIN_ACCESS_CENTS;
         var sides = calcSides(item, defaultStake);
-        var retornoPctLabel = fmtReturnPct(sides.stakeCents, sides.recebeArbiCents);
+        var retornoPctLabel = fmtTargetProfitPct(item);
 
         var liq = phase !== "live" && phase !== "done" ? liquidityShown(item, now) : null;
         var liqHtml = "";
@@ -590,8 +585,7 @@
           if (elArbi) elArbi.textContent = money(sides.recebeArbiCents);
           if (elCasaRec) elCasaRec.textContent = money(sides.recebeCasaCents);
           if (elRet) {
-            elRet.textContent =
-              "Retorno estimado " + fmtReturnPct(sides.stakeCents, sides.recebeArbiCents);
+            elRet.textContent = "Retorno estimado " + fmtTargetProfitPct(item);
           }
           return { item: item, sides: sides };
         }
