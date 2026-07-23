@@ -3771,36 +3771,71 @@ body.dep-open { overflow: hidden; }
 
 /* Barra de acesso / saldo exclusivo do Desafio */
 .dz-access {
+  --dz-orange: #ff6a00;
+  --dz-orange-deep: #e25500;
+  position: relative;
+  isolation: isolate;
+  margin: 0 0 18px;
+  padding: 2px;
+  border-radius: 18px;
+  background: transparent;
+  box-shadow:
+    0 14px 40px rgba(255, 106, 0, 0.28),
+    0 0 0 1px rgba(255, 106, 0, 0.18);
+}
+.dz-access::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 200deg,
+    rgba(255, 210, 140, 0.12) 220deg,
+    #ffe7c2 245deg,
+    #ffffff 262deg,
+    #ffb347 278deg,
+    rgba(255, 106, 0, 0.55) 298deg,
+    transparent 325deg 360deg
+  );
+  animation: dz-access-orbit 2.8s linear infinite;
+  z-index: 0;
+}
+.dz-access-inner {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
-  margin: 0 0 18px;
   padding: 14px 16px;
   border-radius: 16px;
-  border: 1px solid rgba(34, 197, 160, 0.28);
   background:
-    radial-gradient(420px 120px at 0% 50%, rgba(34, 197, 160, 0.12), transparent 55%),
-    linear-gradient(165deg, rgba(8, 28, 24, 0.98), rgba(5, 14, 12, 0.98));
+    radial-gradient(520px 160px at 100% 50%, rgba(255, 106, 0, 0.16), transparent 55%),
+    linear-gradient(165deg, #14110e 0%, #0a0908 55%, #0d0b09 100%);
+  border: 1px solid rgba(255, 106, 0, 0.22);
 }
-.dz-access.is-unlocked {
-  border-color: rgba(198, 255, 0, 0.28);
+.dz-access.is-unlocked .dz-access-inner {
+  border-color: rgba(255, 160, 60, 0.35);
+  background:
+    radial-gradient(520px 160px at 100% 50%, rgba(255, 140, 40, 0.2), transparent 55%),
+    linear-gradient(165deg, #16120e 0%, #0a0908 55%, #0d0b09 100%);
 }
 .dz-access-ico {
   flex: 0 0 auto;
   width: 44px;
   height: 44px;
-  border-radius: 50%;
+  border-radius: 12px;
   display: grid;
   place-items: center;
-  color: #2dd4bf;
-  background: rgba(45, 212, 191, 0.12);
-  border: 1px solid rgba(45, 212, 191, 0.28);
+  color: #ff9a3c;
+  background: rgba(255, 106, 0, 0.1);
+  border: 1px solid rgba(255, 106, 0, 0.35);
+  box-shadow: 0 0 18px rgba(255, 106, 0, 0.12);
 }
 .dz-access.is-unlocked .dz-access-ico {
-  color: #c6ff00;
-  background: rgba(198, 255, 0, 0.1);
-  border-color: rgba(198, 255, 0, 0.3);
+  color: #ffb347;
+  border-color: rgba(255, 179, 71, 0.45);
 }
 .dz-access-copy {
   flex: 1 1 220px;
@@ -3816,29 +3851,27 @@ body.dep-open { overflow: hidden; }
   margin-top: 4px;
   font-size: 13px;
   font-weight: 600;
-  color: #2dd4bf;
+  color: rgba(255, 255, 255, 0.55);
 }
 .dz-access-bal strong {
   font-weight: 900;
-  color: #5eead4;
+  color: #ff8a1a;
 }
-.dz-access.is-unlocked .dz-access-bal,
 .dz-access.is-unlocked .dz-access-bal strong {
-  color: #c6ff00;
+  color: #ffb347;
 }
 .dz-access-hint {
   margin-top: 8px;
   display: inline-block;
   max-width: 100%;
-  padding: 7px 12px;
-  border-radius: 999px;
+  padding: 8px 12px;
+  border-radius: 10px;
   font-size: 11px;
   font-weight: 600;
   line-height: 1.35;
-  color: rgba(255, 232, 180, 0.92);
-  border: 1px solid rgba(212, 175, 55, 0.35);
-  background: rgba(212, 175, 55, 0.06);
-  box-shadow: 0 0 18px rgba(212, 175, 55, 0.08);
+  color: rgba(255, 210, 150, 0.95);
+  border: 1px solid rgba(255, 106, 0, 0.28);
+  background: rgba(255, 106, 0, 0.06);
 }
 .dz-access-actions {
   flex: 0 0 auto;
@@ -3847,76 +3880,35 @@ body.dep-open { overflow: hidden; }
   margin-left: auto;
 }
 .dz-access-deposit {
-  --dz-orange: #ff6a00;
-  --dz-orange-deep: #e25500;
   appearance: none;
-  position: relative;
-  isolation: isolate;
   border: 0;
   cursor: pointer;
-  padding: 2px;
-  border-radius: 12px;
-  background: transparent;
-  color: #fff;
-  box-shadow:
-    0 10px 28px rgba(255, 106, 0, 0.55),
-    0 2px 0 rgba(255, 180, 80, 0.35) inset;
-}
-.dz-access-deposit::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: conic-gradient(
-    from 0deg,
-    transparent 0deg 210deg,
-    rgba(255, 210, 140, 0.15) 230deg,
-    #ffe7c2 250deg,
-    #ffffff 265deg,
-    #ffb347 280deg,
-    rgba(255, 106, 0, 0.35) 300deg,
-    transparent 320deg 360deg
-  );
-  animation: dz-deposit-orbit 2.2s linear infinite;
-  z-index: 0;
-}
-.dz-access-deposit::after {
-  content: "";
-  position: absolute;
-  inset: 2px;
   border-radius: 10px;
-  background: linear-gradient(180deg, #ff7a1a 0%, var(--dz-orange) 48%, var(--dz-orange-deep) 100%);
-  z-index: 1;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.18);
-}
-.dz-access-deposit-label {
-  position: relative;
-  z-index: 2;
-  display: block;
   padding: 11px 20px;
   font-size: 13px;
   font-weight: 900;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #fff;
+  background: linear-gradient(180deg, #ff7a1a 0%, var(--dz-orange) 48%, var(--dz-orange-deep) 100%);
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+  box-shadow:
+    0 10px 26px rgba(255, 106, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18);
 }
 .dz-access-deposit:hover {
-  filter: brightness(1.05);
+  filter: brightness(1.06);
   box-shadow:
-    0 14px 34px rgba(255, 106, 0, 0.65),
-    0 2px 0 rgba(255, 180, 80, 0.4) inset;
+    0 14px 32px rgba(255, 106, 0, 0.62),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18);
 }
-.dz-access-deposit:hover::before {
-  animation-duration: 1.35s;
-}
-@keyframes dz-deposit-orbit {
+@keyframes dz-access-orbit {
   to { transform: rotate(360deg); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .dz-access-deposit::before {
+  .dz-access::before {
     animation: none;
     background: linear-gradient(135deg, #ffb347, #ff6a00, #ffe7c2);
   }
@@ -3929,11 +3921,8 @@ body.dep-open { overflow: hidden; }
   .dz-access-deposit {
     width: 100%;
   }
-  .dz-access-deposit-label {
-    text-align: center;
-  }
   .dz-access-hint {
-    border-radius: 12px;
+    border-radius: 10px;
   }
 }
 
