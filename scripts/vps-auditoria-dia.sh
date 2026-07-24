@@ -3,7 +3,7 @@
 # Versão: v3 (retry de schema + fallback via wallet_transactions)
 #
 # Na VPS (root) — SHA pinado (evita cache da v2):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/090b8ec6271e209059d44b8392f435be52bfb5c7/scripts/vps-auditoria-dia.sh?v=3")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/83df534cd43ca68f7549f66eb55e8111d93be7a1/scripts/vps-auditoria-dia.sh?v=3")
 #
 # Dia específico:
 #   DAY=2026-07-24 bash <(curl -fsSL "...")
@@ -11,7 +11,7 @@ set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/auditoria-dia-lucro-3cf9}"
 # SHA pinado por padrão (override com ARBISHIELD_REF=...)
-REF="${ARBISHIELD_REF:-090b8ec6271e209059d44b8392f435be52bfb5c7}"
+REF="${ARBISHIELD_REF:-83df534cd43ca68f7549f66eb55e8111d93be7a1}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
 DAY="${DAY:-}"
