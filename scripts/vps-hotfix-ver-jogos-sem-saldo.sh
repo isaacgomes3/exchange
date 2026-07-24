@@ -6,7 +6,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-ver-jogos-sem-saldo.sh")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-PLACEHOLDER_SHA}"
+REF="${ARBISHIELD_REF:-5d2843cc3f49c86222e2159c89134da067ec41c1}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
