@@ -160,15 +160,20 @@
           var unlocked = cents >= MIN_ACCESS_CENTS;
           if (titleEl) {
             titleEl.textContent = unlocked
-              ? "Saldo do Desafio pronto"
-              : "Saldo do Desafio";
+              ? "Acesso aos desafios liberado"
+              : "Acesso aos desafios";
           }
           if (hintEl) {
             hintEl.textContent = unlocked
-              ? "Os jogos abaixo já estão visíveis. Use este saldo exclusivo nas entradas do ciclo."
-              : "Os jogos abaixo já estão visíveis. Deposite via PIX para apostar (saldo mínimo sugerido: R$ 200).";
+              ? "Saldo exclusivo do Desafio. Use nas entradas do ciclo — separado do saldo do apostador."
+              : "Deposite via PIX o valor mínimo (R$ 200) para liberar o acesso aos desafios disponíveis.";
           }
           if (box) box.classList.toggle("is-unlocked", unlocked);
+          var filters = document.getElementById("filters");
+          if (filters) filters.hidden = !unlocked;
+          var sectionLabel = document.querySelector(".section-label");
+          if (sectionLabel) sectionLabel.hidden = !unlocked;
+          if (items.length) render();
         } catch (ex) {
           if (balEl) balEl.textContent = "—";
           console.warn("[desafio] saldo", ex);
@@ -587,8 +592,15 @@
 
       function render() {
         var now = Date.now();
-        var visible = applyFilter(items);
         var host = document.getElementById("list");
+        if (desafioBalCents < MIN_ACCESS_CENTS) {
+          host.innerHTML =
+            '<div class="ops-empty"><h2>Acesso aos desafios bloqueado</h2><p>Deposite pelo menos ' +
+            money(MIN_ACCESS_CENTS) +
+            ' no saldo do Desafio para ver e entrar nos jogos disponíveis.</p></div>';
+          return;
+        }
+        var visible = applyFilter(items);
         if (!visible.length) {
           host.innerHTML =
             '<div class="ops-empty"><h2>Nenhum desafio disponível no momento</h2><p>Aguarde o lançamento de um novo desafio pela equipe ArbiShield.</p></div>';
@@ -665,7 +677,7 @@
               alert(
                 "Saldo do Desafio insuficiente para esta entrada (" +
                   money(desafioBalCents) +
-                  "). Os jogos continuam visíveis — deposite via PIX para apostar."
+                  "). Deposite via PIX para continuar."
               );
               var dep = document.querySelector('[data-open-deposit][data-deposit-dest="desafio"]');
               if (dep) dep.click();
