@@ -3174,6 +3174,18 @@ body.dep-open { overflow: hidden; }
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.04);
 }
+.term-drawer-teams {
+  display: inline-flex;
+  vertical-align: middle;
+  max-width: 100%;
+}
+.term-odd-locked,
+input#odd[readonly] {
+  opacity: 0.85;
+  cursor: not-allowed !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  pointer-events: none;
+}
 .term-col-match strong,
 .term-match-teams strong {
   display: block;

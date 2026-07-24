@@ -7,7 +7,7 @@
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=logos-inline-1" />
+  <link rel="stylesheet" href="/v2.css?v=proteger-logos-odd-1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
   <script src="/v2-shell.js?v=responsivo-26" defer></script>
@@ -96,7 +96,7 @@
       </div>
       <div class="field">
         <label for="odd">Odd</label>
-        <input id="odd" type="number" min="1.01" step="0.01" />
+        <input id="odd" type="number" min="1.01" step="0.01" readonly tabindex="-1" aria-readonly="true" title="Odd definida pelo mercado — não editável" class="term-odd-locked" />
       </div>
       <div class="field">
         <label for="balanceType">Saldo</label>
@@ -157,6 +157,15 @@
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
           .replace(/"/g, "&quot;");
+      }
+
+      function teamLogoHtml(url) {
+        if (!url) return "";
+        return (
+          '<img class="term-team-logo" src="' +
+          esc(url) +
+          '" alt="" width="22" height="22" onerror="this.style.display=\'none\'" />'
+        );
       }
 
       function calcLay(amountCents, odd) {
@@ -294,7 +303,8 @@
       function updatePreview() {
         if (!state.selected) return;
         var amountReais = Number(document.getElementById("amount").value || 0);
-        var odd = Number(document.getElementById("odd").value || 0);
+        // Odd sempre do mercado (nunca confiar em edição do cliente)
+        var odd = Number(state.selected.market && state.selected.market.odd) || Number(document.getElementById("odd").value || 0);
         var amountCents = Math.round(amountReais * 100);
         var mt = state.selected.marketType;
         var c = mt === "BACK" ? calcBack(amountCents, odd) : calcLay(amountCents, odd);
@@ -309,9 +319,20 @@
         var mt = String(market.market_type || "LAY").toUpperCase() === "BACK" ? "BACK" : "LAY";
         state.selected = { match: match, market: market, marketType: mt };
         document.getElementById("drawerTitle").textContent = "Proteger · " + mt;
-        document.getElementById("drawerHint").textContent =
-          (match.home_team || "?") + " vs " + (match.away_team || "?") + " · " + (market.name || "Mercado");
+        var hint = document.getElementById("drawerHint");
+        hint.innerHTML =
+          '<span class="term-match-teams term-drawer-teams">' +
+          teamLogoHtml(match.home_logo) +
+          "<strong>" +
+          esc(match.home_team || "?") +
+          " <span>×</span> " +
+          esc(match.away_team || "?") +
+          "</strong>" +
+          teamLogoHtml(match.away_logo) +
+          "</span> · " +
+          esc(market.name || "Mercado");
         document.getElementById("odd").value = Number(market.odd || 0).toFixed(2);
+        document.getElementById("odd").readOnly = true;
         document.getElementById("amount").value = "";
         document.getElementById("balanceType").value = "REAL";
         updatePreview();
@@ -328,9 +349,12 @@
       document.getElementById("drawer").addEventListener("click", function (e) {
         if (e.target.id === "drawer") closeDrawer();
       });
-      ["amount", "odd", "balanceType"].forEach(function (id) {
+      ["amount", "balanceType"].forEach(function (id) {
         document.getElementById(id).addEventListener("input", updatePreview);
         document.getElementById(id).addEventListener("change", updatePreview);
+      });
+      document.getElementById("odd").addEventListener("keydown", function (e) {
+        e.preventDefault();
       });
 
       document.getElementById("btnConfirm").onclick = async function () {
@@ -523,12 +547,15 @@
               '<div class="term-col-time">' +
               whenHtml +
               "</div>" +
-              '<div class="term-col-match">' +
+              '<div class="term-col-match"><div class="term-match-teams">' +
+              teamLogoHtml(m.home_logo) +
               "<strong>" +
               esc(m.home_team || "?") +
               " <span>×</span> " +
               esc(m.away_team || "?") +
-              "</strong></div>" +
+              "</strong>" +
+              teamLogoHtml(m.away_logo) +
+              "</div></div>" +
               '<div class="term-col-comp">' +
               '<span class="term-comp">' +
               esc(competition || "—") +
@@ -612,7 +639,7 @@
           var matchesRes = await supa
             .from("matches")
             .select(
-              "id,home_team,away_team,league,starts_at,status,status_v2,sport_type,is_published,markets,max_protection_cents,used_protection_cents,protection_odds"
+              "id,home_team,away_team,home_logo,away_logo,league,starts_at,status,status_v2,sport_type,is_published,markets,max_protection_cents,used_protection_cents,protection_odds"
             )
             .is("deleted_at", null)
             .eq("is_published", true)
