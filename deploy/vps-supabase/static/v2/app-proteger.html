@@ -218,8 +218,8 @@
       /** Janela pós-kickoff do legado (9000s ≈ 2h30). */
       var LIVE_WINDOW_MS = 9000 * 1000;
       /**
-       * Legado Je: jogo fica na grade só com liquidez restante e ainda na janela.
-       * Quando used_protection >= max_protection (liquidez esgotada), sai da grade.
+       * Grade do cliente: mostra jogos publicados na janela (mesmo sem liquidez).
+       * Sem liquidez → botão desabilitado. Saldo do usuário NÃO esconde a lista.
        */
       function isOnAvailableGrid(m) {
         if (!m || !m.starts_at) return false;
@@ -235,13 +235,16 @@
         ) {
           return false;
         }
-        // Legado Je: max > 0 && used < max  → senão some da grade
+        // Precisa ter sido configurado com alguma liquidez (mesmo que já esgotada)
+        var max = Number(m.max_protection_cents || 0);
+        if (!(max > 0)) return false;
+        return start + LIVE_WINDOW_MS > now;
+      }
+      function hasProtectLiquidity(m) {
         var max = Number(m.max_protection_cents || 0);
         var used = Number(m.used_protection_cents || 0);
         if (!(max > 0 && used < max)) return false;
-        // Reforço: liquidez restante (mercados ou partida) deve ser > 0
-        if (liqLeft(m) <= 0) return false;
-        return start + LIVE_WINDOW_MS > now;
+        return liqLeft(m) > 0;
       }
       function marketsOf(m) {
         if (Array.isArray(m.markets) && m.markets.length) return m.markets;
@@ -338,6 +341,15 @@
         var amountCents = Math.round(amountReais * 100);
         if (!(amountCents > 0)) {
           showErr("Insira um valor para ativar a proteção.");
+          return;
+        }
+        var balType = document.getElementById("balanceType").value;
+        if (!(available(balType) >= amountCents)) {
+          showErr(
+            "Saldo insuficiente nesta carteira (" +
+              money(available(balType)) +
+              "). O jogo continua visível — deposite ou escolha outro saldo."
+          );
           return;
         }
         var btn = document.getElementById("btnConfirm");
@@ -439,10 +451,8 @@
         return (
           '<div class="term-empty">' +
           '<div class="term-empty-ico" aria-hidden="true">☰</div>' +
-          "<h2>Sem partidas disponíveis</h2>" +
-          "<p>Sincronizando em " +
-          state.syncIn +
-          "s…</p>" +
+          "<h2>Sem partidas na janela agora</h2>" +
+          "<p>Isso não depende do seu saldo. Quando houver jogos publicados com liquidez, eles aparecem aqui para todos os usuários.</p>" +
           '<button type="button" class="term-sync-btn" id="btnSync">' +
           '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
           "Sincronizar API</button></div>"
@@ -475,6 +485,7 @@
               return String(mk.market_type || "").toUpperCase() === "BACK";
             });
             var left = liqLeft(m);
+            var canProtect = hasProtectLiquidity(m);
             var max = Math.max(Number(m.max_protection_cents || 0), 1);
             var pct = Math.min(100, Math.round((left / max) * 100));
             var primary =
@@ -500,8 +511,13 @@
               primary && primary.name && String(primary.name).trim()
                 ? String(primary.name).trim()
                 : "—";
+            var actionBtn = canProtect
+              ? '<button type="button" class="term-protect-btn" data-protect="1">Proteger</button>'
+              : '<button type="button" class="term-protect-btn" disabled title="Liquidez esgotada">Sem liquidez</button>';
             return (
-              '<article class="term-row" data-id="' +
+              '<article class="term-row' +
+              (canProtect ? "" : " is-exhausted") +
+              '" data-id="' +
               esc(m.id) +
               '">' +
               '<div class="term-col-time">' +
@@ -534,7 +550,8 @@
               pct +
               '%"></i></div></div>' +
               '<div class="term-col-action">' +
-              '<button type="button" class="term-protect-btn" data-protect="1">Proteger</button></div>' +
+              actionBtn +
+              "</div>" +
               "</article>"
             );
           })
@@ -547,6 +564,19 @@
               return x.id === card.getAttribute("data-id");
             });
             if (!match) return;
+            if (!hasProtectLiquidity(match)) {
+              showErr("Este jogo está sem liquidez no momento. Ele permanece visível, mas não aceita novas proteções.");
+              return;
+            }
+            var wallet =
+              available("REAL") + available("DEMO") + available("INVESTOR");
+            if (!(wallet > 0)) {
+              showErr(
+                "Os jogos estão visíveis. Deposite saldo para ativar uma proteção."
+              );
+              var dep = document.querySelector("[data-open-deposit]");
+              if (dep) dep.click();
+            }
             var mks = marketsOf(match);
             var preferred =
               mks.find(function (mk) {

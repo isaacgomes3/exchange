@@ -146,13 +146,13 @@
           var unlocked = cents >= MIN_ACCESS_CENTS;
           if (titleEl) {
             titleEl.textContent = unlocked
-              ? "Acesso aos desafios liberado"
-              : "Acesso aos desafios";
+              ? "Saldo do Desafio pronto"
+              : "Saldo do Desafio";
           }
           if (hintEl) {
             hintEl.textContent = unlocked
-              ? "Saldo exclusivo do Desafio. Use nas entradas do ciclo — separado do saldo do apostador."
-              : "Deposite via PIX o valor mínimo para liberar o acesso completo aos desafios.";
+              ? "Os jogos abaixo já estão visíveis. Use este saldo exclusivo nas entradas do ciclo."
+              : "Os jogos abaixo já estão visíveis. Deposite via PIX para apostar (saldo mínimo sugerido: R$ 200).";
           }
           if (box) box.classList.toggle("is-unlocked", unlocked);
         } catch (ex) {
@@ -653,6 +653,16 @@
             var amountCents = state.sides.stakeCents;
             if (!(amountCents > 0)) {
               alert("Informe o valor da entrada.");
+              return;
+            }
+            if (desafioBalCents < amountCents) {
+              alert(
+                "Saldo do Desafio insuficiente para esta entrada (" +
+                  money(desafioBalCents) +
+                  "). Os jogos continuam visíveis — deposite via PIX para apostar."
+              );
+              var dep = document.querySelector('[data-open-deposit][data-deposit-dest="desafio"]');
+              if (dep) dep.click();
               return;
             }
             if (
