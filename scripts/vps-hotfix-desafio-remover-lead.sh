@@ -5,7 +5,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-desafio-remover-lead.sh")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-REPLACE_SHA}"
+REF="${ARBISHIELD_REF:-58c29e42830b4faeb4e675ca31846635db7ce6e8}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
