@@ -240,9 +240,19 @@ export async function createProtection(
   try {
     if (marketType === "BACK") {
       const c = calcBack(amountCents, odd);
+      const resolvedMarketId = market?.id || input.marketId || null;
+      if (!resolvedMarketId) {
+        throw Object.assign(
+          new Error(
+            "Mercado BACK sem id. Relance o jogo com o mercado ou atualize o match."
+          ),
+          { status: 400 }
+        );
+      }
       const row = {
         user_id: input.userId,
         match_id: input.matchId,
+        market_id: resolvedMarketId,
         odd: c.odd,
         status: "active",
         amount_cents: c.coverageCents,
@@ -252,6 +262,7 @@ export async function createProtection(
         balance_after_cents: balanceAfter,
         metadata: {
           ...meta,
+          market_id: resolvedMarketId,
           exchange_fee_cents: c.exchangeFeeCents,
           calculations: c,
           balance_type: balanceType,

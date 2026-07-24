@@ -385,13 +385,20 @@
           if (!token) throw new Error("Sessão expirada. Faça login novamente.");
           var payload = {
             matchId: state.selected.match.id,
-            marketId: state.selected.market.id,
+            marketId: state.selected.market && state.selected.market.id
+              ? state.selected.market.id
+              : null,
             amountCents: amountCents,
             odd: odd,
             balanceType: document.getElementById("balanceType").value,
             marketType: state.selected.marketType,
             side: "home",
           };
+          if (!payload.marketId && state.selected.marketType === "BACK") {
+            throw new Error(
+              "Este mercado BACK está sem id. Peça ao admin para relançar/editar o jogo."
+            );
+          }
           var headers = {
             "Content-Type": "application/json",
             Authorization: "Bearer " + token,

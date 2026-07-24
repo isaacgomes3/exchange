@@ -1058,9 +1058,7 @@ async function createProtection(body, userToken) {
 
   const markets = Array.isArray(match.markets) ? [...match.markets] : [];
   let market =
-    (marketId && markets.find((m) => String(m.id) === marketId)) ||
-    markets[0] ||
-    null;
+    (marketId && markets.find((m) => String(m.id) === marketId)) || null;
 
   const marketType =
     body.marketType === "BACK" || body.marketType === "LAY"
@@ -1068,6 +1066,37 @@ async function createProtection(body, userToken) {
       : String(market?.market_type || "").toUpperCase() === "BACK"
         ? "BACK"
         : "LAY";
+
+  if (!market) {
+    market =
+      markets.find(
+        (m) => String(m.market_type || "").toUpperCase() === marketType
+      ) ||
+      markets[0] ||
+      null;
+  }
+
+  // BACK exige market_id NOT NULL — garante id no mercado e persiste se faltava
+  if (market && !market.id) {
+    market.id = randomUUID();
+    const idx = markets.findIndex(
+      (m) =>
+        m === market ||
+        (m.name === market.name &&
+          String(m.market_type || "").toUpperCase() ===
+            String(market.market_type || "").toUpperCase())
+    );
+    if (idx >= 0) markets[idx] = { ...markets[idx], id: market.id };
+    try {
+      await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: { markets, updated_at: new Date().toISOString() },
+      });
+    } catch (e) {
+      console.warn("[createProtection] patch market id:", e.message || e);
+    }
+  }
 
   if (market) {
     const liq = n(market.liquidity);
@@ -1158,12 +1187,21 @@ async function createProtection(body, userToken) {
   try {
     if (marketType === "BACK") {
       const c = calcBack(amountCents, odd);
+      const resolvedMarketId = market?.id || marketId || null;
+      if (!resolvedMarketId) {
+        const err = new Error(
+          "Mercado BACK sem id. Relance o jogo com o mercado ou atualize o match."
+        );
+        err.status = 400;
+        throw err;
+      }
       const inserted = await sb("/rest/v1/back_protections", {
         method: "POST",
         token: SERVICE_KEY,
         body: {
           user_id: userId,
           match_id: matchId,
+          market_id: resolvedMarketId,
           odd: c.odd,
           status: "active",
           amount_cents: c.coverageCents,
@@ -1173,6 +1211,7 @@ async function createProtection(body, userToken) {
           balance_after_cents: balanceAfter,
           metadata: {
             ...meta,
+            market_id: resolvedMarketId,
             exchange_fee_cents: c.exchangeFeeCents,
             calculations: c,
             balance_type: balanceType,
