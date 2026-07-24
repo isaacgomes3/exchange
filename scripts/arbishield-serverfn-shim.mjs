@@ -288,6 +288,91 @@ function n(v) {
   return Number.isFinite(x) ? x : 0;
 }
 
+/**
+ * Ajusta platform_treasury (caixa operacional da empresa).
+ * Desde o cutover do shim (~2026-07-19) não havia writer — esta função
+ * religa créditos/débitos de P&L e caixa.
+ * Idempotente por (action, entityType, entityId) via admin_audit_logs.
+ */
+async function adjustPlatformTreasury(deltaCents, meta = {}) {
+  const delta = Math.round(Number(deltaCents) || 0);
+  if (!delta) return { ok: true, skipped: true, reason: "delta_zero" };
+
+  const action = String(meta.action || "TREASURY_ADJUST");
+  const entityType = String(meta.entityType || meta.entity_type || "platform_treasury");
+  const entityId = String(meta.entityId || meta.entity_id || "").trim();
+
+  if (entityId) {
+    try {
+      const prev = await sb(
+        `/rest/v1/admin_audit_logs?select=id&action=eq.${encodeURIComponent(action)}&entity_type=eq.${encodeURIComponent(entityType)}&entity_id=eq.${encodeURIComponent(entityId)}&limit=1`,
+        { token: SERVICE_KEY }
+      );
+      if (Array.isArray(prev) && prev[0]) {
+        return { ok: true, skipped: true, reason: "already_applied", id: prev[0].id };
+      }
+    } catch {
+      /* sem tabela/audit — segue sem idempotência forte */
+    }
+  }
+
+  const rows = await sb(
+    `/rest/v1/platform_treasury?select=id,operational_balance_cents,balance_cents,reserve_balance_cents,locked_balance_cents&order=updated_at.desc&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row?.id) {
+    console.warn("[treasury] platform_treasury vazio — não foi possível ajustar", delta, meta);
+    return { ok: false, skipped: true, reason: "no_row" };
+  }
+
+  const nextOp = n(row.operational_balance_cents) + delta;
+  const body = {
+    operational_balance_cents: nextOp,
+    updated_at: new Date().toISOString(),
+  };
+  // Mantém balance_cents alinhado quando a coluna existe (UI v2 / legado)
+  if (row.balance_cents != null) {
+    body.balance_cents = n(row.balance_cents) + delta;
+  }
+
+  await sb(`/rest/v1/platform_treasury?id=eq.${encodeURIComponent(row.id)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body,
+  });
+
+  try {
+    await sb("/rest/v1/admin_audit_logs", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        admin_id: meta.adminId || meta.admin_id || null,
+        action,
+        entity_type: entityType,
+        entity_id: entityId || row.id,
+        details: {
+          delta_cents: delta,
+          before_operational_cents: n(row.operational_balance_cents),
+          after_operational_cents: nextOp,
+          fix: "treasury-writers-v1",
+          ...(meta.details && typeof meta.details === "object" ? meta.details : {}),
+        },
+      },
+    });
+  } catch (e) {
+    console.warn("[treasury] audit log:", e.message || e);
+  }
+
+  return {
+    ok: true,
+    deltaCents: delta,
+    before: n(row.operational_balance_cents),
+    after: nextOp,
+    treasuryId: row.id,
+  };
+}
+
 function startOfDaySaoPaulo(d = new Date()) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Sao_Paulo",
@@ -1995,6 +2080,8 @@ async function settleDesafioStep(token, body) {
   })();
 
   const advances = [];
+  let zebraKeptCents = 0;
+  let casaPaidCents = 0;
   for (const p of list) {
     const side = String(p.side || "").toLowerCase();
     const won = side === winningSide;
@@ -2026,6 +2113,10 @@ async function settleDesafioStep(token, body) {
         );
         credit = profit;
       }
+    }
+    if (winningSide === "casa") {
+      if (side === "arbishield" && !won) zebraKeptCents += n(p.amount_cents);
+      if (side === "casa" && won) casaPaidCents += profit;
     }
     await sb(
       `/rest/v1/desafio_participations?id=eq.${encodeURIComponent(p.id)}`,
@@ -2174,6 +2265,30 @@ async function settleDesafioStep(token, body) {
     .filter((p) => String(p.side || "").toLowerCase() !== winningSide)
     .reduce((a, p) => a + n(p.amount_cents), 0);
 
+  // Casa venceu → stake zebra fica com a plataforma (= lucro operacional).
+  // Credita tesouraria (antes: só saía do desafio_balance, caixa empresa não andava).
+  let treasury = null;
+  if (winningSide === "casa") {
+    const net = zebraKeptCents - casaPaidCents;
+    if (net) {
+      treasury = await adjustPlatformTreasury(net, {
+        adminId,
+        action: "TREASURY_DESAFIO_CASA_WIN",
+        entityType: "desafio_steps",
+        entityId: stepId,
+        details: {
+          desafio_id: step.desafio_id || null,
+          zebra_kept_cents: zebraKeptCents,
+          casa_paid_cents: casaPaidCents,
+          winning_side: winningSide,
+        },
+      }).catch((e) => {
+        console.warn("[treasury] desafio settle:", e.message || e);
+        return { ok: false, error: String(e.message || e) };
+      });
+    }
+  }
+
   return {
     ok: true,
     stepId,
@@ -2184,7 +2299,9 @@ async function settleDesafioStep(token, body) {
     advances,
     forfeits,
     desafioDeactivated,
+    treasury,
     ciclo: "desafio-ciclo-sinais-v1",
+    fix: "treasury-writers-v1",
   };
 }
 
@@ -3355,12 +3472,30 @@ async function approveManualDeposit(token, body) {
     admin_notes: row.admin_notes || "Aprovado e creditado",
   });
 
+  // PIX/depósito entrou no caixa da empresa
+  const treasury = await adjustPlatformTreasury(amount, {
+    adminId,
+    action: "TREASURY_DEPOSIT_IN",
+    entityType: "manual_deposits",
+    entityId: id,
+    details: {
+      user_id: userId,
+      deposit_type: creditBucket,
+      amount_cents: amount,
+    },
+  }).catch((e) => {
+    console.warn("[treasury] deposit:", e.message || e);
+    return { ok: false, error: String(e.message || e) };
+  });
+
   return {
     ok: true,
     id,
     status: "APPROVED",
     creditedCents: amount,
     depositType: creditBucket,
+    treasury,
+    fix: "treasury-writers-v1",
   };
 }
 
@@ -4589,6 +4724,15 @@ async function creditWalletForSettlement(row, outcome, now) {
   return { refunded: credit, credited: credit };
 }
 
+function platformCutCents(row) {
+  // Mesma regra da auditoria: não somar profit+deduction (duplicata no LAY).
+  const plat =
+    n(row.platform_profit_cents) ||
+    n(row.platform_deduction_cents) ||
+    settlementDeductionCents(row);
+  return plat + n(row.exchange_profit_net_cents) + n(row.exchange_fee_cents);
+}
+
 async function applyProtectionSettlement(row, table, outcome) {
   const amount = n(row.responsibility_cents || row.amount_cents);
   const wonArbi = String(outcome).toLowerCase() === "arbishield";
@@ -4597,6 +4741,28 @@ async function applyProtectionSettlement(row, table, outcome) {
 
   const creditResult = await creditWalletForSettlement(row, outcome, now);
   const refunded = creditResult.refunded || 0;
+
+  // Exchange ganhou → plataforma fica com a dedução/fee (lucro).
+  let treasury = null;
+  if (!wonArbi && !creditResult.alreadyCredited && !creditResult.skipped) {
+    const cut = platformCutCents(row);
+    if (cut > 0) {
+      treasury = await adjustPlatformTreasury(cut, {
+        action: "TREASURY_PROTECTION_FEE",
+        entityType: table,
+        entityId: row.id,
+        details: {
+          match_id: row.match_id || null,
+          outcome: String(outcome).toLowerCase(),
+          stake_cents: amount,
+          cut_cents: cut,
+        },
+      }).catch((e) => {
+        console.warn("[treasury] protection settle:", e.message || e);
+        return { ok: false, error: String(e.message || e) };
+      });
+    }
+  }
 
   const attempts = [
     {
@@ -4642,6 +4808,7 @@ async function applyProtectionSettlement(row, table, outcome) {
         amount,
         refunded,
         alreadyCredited: !!creditResult.alreadyCredited,
+        treasury,
       };
     } catch (err) {
       lastErr = err;
