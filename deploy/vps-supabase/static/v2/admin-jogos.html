@@ -718,7 +718,7 @@
         <span>Mercados de proteção</span>
         <button type="button" class="btn btn-primary btn-sm" id="btnAddMarket">+ Adicionar mercado</button>
       </div>
-      <p class="hint" style="margin:0 0 12px">Preencha tipo, nome, odd e liquidez. Se remover todos, ao salvar cria LAY HOME @ 2.00 com R$ 2.000.</p>
+      <p class="hint" style="margin:0 0 12px">Busque o mercado pelo nome (autocomplete). LAY/BACK é inferido pelo nome (ex.: Lay Casa / Back Casa). Se remover todos, ao salvar cria LAY HOME @ 2.00 com R$ 2.000.</p>
       <div id="manMarkets"></div>
 
       <div class="drawer-actions">
@@ -1755,9 +1755,13 @@
       }
 
       function inferMarketType(name) {
-        var n = String(name || "").trim().toLowerCase();
-        if (/^back\b/.test(n)) return "BACK";
-        if (/^lay\b/.test(n)) return "LAY";
+        var n = String(name || "")
+          .trim()
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+        if (/\bback\b/.test(n)) return "BACK";
+        if (/\blay\b/.test(n)) return "LAY";
         return null;
       }
 
@@ -1808,10 +1812,7 @@
 
       function selectCatalogMarket(card, item) {
         var nameEl = card.querySelector('[data-f="name"]');
-        var typeEl = card.querySelector('[data-f="market_type"]');
         if (nameEl) nameEl.value = item.name || "";
-        var inferred = inferMarketType(item.name);
-        if (typeEl && inferred) typeEl.value = inferred;
         hideMarketSuggest(card);
         syncManualMarketsFromDom();
       }
@@ -1866,10 +1867,6 @@
         var timer = null;
         nameEl.addEventListener("input", function () {
           clearTimeout(timer);
-          // sync type if user types Lay/Back
-          var inferred = inferMarketType(nameEl.value);
-          var typeEl = card.querySelector('[data-f="market_type"]');
-          if (inferred && typeEl) typeEl.value = inferred;
           timer = setTimeout(function () {
             searchCatalogMarkets(card, nameEl.value);
           }, 120);
@@ -1933,16 +1930,11 @@
               '<div class="market-card" data-idx="' + idx + '">' +
               '<div class="mh"><strong>Mercado ' + (idx + 1) + "</strong>" +
               '<button type="button" class="btn btn-ghost btn-sm" data-rm="' + idx + '">Remover</button></div>' +
-              '<div class="grid2">' +
-              '<div class="field"><label>Tipo</label><select data-f="market_type">' +
-              '<option value="LAY"' + (m.market_type === "LAY" ? " selected" : "") + ">LAY</option>" +
-              '<option value="BACK"' + (m.market_type === "BACK" ? " selected" : "") + ">BACK</option>" +
-              "</select></div>" +
               '<div class="field market-pick"><label>Nome do mercado</label>' +
               '<input data-f="name" value="' + String(m.name || "").replace(/"/g, "&quot;") +
-              '" placeholder="Buscar mercado… Ex: Lay Casa / Mais 2.5 gols" autocomplete="off" />' +
+              '" placeholder="Digite para sugerir… Ex: Lay Casa / Back Casa / Mais 2.5 gols" autocomplete="off" />' +
               '<div class="market-suggest" hidden></div></div>' +
-              '</div><div class="grid2">' +
+              '<div class="grid2">' +
               '<div class="field"><label>ID externo</label>' +
               '<input data-f="external_id" value="' + String(m.external_id || "").replace(/"/g, "&quot;") + '" placeholder="Ex: 1.22456" /></div>' +
               '<div class="field"><label>Odd</label>' +
@@ -1980,9 +1972,10 @@
             var el = card.querySelector('[data-f="' + f + '"]');
             return el ? el.value : "";
           };
+          var name = get("name");
           return {
-            market_type: get("market_type") || "LAY",
-            name: get("name"),
+            market_type: inferMarketType(name) || "LAY",
+            name: name,
             external_id: get("external_id"),
             odd: get("odd"),
             liquidity_brl: get("liquidity_brl"),
@@ -2021,7 +2014,7 @@
           $("manLiberarProtecao").classList.add("on");
           $("manLiberarProtecao").setAttribute("aria-pressed", "true");
         }
-        // Já abre com 1 mercado visível (tipo, nome, odd, liquidez)
+        // Já abre com 1 mercado (nome com autocomplete, odd, liquidez)
         manualMarkets = [
           {
             market_type: "LAY",
@@ -2088,7 +2081,7 @@
           var dispBrl = parseMoneyToNumber(m.display_brl);
           return {
             name: m.name || "LAY HOME",
-            market_type: m.market_type || "LAY",
+            market_type: inferMarketType(m.name) || m.market_type || "LAY",
             external_id: m.external_id || null,
             odd: odd,
             liquidity_brl: liqBrl != null ? liqBrl : 2000,
