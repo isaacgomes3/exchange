@@ -7,7 +7,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-proteger-logos-odd-readonly.sh")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-f4380c84e21a7a50672fa27967af6f5296da6eae}"
+REF="${ARBISHIELD_REF:-97339a361ac8237e71c5dc71f4c8471afe12ab84}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
