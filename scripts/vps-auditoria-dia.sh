@@ -2,7 +2,7 @@
 # Auditoria do dia — eventos, lucro (dedução), saldo empresa inicial/atual
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/auditoria-dia-lucro-3cf9/scripts/vps-auditoria-dia.sh?v=1")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/auditoria-dia-lucro-3cf9/scripts/vps-auditoria-dia.sh?v=2")
 #
 # Dia específico:
 #   DAY=2026-07-24 bash <(curl -fsSL "...")

@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
  * Auditoria do dia — eventos, lucro (dedução plataforma), saldo empresa.
+ * Resiliente a diferenças de schema (descobre colunas com select=*).
  *
  * Na VPS:
  *   DAY=2026-07-24 node scripts/vps-auditoria-dia.mjs
- *   node scripts/vps-auditoria-dia.mjs   # hoje (America/Sao_Paulo)
+ *   node scripts/vps-auditoria-dia.mjs
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -73,7 +74,6 @@ function padL(s, w) {
 }
 
 function dayBounds(dayStr) {
-  // Dia civil America/Sao_Paulo
   const day =
     dayStr ||
     new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
@@ -92,6 +92,7 @@ async function sb(p, opts = {}) {
       ...(opts.body
         ? { "Content-Type": "application/json", Prefer: "return=representation" }
         : {}),
+      ...(opts.headers || {}),
     },
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
@@ -103,13 +104,15 @@ async function sb(p, opts = {}) {
     data = text;
   }
   if (!res.ok) {
-    throw new Error(`${res.status} ${p}: ${String(text).slice(0, 280)}`);
+    const err = new Error(`${res.status} ${p}: ${String(text).slice(0, 320)}`);
+    err.status = res.status;
+    err.body = data;
+    throw err;
   }
   return data;
 }
 
 async function sbAll(basePath) {
-  // Paginação simples por range
   const pageSize = 1000;
   let from = 0;
   const out = [];
@@ -122,43 +125,117 @@ async function sbAll(basePath) {
     out.push(...list);
     if (list.length < pageSize) break;
     from += pageSize;
-    if (from > 20000) break;
+    if (from > 30000) break;
   }
   return out;
 }
 
+/** Descobre colunas existentes via select=* limit 1 (ou OpenAPI). */
+const schemaCache = new Map();
+async function tableColumns(table) {
+  if (schemaCache.has(table)) return schemaCache.get(table);
+  const cols = new Set();
+  try {
+    const rows = await sb(`/rest/v1/${table}?select=*&limit=1`);
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (row && typeof row === "object") {
+      for (const k of Object.keys(row)) cols.add(k);
+    }
+  } catch {
+    /* */
+  }
+  // Se tabela vazia, tenta OpenAPI
+  if (!cols.size) {
+    try {
+      const spec = await sb(`/rest/v1/`, {
+        headers: { Accept: "application/openapi+json" },
+      });
+      const props =
+        spec?.definitions?.[table]?.properties ||
+        spec?.components?.schemas?.[table]?.properties ||
+        null;
+      if (props) for (const k of Object.keys(props)) cols.add(k);
+    } catch {
+      /* */
+    }
+  }
+  schemaCache.set(table, cols);
+  return cols;
+}
+
+function pickSelect(cols, wanted) {
+  const list = wanted.filter((c) => cols.has(c));
+  return list.length ? list.join(",") : "*";
+}
+
 function matchLabel(m) {
   if (!m) return "—";
-  const teams =
+  return (
     m.match_label ||
     [m.home_team, m.away_team].filter(Boolean).join(" x ") ||
     m.title ||
-    m.id;
-  return String(teams);
+    String(m.id || "—").slice(0, 8)
+  );
 }
 
 function platformCut(p) {
-  return (
-    n(p.platform_profit_cents) +
-    n(p.platform_deduction_cents) +
-    n(p.exchange_profit_net_cents) +
-    n(p.exchange_fee_cents)
-  );
+  // Não somar platform_profit + platform_deduction (mesmo valor no LAY).
+  const plat =
+    n(p.platform_profit_cents) || n(p.platform_deduction_cents) || 0;
+  return plat + n(p.exchange_profit_net_cents) + n(p.exchange_fee_cents);
 }
 
 function stakeOf(p) {
   return n(p.responsibility_cents || p.amount_cents);
 }
 
+function isSettledStatus(st) {
+  const s = String(st || "").toLowerCase();
+  return (
+    s.startsWith("won_") ||
+    s.startsWith("lost_") ||
+    s === "settled" ||
+    s === "closed" ||
+    s === "cancelled" ||
+    s === "canceled"
+  );
+}
+
 async function main() {
   const { day, fromIso, toIso } = dayBounds(process.env.DAY || "");
   console.log("════════════════════════════════════════════════════════════");
-  console.log(` AUDITORIA DO DIA  ${day}  (America/Sao_Paulo)`);
+  console.log(` AUDITORIA DO DIA  ${day}  (America/Sao_Paulo)  v2`);
   console.log(` Janela UTC: ${fromIso} → ${toIso}`);
   console.log(` Supabase: ${SUPABASE_URL}`);
   console.log("════════════════════════════════════════════════════════════");
 
-  // ── Tesouraria / saldo empresa ─────────────────────────────────────
+  const [matchCols, protCols, backCols, stepCols] = await Promise.all([
+    tableColumns("matches"),
+    tableColumns("protections"),
+    tableColumns("back_protections"),
+    tableColumns("desafio_steps"),
+  ]);
+  console.log("\n── SCHEMA DETECTADO ────────────────────────────────────────");
+  console.log(
+    "  matches:",
+    matchCols.size ? [...matchCols].sort().join(", ") : "(vazio/indisponível)"
+  );
+  console.log(
+    "  protections:",
+    protCols.size
+      ? [...protCols].filter((c) =>
+          /profit|fee|amount|status|settled|match|side|deduct|result/i.test(c)
+        ).join(", ")
+      : "(vazio)"
+  );
+  console.log(
+    "  back_protections cols:",
+    backCols.size,
+    "· desafio_steps cols:",
+    stepCols.size
+  );
+
+  // ── Tesouraria ─────────────────────────────────────────────────────
   let treasury = null;
   try {
     const rows = await sb(
@@ -168,7 +245,6 @@ async function main() {
   } catch (e) {
     console.warn("treasury:", e.message);
   }
-
   const cashNow = n(
     treasury?.balance_cents ??
       treasury?.operational_balance_cents ??
@@ -185,86 +261,187 @@ async function main() {
     console.log("  Saldo atual (balance/operational):", money(cashNow));
     if (reserve) console.log("  Reserva:", money(reserve));
     if (lockedT) console.log("  Travado na tesouraria:", money(lockedT));
-    if (treasury.updated_at) console.log("  Atualizado em:", treasury.updated_at);
-  }
-
-  // ── Eventos (matches) liquidados hoje ──────────────────────────────
-  let matches = [];
-  try {
-    matches = await sbAll(
-      `/rest/v1/matches?select=id,home_team,away_team,match_label,league_name,status,starts_at,settled_at,final_score,liquidity_cents,used_liquidity_cents,markets&settled_at=gte.${encodeURIComponent(fromIso)}&settled_at=lte.${encodeURIComponent(toIso)}&order=settled_at.asc`
-    );
-  } catch (e) {
-    console.warn("matches settled_at:", e.message);
-    try {
-      matches = await sbAll(
-        `/rest/v1/matches?select=id,home_team,away_team,match_label,league_name,status,starts_at,settled_at,final_score&status=eq.settled&updated_at=gte.${encodeURIComponent(fromIso)}&updated_at=lte.${encodeURIComponent(toIso)}&order=updated_at.asc`
-      );
-    } catch (e2) {
-      console.warn("matches fallback:", e2.message);
+    if (treasury.updated_at) {
+      console.log("  Atualizado em:", treasury.updated_at);
+      const ageH =
+        (Date.now() - new Date(treasury.updated_at).getTime()) / 3600000;
+      if (ageH > 24) {
+        console.log(
+          `  ⚠ Tesouraria desatualizada há ${ageH.toFixed(1)}h — P&L do dia pode não estar refletido no caixa.`
+        );
+      }
     }
   }
 
-  console.log("\n── EVENTOS LIQUIDADOS HOJE ─────────────────────────────────");
-  console.log(`  Total: ${matches.length}`);
-  for (const m of matches) {
-    const when = m.settled_at
-      ? new Date(m.settled_at).toLocaleString("pt-BR", {
-          timeZone: "America/Sao_Paulo",
-        })
-      : "—";
-    console.log(
-      `  • ${pad(matchLabel(m), 42)}  placar=${pad(m.final_score || "—", 7)}  ${when}`
-    );
-  }
+  // ── Proteções liquidadas hoje (fonte principal do lucro) ───────────
+  const protWanted = [
+    "id",
+    "user_id",
+    "match_id",
+    "status",
+    "result",
+    "amount_cents",
+    "responsibility_cents",
+    "platform_profit_cents",
+    "platform_deduction_cents",
+    "exchange_profit_net_cents",
+    "exchange_fee_cents",
+    "user_profit_cents",
+    "settled_at",
+    "settled_outcome",
+    "created_at",
+    "updated_at",
+    "side",
+    "market_category",
+    "odd",
+  ];
+  const protSelect = pickSelect(protCols, protWanted);
+  const backSelect = pickSelect(backCols, protWanted);
 
-  // ── Proteções liquidadas hoje ──────────────────────────────────────
-  const settledStatuses =
-    "won_exchange,won_platform,lost_exchange,lost_platform,settled,cancelled";
   let lays = [];
   let backs = [];
-  try {
-    lays = await sbAll(
-      `/rest/v1/protections?select=id,user_id,match_id,market_id,status,result,amount_cents,responsibility_cents,platform_profit_cents,platform_deduction_cents,exchange_profit_net_cents,exchange_fee_cents,user_profit_cents,settled_at,settled_outcome,created_at&settled_at=gte.${encodeURIComponent(fromIso)}&settled_at=lte.${encodeURIComponent(toIso)}&order=settled_at.asc`
-    );
-  } catch (e) {
-    console.warn("protections:", e.message);
+
+  async function loadSettledProtections(table, select) {
+    const cols = table === "protections" ? protCols : backCols;
+    const out = [];
+    // 1) por settled_at no dia
+    if (cols.has("settled_at")) {
+      try {
+        const rows = await sbAll(
+          `/rest/v1/${table}?select=${select}&settled_at=gte.${encodeURIComponent(fromIso)}&settled_at=lte.${encodeURIComponent(toIso)}&order=settled_at.asc`
+        );
+        out.push(...rows);
+      } catch (e) {
+        console.warn(`  ${table} settled_at:`, e.message);
+      }
+    }
+    // 2) fallback: status settled* + updated_at no dia
+    if (!out.length && cols.has("updated_at")) {
+      try {
+        const rows = await sbAll(
+          `/rest/v1/${table}?select=${select}&updated_at=gte.${encodeURIComponent(fromIso)}&updated_at=lte.${encodeURIComponent(toIso)}&order=updated_at.asc`
+        );
+        const filtered = rows.filter((r) => isSettledStatus(r.status || r.result));
+        out.push(...filtered);
+        if (filtered.length) {
+          console.log(
+            `  ${table}: fallback updated_at → ${filtered.length} liquidadas`
+          );
+        }
+      } catch (e) {
+        console.warn(`  ${table} updated_at:`, e.message);
+      }
+    }
+    // 3) último recurso: puxa recentes e filtra
+    if (!out.length) {
+      try {
+        const rows = await sb(
+          `/rest/v1/${table}?select=${select}&order=created_at.desc&limit=500`
+        );
+        const list = (Array.isArray(rows) ? rows : []).filter((r) => {
+          if (!isSettledStatus(r.status || r.result)) return false;
+          const ts = r.settled_at || r.updated_at || r.created_at;
+          if (!ts) return false;
+          const t = new Date(ts).getTime();
+          return t >= new Date(fromIso).getTime() && t <= new Date(toIso).getTime();
+        });
+        out.push(...list);
+        if (list.length) {
+          console.log(`  ${table}: fallback sample → ${list.length}`);
+        }
+      } catch (e) {
+        console.warn(`  ${table} sample:`, e.message);
+      }
+    }
+    return out;
   }
-  try {
-    backs = await sbAll(
-      `/rest/v1/back_protections?select=id,user_id,match_id,market_id,status,result,amount_cents,responsibility_cents,platform_profit_cents,platform_deduction_cents,exchange_profit_net_cents,exchange_fee_cents,user_profit_cents,settled_at,settled_outcome,created_at&settled_at=gte.${encodeURIComponent(fromIso)}&settled_at=lte.${encodeURIComponent(toIso)}&order=settled_at.asc`
-    );
-  } catch (e) {
-    console.warn("back_protections:", e.message);
-  }
+
+  console.log("\n── CARREGANDO PROTEÇÕES DO DIA ─────────────────────────────");
+  lays = await loadSettledProtections("protections", protSelect);
+  backs = await loadSettledProtections("back_protections", backSelect);
 
   const allProt = [
     ...lays.map((r) => ({ ...r, _side: "LAY" })),
     ...backs.map((r) => ({ ...r, _side: "BACK" })),
   ];
+  console.log(`  LAY=${lays.length}  BACK=${backs.length}  total=${allProt.length}`);
 
-  // Mapa de partidas (inclui as referenciadas mesmo se settled_at do match falhou)
-  const matchIds = [
-    ...new Set([
-      ...matches.map((m) => m.id),
-      ...allProt.map((p) => p.match_id).filter(Boolean),
-    ]),
+  // ── Matches do dia (settled_at / via proteções) ────────────────────
+  const matchWanted = [
+    "id",
+    "home_team",
+    "away_team",
+    "league",
+    "league_name",
+    "match_label",
+    "status",
+    "starts_at",
+    "settled_at",
+    "final_score",
+    "markets",
+    "used_protection_cents",
+    "updated_at",
   ];
-  const matchMap = new Map(matches.map((m) => [m.id, m]));
-  for (let i = 0; i < matchIds.length; i += 50) {
-    const chunk = matchIds.slice(i, i + 50).filter((id) => !matchMap.has(id));
-    if (!chunk.length) continue;
+  const matchSelect = pickSelect(matchCols, matchWanted);
+  let matches = [];
+  if (matchCols.has("settled_at")) {
     try {
-      const rows = await sb(
-        `/rest/v1/matches?select=id,home_team,away_team,match_label,league_name,status,starts_at,settled_at,final_score&id=in.(${chunk.join(",")})`
+      matches = await sbAll(
+        `/rest/v1/matches?select=${matchSelect}&settled_at=gte.${encodeURIComponent(fromIso)}&settled_at=lte.${encodeURIComponent(toIso)}&order=settled_at.asc`
       );
-      for (const m of Array.isArray(rows) ? rows : []) matchMap.set(m.id, m);
-    } catch {
-      /* */
+    } catch (e) {
+      console.warn("matches settled_at:", e.message);
+    }
+  }
+  if (!matches.length && matchCols.has("updated_at")) {
+    try {
+      const rows = await sbAll(
+        `/rest/v1/matches?select=${matchSelect}&updated_at=gte.${encodeURIComponent(fromIso)}&updated_at=lte.${encodeURIComponent(toIso)}&order=updated_at.asc`
+      );
+      matches = rows.filter((m) => {
+        const st = String(m.status || "").toLowerCase();
+        return st === "settled" || st === "closed" || st === "finished" || m.settled_at;
+      });
+    } catch (e) {
+      console.warn("matches updated_at:", e.message);
     }
   }
 
-  // Agrupa por evento
+  const matchMap = new Map(matches.map((m) => [m.id, m]));
+  const missingIds = [
+    ...new Set(allProt.map((p) => p.match_id).filter((id) => id && !matchMap.has(id))),
+  ];
+  for (let i = 0; i < missingIds.length; i += 40) {
+    const chunk = missingIds.slice(i, i + 40);
+    try {
+      const rows = await sb(
+        `/rest/v1/matches?select=${matchSelect}&id=in.(${chunk.join(",")})`
+      );
+      for (const m of Array.isArray(rows) ? rows : []) matchMap.set(m.id, m);
+    } catch (e) {
+      console.warn("matches by id:", e.message);
+    }
+  }
+
+  console.log("\n── EVENTOS LIQUIDADOS HOJE ─────────────────────────────────");
+  const eventIds = new Set([
+    ...matches.map((m) => m.id),
+    ...allProt.map((p) => p.match_id).filter(Boolean),
+  ]);
+  console.log(`  Total eventos (matches + refs): ${eventIds.size}`);
+  for (const id of eventIds) {
+    const m = matchMap.get(id);
+    const when = (m?.settled_at || m?.updated_at)
+      ? new Date(m.settled_at || m.updated_at).toLocaleString("pt-BR", {
+          timeZone: "America/Sao_Paulo",
+        })
+      : "—";
+    console.log(
+      `  • ${pad(matchLabel(m) || id.slice(0, 8), 42)}  placar=${pad(m?.final_score || "—", 7)}  ${when}`
+    );
+  }
+
+  // ── Lucro por evento ───────────────────────────────────────────────
   const byMatch = new Map();
   for (const p of allProt) {
     const mid = p.match_id || "_sem_match";
@@ -308,7 +485,7 @@ async function main() {
     totFees += g.fees;
     totUser += g.userProfit;
     console.log(
-      `  ${padL(i, 3)} ${pad(matchLabel(g.match) || mid.slice(0, 8), 40)} ${padL(g.rows.length, 5)} ${padL(money(g.stake), 12)} ${padL(money(g.cut), 14)} ${padL(money(g.fees), 12)} ${padL(money(g.userProfit), 12)}`
+      `  ${padL(i, 3)} ${pad(matchLabel(g.match) || String(mid).slice(0, 8), 40)} ${padL(g.rows.length, 5)} ${padL(money(g.stake), 12)} ${padL(money(g.cut), 14)} ${padL(money(g.fees), 12)} ${padL(money(g.userProfit), 12)}`
     );
   }
   console.log("  ─────────────────────────────────────────────────────────────");
@@ -316,7 +493,6 @@ async function main() {
     `  ${pad("TOTAL", 44)} ${padL(allProt.length, 5)} ${padL(money(totStake), 12)} ${padL(money(totCut), 14)} ${padL(money(totFees), 12)} ${padL(money(totUser), 12)}`
   );
 
-  // Breakdown por status
   const byStatus = {};
   for (const p of allProt) {
     const st = String(p.status || p.result || "?");
@@ -325,40 +501,60 @@ async function main() {
     byStatus[st].cut += platformCut(p);
     byStatus[st].stake += stakeOf(p);
   }
-  console.log("\n  Por status:");
-  for (const [st, v] of Object.entries(byStatus).sort((a, b) => b[1].cut - a[1].cut)) {
-    console.log(
-      `    ${pad(st, 18)}  n=${padL(v.n, 4)}  stake=${padL(money(v.stake), 12)}  lucro=${money(v.cut)}`
-    );
+  if (Object.keys(byStatus).length) {
+    console.log("\n  Por status:");
+    for (const [st, v] of Object.entries(byStatus).sort(
+      (a, b) => b[1].cut - a[1].cut
+    )) {
+      console.log(
+        `    ${pad(st, 18)}  n=${padL(v.n, 4)}  stake=${padL(money(v.stake), 12)}  lucro=${money(v.cut)}`
+      );
+    }
   }
 
-  // ── Desafios / etapas liquidadas hoje ──────────────────────────────
+  // ── Desafio steps ──────────────────────────────────────────────────
+  const stepWanted = [
+    "id",
+    "desafio_id",
+    "step_index",
+    "match_label",
+    "home_team",
+    "away_team",
+    "status",
+    "result",
+    "settled_at",
+    "liquidity_cents",
+    "used_liquidity_cents",
+    "updated_at",
+  ];
+  const stepSelect = pickSelect(stepCols, stepWanted);
   let steps = [];
-  try {
-    steps = await sbAll(
-      `/rest/v1/desafio_steps?select=id,desafio_id,step_index,match_label,home_team,away_team,status,result,settled_at,used_liquidity_cents,liquidity_cents&settled_at=gte.${encodeURIComponent(fromIso)}&settled_at=lte.${encodeURIComponent(toIso)}&order=settled_at.asc`
-    );
-  } catch (e) {
-    console.warn("desafio_steps:", e.message);
+  if (stepCols.has("settled_at")) {
+    try {
+      steps = await sbAll(
+        `/rest/v1/desafio_steps?select=${stepSelect}&settled_at=gte.${encodeURIComponent(fromIso)}&settled_at=lte.${encodeURIComponent(toIso)}&order=settled_at.asc`
+      );
+    } catch (e) {
+      console.warn("desafio_steps:", e.message);
+    }
   }
   console.log("\n── DESAFIOS / ETAPAS ENCERRADAS HOJE ────────────────────────");
   console.log(`  Total etapas: ${steps.length}`);
   let desafioLiq = 0;
   for (const s of steps) {
-    desafioLiq += n(s.used_liquidity_cents);
+    const used = n(s.used_liquidity_cents || s.liquidity_cents);
+    desafioLiq += used;
     const label =
       s.match_label ||
       [s.home_team, s.away_team].filter(Boolean).join(" x ") ||
       s.id;
     console.log(
-      `  • Etapa ${s.step_index} · ${pad(label, 36)}  result=${pad(s.result || s.status, 16)}  usado=${money(s.used_liquidity_cents)}`
+      `  • Etapa ${s.step_index} · ${pad(label, 36)}  result=${pad(s.result || s.status, 16)}  liq=${money(used)}`
     );
   }
-  if (steps.length) {
-    console.log(`  Liquidez usada (soma): ${money(desafioLiq)}`);
-  }
+  if (steps.length) console.log(`  Liquidez (soma): ${money(desafioLiq)}`);
 
-  // ── Caixa do dia (depósitos / saques / despesas / settlements) ─────
+  // ── Caixa do dia ───────────────────────────────────────────────────
   async function sumTx(types) {
     const inList = types.map(encodeURIComponent).join(",");
     try {
@@ -371,17 +567,38 @@ async function main() {
     }
   }
 
-  const dep = await sumTx(["deposit", "manual_credit", "asaas_deposit", "desafio_deposit", "provider_deposit"]);
-  const settleCredit = await sumTx(["protection_settlement", "protection_unlock", "protection_release"]);
-  const refunds = await sumTx(["protection_refund", "refund", "desafio_cancel_refund"]);
-  const withdraws = await sumTx(["withdrawal", "withdraw", "affiliate_withdraw"]);
+  const dep = await sumTx([
+    "deposit",
+    "manual_credit",
+    "asaas_deposit",
+    "desafio_deposit",
+    "provider_deposit",
+  ]);
+  const settleCredit = await sumTx([
+    "protection_settlement",
+    "protection_unlock",
+    "protection_release",
+  ]);
+  const refunds = await sumTx([
+    "protection_refund",
+    "refund",
+    "desafio_cancel_refund",
+  ]);
+  const withdraws = await sumTx([
+    "withdrawal",
+    "withdraw",
+    "affiliate_withdraw",
+  ]);
 
   let expenses = 0;
   try {
     const rows = await sb(
       `/rest/v1/admin_expenses?select=amount_cents&expense_date=eq.${day}`
     );
-    expenses = (Array.isArray(rows) ? rows : []).reduce((a, r) => a + n(r.amount_cents), 0);
+    expenses = (Array.isArray(rows) ? rows : []).reduce(
+      (a, r) => a + n(r.amount_cents),
+      0
+    );
   } catch {
     try {
       const rows = await sbAll(
@@ -400,7 +617,7 @@ async function main() {
   console.log("  Saques:                         ", money(withdraws));
   console.log("  Despesas admin:                 ", money(expenses));
 
-  // ── Banca usuários agora ───────────────────────────────────────────
+  // ── Banca clientes ─────────────────────────────────────────────────
   let bancaUsers = 0;
   let bancaLocked = 0;
   let bancaDesafio = 0;
@@ -415,7 +632,8 @@ async function main() {
       bancaUsers += n(p.balance_cents);
       bancaLocked += n(p.locked_balance_cents);
       bancaDesafio += n(p.desafio_balance_cents);
-      bancaProv += n(p.investor_balance_cents) + n(p.demo_balance_provider_cents);
+      bancaProv +=
+        n(p.investor_balance_cents) + n(p.demo_balance_provider_cents);
     }
   } catch (e) {
     console.warn("profiles:", e.message);
@@ -428,42 +646,70 @@ async function main() {
   console.log("  Carteira Desafio:               ", money(bancaDesafio));
   console.log("  Provedor/Investor:              ", money(bancaProv));
 
-  // ── Reconciliação saldo inicial × atual ────────────────────────────
-  // Lucro plataforma do dia ≈ deduções nas proteções liquidadas.
-  // Saldo inicial estimado da tesouraria = atual - (lucro líquido caixa do dia).
-  // Como a tesouraria pode não espelhar 1:1 o P&L, mostramos ambos os números.
   const lucroDia = totCut;
   const saidaDia = expenses + refunds + withdraws;
   const entradaDia = dep;
+  // Só estima inicial se houver lucro OU se a tesouraria refletir caixa;
+  // quando lucro=0 e só houve depósito, a "variação" = depósitos (não é P&L).
   const saldoInicialEstimado = cashNow - lucroDia + saidaDia - entradaDia;
 
   console.log("\n── RESUMO / RECONCILIAÇÃO ───────────────────────────────────");
-  console.log("  Lucro gerado hoje (dedução plataforma nas proteções):", money(lucroDia));
+  console.log(
+    "  Lucro gerado hoje (dedução plataforma nas proteções):",
+    money(lucroDia)
+  );
   console.log("    ├ platform_profit/deduction: ", money(totPlat));
   console.log("    └ exchange fee/net:          ", money(totFees));
-  console.log("  Eventos liquidados:            ", matches.length || byMatch.size);
+  console.log("  Eventos no dia:                ", eventIds.size);
   console.log("  Proteções liquidadas:          ", allProt.length);
   console.log("  Stake total liquidado:         ", money(totStake));
   console.log("");
   console.log("  Saldo empresa ATUAL:          ", money(cashNow));
   console.log("  Saldo empresa INICIAL (est.):  ", money(saldoInicialEstimado));
-  console.log("    fórmula: atual − lucro_proteções + (despesas+refunds+saques) − depósitos");
-  console.log("  Variação bruta (atual−inicial):", money(cashNow - saldoInicialEstimado));
-  console.log("");
-  console.log("  Observação: se a tesouraria não for atualizada a cada settle,");
-  console.log("  o 'saldo inicial estimado' é apenas referência analítica.");
-  console.log("  O lucro operacional do dia nas proteções é o TOTAL de dedução:", money(lucroDia));
+  console.log(
+    "    fórmula: atual − lucro_proteções + (despesas+refunds+saques) − depósitos"
+  );
+  console.log(
+    "  Variação bruta (atual−inicial):",
+    money(cashNow - saldoInicialEstimado)
+  );
+  if (!allProt.length) {
+    console.log("");
+    console.log(
+      "  ⚠ Nenhuma proteção liquidada encontrada no dia — lucro R$ 0,00."
+    );
+    console.log(
+      "    A variação acima (~depósitos) NÃO é lucro operacional."
+    );
+  }
+  if (treasury?.updated_at) {
+    const tDay = new Date(treasury.updated_at).toLocaleDateString("en-CA", {
+      timeZone: "America/Sao_Paulo",
+    });
+    if (tDay !== day) {
+      console.log("");
+      console.log(
+        `  ⚠ Tesouraria última update em ${tDay}, não em ${day}. Caixa pode estar defasado.`
+      );
+    }
+  }
 
-  // JSON opcional
-  if (process.env.JSON_OUT) {
+  const jsonOut = process.env.JSON_OUT;
+  if (jsonOut) {
     const payload = {
       day,
       fromIso,
       toIso,
+      schema: {
+        matches: [...matchCols],
+        protections: [...protCols],
+        back_protections: [...backCols],
+        desafio_steps: [...stepCols],
+      },
       treasury: { cashNow, reserve, lockedT, raw: treasury },
-      matches: matches.length,
-      protections: allProt.length,
       totals: {
+        events: eventIds.size,
+        protections: allProt.length,
         stake: totStake,
         platformCut: totCut,
         platformProfit: totPlat,
@@ -487,11 +733,11 @@ async function main() {
         userProfit: g.userProfit,
       })),
     };
-    fs.writeFileSync(process.env.JSON_OUT, JSON.stringify(payload, null, 2));
-    console.log("\nJSON →", process.env.JSON_OUT);
+    fs.writeFileSync(jsonOut, JSON.stringify(payload, null, 2));
+    console.log("\nJSON →", jsonOut);
   }
 
-  console.log("\nOK — auditoria concluída.\n");
+  console.log("\nOK — auditoria v2 concluída.\n");
 }
 
 main().catch((err) => {
