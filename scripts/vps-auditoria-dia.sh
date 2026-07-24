@@ -2,16 +2,16 @@
 # Auditoria do dia — eventos, lucro (dedução), saldo empresa inicial/atual
 # Versão: v3 (retry de schema + fallback via wallet_transactions)
 #
-# Na VPS (root) — use o SHA pinado (evita cache da v2):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/CURSOR_SHA/scripts/vps-auditoria-dia.sh?v=3")
+# Na VPS (root) — SHA pinado (evita cache da v2):
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/090b8ec6271e209059d44b8392f435be52bfb5c7/scripts/vps-auditoria-dia.sh?v=3")
 #
 # Dia específico:
 #   DAY=2026-07-24 bash <(curl -fsSL "...")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/auditoria-dia-lucro-3cf9}"
-# Prefira SHA pinado via ARBISHIELD_REF; fallback = tip da branch
-REF="${ARBISHIELD_REF:-$BRANCH}"
+# SHA pinado por padrão (override com ARBISHIELD_REF=...)
+REF="${ARBISHIELD_REF:-090b8ec6271e209059d44b8392f435be52bfb5c7}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
 DAY="${DAY:-}"
