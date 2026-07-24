@@ -3158,10 +3158,12 @@ body.dep-open { overflow: hidden; }
   animation: dash-pulse 1.2s ease-in-out infinite;
 }
 .term-match-teams {
-  display: flex;
+  display: inline-flex;
   flex-direction: row;
   align-items: center;
   gap: 8px;
+  width: max-content;
+  max-width: 100%;
   min-width: 0;
 }
 .term-match-teams .term-team-logo {
@@ -3186,10 +3188,19 @@ input#odd[readonly] {
   background: rgba(255, 255, 255, 0.04) !important;
   pointer-events: none;
 }
-.term-col-match strong,
+.term-col-match strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .term-match-teams strong {
   display: block;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   font-size: 15px;
   font-weight: 800;

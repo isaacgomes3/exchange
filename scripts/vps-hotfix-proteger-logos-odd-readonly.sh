@@ -40,6 +40,7 @@ chmod 0644 "$WEB/v2.css"
 cp -f "$WEB/v2.css" "$WEB_ROOT/v2.css" 2>/dev/null || true
 grep -q '\.term-team-logo' "$WEB/v2.css" || die "css sem .term-team-logo"
 grep -q 'term-odd-locked\|#odd\[readonly\]' "$WEB/v2.css" || die "css sem odd locked"
+grep -q 'width: max-content' "$WEB/v2.css" || die "css sem logo visitante colada ao texto"
 
 log "OK — Ctrl+F5 em Proteger Aposta. Logos ao lado + odd bloqueada."
 echo "  Teste: https://arbishield.app/app-proteger.html"
