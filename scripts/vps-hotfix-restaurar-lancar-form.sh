@@ -9,7 +9,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-restaurar-lancar-form.sh")
 set -euo pipefail
 
-REF="57ef5f2878ff2988bac9eabc253d904975116992"
+REF="22dc5d0c5e6ce4a9c9dbc7ac1ecd856ee43b21da"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
@@ -32,6 +32,10 @@ for f in admin-jogos.html admin-desafios.html market-catalog.js; do
   chmod 0644 "$WEB/$f"
   cp -f "$WEB/$f" "$WEB_ROOT/$f" 2>/dev/null || true
 done
+mkdir -p "$WEB_ROOT/assets" "$WEB/assets"
+cp -f "$WEB/market-catalog.js" "$WEB_ROOT/assets/market-catalog.js"
+cp -f "$WEB/market-catalog.js" "$WEB/assets/market-catalog.js" 2>/dev/null || true
+chmod 0644 "$WEB_ROOT/assets/market-catalog.js"
 dl "deploy/vps-supabase/static/admin-jogos-vps.html" "$WEB_ROOT/admin-jogos-vps.html" 2>/dev/null || true
 dl "deploy/vps-supabase/static/admin-desafios-vps.html" "$WEB_ROOT/admin-desafios-vps.html" 2>/dev/null || true
 
@@ -53,6 +57,8 @@ grep -q 'desafio-launch-open\|btnBackDraft\|Página completa' "$WEB/admin-desafi
   || die "admin-desafios sem página justificada (ainda modal?)"
 grep -q 'ARBISHIELD_MARKET_CATALOG' "$WEB/market-catalog.js" \
   || die "market-catalog.js ausente/ inválido"
+grep -q 'assets/market-catalog.js\|Fallback se o asset\|ARBISHIELD_MARKET_CATALOG' "$WEB/admin-desafios.html" \
+  || die "admin-desafios sem fallback/autoload do catálogo"
 
 log "2/4 Backend prelive — API /football-teams"
 PRELIVE_DST="$SCRIPTS_DIR/arbishield-prelive-events.mjs"
@@ -115,12 +121,52 @@ else
   echo "  WARN: nenhum conf nginx patchado — confira proxy football-teams manualmente"
 fi
 
+
+log "3b/4 Nginx — corrigir /m que engolia /market-catalog.js"
+python3 - <<'PY'
+from pathlib import Path
+old = "location ^~ /m { return 302 /app.html; }"
+new = "location = /m { return 302 /app.html; }\n    location ^~ /m/ { return 302 /app.html; }"
+asset = """
+    location = /market-catalog.js {
+        try_files $uri =404;
+        add_header Content-Type application/javascript;
+        add_header Cache-Control "no-store";
+    }
+"""
+for conf in [
+    "/etc/nginx/sites-enabled/arbishield.app",
+    "/etc/nginx/conf.d/arbishield.app.conf",
+    "/etc/nginx/sites-available/arbishield.app",
+    "/etc/nginx/conf.d/arbishield-cutover.conf",
+]:
+    p = Path(conf)
+    if not p.is_file():
+        continue
+    t = p.read_text()
+    changed = False
+    if old in t:
+        t = t.replace(old, new)
+        changed = True
+        print(f"  narrowed /m in {conf}")
+    if "location = /market-catalog.js" not in t and "location /assets/" in t:
+        t = t.replace("    location /assets/", asset + "\n    location /assets/", 1)
+        changed = True
+        print(f"  added market-catalog.js location in {conf}")
+    if changed:
+        p.write_text(t)
+PY
+nginx -t && systemctl reload nginx 2>/dev/null || true
+
 log "4/4 Smoke"
 curl -fsS "http://127.0.0.1:3098/api/arbishield/football-teams?q=santos" \
   | grep -q '"ok":true\|"teams"' \
   && echo "  API local football-teams OK" \
   || echo "  WARN: API local football-teams sem resposta JSON (serviço pode estar subindo)"
 test -f "$WEB/market-catalog.js" || die "market-catalog.js não está em $WEB"
+test -f "$WEB_ROOT/assets/market-catalog.js" || die "assets/market-catalog.js ausente"
+grep -q 'Mais 2.5 gols' "$WEB_ROOT/assets/market-catalog.js" \
+  || die "catálogo de mercados sem opções de gols"
 
 log "OK — hard refresh em /admin-jogos.html e /admin-desafios.html"
-log "Lançar Evento Manual / Lançar Desafio: painel largo + logos + autocomplete."
+log "Autocomplete de mercados: catálogo inline + /assets/market-catalog.js (nginx /m não engole mais)."
