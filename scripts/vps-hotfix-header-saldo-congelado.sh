@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Header: Desafio | Congelado | Provedor (chips de saldo).
+# Header: Apostador | Afiliado | Desafio | Congelado | Provedor na MESMA linha.
+# Motivo de regressão: hotfixes de desafio/responsivo/jogos baixam v2.css antigo
+# (grid de 4 colunas) e o 5º chip (Provedor) cai na segunda linha.
 #
 # Na VPS:
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-header-saldo-congelado.sh")
@@ -33,6 +35,7 @@ grep -q 'v2BalProvedor' "$WEB/v2-shell.js" || die "v2-shell sem chip Provedor"
 grep -q 'v2-bal-congelado' "$WEB/v2-shell.js" || die "v2-shell sem classe Congelado"
 grep -q 'locked_balance_cents' "$WEB/v2-shell.js" || die "v2-shell sem locked_balance_cents"
 grep -q 'v2-bal-congelado' "$WEB/v2.css" || die "v2.css sem estilo Congelado"
+grep -q 'flex-wrap: nowrap' "$WEB/v2.css" || die "v2.css sem flex nowrap (chips 1 linha)"
 grep -q 'flex-wrap: nowrap' "$WEB/v2.css" || die "v2.css sem linha única dos chips"
 grep -q 'v2BalCongelado' "$WEB/v2-financeiro.js" || die "v2-financeiro sem sync Congelado"
 grep -q 'providerBalance' "$WEB/v2-financeiro.js" || die "v2-financeiro sem sync Provedor"
