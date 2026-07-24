@@ -1475,7 +1475,8 @@
       var supa = ArbiV2.client();
       var user = await ArbiV2.requireUser(supa);
       if (!user) return;
-      await loadAll(supa, user.id);
+      var viewId = ArbiV2.getEffectiveUserId ? ArbiV2.getEffectiveUserId(user) : user.id;
+      await loadAll(supa, viewId);
       buildLedger();
       computeMetrics();
       renderBalances();

@@ -478,6 +478,11 @@
     async function doLogout(e) {
       if (e) e.preventDefault();
       try {
+        if (global.ArbiV2 && global.ArbiV2.clearImpersonation) {
+          global.ArbiV2.clearImpersonation();
+        }
+      } catch (clearImpErr) {}
+      try {
         if (global.ArbiV2 && global.ArbiV2.client) {
           await global.ArbiV2.client().auth.signOut();
         }
@@ -496,12 +501,43 @@
           var appUserRes = await appSupa.auth.getUser();
           var appUser = appUserRes.data && appUserRes.data.user;
           if (appUser) {
+            var imp = global.ArbiV2.getImpersonation
+              ? global.ArbiV2.getImpersonation()
+              : null;
+            var viewUserId =
+              global.ArbiV2.getEffectiveUserId
+                ? global.ArbiV2.getEffectiveUserId(appUser)
+                : appUser.id;
+            if (imp && imp.id) {
+              var banner = document.getElementById("v2ImpersonateBanner");
+              if (!banner) {
+                banner = document.createElement("div");
+                banner.id = "v2ImpersonateBanner";
+                banner.setAttribute("role", "status");
+                banner.style.cssText =
+                  "position:sticky;top:0;z-index:90;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:10px 14px;background:#1a1400;border-bottom:1px solid rgba(245,158,11,0.45);color:#fde68a;font-size:12px;font-weight:800;letter-spacing:0.04em;text-transform:uppercase";
+                banner.innerHTML =
+                  '<span>Espelho · visualizando conta do cliente' +
+                  (imp.name ? ": " + String(imp.name) : "") +
+                  '</span><button type="button" id="v2ImpersonateExit" style="border:0;border-radius:10px;padding:8px 12px;background:#c9f223;color:#000;font-weight:900;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer">Sair do espelho</button>';
+                var first = document.body.firstChild;
+                document.body.insertBefore(banner, first);
+                var exitBtn = document.getElementById("v2ImpersonateExit");
+                if (exitBtn) {
+                  exitBtn.addEventListener("click", function () {
+                    global.ArbiV2.clearImpersonation({
+                      redirect: "/admin-users.html",
+                    });
+                  });
+                }
+              }
+            }
             var balRes = await appSupa
               .from("profiles")
               .select(
                 "balance_cents,reusable_balance_cents,demo_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,locked_balance_cents,full_name,avatar_url"
               )
-              .eq("id", appUser.id)
+              .eq("id", viewUserId)
               .maybeSingle();
             var p = balRes.data || {};
             var money = global.ArbiV2.money;
@@ -519,13 +555,13 @@
                 var prot = await appSupa
                   .from("protections")
                   .select("amount_cents,status")
-                  .eq("user_id", appUser.id)
+                  .eq("user_id", viewUserId)
                   .eq("status", "active")
                   .limit(200);
                 var back = await appSupa
                   .from("back_protections")
                   .select("amount_cents,status")
-                  .eq("user_id", appUser.id)
+                  .eq("user_id", viewUserId)
                   .eq("status", "active")
                   .limit(200);
                 var sumP = 0;
@@ -543,7 +579,7 @@
               var aff = await appSupa
                 .from("affiliate_stats")
                 .select("pending_cents,pendingCents,available_cents,balance_cents")
-                .eq("profile_id", appUser.id)
+                .eq("profile_id", viewUserId)
                 .maybeSingle();
               var a = (aff && aff.data) || {};
               afiliado = Number(
@@ -561,6 +597,7 @@
             setTxt("v2BalProvedor", provedor);
             var displayName =
               p.full_name ||
+              (imp && imp.name) ||
               (appUser.email ? appUser.email.split("@")[0] : "Membro");
             var initials = String(displayName)
               .split(/\s+/)
