@@ -536,6 +536,7 @@
       </p>
       <div class="platform-filters" id="platformFilters">
         <button type="button" class="chip is-on" data-pf="settle">A liquidar</button>
+        <button type="button" class="chip" data-pf="live">Ao vivo</button>
         <button type="button" class="chip" data-pf="fila">Fila (atuais)</button>
         <button type="button" class="chip" data-pf="draft">Rascunhos</button>
         <button type="button" class="chip" data-pf="done">Finalizados</button>
@@ -1303,29 +1304,34 @@
         }
       }
 
+      function matchIsFinished(m) {
+        if (!m) return true;
+        if (m.final_score || m.settled_at) return true;
+        var st = String(m.status || m.status_v2 || "").toLowerCase();
+        return ["settled", "finished", "closed", "cancelled", "finalizado"].indexOf(st) >= 0;
+      }
+
+      /** Kickoff já passou e ainda dentro da janela de jogo (~3h). */
+      function matchIsLiveWindow(m) {
+        if (!m || matchIsFinished(m)) return false;
+        var start = m.starts_at ? new Date(m.starts_at).getTime() : NaN;
+        if (!Number.isFinite(start)) return false;
+        var now = Date.now();
+        return start <= now && start > now - 3 * 60 * 60 * 1000;
+      }
+
       function matchNeedsSettle(m) {
         if (!m) return false;
-        if (m.settled_at || m.final_score) return false;
-        var st = String(m.status || m.status_v2 || "").toLowerCase();
-        if (["settled", "finished", "closed", "cancelled", "finalizado"].indexOf(st) >= 0) {
-          return false;
-        }
+        if (matchIsFinished(m)) return false;
         return Number(m.used_protection_cents || 0) > 0 || Number(m._openProtections || 0) > 0;
       }
 
       function matchBucket(m) {
-        var st = String(m.status || m.status_v2 || "").toLowerCase();
-        var finished =
-          !!m.final_score ||
-          !!m.settled_at ||
-          ["settled", "finished", "closed", "cancelled", "finalizado"].indexOf(st) >= 0;
-        if (finished) return "done";
-        // Com proteção aberta: permanece liquidável (não some da fila após 3h)
-        if (matchNeedsSettle(m)) {
-          var startLive = m.starts_at ? new Date(m.starts_at).getTime() : NaN;
-          if (Number.isFinite(startLive) && startLive <= Date.now()) return "settle";
-          return "settle";
-        }
+        if (matchIsFinished(m)) return "done";
+        // Ao vivo tem prioridade de badge na janela do jogo (mesmo com proteção aberta)
+        if (matchIsLiveWindow(m)) return "live";
+        // Proteção aberta fora da janela ao vivo → liquidar
+        if (matchNeedsSettle(m)) return "settle";
         var start = m.starts_at ? new Date(m.starts_at).getTime() : NaN;
         if (Number.isFinite(start) && start <= Date.now() - 3 * 60 * 60 * 1000) {
           return "done";
@@ -1357,29 +1363,34 @@
               return (
                 bucket === "open" ||
                 bucket === "live" ||
-                bucket === "settle"
+                matchNeedsSettle(m)
               );
             }
-            if (platformFilter === "settle") return bucket === "settle";
+            if (platformFilter === "live") return matchIsLiveWindow(m) || bucket === "live";
+            // A liquidar: qualquer proteção aberta (inclui ao vivo)
+            if (platformFilter === "settle") return matchNeedsSettle(m);
             if (platformFilter === "draft") return bucket === "draft";
             if (platformFilter === "done") return bucket === "done";
             return true;
           })
         );
-        var counts = { fila: 0, settle: 0, draft: 0, done: 0, all: platformMatches.length };
+        var counts = { fila: 0, live: 0, settle: 0, draft: 0, done: 0, all: platformMatches.length };
         platformMatches.forEach(function (m) {
           var b = matchBucket(m);
-          if (b === "open" || b === "live" || b === "settle") counts.fila += 1;
-          if (b === "settle") counts.settle += 1;
+          if (b === "open" || b === "live" || matchNeedsSettle(m)) counts.fila += 1;
+          if (matchIsLiveWindow(m) || b === "live") counts.live += 1;
+          if (matchNeedsSettle(m)) counts.settle += 1;
           if (b === "draft") counts.draft += 1;
           if (b === "done") counts.done += 1;
         });
         $("platformMeta").textContent =
           filtered.length +
-          " na vista · fila " +
-          counts.fila +
+          " na vista · ao vivo " +
+          counts.live +
           " · a liquidar " +
           counts.settle +
+          " · fila " +
+          counts.fila +
           " · rascunhos " +
           counts.draft +
           " · finalizados " +
@@ -1390,6 +1401,8 @@
             '<div class="empty">' +
             (platformFilter === "fila"
               ? "Nenhum jogo atual/próximo na fila. Use a aba “A liquidar” para jogos com proteção ainda aberta."
+              : platformFilter === "live"
+                ? "Nenhum jogo ao vivo na janela de ~3h após o kickoff."
               : platformFilter === "settle"
                 ? "Nenhum jogo pendente de liquidação (com proteção aberta)."
                 : "Nenhum jogo encontrado nesta categoria") +
@@ -1426,7 +1439,7 @@
                     '" style="margin-top:8px">Publicar</button>'
                   : "";
               var settleBtn =
-                bucket === "settle" || bucket === "live"
+                matchNeedsSettle(m) || bucket === "live" || bucket === "settle"
                   ? '<button class="btn btn-primary btn-sm" type="button" data-settle="' +
                     m.id +
                     '" style="margin-top:8px">Encerrar partida</button>'
