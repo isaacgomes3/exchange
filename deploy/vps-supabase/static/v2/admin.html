@@ -191,15 +191,17 @@
           deposit: 1, manual_credit: 1, asaas_deposit: 1, desafio_deposit: 1,
           provider_deposit: 1, protection_unlock: 1, protection_settlement: 1, bonus: 1
         };
+        // amount_cents de saída pode vir negativo no banco — normaliza p/ magnitudes
+        // e calcula líquido = entradas − saídas (diferença, nunca soma).
         var inn = 0, out = 0;
         list.forEach(function (r) {
-          var a = Number(r.amount_cents || 0);
+          var a = Math.abs(Number(r.amount_cents || 0));
           if (inflowTypes[r.type]) inn += a;
           else out += a;
         });
         document.getElementById("txCount").textContent = String(list.length);
         document.getElementById("txIn").textContent = money(inn);
-        document.getElementById("txOut").textContent = money(out);
+        document.getElementById("txOut").textContent = money(-out);
         document.getElementById("txNet").textContent = money(inn - out);
         var body = document.getElementById("txBody");
         if (!list.length) {
