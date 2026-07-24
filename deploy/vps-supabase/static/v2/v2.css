@@ -3141,14 +3141,38 @@ body.dep-open { overflow: hidden; }
   box-shadow: 0 0 10px rgba(239, 68, 68, 0.7);
   animation: dash-pulse 1.2s ease-in-out infinite;
 }
-.term-col-match strong {
+.term-match-teams {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.term-match-teams .term-team-logo {
+  width: 1.35em;
+  height: 1.35em;
+  max-width: 22px;
+  max-height: 22px;
+  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.term-col-match strong,
+.term-match-teams strong {
   display: block;
-  font-size: 17px;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 15px;
   font-weight: 800;
   color: #fff;
-  line-height: 1.35;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.term-col-match strong span { color: rgba(255, 255, 255, 0.35); font-weight: 700; }
+.term-col-match strong span,
+.term-match-teams strong span { color: rgba(255, 255, 255, 0.35); font-weight: 700; }
 .term-col-comp {
   min-width: 0;
 }
@@ -4123,22 +4147,25 @@ body.dep-open { overflow: hidden; }
 }
 .dz-v2-side {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
-  text-align: center;
+  text-align: left;
 }
-.dz-v2-side.is-away { justify-self: end; }
-.dz-v2-side.is-home { justify-self: start; }
+.dz-v2-side.is-away { justify-self: end; justify-content: flex-end; text-align: right; }
+.dz-v2-side.is-home { justify-self: start; justify-content: flex-start; }
 .dz-v2-logo,
 .dz-v2-logo-fallback {
-  width: 72px;
-  height: 72px;
+  width: 1.55em;
+  height: 1.55em;
+  max-width: 26px;
+  max-height: 26px;
   border-radius: 50%;
   object-fit: contain;
+  flex-shrink: 0;
   background: rgba(255, 255, 255, 0.96);
-  padding: 6px;
+  padding: 2px;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 .dz-v2-logo-fallback {
@@ -4147,12 +4174,12 @@ body.dep-open { overflow: hidden; }
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: #fff;
-  font-size: 14px;
+  font-size: 9px;
   font-weight: 900;
   padding: 0;
 }
 .dz-v2-team-name {
-  max-width: 140px;
+  max-width: 160px;
   font-size: 13px;
   font-weight: 900;
   letter-spacing: 0.04em;
@@ -4434,8 +4461,13 @@ body.dep-open { overflow: hidden; }
   .app-desafio-grid { grid-template-columns: 1fr; max-width: none; }
   .dz-v2-compare { grid-template-columns: 1fr; }
   .dz-v2-logo,
-  .dz-v2-logo-fallback { width: 58px; height: 58px; }
-  .dz-v2-team-name { max-width: 110px; font-size: 11px; }
+  .dz-v2-logo-fallback {
+    width: 1.5em;
+    height: 1.5em;
+    max-width: 22px;
+    max-height: 22px;
+  }
+  .dz-v2-team-name { max-width: 120px; font-size: 11px; }
   .dz-v2-row .v { font-size: 1.2rem; }
 }
 
