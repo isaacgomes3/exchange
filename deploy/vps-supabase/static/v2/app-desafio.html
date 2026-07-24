@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=dz-no-lead-1" />
+  <link rel="stylesheet" href="/v2.css?v=dz-retorno-pct-1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
   <script src="/desafio-ciclo-math.js?v=dz-apostar-2"></script>
@@ -99,6 +99,24 @@
       function centsToInput(cents) {
         var n = Math.max(0, Number(cents) || 0) / 100;
         return n.toFixed(2).replace(".", ",");
+      }
+
+      /** % de lucro alvo do lançamento (target_profit_pct) — não o ROI das odds. */
+      function fmtTargetProfitPct(item) {
+        var pct = Number(item && item.lucroMaxPct);
+        if (!Number.isFinite(pct) || pct <= 0) pct = 5;
+        var body = Number.isInteger(pct)
+          ? String(pct)
+          : pct.toFixed(1).replace(".", ",");
+        return "+" + body + "%";
+      }
+
+      function retornoEstimadoHtml(item) {
+        return (
+          'Retorno estimado <strong>' +
+          esc(fmtTargetProfitPct(item)) +
+          '</strong> <span class="dz-v2-retorno-sub">(lucro alvo cadastrado)</span>'
+        );
       }
 
       function calcSides(item, stakeCents) {
@@ -417,8 +435,6 @@
 
         var defaultStake = item.entradaCents || MIN_ACCESS_CENTS;
         var sides = calcSides(item, defaultStake);
-        var lucro = Math.max(0, sides.recebeArbiCents - sides.stakeCents);
-        var retorno = sides.recebeArbiCents;
 
         var liq = phase !== "live" && phase !== "done" ? liquidityShown(item, now) : null;
         var liqHtml = "";
@@ -552,11 +568,9 @@
           casaCta +
           "</div></div>" +
           liqHtml +
-          '<div class="dz-v2-retorno">Retorno estimado ' +
-          money(retorno) +
-          " (+" +
-          money(lucro) +
-          ")</div></article>"
+          '<div class="dz-v2-retorno">' +
+          retornoEstimadoHtml(item) +
+          "</div></article>"
         );
       }
 
@@ -601,11 +615,7 @@
           if (elCasa) elCasa.textContent = money(sides.casaStakeCents);
           if (elArbi) elArbi.textContent = money(sides.recebeArbiCents);
           if (elCasaRec) elCasaRec.textContent = money(sides.recebeCasaCents);
-          if (elRet) {
-            var lucro = Math.max(0, sides.recebeArbiCents - sides.stakeCents);
-            elRet.textContent =
-              "Retorno estimado " + money(sides.recebeArbiCents) + " (+" + money(lucro) + ")";
-          }
+          if (elRet) elRet.innerHTML = retornoEstimadoHtml(item);
           return { item: item, sides: sides };
         }
 
