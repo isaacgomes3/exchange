@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/blocked-emails.js?v=1"></script>
   <script src="/v2.js"></script>
   <style>
     .auth-card .tabs { display: flex; gap: 8px; margin: 0 0 16px; }
@@ -87,23 +88,28 @@
       var supa = ArbiV2.client();
       var session = await supa.auth.getSession();
       if (session.data.session) {
-        // Se já logado e veio com ref, tenta aplicar indicação
-        if (refCode) {
-          try {
-            var tok = session.data.session.access_token;
-            await fetch("/api/arbishield/apply-referral", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: "Bearer " + tok,
-              },
-              body: JSON.stringify({ code: refCode }),
-            });
-            try { localStorage.removeItem(REF_KEY); } catch (e) {}
-          } catch (e) {}
+        if (mode === "signup") {
+          // CTA "Criar conta": encerra sessão atual para mostrar o formulário
+          try { await supa.auth.signOut(); } catch (e) {}
+        } else {
+          // Se já logado e veio com ref, tenta aplicar indicação
+          if (refCode) {
+            try {
+              var tok = session.data.session.access_token;
+              await fetch("/api/arbishield/apply-referral", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: "Bearer " + tok,
+                },
+                body: JSON.stringify({ code: refCode }),
+              });
+              try { localStorage.removeItem(REF_KEY); } catch (e) {}
+            } catch (e) {}
+          }
+          location.replace("/app.html");
+          return;
         }
-        location.replace("/app.html");
-        return;
       }
 
       var title = document.getElementById("title");
@@ -112,6 +118,11 @@
       var btnSubmit = document.getElementById("btnSubmit");
       var fullName = document.getElementById("fullName");
       var refBanner = document.getElementById("refBanner");
+      var errEl = document.getElementById("err");
+      if (params.get("blocked") === "1") {
+        errEl.textContent = "Esta conta está bloqueada. Contate o suporte.";
+        errEl.classList.add("show");
+      }
 
       function setMode(next) {
         mode = next === "signup" ? "signup" : "login";
@@ -174,6 +185,12 @@
         var name = fullName.value.trim();
         btnSubmit.disabled = true;
         try {
+          if (window.ArbiIsBlockedEmail && ArbiIsBlockedEmail(email)) {
+            throw new Error("Esta conta está bloqueada. Contate o suporte.");
+          }
+          if (ArbiV2.isBlockedEmail(email)) {
+            throw new Error("Esta conta está bloqueada. Contate o suporte.");
+          }
           if (mode === "signup") {
             if (!name || name.length < 3) throw new Error("Informe seu nome completo");
             var up = await supa.auth.signUp({
@@ -195,6 +212,10 @@
                 return;
               }
               sess = login.data.session;
+            }
+            if (sess && sess.user && ArbiV2.isBlockedEmail(sess.user.email)) {
+              await supa.auth.signOut();
+              throw new Error("Esta conta está bloqueada. Contate o suporte.");
             }
             var uid = sess && sess.user && sess.user.id;
             if (uid && name) {
@@ -218,6 +239,10 @@
 
           var res = await supa.auth.signInWithPassword({ email: email, password: password });
           if (res.error) throw res.error;
+          if (res.data && res.data.user && ArbiV2.isBlockedEmail(res.data.user.email)) {
+            await supa.auth.signOut();
+            throw new Error("Esta conta está bloqueada. Contate o suporte.");
+          }
           var codeLogin = refCode;
           if (!codeLogin) {
             try { codeLogin = String(localStorage.getItem(REF_KEY) || "").trim().toUpperCase(); } catch (e5) {}

@@ -21,7 +21,7 @@ dl() {
   curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 "$RAW/$1?v=$BUST" -o "$2"
 }
 
-log "1/1 UI — index.html (CTA cadastro)"
+log "1/2 UI — index.html (CTA cadastro)"
 dl "deploy/vps-supabase/static/v2/index.html" "$WEB/index.html"
 chmod 0644 "$WEB/index.html"
 cp -f "$WEB/index.html" "$WEB_ROOT/index.html"
@@ -33,4 +33,11 @@ grep -q 'lp-btn-lg" href="/auth.html?mode=signup"' "$WEB/index.html" \
   || grep -q 'lp-btn-solid lp-btn-lg" href="/auth.html?mode=signup"' "$WEB/index.html" \
   || die "botão grande ainda sem mode=signup"
 
-log "OK — CTA vai para cadastro. Hard refresh na home."
+log "2/2 UI — auth.html (formulário Criar conta; produção estava só-login)"
+dl "deploy/vps-supabase/static/v2/auth.html" "$WEB/auth.html"
+chmod 0644 "$WEB/auth.html"
+cp -f "$WEB/auth.html" "$WEB_ROOT/auth.html"
+grep -q 'data-mode="signup"' "$WEB/auth.html" || die "auth.html sem aba Criar conta"
+grep -q 'mode === "signup"' "$WEB/auth.html" || die "auth.html sem mode=signup"
+
+log "OK — CTA + auth com cadastro. Hard refresh na home e em /auth.html?mode=signup."
