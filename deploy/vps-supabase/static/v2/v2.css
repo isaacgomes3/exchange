@@ -3983,11 +3983,6 @@ body.dep-open { overflow: hidden; }
   font-size: 1.05rem;
 }
 .app-desafio-list { display: grid; gap: 12px; }
-.app-desafio-lead {
-  margin: -4px 0 14px;
-  color: var(--muted);
-  font-size: 13px;
-}
 /* Banner do Desafio (SPA DesafioScreen · variant=desafio) */
 .dz-banner {
   margin: 0 0 18px;
