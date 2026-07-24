@@ -5,7 +5,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-evento-manual-link-casa.sh")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-PLACEHOLDER_SHA}"
+REF="${ARBISHIELD_REF:-0548c5482fea1df1ba475540cedc02f7b120fa9a}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
