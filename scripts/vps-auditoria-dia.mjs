@@ -249,7 +249,7 @@ function isSettledStatus(st) {
 async function main() {
   const { day, fromIso, toIso } = dayBounds(process.env.DAY || "");
   console.log("════════════════════════════════════════════════════════════");
-  console.log(` AUDITORIA DO DIA  ${day}  (America/Sao_Paulo)  v3`);
+  console.log(` AUDITORIA DO DIA  ${day}  (America/Sao_Paulo)  v3.1`);
   console.log(` Janela UTC: ${fromIso} → ${toIso}`);
   console.log(` Supabase: ${SUPABASE_URL}`);
   console.log("════════════════════════════════════════════════════════════");
@@ -687,6 +687,16 @@ async function main() {
   console.log("\n── DESAFIOS / ETAPAS ENCERRADAS HOJE ────────────────────────");
   console.log(`  Total etapas: ${steps.length}`);
   let desafioLiq = 0;
+  const stepById = new Map(steps.map((s) => [s.id, s]));
+  // Lucro desafio: quando a CASA vence (result=win), a plataforma fica com
+  // o stake das zebras (side=arbishield, result=lost). Não é platform_treasury
+  // ainda, mas é P&L operacional do dia. zebra_protected = retido no ciclo (não lucro).
+  let desafioCasaWinStake = 0; // stake zebra perdido → lucro plataforma
+  let desafioCasaPayout = 0; // lucro creditado a side=casa → custo
+  let desafioZebraRetained = 0; // zebra_protected (ainda no ciclo)
+  let desafioPartsLoaded = 0;
+  const desafioByStep = new Map(); // stepId → { label, result, zebraLost, casaPaid, liq }
+
   for (const s of steps) {
     const used = n(s.used_liquidity_cents || s.liquidity_cents);
     desafioLiq += used;
@@ -694,11 +704,107 @@ async function main() {
       s.match_label ||
       [s.home_team, s.away_team].filter(Boolean).join(" x ") ||
       s.id;
+    desafioByStep.set(s.id, {
+      label,
+      result: String(s.result || s.status || ""),
+      stepIndex: s.step_index,
+      liq: used,
+      zebraLost: 0,
+      casaPaid: 0,
+    });
+  }
+
+  if (steps.length) {
+    const partCols = await tableColumns("desafio_participations");
+    const partSelect = pickSelect(partCols, [
+      "id",
+      "step_id",
+      "desafio_id",
+      "user_id",
+      "side",
+      "result",
+      "amount_cents",
+      "profit_cents",
+      "updated_at",
+      "created_at",
+    ]);
+    try {
+      for (let i = 0; i < steps.length; i += 40) {
+        const chunk = steps.slice(i, i + 40).map((s) => s.id);
+        const rows = await sbSelectRetry(
+          "desafio_participations",
+          partSelect,
+          `&step_id=in.(${chunk.join(",")})`
+        );
+        for (const p of rows) {
+          desafioPartsLoaded += 1;
+          const side = String(p.side || "").toLowerCase();
+          const res = String(p.result || "").toLowerCase();
+          const g = desafioByStep.get(p.step_id);
+          const stepRes = String(g?.result || "").toLowerCase();
+          const casaWon =
+            stepRes === "win" ||
+            stepRes === "casa" ||
+            stepRes === "won_casa";
+          const zebraWon =
+            stepRes === "zebra_protected" ||
+            stepRes === "arbishield" ||
+            stepRes === "zebra";
+
+          if (casaWon && side === "arbishield" && res !== "won" && res !== "win" && res !== "pending") {
+            // Casa venceu → stake zebra fica com a plataforma (lucro)
+            const stake = n(p.amount_cents);
+            desafioCasaWinStake += stake;
+            if (g) g.zebraLost += stake;
+          }
+
+          if (casaWon && side === "casa" && (res === "won" || res === "win")) {
+            const paid = n(p.profit_cents);
+            desafioCasaPayout += paid;
+            if (g) g.casaPaid += paid;
+          }
+
+          if (zebraWon && side === "arbishield" && (res === "won" || res === "win")) {
+            // retido no ciclo = stake + profit (ainda não é lucro da empresa)
+            desafioZebraRetained += n(p.amount_cents) + n(p.profit_cents);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("  desafio_participations:", e.message);
+    }
+  }
+
+  const desafioLucroNet = desafioCasaWinStake - desafioCasaPayout;
+
+  for (const s of steps) {
+    const g = desafioByStep.get(s.id);
+    const label = g?.label || s.id;
+    const used = g?.liq || 0;
+    const casaWon = String(g?.result || "").toLowerCase() === "win";
+    const lucroStep = casaWon ? g.zebraLost - g.casaPaid : 0;
     console.log(
-      `  • Etapa ${s.step_index} · ${pad(label, 36)}  result=${pad(s.result || s.status, 16)}  liq=${money(used)}`
+      `  • Etapa ${g?.stepIndex ?? s.step_index} · ${pad(label, 36)}  result=${pad(g?.result || s.status, 16)}  liq=${padL(money(used), 12)}  lucro=${money(lucroStep)}`
     );
   }
-  if (steps.length) console.log(`  Liquidez (soma): ${money(desafioLiq)}`);
+  if (steps.length) {
+    console.log(`  Liquidez (soma steps):           ${money(desafioLiq)}`);
+    console.log(`  Participações carregadas:        ${desafioPartsLoaded}`);
+    console.log(
+      `  Stake zebra perdido (casa venceu): ${money(desafioCasaWinStake)}  ← lucro bruto desafio`
+    );
+    console.log(
+      `  Payout creditado side=casa:        ${money(desafioCasaPayout)}`
+    );
+    console.log(
+      `  Lucro líquido DESAFIO (hoje):      ${money(desafioLucroNet)}`
+    );
+    if (desafioZebraRetained) {
+      console.log(
+        `  Retido no ciclo (zebra_protected): ${money(desafioZebraRetained)}  ← ainda NÃO é lucro`
+      );
+    }
+  }
 
   // ── Caixa do dia ───────────────────────────────────────────────────
   async function sumTx(types) {
@@ -792,28 +898,36 @@ async function main() {
   console.log("  Carteira Desafio:               ", money(bancaDesafio));
   console.log("  Provedor/Investor:              ", money(bancaProv));
 
-  const lucroDia = totCut;
+  const lucroProtecoes = totCut;
+  const lucroDesafio = desafioLucroNet;
+  const lucroDia = lucroProtecoes + lucroDesafio;
   const saidaDia = expenses + refunds + withdraws;
   const entradaDia = dep;
   // Só estima inicial se houver lucro OU se a tesouraria refletir caixa;
   // quando lucro=0 e só houve depósito, a "variação" = depósitos (não é P&L).
-  const saldoInicialEstimado = cashNow - lucroDia + saidaDia - entradaDia;
+  // Nota: lucro desafio fica em carteira/operações, não em platform_treasury hoje.
+  const saldoInicialEstimado = cashNow - lucroProtecoes + saidaDia - entradaDia;
 
   console.log("\n── RESUMO / RECONCILIAÇÃO ───────────────────────────────────");
-  console.log(
-    "  Lucro gerado hoje (dedução plataforma nas proteções):",
-    money(lucroDia)
-  );
-  console.log("    ├ platform_profit/deduction: ", money(totPlat));
-  console.log("    └ exchange fee/net:          ", money(totFees));
-  console.log("  Eventos no dia:                ", eventIds.size);
+  console.log("  Lucro gerado hoje (total):     ", money(lucroDia));
+  console.log("    ├ Proteções (dedução/fee):   ", money(lucroProtecoes));
+  console.log("    │   ├ platform_profit/ded.:  ", money(totPlat));
+  console.log("    │   └ exchange fee/net:      ", money(totFees));
+  console.log("    └ Desafio (casa venceu):     ", money(lucroDesafio));
+  console.log("        ├ stake zebra perdido:   ", money(desafioCasaWinStake));
+  console.log("        └ − payout side=casa:    ", money(desafioCasaPayout));
+  console.log("  Eventos (proteções) no dia:    ", eventIds.size);
   console.log("  Proteções liquidadas:          ", allProt.length);
-  console.log("  Stake total liquidado:         ", money(totStake));
+  console.log("  Stake proteções liquidado:     ", money(totStake));
+  console.log("  Etapas desafio encerradas:     ", steps.length);
   console.log("");
   console.log("  Saldo empresa ATUAL:          ", money(cashNow));
   console.log("  Saldo empresa INICIAL (est.):  ", money(saldoInicialEstimado));
   console.log(
     "    fórmula: atual − lucro_proteções + (despesas+refunds+saques) − depósitos"
+  );
+  console.log(
+    "    (lucro desafio NÃO entra na fórmula do caixa — tesouraria não é creditada no settle)"
   );
   console.log(
     "  Variação bruta (atual−inicial):",
@@ -861,6 +975,12 @@ async function main() {
         platformProfit: totPlat,
         fees: totFees,
         userProfit: totUser,
+        lucroProtecoes,
+        desafioCasaWinStake,
+        desafioCasaPayout,
+        lucroDesafio,
+        lucroDia,
+        desafioSteps: steps.length,
         deposits: dep,
         settleCredit,
         refunds,
@@ -869,6 +989,11 @@ async function main() {
         cashNow,
         cashStartEstimated: saldoInicialEstimado,
       },
+      desafioSteps: [...desafioByStep.entries()].map(([id, g]) => ({
+        stepId: id,
+        ...g,
+        lucro: String(g.result || "").toLowerCase() === "win" ? g.zebraLost - g.casaPaid : 0,
+      })),
       byMatch: groups.map(([mid, g]) => ({
         matchId: mid,
         label: matchLabel(g.match),
@@ -883,7 +1008,7 @@ async function main() {
     console.log("\nJSON →", jsonOut);
   }
 
-  console.log("\nOK — auditoria v3 concluída.\n");
+  console.log("\nOK — auditoria v3.1 concluída.\n");
 }
 
 main().catch((err) => {
