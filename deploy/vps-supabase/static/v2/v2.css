@@ -3495,32 +3495,103 @@ input#odd[readonly] {
   .term-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .term-row,
   .term-table-head {
-    grid-template-columns: 72px minmax(0, 1fr) minmax(100px, 0.8fr) 96px 72px 120px 110px;
+    grid-template-columns: 72px minmax(0, 1fr) minmax(100px, 0.8fr) 96px minmax(88px, 0.7fr) 120px 110px;
     gap: 8px;
   }
 }
-@media (max-width: 720px) {
+/* Card empilhado: todas as infos do evento visíveis (mercado incluso) */
+@media (max-width: 960px) {
   .term-kpis { grid-template-columns: 1fr 1fr; }
+  .term-table-head { display: none !important; }
   .term-row {
     grid-template-columns: 1fr auto;
-    gap: 12px;
-    padding: 16px;
+    gap: 10px 12px;
+    padding: 14px 16px;
+    align-items: start;
   }
-  .term-col-time { grid-column: 1 / -1; }
-  .term-col-match { grid-column: 1 / -1; }
-  .term-col-comp { grid-column: 1 / -1; }
-  .term-col-sides,
+  .term-col-time,
+  .term-col-match,
+  .term-col-comp,
   .term-col-market {
-    display: flex;
     grid-column: 1 / -1;
+    min-width: 0;
+  }
+  .term-col-sides {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .term-col-comp,
+  .term-col-market,
+  .term-col-liq {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .term-col-comp::before,
+  .term-col-market::before,
+  .term-col-liq::before {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.45);
+  }
+  .term-col-comp::before { content: "Competição"; }
+  .term-col-market::before { content: "Mercado"; }
+  .term-col-liq::before { content: "Liquidez"; }
+  .term-col-market {
+    display: flex !important;
     justify-content: flex-start;
   }
-  .term-col-liq { grid-column: 1; }
-  .term-col-action { grid-column: 2; grid-row: auto; }
+  .term-market {
+    display: inline-flex;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    word-break: break-word;
+    max-width: 100%;
+    justify-content: flex-start;
+    text-align: left;
+    line-height: 1.35;
+  }
+  .term-comp {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+  }
+  .term-col-liq {
+    grid-column: 1;
+    text-align: left;
+    align-self: end;
+  }
+  .term-col-liq strong {
+    font-size: 15px;
+  }
+  .term-col-action {
+    grid-column: 2;
+    grid-row: auto;
+    text-align: right;
+    align-self: end;
+  }
   .term-ghost-btn { display: none; }
-  .term-col-match strong { font-size: 15px; }
-  .term-comp { white-space: normal; }
+  .term-col-match strong { font-size: 15px; white-space: normal; }
+  .term-match-teams {
+    width: 100%;
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
   .term-time { font-size: 15px; }
+}
+@media (max-width: 560px) {
+  .term-kpis { grid-template-columns: 1fr; }
+  .term-protect-btn {
+    min-width: 108px;
+    padding: 10px 12px;
+  }
 }
 
 /* ——— Dashboard Visão Geral ——— */
