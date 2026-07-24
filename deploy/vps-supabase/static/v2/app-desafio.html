@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=dz-retorno-pct-1" />
+  <link rel="stylesheet" href="/v2.css?v=dz-retorno-pct-2" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
   <script src="/desafio-ciclo-math.js?v=dz-apostar-2"></script>
@@ -112,11 +112,7 @@
       }
 
       function retornoEstimadoHtml(item) {
-        return (
-          'Retorno estimado <strong>' +
-          esc(fmtTargetProfitPct(item)) +
-          '</strong> <span class="dz-v2-retorno-sub">(lucro alvo cadastrado)</span>'
-        );
+        return 'Retorno estimado <strong>' + esc(fmtTargetProfitPct(item)) + '</strong>';
       }
 
       function calcSides(item, stakeCents) {

@@ -26,15 +26,15 @@ dl "deploy/vps-supabase/static/v2/app-desafio.html" "$WEB/app-desafio.html"
 chmod 0644 "$WEB/app-desafio.html"
 cp -f "$WEB/app-desafio.html" "$WEB_ROOT/app-desafio.html" 2>/dev/null || true
 grep -q 'fmtTargetProfitPct' "$WEB/app-desafio.html" || die "desafio sem fmtTargetProfitPct"
-grep -q 'lucro alvo cadastrado' "$WEB/app-desafio.html" || die "desafio sem label lucro alvo"
+grep -q 'lucro alvo cadastrado' "$WEB/app-desafio.html" \
+  && die "desafio ainda tem texto 'lucro alvo cadastrado'" || true
 grep -q 'money(retorno)\|recebeArbiCents - sides.stakeCents' "$WEB/app-desafio.html" \
   && die "desafio ainda calcula retorno em R$" || true
 
-log "2/2 UI — v2.css (estilo sub do retorno)"
+log "2/2 UI — v2.css"
 dl "deploy/vps-supabase/static/v2/v2.css" "$WEB/v2.css"
 chmod 0644 "$WEB/v2.css"
 cp -f "$WEB/v2.css" "$WEB_ROOT/v2.css" 2>/dev/null || true
-grep -q 'dz-v2-retorno-sub' "$WEB/v2.css" || die "css sem dz-v2-retorno-sub"
 
-log "OK — Ctrl+F5 em Desafio. Faixa verde deve mostrar +X% (lucro alvo), não R\$."
+log "OK — Ctrl+F5 em Desafio. Faixa verde deve mostrar +X%, não R\$."
 echo "  Teste: https://arbishield.app/app-desafio.html"
