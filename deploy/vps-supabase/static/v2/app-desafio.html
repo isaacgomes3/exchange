@@ -220,6 +220,29 @@
           .toUpperCase() || "?";
       }
 
+      /** Resolve logo pelo nome do time (não misturar casa/arbi). */
+      function resolveTeamLogo(step, teamName, preferredUrl) {
+        if (preferredUrl) return preferredUrl;
+        var name = String(teamName || "")
+          .trim()
+          .toLowerCase();
+        if (!name || !step) return null;
+        var pairs = [
+          [step.home_team, step.home_logo_url],
+          [step.away_team, step.away_logo_url],
+          [step.casa_team_name, step.casa_team_logo_url],
+          [step.arbi_team_name, step.arbi_team_logo_url],
+        ];
+        for (var i = 0; i < pairs.length; i++) {
+          var n = String(pairs[i][0] || "")
+            .trim()
+            .toLowerCase();
+          var logo = pairs[i][1];
+          if (n && n === name && logo) return logo;
+        }
+        return null;
+      }
+
       function teamBlock(name, logo, sideClass) {
         var avatar = logo
           ? '<img class="dz-v2-logo" width="72" height="72" src="' +
@@ -346,8 +369,8 @@
           stepIndex: step.step_index || 1,
           homeTeam: teams.home,
           awayTeam: teams.away,
-          homeLogo: step.home_logo_url || step.casa_team_logo_url || null,
-          awayLogo: step.away_logo_url || step.arbi_team_logo_url || null,
+          homeLogo: resolveTeamLogo(step, teams.home, step.home_logo_url),
+          awayLogo: resolveTeamLogo(step, teams.away, step.away_logo_url),
           market: marketCasa,
           marketArbi: marketArbi,
           marketCasa: marketCasa,

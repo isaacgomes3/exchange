@@ -839,15 +839,20 @@
             if (q.length < 2) return hide();
             show('<div class="team-suggest-loading">Buscando times…</div>');
             try {
-              const session = await ArbiV2.client().auth.getSession();
-              const token = session.data.session?.access_token;
-              const res = await fetch(
-                "/api/arbishield/football-teams?q=" + encodeURIComponent(q),
-                { headers: token ? { Authorization: "Bearer " + token } : {} }
-              );
-              const data = await res.json().catch(() => ({}));
+              let teams = [];
+              if (window.ArbiV2 && typeof ArbiV2.searchFootballTeams === "function") {
+                teams = await ArbiV2.searchFootballTeams(q);
+              } else {
+                const session = await ArbiV2.client().auth.getSession();
+                const token = session.data.session?.access_token;
+                const res = await fetch(
+                  "/api/arbishield/football-teams?q=" + encodeURIComponent(q),
+                  { headers: token ? { Authorization: "Bearer " + token } : {} }
+                );
+                const data = await res.json().catch(() => ({}));
+                teams = Array.isArray(data.teams) ? data.teams : [];
+              }
               if (my !== seq) return;
-              const teams = Array.isArray(data.teams) ? data.teams : [];
               if (!teams.length) {
                 return show('<div class="team-suggest-empty">Nenhum time — digite manualmente</div>');
               }
@@ -1375,17 +1380,51 @@
       return headers;
     }
 
+    async function fillMissingStepLogos() {
+      readFormIntoDraft();
+      if (!window.ArbiV2 || typeof ArbiV2.resolveFootballTeamLogo !== "function") return;
+      for (let idx = 0; idx < draft.steps.length; idx++) {
+        const s = draft.steps[idx];
+        const root = document.querySelector(`[data-step-idx="${idx}"]`);
+        if (!s.home_logo && s.home_team) {
+          const logo = await ArbiV2.resolveFootballTeamLogo(s.home_team);
+          if (logo) {
+            s.home_logo = logo;
+            const el = root && root.querySelector('[data-f="home_logo"]');
+            if (el) el.value = logo;
+            const prev = root && root.querySelector('[data-logo-preview="home"]');
+            if (prev) prev.innerHTML = `<img src="${esc(logo)}" alt="" />`;
+          }
+        }
+        if (!s.away_logo && s.away_team) {
+          const logo = await ArbiV2.resolveFootballTeamLogo(s.away_team);
+          if (logo) {
+            s.away_logo = logo;
+            const el = root && root.querySelector('[data-f="away_logo"]');
+            if (el) el.value = logo;
+            const prev = root && root.querySelector('[data-logo-preview="away"]');
+            if (prev) prev.innerHTML = `<img src="${esc(logo)}" alt="" />`;
+          }
+        }
+      }
+    }
+
     async function saveDesafio() {
       setFormError("");
       let body;
+      const btn = $("btnSaveDraft");
+      btn.disabled = true;
+      const prevLabel = btn.textContent;
+      btn.textContent = "Buscando logos…";
       try {
+        await fillMissingStepLogos();
         body = buildPayload();
       } catch (err) {
         setFormError(err.message || String(err));
+        btn.disabled = false;
+        btn.textContent = prevLabel || "Salvar e Liberar";
         return;
       }
-      const btn = $("btnSaveDraft");
-      btn.disabled = true;
       btn.textContent = "Salvando…";
       try {
         const res = await fetch("/api/arbishield/desafios", {
