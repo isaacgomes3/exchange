@@ -2,11 +2,11 @@
 # Hotfix: KPIs do dashboard admin (lucro ≠ depósito, +desafio, caixa real)
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/6a5a3a530a94a464d5fc6c90e15e6e9edad28738/scripts/vps-hotfix-dashboard-kpis.sh?v=1")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/08031ed7092d6b9c8a16f101fb1f3eef0709a476/scripts/vps-hotfix-dashboard-kpis.sh?v=1")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/tesouraria-desafio-settle-3cf9}"
-REF="${ARBISHIELD_REF:-6a5a3a530a94a464d5fc6c90e15e6e9edad28738}"
+REF="${ARBISHIELD_REF:-08031ed7092d6b9c8a16f101fb1f3eef0709a476}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
