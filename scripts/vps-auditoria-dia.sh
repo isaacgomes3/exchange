@@ -3,7 +3,7 @@
 # Versão: v3.1 (lucro desafio casa-win + retry schema + fallback txs)
 #
 # Na VPS (root) — SHA pinado (evita cache):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/CURSOR_SHA/scripts/vps-auditoria-dia.sh?v=3.1")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/6025a0bf6006db7ab20bbccd882f356c90b47ba1/scripts/vps-auditoria-dia.sh?v=3.1")
 #
 # Dia específico:
 #   DAY=2026-07-24 bash <(curl -fsSL "...")
@@ -11,7 +11,7 @@ set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/auditoria-dia-lucro-3cf9}"
 # SHA pinado por padrão (override com ARBISHIELD_REF=...)
-REF="${ARBISHIELD_REF:-$BRANCH}"
+REF="${ARBISHIELD_REF:-6025a0bf6006db7ab20bbccd882f356c90b47ba1}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
 DAY="${DAY:-}"
