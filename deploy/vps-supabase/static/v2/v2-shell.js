@@ -272,6 +272,7 @@
           "<div><strong id=\"v2UserName\">Admin</strong><small>Acesso Master</small></div>" +
           "</div></div>" +
           '<div class="v2-admin-header-right">' +
+          '<a class="v2-mode-switch" id="v2ModeSwitch" href="/app.html" title="Abrir área do usuário">Modo usuário</a>' +
           '<button type="button" class="v2-search-chip" id="v2SearchPages">Buscar página <kbd>⌘K</kbd></button>' +
           '<button type="button" class="v2-logout-btn" id="v2AdminLogout">Sair do Sistema</button>' +
           "</div>";
@@ -284,6 +285,7 @@
         appHeader.innerHTML =
           '<button type="button" class="v2-menu-btn" id="v2MenuBtnHeader" aria-label="Menu">Menu</button>' +
           '<div class="v2-app-header-actions">' +
+          '<a class="v2-mode-switch" id="v2ModeSwitch" href="/admin.html" hidden title="Abrir painel administrativo">Modo ADM</a>' +
           '<a class="v2-deposit-btn" href="#deposito" data-open-deposit="1"><span aria-hidden="true">+</span> Depósito</a>' +
           '<a class="v2-icon-btn" href="/app-suporte.html" aria-label="Notificações" title="Notificações">' +
           '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9a6 6 0 1 1 12 0c0 3.5 1.5 5 2 6H4c.5-1 2-2.5 2-6zM10 19a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
@@ -502,6 +504,17 @@
           var appUserRes = await appSupa.auth.getUser();
           var appUser = appUserRes.data && appUserRes.data.user;
           if (appUser) {
+            // Botão Modo ADM só para administradores (barra superior)
+            try {
+              var modeBtn = document.getElementById("v2ModeSwitch");
+              if (
+                modeBtn &&
+                global.ArbiV2.requireAdmin &&
+                (await global.ArbiV2.requireAdmin(appSupa, appUser))
+              ) {
+                modeBtn.hidden = false;
+              }
+            } catch (modeErr) {}
             var imp = global.ArbiV2.getImpersonation
               ? global.ArbiV2.getImpersonation()
               : null;
