@@ -1,0 +1,1 @@
+import{j as o}from"./main-D_khrzRh.js";import{D as t}from"./DesafioScreen-Clkbz_HB.js";import"./SurebetBreakdown-C2KFEpcv.js";import"./surebet-validation-CfW6o_lx.js";import"./banners.functions-BEHDA4iu.js";import"./trending-down-CmRTojer.js";import"./target-BVeMPDm_.js";import"./circle-play-BeJZUC-O.js";const x=()=>o.jsx(t,{base:"m"});export{x as component};
