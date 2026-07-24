@@ -714,6 +714,10 @@
         <label for="manExternalId">ID do jogo</label>
         <input id="manExternalId" placeholder="Ex: 10574843" />
       </div>
+      <div class="field">
+        <label for="manBetLink">Link da casa de aposta</label>
+        <input id="manBetLink" type="url" placeholder="https://www.bet365.com/..." autocomplete="off" />
+      </div>
 
       <div class="sec-label" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
         <span>Mercados de proteção</span>
@@ -2013,6 +2017,7 @@
         hideTeamSuggest("away");
         $("manLeague").value = "";
         $("manExternalId").value = "";
+        if ($("manBetLink")) $("manBetLink").value = "";
         $("manSport").value = "futebol";
         $("manStatus").value = "open";
         $("manStarts").value = "";
@@ -2121,7 +2126,7 @@
             score_sync_enabled: false,
             has_live_stream: $("manLiberarLive") && $("manLiberarLive").classList.contains("on"),
             hide_from_site: $("manEsconder") && $("manEsconder").classList.contains("on"),
-            external_bet_link: null,
+            external_bet_link: ($("manBetLink") && $("manBetLink").value.trim()) || null,
             markets: markets,
           });
           closeManualDrawer();
