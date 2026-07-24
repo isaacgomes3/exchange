@@ -290,6 +290,25 @@
       return;
     }
 
+    var active =
+      (cfg && cfg.id) ||
+      (document.body && document.body.getAttribute("data-active")) ||
+      "";
+    if (
+      typeof ArbiV2.isFinancePageId === "function" &&
+      ArbiV2.isFinancePageId(active)
+    ) {
+      if (!(await ArbiV2.requireFinanceAdmin(supa, user))) {
+        if (err) {
+          err.textContent = "Sem permissão para a área Financeiro";
+          err.classList.add("show");
+        }
+        if (host) host.innerHTML = "";
+        location.replace("/admin.html");
+        return;
+      }
+    }
+
     async function run() {
       if (err) err.classList.remove("show");
       renderShell(host, {

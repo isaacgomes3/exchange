@@ -9,8 +9,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css?v=13" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=13"></script>
-  <script src="/v2-shell.js?v=13" defer></script>
+  <script src="/finance-admins.js?v=fin-acl-2"></script>
+  <script src="/v2.js?v=fin-acl-2"></script>
+  <script src="/v2-shell.js?v=fin-acl-2" defer></script>
   <style>
     .pd-wrap { display: grid; gap: 16px; padding-bottom: 40px; }
     .pd-head h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2rem); font-weight: 900; letter-spacing: -0.03em; }
@@ -190,7 +191,12 @@
 
   async function loadAll() {
     var supa = ArbiV2.client();
-    await ArbiV2.requireUser(supa);
+    var user = await ArbiV2.requireUser(supa);
+    if (!user) return;
+    if (!(await ArbiV2.requireFinanceAdmin(supa, user))) {
+      location.replace("/admin.html");
+      return;
+    }
     var token = await authToken(supa);
     var headers = {
       Authorization: "Bearer " + token,

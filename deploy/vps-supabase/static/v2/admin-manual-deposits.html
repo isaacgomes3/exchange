@@ -9,8 +9,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js"></script>
-  <script src="/v2-shell.js" defer></script>
+  <script src="/finance-admins.js?v=fin-acl-2"></script>
+  <script src="/v2.js?v=fin-acl-2"></script>
+  <script src="/v2-shell.js?v=fin-acl-2" defer></script>
   <style>
     .d-kpis { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-bottom: 16px; }
     @media (max-width: 800px) { .d-kpis { grid-template-columns: 1fr; } }
@@ -116,9 +117,8 @@
       var supa = ArbiV2.client();
       var user = await ArbiV2.requireUser(supa);
       if (!user) return;
-      var isAdmin = await ArbiV2.requireAdmin(supa, user);
-      if (!isAdmin) {
-        location.replace("/app.html");
+      if (!(await ArbiV2.requireFinanceAdmin(supa, user))) {
+        location.replace("/admin.html");
         return;
       }
 

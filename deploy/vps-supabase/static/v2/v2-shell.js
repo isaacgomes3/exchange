@@ -241,7 +241,39 @@
       shell === "admin"
         ? "Admin · v2"
         : "Líder global em proteção de apostas";
-    var sections = shell === "admin" ? ADMIN_SECTIONS : APP_SECTIONS;
+
+    // Área Financeiro: só isaacgomes3@gmail.com e financeiro@arbishield.com
+    var canFinance = false;
+    if (shell === "admin" && global.ArbiV2 && global.ArbiV2.client) {
+      try {
+        var earlySupa = global.ArbiV2.client();
+        var earlySess = await earlySupa.auth.getUser();
+        var earlyUser = earlySess.data && earlySess.data.user;
+        if (earlyUser) {
+          canFinance =
+            typeof global.ArbiV2.canAccessFinance === "function" &&
+            !!global.ArbiV2.canAccessFinance(earlyUser.email);
+        }
+      } catch (earlyErr) {}
+      if (
+        !canFinance &&
+        typeof global.ArbiV2.isFinancePageId === "function" &&
+        global.ArbiV2.isFinancePageId(active)
+      ) {
+        location.replace("/admin.html");
+        return;
+      }
+    }
+
+    var sections =
+      shell === "admin"
+        ? ADMIN_SECTIONS.filter(function (sec) {
+            if (String(sec.title || "").trim().toLowerCase() !== "financeiro") {
+              return true;
+            }
+            return canFinance;
+          })
+        : APP_SECTIONS;
 
     if (!body.classList.contains("v2-layout-ready")) {
       var children = Array.prototype.slice.call(body.childNodes);
@@ -676,7 +708,7 @@
           if (!q) return;
           var needle = q.trim().toLowerCase();
           var hit = null;
-          ADMIN_SECTIONS.forEach(function (sec) {
+          sections.forEach(function (sec) {
             (sec.items || []).forEach(function (it) {
               if (hit) return;
               if (
@@ -723,7 +755,11 @@
       })();
     }
 
-    global.ArbiV2Shell = { adminSections: ADMIN_SECTIONS, appSections: APP_SECTIONS };
+    global.ArbiV2Shell = {
+      adminSections: sections,
+      appSections: APP_SECTIONS,
+      canAccessFinance: canFinance,
+    };
   }
 
   if (document.readyState === "loading") {
