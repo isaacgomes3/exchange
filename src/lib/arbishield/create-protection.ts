@@ -142,16 +142,47 @@ export async function createProtection(
     );
   }
 
-  const markets = Array.isArray(match.markets) ? [...match.markets] : [];
-  const market =
+  const markets = Array.isArray(match.markets) ? [...(match.markets as Record<string, unknown>[])] : [];
+  let market: Record<string, unknown> | null =
     (input.marketId &&
-      markets.find((m: { id?: string }) => String(m.id) === String(input.marketId))) ||
-    markets[0] ||
+      markets.find((m) => String(m.id) === String(input.marketId))) ||
     null;
 
   const marketType: "LAY" | "BACK" =
-    input.marketType ||
-    (String(market?.market_type || "").toUpperCase() === "BACK" ? "BACK" : "LAY");
+    input.marketType === "BACK" || input.marketType === "LAY"
+      ? input.marketType
+      : String(market?.market_type || "").toUpperCase() === "BACK"
+        ? "BACK"
+        : "LAY";
+
+  if (!market) {
+    market =
+      markets.find(
+        (m) => String(m.market_type || "").toUpperCase() === marketType
+      ) ||
+      markets[0] ||
+      null;
+  }
+
+  // BACK exige market_id NOT NULL — gera id e persiste no match se faltava
+  if (market && !market.id) {
+    market = { ...market, id: crypto.randomUUID() };
+    const idx = markets.findIndex(
+      (m) =>
+        (m.name === market!.name &&
+          String(m.market_type || "").toUpperCase() ===
+            String(market!.market_type || "").toUpperCase()) ||
+        String(m.id || "") === String(market!.id)
+    );
+    if (idx >= 0) markets[idx] = { ...markets[idx], id: market.id };
+    const { error: patchMkErr } = await admin
+      .from("matches")
+      .update({ markets, updated_at: new Date().toISOString() })
+      .eq("id", input.matchId);
+    if (patchMkErr) {
+      console.warn("[createProtection] patch market id:", patchMkErr.message);
+    }
+  }
 
   if (market) {
     const liq = num(market.liquidity);

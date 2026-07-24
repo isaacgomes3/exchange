@@ -1076,7 +1076,7 @@ async function createProtection(body, userToken) {
       null;
   }
 
-  // BACK exige market_id NOT NULL — garante id no mercado e persiste se faltava
+  // back-market-id-v1: BACK exige market_id NOT NULL — garante id e persiste se faltava
   if (market && !market.id) {
     market.id = randomUUID();
     const idx = markets.findIndex(
