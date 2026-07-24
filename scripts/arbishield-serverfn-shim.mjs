@@ -377,16 +377,44 @@ function buildStepRow(desafioId, stepIn, isActive) {
     league_name: stepIn.league_name ?? null,
     home_team: stepIn.home_team || null,
     away_team: stepIn.away_team || null,
+    home_logo_url:
+      stepIn.home_logo_url || stepIn.home_logo || null,
+    away_logo_url:
+      stepIn.away_logo_url || stepIn.away_logo || null,
     market_name: stepIn.market_name || stepIn.market_name_casa || null,
     market_name_casa: stepIn.market_name_casa || stepIn.market_name || null,
     market_name_arbishield: stepIn.market_name_arbishield || null,
     home_odd: stepIn.home_odd != null ? Number(stepIn.home_odd) : null,
     away_odd: stepIn.away_odd != null ? Number(stepIn.away_odd) : null,
     arbi_team_name: stepIn.arbi_team_name ?? null,
-    arbi_team_logo_url: stepIn.arbi_team_logo_url ?? null,
+    arbi_team_logo_url:
+      stepIn.arbi_team_logo_url ||
+      (stepIn.arbi_team_name &&
+      stepIn.home_team &&
+      stepIn.arbi_team_name === stepIn.home_team
+        ? stepIn.home_logo_url || stepIn.home_logo
+        : null) ||
+      (stepIn.arbi_team_name &&
+      stepIn.away_team &&
+      stepIn.arbi_team_name === stepIn.away_team
+        ? stepIn.away_logo_url || stepIn.away_logo
+        : null) ||
+      null,
     arbi_odd: stepIn.arbi_odd != null ? Number(stepIn.arbi_odd) : null,
     casa_team_name: stepIn.casa_team_name ?? null,
-    casa_team_logo_url: stepIn.casa_team_logo_url ?? null,
+    casa_team_logo_url:
+      stepIn.casa_team_logo_url ||
+      (stepIn.casa_team_name &&
+      stepIn.home_team &&
+      stepIn.casa_team_name === stepIn.home_team
+        ? stepIn.home_logo_url || stepIn.home_logo
+        : null) ||
+      (stepIn.casa_team_name &&
+      stepIn.away_team &&
+      stepIn.casa_team_name === stepIn.away_team
+        ? stepIn.away_logo_url || stepIn.away_logo
+        : null) ||
+      null,
     casa_odd: stepIn.casa_odd != null ? Number(stepIn.casa_odd) : null,
     casa_stake_cents:
       stepIn.casa_stake_cents != null ? Number(stepIn.casa_stake_cents) : null,

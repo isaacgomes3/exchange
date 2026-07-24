@@ -101,12 +101,59 @@
     .list { display: flex; flex-direction: column; gap: 12px; }
     .card {
       border: 1px solid var(--border); border-radius: 16px;
-      background: var(--panel); padding: 16px;
+      background: var(--panel); padding: 0;
+      overflow: hidden;
     }
     .card-top {
-      display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;
-      margin-bottom: 10px; align-items: center;
+      display: flex; justify-content: space-between; gap: 12px; flex-wrap: nowrap;
+      align-items: flex-start;
+      padding: 14px 16px;
+      cursor: pointer;
+      user-select: none;
     }
+    .card-top:hover { background: rgba(255,255,255,0.03); }
+    .card-top .title-wrap { min-width: 0; flex: 1; }
+    /* Linha fechada = mesmo padrão do evento em Gestão de Jogos (proteção). */
+    .card-top .teams {
+      font-weight: 800; font-size: 17px; line-height: 1.25;
+      letter-spacing: -0.02em;
+    }
+    .card-top .teams .num {
+      color: var(--muted); font-weight: 700; font-size: 0.85em;
+    }
+    .card-top .meta {
+      margin: 4px 0 0; color: var(--muted); font-size: 12px; font-weight: 600;
+    }
+    .card-top .entries {
+      margin-top: 4px; font-size: 12px; color: var(--muted); font-weight: 600;
+    }
+    .card-top .side {
+      text-align: right; white-space: nowrap; flex-shrink: 0;
+      display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+    }
+    .card-top .when {
+      font-size: 11px; font-weight: 700; color: var(--muted);
+    }
+    .card-top .chev {
+      flex-shrink: 0;
+      width: 28px; height: 28px; border-radius: 999px;
+      border: 1px solid var(--border);
+      display: inline-flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: 12px; font-weight: 900;
+      transition: transform 0.15s ease;
+      margin-top: 2px;
+    }
+    .card.is-open .card-top .chev { transform: rotate(180deg); color: var(--lime); border-color: rgba(201,242,35,0.35); }
+    @media (max-width: 640px) {
+      .card-top { flex-wrap: wrap; }
+      .card-top .side { width: 100%; flex-direction: row; justify-content: space-between; align-items: center; }
+    }
+    .card-body {
+      display: none;
+      padding: 0 16px 16px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .card.is-open .card-body { display: block; padding-top: 14px; }
     .title { font-weight: 900; font-size: 1.05rem; letter-spacing: -0.02em; }
     .badge {
       font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
@@ -130,6 +177,50 @@
       margin-top: 8px; background: rgba(0,0,0,0.25);
     }
     .step-box .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .btn-danger {
+      background: transparent; color: #fca5a5;
+      border: 1px solid rgba(248,113,113,0.45);
+    }
+    .parts-back {
+      position: fixed; inset: 0; z-index: 80;
+      background: rgba(0,0,0,0.72);
+      display: none; align-items: stretch; justify-content: flex-end;
+    }
+    .parts-back.show { display: flex; }
+    .parts-drawer {
+      width: min(520px, 100%); background: #0a0a0a;
+      border-left: 1px solid rgba(201,242,35,0.25);
+      padding: 18px; overflow: auto;
+    }
+    .parts-drawer h2 {
+      margin: 0 0 6px; font-size: 1.05rem; font-weight: 900;
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .parts-drawer .sub { margin: 0 0 14px; }
+    .parts-totals {
+      display: grid; grid-template-columns: repeat(3, minmax(0,1fr));
+      gap: 8px; margin-bottom: 14px;
+    }
+    .parts-totals .mini .v { font-size: 1.05rem; }
+    .parts-row {
+      border: 1px solid var(--border); border-radius: 12px;
+      padding: 12px; margin-bottom: 8px; background: rgba(255,255,255,0.02);
+    }
+    .parts-row .name { font-weight: 800; font-size: 13px; }
+    .parts-row .meta-line {
+      color: var(--muted); font-size: 11px; margin-top: 4px;
+      display: flex; flex-wrap: wrap; gap: 8px;
+    }
+    .parts-row .row-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .pill-res {
+      display: inline-flex; padding: 2px 8px; border-radius: 999px;
+      font-size: 10px; font-weight: 800; letter-spacing: 0.06em;
+      text-transform: uppercase; border: 1px solid var(--border);
+    }
+    .pill-res.pending { color: #fbbf24; border-color: rgba(251,191,36,0.4); }
+    .pill-res.won { color: var(--lime); border-color: rgba(201,242,35,0.4); }
+    .pill-res.lost { color: #f87171; border-color: rgba(248,113,113,0.4); }
+    .pill-res.cancelled { color: #94a3b8; border-color: rgba(148,163,184,0.35); }
     .tag-arbi {
       background: rgba(201,242,35,0.12); color: var(--lime);
       border: 1px solid rgba(201,242,35,0.3); border-radius: 8px;
@@ -179,26 +270,96 @@
     .suggest .hint { color: var(--muted); font-size: 13px; margin: 0 0 4px; }
     .suggest .actions { margin-top: 14px; }
 
-    /* Painel lateral — Lançar Desafio (igual SPA) */
+    /* Página normal justificada — Lançar Desafio (não modal) */
     .drawer-backdrop {
       display: none;
-      position: fixed; inset: 0; z-index: 80;
-      background: rgba(0,0,0,0.62);
+      position: static;
+      inset: auto;
+      z-index: auto;
+      background: transparent;
+      justify-content: flex-start;
+      align-items: stretch;
+      padding: 0;
     }
-    .drawer-backdrop.open { display: block; }
+    .drawer-backdrop.open { display: none; }
     .drawer {
-      position: fixed; top: 0; right: 0; bottom: 0; z-index: 90;
-      width: min(560px, 100vw); max-width: 50vw; min-width: min(560px, 100vw);
-      background: #0a0a0a; border-left: 1px solid rgba(255,255,255,0.06);
-      color: var(--text); overflow-y: auto;
-      transform: translateX(100%);
-      transition: transform 0.22s ease;
-      padding: 24px;
+      display: none;
+      position: static;
+      z-index: auto;
+      width: 100%;
+      max-width: none;
+      max-height: none;
+      margin: 0;
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      color: var(--text);
+      overflow: visible;
+      transform: none;
+      padding: 0 0 48px;
+      box-shadow: none;
+      text-align: left;
     }
-    @media (max-width: 720px) {
-      .drawer { max-width: 100vw; min-width: 100vw; width: 100vw; }
+    .drawer.open { display: block; transform: none; }
+    body.desafio-launch-open .wrap { display: none; }
+    .drawer .page-back { margin: 0 0 16px; }
+    .team-pick { position: static; }
+    .team-pick-row {
+      display: grid; grid-template-columns: 52px 1fr; gap: 10px; align-items: start;
     }
-    .drawer.open { transform: translateX(0); }
+    .team-logo-box {
+      width: 52px; height: 52px; border-radius: 12px;
+      border: 1px solid var(--border); background: #fff;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden; flex-shrink: 0; padding: 5px; box-sizing: border-box;
+    }
+    .team-logo-box img {
+      width: 100%; height: 100%; max-width: 100%; max-height: 100%;
+      object-fit: contain; object-position: center; display: block;
+      background: transparent; margin: 0 auto;
+    }
+    .team-logo-box .ph {
+      font-size: 10px; font-weight: 800; color: var(--muted);
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .team-pick-row > div:last-child { position: relative; min-width: 0; }
+    .team-suggest, .market-suggest {
+      position: absolute; left: 0; right: 0; top: calc(100% + 4px);
+      z-index: 40; max-height: 240px; overflow: auto; width: 100%;
+      border: 1px solid var(--border); border-radius: 12px;
+      background: #111; box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+      display: none;
+    }
+    .team-suggest.show, .market-suggest.show { display: block; }
+    .team-suggest-item, .market-suggest-item {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; border: 0; background: transparent; color: var(--text);
+      text-align: left; padding: 10px 12px; cursor: pointer;
+      border-bottom: 1px solid var(--border);
+    }
+    .market-suggest-item { flex-direction: column; align-items: flex-start; gap: 2px; }
+    .team-suggest-item:last-child, .market-suggest-item:last-child { border-bottom: 0; }
+    .team-suggest-item:hover, .team-suggest-item:focus,
+    .market-suggest-item:hover, .market-suggest-item:focus {
+      background: rgba(201,242,35,0.08); outline: none;
+    }
+    .team-suggest-item img {
+      width: 28px; height: 28px; object-fit: contain; object-position: center;
+      border-radius: 6px; background: #fff; flex-shrink: 0;
+    }
+    .team-suggest-item .name, .market-suggest-item .name {
+      font-size: 13px; font-weight: 800; line-height: 1.2;
+    }
+    .team-suggest-item .sub, .market-suggest-item .sub {
+      margin-top: 2px; font-size: 10px; color: var(--muted); font-weight: 700;
+      letter-spacing: 0.04em; text-transform: uppercase;
+    }
+    .team-suggest-empty, .team-suggest-loading, .market-suggest-empty {
+      padding: 12px; color: var(--muted); font-size: 11px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .market-pick { position: relative; }
+    .team-logo-url { margin-top: 8px; font-size: 12px; }
     .drawer h2 {
       margin: 0 0 4px;
       font-size: 1.35rem; font-weight: 900; font-style: italic;
@@ -218,6 +379,13 @@
       width: 100%; border-radius: 12px; border: 1px solid var(--border);
       background: #050505; color: var(--text); padding: 11px 12px;
       font: inherit; font-size: 13px;
+      color-scheme: dark;
+    }
+    /* Opções do select nativo: texto claro no tema escuro some em fundo claro do SO */
+    .field select option,
+    .field select optgroup {
+      background-color: #0a0a0a;
+      color: #f5f5f7;
     }
     .field textarea { min-height: 64px; resize: vertical; }
     .field-row {
@@ -302,8 +470,8 @@
 
     <div class="stats" id="stats"></div>
     <div class="filters">
-      <button type="button" class="tab is-on" data-f="all">Todos</button>
-      <button type="button" class="tab" data-f="active">Ativos</button>
+      <button type="button" class="tab" data-f="all">Todos</button>
+      <button type="button" class="tab is-on" data-f="active">Ativos</button>
       <button type="button" class="tab" data-f="draft">Rascunhos</button>
       <button type="button" class="tab" data-f="pending">Pendente</button>
       <input id="search" type="search" placeholder="Buscar desafio ou jogo" />
@@ -312,10 +480,26 @@
     <div class="list" id="list"></div>
   </div>
 
+  <div class="parts-back" id="partsBack" aria-hidden="true">
+    <div class="parts-drawer" role="dialog" aria-labelledby="partsTitle">
+      <h2 id="partsTitle">Entradas da etapa</h2>
+      <p class="sub" id="partsSub">Cliente · valor · resultado</p>
+      <div class="parts-totals" id="partsTotals"></div>
+      <div id="partsList"><div class="loading">Carregando entradas…</div></div>
+      <div class="card-actions" style="justify-content:flex-start;margin-top:16px">
+        <button type="button" class="btn btn-ghost" id="partsClose">Fechar</button>
+        <button type="button" class="btn btn-lime-outline" id="partsRefresh">Atualizar</button>
+      </div>
+    </div>
+  </div>
+
   <div class="drawer-backdrop" id="drawerBackdrop" aria-hidden="true"></div>
-  <aside class="drawer" id="drawer" aria-hidden="true" role="dialog" aria-labelledby="drawerTitle">
+  <section class="drawer" id="drawer" aria-hidden="true" aria-labelledby="drawerTitle">
+    <div class="page-back">
+      <button type="button" class="btn btn-ghost" id="btnBackDraft" style="padding:8px 12px">← Voltar à lista</button>
+    </div>
     <h2 id="drawerTitle">Lançar Novo <span>Desafio</span></h2>
-    <p class="drawer-sub">Insira o evento e as etapas manualmente (mesmo fluxo do painel antigo).</p>
+    <p class="drawer-sub">Página completa · busca de time com logo · autocomplete de mercados.</p>
     <div class="form-error" id="formError"></div>
 
     <div class="field-row">
@@ -354,8 +538,18 @@
       <button class="btn btn-ghost" type="button" id="btnCancelDraft">Cancelar</button>
       <button class="btn btn-primary" type="button" id="btnSaveDraft">Salvar e Liberar</button>
     </div>
-  </aside>
+  </section>
 
+  <script src="/assets/market-catalog.js"></script>
+  <script src="/market-catalog.js"></script>
+  <script src="/v2/market-catalog.js"></script>
+  <script>
+    /* Fallback se o asset /market-catalog.js for engolido pelo redirect SPA */
+    (function () {
+      if (window.ARBISHIELD_MARKET_CATALOG && window.ARBISHIELD_MARKET_CATALOG.length) return;
+      window.ARBISHIELD_MARKET_CATALOG = [{"label": "Total de Gols", "options": ["Mais 0.5 gols na partida", "Mais 1.5 gols na partida", "Mais 2.5 gols na partida", "Mais 3.5 gols na partida", "Mais 4.5 gols na partida", "Mais 5.5 gols na partida", "Menos 0.5 gols na partida", "Menos 1.5 gols na partida", "Menos 2.5 gols na partida", "Menos 3.5 gols na partida", "Menos 4.5 gols na partida", "Menos 5.5 gols na partida"]}, {"label": "Ambas Equipes Marcam", "options": ["Ambas equipes marcam SIM", "Ambas equipes marcam NÃO"]}, {"label": "1° Tempo - Total de Gols", "options": ["Mais 0.5 gols no primeiro tempo", "Mais 1.5 gols no primeiro tempo", "Mais 2.5 gols no primeiro tempo", "Menos 0.5 gols no primeiro tempo", "Menos 1.5 gols no primeiro tempo", "Menos 2.5 gols no primeiro tempo"]}, {"label": "Resultado da Partida", "options": ["Back Casa", "Back Empate", "Back Visitante", "Lay Casa", "Lay Empate", "Lay Visitante"]}, {"label": "Resultado no 1° Tempo", "options": ["Back Casa no primeiro tempo", "Back Empate no primeiro tempo", "Back Visitante no primeiro tempo", "Lay Casa no primeiro tempo", "Lay Empate no primeiro tempo", "Lay Visitante no primeiro tempo"]}, {"label": "Total de Escanteios", "options": ["Mais 5.5 escanteios", "Mais 6.5 escanteios", "Mais 7.5 escanteios", "Mais 8.5 escanteios", "Mais 9.5 escanteios", "Mais 10.5 escanteios", "Mais 11.5 escanteios", "Mais 12.5 escanteios", "Mais 13.5 escanteios", "Mais 14.5 escanteios", "Mais 15.5 escanteios", "Menos 6.5 escanteios", "Menos 7.5 escanteios", "Menos 8.5 escanteios", "Menos 9.5 escanteios", "Menos 10.5 escanteios", "Menos 11.5 escanteios", "Menos 12.5 escanteios", "Menos 13.5 escanteios", "Menos 14.5 escanteios", "Menos 15.5 escanteios"]}, {"label": "1° Tempo - Total de Escanteios", "options": ["Mais 1.5 escanteios no primeiro tempo", "Mais 2.5 escanteios no primeiro tempo", "Mais 3.5 escanteios no primeiro tempo", "Mais 4.5 escanteios no primeiro tempo", "Menos 1.5 escanteios no primeiro tempo", "Menos 2.5 escanteios no primeiro tempo", "Menos 3.5 escanteios no primeiro tempo", "Menos 4.5 escanteios no primeiro tempo"]}, {"label": "Placar Exato - Lay", "options": ["Lay 0x0", "Lay 1x0", "Lay 2x0", "Lay 0x1", "Lay 0x2", "Lay 1x1", "Lay 1x2", "Lay 2x1", "Lay 2x2", "Lay 3x0", "Lay 3x1", "Lay 3x2", "Lay 0x3", "Lay 1x3", "Lay 2x3", "Lay 3x3", "Lay Goleada Casa", "Lay Goleada Visitante"]}, {"label": "Placar Exato - Back", "options": ["Back 0x0", "Back 1x0", "Back 2x0", "Back 0x1", "Back 0x2", "Back 1x1", "Back 1x2", "Back 2x1", "Back 2x2", "Back Goleada Casa", "Back Goleada Visitante"]}, {"label": "Total de Cartões", "options": ["Mais 2.5 cartões na partida", "Mais 3.5 cartões na partida", "Mais 4.5 cartões na partida", "Mais 5.5 cartões na partida", "Mais 6.5 cartões na partida", "Menos 2.5 cartões na partida", "Menos 3.5 cartões na partida", "Menos 4.5 cartões na partida", "Menos 5.5 cartões na partida", "Menos 6.5 cartões na partida"]}, {"label": "1° Tempo - Total de Cartões", "options": ["Menos 1.5 cartões no primeiro tempo", "Menos 2.5 cartões no primeiro tempo", "Menos 3.5 cartões no primeiro tempo", "Menos 4.5 cartões no primeiro tempo"]}, {"label": "Tênis - Vencedor da Partida", "options": ["Back Casa", "Back Visitante"]}, {"label": "Tênis - Vencedor 1° Set", "options": ["Back Casa no primeiro set", "Back Visitante no primeiro set"]}, {"label": "Tênis - Total de Sets", "options": ["Mais 1.5 Sets na partida", "Mais 2.5 Sets na partida", "Menos 1.5 Sets na partida", "Menos 2.5 Sets na partida"]}, {"label": "Tênis - Aposta no Set", "options": ["Lay Casa 3-0", "Lay Casa 3-1", "Lay Casa 3-2", "Lay Visitante 3-0", "Lay Visitante 3-1", "Lay Visitante 3-2", "Lay Casa 2-0", "Lay Casa 2-1", "Lay Visitante 2-0", "Lay Visitante 2-1"]}];
+    })();
+  </script>
   <script>
     const $ = (id) => document.getElementById(id);
     const money = (c) =>
@@ -385,6 +579,8 @@
         market_name_casa: "",
         home_team: "",
         away_team: "",
+        home_logo: "",
+        away_logo: "",
         arbi_team_name: "",
         arbi_odd: "",
         casa_team_name: "",
@@ -425,21 +621,53 @@
       return "upcoming";
     }
 
+    function stepIsClosed(e) {
+      if (!e) return false;
+      const st = String(e.status || "").toLowerCase();
+      if (st === "done" || st === "settled" || st === "closed" || st === "cancelled") {
+        return true;
+      }
+      if (e.settled_at) return true;
+      const res = String(e.result || "").toLowerCase();
+      return res === "win" || res === "zebra_protected" || res === "lost";
+    }
+
+    /** Desafio com todas as etapas encerradas (não deve poluir "Ativos"). */
+    function isDesafioClosed(d) {
+      if (!d) return false;
+      const dst = String(d.status || "").toLowerCase();
+      if (dst === "completed" || dst === "closed" || dst === "finished") return true;
+      const s = d.desafio_steps || [];
+      if (!s.length) return false;
+      return s.every(stepIsClosed);
+    }
+
+    /** Publicado e ainda com etapa em aberto. */
+    function isDesafioActiveOpen(d) {
+      return Boolean(d && d.is_active) && !isDesafioClosed(d);
+    }
+
+    function desafioBadge(d) {
+      if (isDesafioClosed(d)) {
+        return { cls: "", label: "Encerrado" };
+      }
+      if (d && d.is_active) {
+        return { cls: "on", label: "Ativo · Publicado" };
+      }
+      return { cls: "", label: "Rascunho" };
+    }
+
     function totals(rows) {
       const alive = rows.filter((x) => !x.deleted_at);
       const steps = alive.flatMap((x) => x.desafio_steps || []);
-      const closed = (x) => {
-        const s = x.desafio_steps || [];
-        return s.length > 0 && s.every((e) => e.status === "done");
-      };
       return {
         total: alive.length,
-        active: alive.filter((x) => x.is_active).length,
-        drafts: alive.filter((x) => !x.is_active && !closed(x)).length,
+        active: alive.filter(isDesafioActiveOpen).length,
+        drafts: alive.filter((x) => !x.is_active && !isDesafioClosed(x)).length,
         upcoming: steps.filter((x) => stepState(x) === "upcoming").length,
         live: steps.filter((x) => stepState(x) === "live").length,
         pending: steps.filter((x) => stepState(x) === "pending").length,
-        closed: alive.filter(closed).length,
+        closed: alive.filter(isDesafioClosed).length,
         deleted: rows.filter((x) => x.deleted_at).length,
       };
     }
@@ -501,12 +729,19 @@
           const el = root.querySelector(`[data-f="${name}"]`);
           return el ? el.value : "";
         };
+        const home = g("home_team");
+        const away = g("away_team");
+        const matchLabel = g("match_label") || (home && away ? `${home} x ${away}` : "");
         return {
           ...s,
           step_index: idx + 1,
           status: g("status") || "pending",
-          match_label: g("match_label"),
+          match_label: matchLabel,
           league_name: g("league_name"),
+          home_team: home,
+          away_team: away,
+          home_logo: g("home_logo"),
+          away_logo: g("away_logo"),
           arbi_team_name: g("arbi_team_name"),
           arbi_odd: g("arbi_odd"),
           market_name_arbishield: g("market_name_arbishield"),
@@ -522,6 +757,229 @@
           starts_at: g("starts_at"),
           release_minutes_before: Number(g("release_minutes_before") || 60),
         };
+      });
+    }
+
+
+    function flattenMarketCatalog() {
+      const raw = window.ARBISHIELD_MARKET_CATALOG;
+      const out = [];
+      if (!Array.isArray(raw) || !raw.length) {
+        console.warn('[mercados] ARBISHIELD_MARKET_CATALOG ausente — autocomplete offline');
+        return out;
+      }
+      raw.forEach((group) => {
+        const label = group && group.label ? group.label : "";
+        const opts = (group && group.options) || [];
+        opts.forEach((name) => out.push({ name, group: label }));
+      });
+      return out;
+    }
+
+    function normCat(s) {
+      return String(s || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+    }
+    function filterMarketCatalog(query) {
+      const q = normCat(query).trim();
+      const all = flattenMarketCatalog();
+      if (!q) return all.slice(0, 40);
+      const scored = [];
+      all.forEach((item) => {
+        const name = normCat(item.name);
+        const group = normCat(item.group);
+        const idx = name.indexOf(q);
+        const gidx = group.indexOf(q);
+        if (idx < 0 && gidx < 0) return;
+        let score = idx === 0 ? 0 : idx > 0 ? 1 : 2;
+        if (gidx === 0) score = Math.min(score, 1);
+        scored.push({ item, score, idx: idx < 0 ? 99 : idx });
+      });
+      scored.sort((a, b) => a.score - b.score || a.idx - b.idx || a.item.name.localeCompare(b.item.name, "pt-BR"));
+      return scored.slice(0, 40).map((x) => x.item);
+    }
+
+    function bindDesafioLaunchPickers() {
+      const root = $("stepsEditor");
+      if (!root) return;
+
+      root.querySelectorAll(".step-card").forEach((card) => {
+        // Team search
+        ["home", "away"].forEach((side) => {
+          const nameEl = card.querySelector(`[data-f="${side}_team"]`);
+          const logoEl = card.querySelector(`[data-f="${side}_logo"]`);
+          const suggest = card.querySelector(`[data-team-suggest="${side}"]`);
+          const preview = card.querySelector(`[data-logo-preview="${side}"]`);
+          if (!nameEl || !suggest || nameEl.dataset.teamBound === "1") return;
+          nameEl.dataset.teamBound = "1";
+          let timer = null;
+          let seq = 0;
+          const setPreview = (url) => {
+            if (!preview) return;
+            const u = String(url || "").trim();
+            preview.innerHTML = u
+              ? `<img src="${esc(u)}" alt="" />`
+              : `<span class="ph">Logo</span>`;
+          };
+          const hide = () => {
+            suggest.classList.remove("show");
+            suggest.hidden = true;
+            suggest.innerHTML = "";
+          };
+          const show = (html) => {
+            suggest.innerHTML = html;
+            suggest.hidden = false;
+            suggest.classList.add("show");
+          };
+          const search = async (q) => {
+            const my = ++seq;
+            q = String(q || "").trim();
+            if (q.length < 2) return hide();
+            show('<div class="team-suggest-loading">Buscando times…</div>');
+            try {
+              const session = await ArbiV2.client().auth.getSession();
+              const token = session.data.session?.access_token;
+              const res = await fetch(
+                "/api/arbishield/football-teams?q=" + encodeURIComponent(q),
+                { headers: token ? { Authorization: "Bearer " + token } : {} }
+              );
+              const data = await res.json().catch(() => ({}));
+              if (my !== seq) return;
+              const teams = Array.isArray(data.teams) ? data.teams : [];
+              if (!teams.length) {
+                return show('<div class="team-suggest-empty">Nenhum time — digite manualmente</div>');
+              }
+              show(
+                teams
+                  .map(
+                    (tm, idx) =>
+                      `<button type="button" class="team-suggest-item" data-idx="${idx}">` +
+                      (tm.logo ? `<img src="${esc(tm.logo)}" alt="" />` : "") +
+                      `<span class="meta"><span class="name">${esc(tm.name)}</span>` +
+                      ([tm.country, tm.league].filter(Boolean).length
+                        ? `<span class="sub">${esc([tm.country, tm.league].filter(Boolean).join(" · "))}</span>`
+                        : "") +
+                      `</span></button>`
+                  )
+                  .join("")
+              );
+              suggest.querySelectorAll(".team-suggest-item").forEach((btn) => {
+                btn.addEventListener("mousedown", (ev) => {
+                  ev.preventDefault();
+                  const i = Number(btn.getAttribute("data-idx"));
+                  const tm = teams[i];
+                  if (!tm) return;
+                  nameEl.value = tm.name || "";
+                  if (logoEl) logoEl.value = tm.logo || "";
+                  setPreview(tm.logo || "");
+                  const leagueEl = card.querySelector('[data-f="league_name"]');
+                  if (leagueEl && !String(leagueEl.value || "").trim() && tm.league) {
+                    leagueEl.value = tm.league;
+                  }
+                  const home = card.querySelector('[data-f="home_team"]')?.value || "";
+                  const away = card.querySelector('[data-f="away_team"]')?.value || "";
+                  const matchEl = card.querySelector('[data-f="match_label"]');
+                  if (matchEl && home && away) matchEl.value = home + " x " + away;
+                  hide();
+                });
+              });
+            } catch (err) {
+              if (my !== seq) return;
+              show('<div class="team-suggest-empty">' + esc(err.message || "Falha na busca") + "</div>");
+            }
+          };
+          nameEl.addEventListener("input", () => {
+            clearTimeout(timer);
+            timer = setTimeout(() => search(nameEl.value), 280);
+          });
+          nameEl.addEventListener("focus", () => {
+            if (String(nameEl.value || "").trim().length >= 2) search(nameEl.value);
+          });
+          nameEl.addEventListener("blur", () => setTimeout(hide, 180));
+          if (logoEl) logoEl.addEventListener("input", () => setPreview(logoEl.value));
+        });
+
+        // Market autocomplete
+        card.querySelectorAll(".market-pick").forEach((pick) => {
+          const nameEl = pick.querySelector("input[data-f]");
+          const box = pick.querySelector(".market-suggest");
+          if (!nameEl || !box || nameEl.dataset.marketBound === "1") return;
+          nameEl.dataset.marketBound = "1";
+          let timer = null;
+          const hide = () => {
+            box.classList.remove("show");
+            box.hidden = true;
+            box.innerHTML = "";
+          };
+          const show = (html) => {
+            box.innerHTML = html;
+            box.hidden = false;
+            box.classList.add("show");
+          };
+          const paint = (q) => {
+            const matches = filterMarketCatalog(q);
+            if (!matches.length) {
+              return show('<div class="market-suggest-empty">Nenhum mercado — digite manualmente</div>');
+            }
+            show(
+              matches
+                .map(
+                  (m, idx) =>
+                    `<button type="button" class="market-suggest-item" data-idx="${idx}">` +
+                    `<span class="name">${esc(m.name)}</span>` +
+                    (m.group ? `<span class="sub">${esc(m.group)}</span>` : "") +
+                    `</button>`
+                )
+                .join("")
+            );
+            box.querySelectorAll(".market-suggest-item").forEach((btn) => {
+              btn.addEventListener("mousedown", (ev) => {
+                ev.preventDefault();
+                const i = Number(btn.getAttribute("data-idx"));
+                if (matches[i]) nameEl.value = matches[i].name;
+                hide();
+              });
+            });
+          };
+          nameEl.addEventListener("input", () => {
+            clearTimeout(timer);
+            timer = setTimeout(() => {
+              if (!String(nameEl.value || "").trim()) return hide();
+              paint(nameEl.value);
+            }, 120);
+          });
+          nameEl.addEventListener("focus", () => {
+            const q = String(nameEl.value || "").trim();
+            if (q) paint(q);
+            else {
+              const matches = flattenMarketCatalog().slice(0, 30);
+              if (!matches.length) return;
+              show(
+                matches
+                  .map(
+                    (m, idx) =>
+                      `<button type="button" class="market-suggest-item" data-idx="${idx}">` +
+                      `<span class="name">${esc(m.name)}</span>` +
+                      (m.group ? `<span class="sub">${esc(m.group)}</span>` : "") +
+                      `</button>`
+                  )
+                  .join("")
+              );
+              box.querySelectorAll(".market-suggest-item").forEach((btn) => {
+                btn.addEventListener("mousedown", (ev) => {
+                  ev.preventDefault();
+                  const i = Number(btn.getAttribute("data-idx"));
+                  const all = flattenMarketCatalog().slice(0, 30);
+                  if (all[i]) nameEl.value = all[i].name;
+                  hide();
+                });
+              });
+            }
+          });
+          nameEl.addEventListener("blur", () => setTimeout(hide, 180));
+        });
       });
     }
 
@@ -545,13 +1003,39 @@
               }
             </div>
           </div>
-          <div class="field">
-            <label>Nome do Jogo</label>
-            <input data-f="match_label" value="${esc(s.match_label)}" placeholder="Flamengo x Palmeiras" />
+          <div class="field-row">
+            <div class="field team-pick" data-team-side="home">
+              <label>Time Casa</label>
+              <div class="team-pick-row">
+                <div class="team-logo-box" data-logo-preview="home">${s.home_logo ? `<img src="${esc(s.home_logo)}" alt="" />` : `<span class="ph">Logo</span>`}</div>
+                <div>
+                  <input data-f="home_team" value="${esc(s.home_team)}" placeholder="Digite para buscar…" autocomplete="off" />
+                  <div class="team-suggest" data-team-suggest="home" hidden></div>
+                  <input class="team-logo-url" data-f="home_logo" value="${esc(s.home_logo)}" placeholder="URL da logo (opcional)" />
+                </div>
+              </div>
+            </div>
+            <div class="field team-pick" data-team-side="away">
+              <label>Time Visitante</label>
+              <div class="team-pick-row">
+                <div class="team-logo-box" data-logo-preview="away">${s.away_logo ? `<img src="${esc(s.away_logo)}" alt="" />` : `<span class="ph">Logo</span>`}</div>
+                <div>
+                  <input data-f="away_team" value="${esc(s.away_team)}" placeholder="Digite para buscar…" autocomplete="off" />
+                  <div class="team-suggest" data-team-suggest="away" hidden></div>
+                  <input class="team-logo-url" data-f="away_logo" value="${esc(s.away_logo)}" placeholder="URL da logo (opcional)" />
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="field">
-            <label>Liga / Campeonato</label>
-            <input data-f="league_name" value="${esc(s.league_name)}" placeholder="Ex.: Brasileirão Série A" />
+          <div class="field-row">
+            <div class="field">
+              <label>Nome do Jogo</label>
+              <input data-f="match_label" value="${esc(s.match_label)}" placeholder="auto a partir dos times" />
+            </div>
+            <div class="field">
+              <label>Liga / Campeonato</label>
+              <input data-f="league_name" value="${esc(s.league_name)}" placeholder="Ex.: Brasileirão Série A" />
+            </div>
           </div>
 
           <div class="leg-title casa">1. Favorito — Casa Externa (cadastro ADM)</div>
@@ -566,9 +1050,10 @@
             </div>
           </div>
           <div class="field-row">
-            <div class="field">
+            <div class="field market-pick">
               <label>Mercado (casa)</label>
-              <input data-f="market_name_casa" value="${esc(s.market_name_casa)}" placeholder="Resultado final / Favorito" />
+              <input data-f="market_name_casa" value="${esc(s.market_name_casa)}" placeholder="Digite para sugerir…" autocomplete="off" />
+              <div class="market-suggest" hidden></div>
             </div>
             <div class="field">
               <label>Comissão casa (%)</label>
@@ -589,9 +1074,10 @@
             </div>
           </div>
           <div class="field-row">
-            <div class="field">
+            <div class="field market-pick">
               <label>Mercado (ArbiShield)</label>
-              <input data-f="market_name_arbishield" value="${esc(s.market_name_arbishield)}" placeholder="Resultado final / Zebra" />
+              <input data-f="market_name_arbishield" value="${esc(s.market_name_arbishield)}" placeholder="Digite para sugerir…" autocomplete="off" />
+              <div class="market-suggest" hidden></div>
             </div>
             <div class="field">
               <label>Comissão Arbi (%)</label>
@@ -677,6 +1163,7 @@
         });
         syncZebra();
       });
+      bindDesafioLaunchPickers();
     }
 
     function esc(v) {
@@ -701,14 +1188,17 @@
       setFormError("");
       fillHeaderFields();
       renderStepsEditor();
+      document.body.classList.add("desafio-launch-open");
       $("drawer").classList.add("open");
-      $("drawerBackdrop").classList.add("open");
       $("drawer").setAttribute("aria-hidden", "false");
-      $("drawerBackdrop").setAttribute("aria-hidden", "false");
-      document.body.style.overflow = "hidden";
+      $("drawerBackdrop").classList.remove("open");
+      $("drawerBackdrop").setAttribute("aria-hidden", "true");
+      document.body.style.overflow = "";
+      window.scrollTo(0, 0);
     }
 
     function closeDrawer() {
+      document.body.classList.remove("desafio-launch-open");
       $("drawer").classList.remove("open");
       $("drawerBackdrop").classList.remove("open");
       $("drawer").setAttribute("aria-hidden", "true");
@@ -828,9 +1318,29 @@
             market_name_casa: a.market_name_casa || null,
             home_team: a.home_team || a.arbi_team_name || "Casa",
             away_team: a.away_team || a.casa_team_name || "Visitante",
+            home_logo_url: a.home_logo || null,
+            away_logo_url: a.away_logo || null,
             arbi_team_name: a.arbi_team_name || null,
+            arbi_team_logo_url:
+              a.arbi_team_logo_url ||
+              (a.arbi_team_name && a.home_team && a.arbi_team_name === a.home_team
+                ? a.home_logo
+                : null) ||
+              (a.arbi_team_name && a.away_team && a.arbi_team_name === a.away_team
+                ? a.away_logo
+                : null) ||
+              null,
             arbi_odd: Number.isFinite(arbiOdd) ? arbiOdd : null,
             casa_team_name: a.casa_team_name || null,
+            casa_team_logo_url:
+              a.casa_team_logo_url ||
+              (a.casa_team_name && a.home_team && a.casa_team_name === a.home_team
+                ? a.home_logo
+                : null) ||
+              (a.casa_team_name && a.away_team && a.casa_team_name === a.away_team
+                ? a.away_logo
+                : null) ||
+              null,
             casa_odd: Number.isFinite(casaOdd) ? casaOdd : null,
             home_odd: Number.isFinite(arbiOdd) ? arbiOdd : null,
             away_odd: Number.isFinite(casaOdd) ? casaOdd : null,
@@ -908,7 +1418,7 @@
     function render(rows) {
       const t = totals(rows);
       renderStats(t);
-      const filter = window.__desafioFilter || "all";
+      const filter = window.__desafioFilter || "active";
       const q = (window.__desafioQ || "").trim().toLowerCase();
       let visible = rows
         .filter((x) => !x.deleted_at)
@@ -917,10 +1427,12 @@
           const tb = new Date(b.updated_at || b.created_at || 0).getTime();
           return tb - ta;
         });
-      if (filter === "active") visible = visible.filter((x) => x.is_active);
-      if (filter === "draft") visible = visible.filter((x) => !x.is_active);
+      // Ativos: só publicados com etapa em aberto. Finalizados ficam em Todos.
+      if (filter === "active") visible = visible.filter(isDesafioActiveOpen);
+      if (filter === "draft") visible = visible.filter((x) => !x.is_active && !isDesafioClosed(x));
       if (filter === "pending") {
         visible = visible.filter((x) =>
+          isDesafioActiveOpen(x) &&
           (x.desafio_steps || []).some((s) => stepState(s) === "pending")
         );
       }
@@ -980,6 +1492,9 @@
                   <span class="tag-arbi">Arbi: ${s.market_name_arbishield || s.market_name || "—"} @ ${s.arbi_odd ?? "—"}</span>
                   <span class="tag-casa">Casa: ${s.market_name_casa || "—"} @ ${s.casa_odd ?? "—"}</span>
                 </div>
+                <div class="card-actions" style="margin-top:8px;justify-content:flex-start">
+                  <button class="btn btn-lime-outline" type="button" data-parts="${esc(s.id)}" data-step-label="Etapa ${s.step_index} · ${esc(label)}">Ver entradas (cliente / valor)</button>
+                </div>
                 ${settle}
               </div>`;
             })
@@ -987,31 +1502,79 @@
           const live = steps.filter((s) => stepState(s) === "live").length;
           const pending = steps.filter((s) => stepState(s) === "pending").length;
           const upcoming = steps.filter((s) => stepState(s) === "upcoming").length;
-          return `<article class="card">
-            <div class="card-top">
-              <div class="title">${esc(d.title || "Desafio")} <span style="color:var(--muted);font-weight:700">#${String(d.number ?? "—").padStart(3, "0")}</span></div>
-              <span class="badge ${d.is_active ? "on" : ""}">${d.is_active ? "Ativo · Publicado" : "Rascunho"}</span>
+          const first = steps[0] || null;
+          const matchLabel =
+            (first &&
+              (first.match_label ||
+                [first.home_team, first.away_team].filter(Boolean).join(" x "))) ||
+            d.title ||
+            "Desafio";
+          const league =
+            (first && first.league_name) ||
+            (steps.length > 1 ? `${steps.length} etapas` : "Desafio");
+          const whenHint = first && first.starts_at
+            ? new Date(first.starts_at).toLocaleString("pt-BR", {
+                day: "2-digit",
+                month: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "Horário a definir";
+          const open = String(window.__desafioOpenId || "") === String(d.id);
+          const badge = desafioBadge(d);
+          const teamsLabel = String(matchLabel || "Desafio").replace(/\s+x\s+/i, " vs ");
+          return `<article class="card${open ? " is-open" : ""}" data-desafio-id="${esc(d.id)}">
+            <div class="card-top" data-toggle-desafio="${esc(d.id)}" role="button" tabindex="0" aria-expanded="${open ? "true" : "false"}">
+              <div class="title-wrap">
+                <div class="teams">${esc(teamsLabel)} <span class="num">#${String(d.number ?? "—").padStart(3, "0")}</span></div>
+                <div class="meta">${esc(league)}</div>
+                <div class="entries">${steps.length} etapa(s) · saldo ${money(d.initial_balance_cents)}</div>
+              </div>
+              <div class="side">
+                <span class="badge ${badge.cls}">${esc(badge.label)}</span>
+                <div class="when">${esc(whenHint)}</div>
+                <span class="chev" aria-hidden="true">▼</span>
+              </div>
             </div>
-            <div class="steps">${esc(d.subtitle || "Complete os desafios seguidos e fature o saldo final com lucro.")}</div>
-            <div class="mini-grid">
-              <div class="mini"><div class="l">Etapas</div><div class="v">${steps.length}</div></div>
-              <div class="mini"><div class="l">Agendadas</div><div class="v">${upcoming}</div></div>
-              <div class="mini"><div class="l">Ao Vivo</div><div class="v ${live ? "lime" : ""}">${live}</div></div>
-              <div class="mini"><div class="l">Pendente</div><div class="v">${pending}</div></div>
-              <div class="mini"><div class="l">Saldo inicial</div><div class="v lime">${money(d.initial_balance_cents)}</div></div>
-            </div>
-            ${stepBlocks || '<div class="steps">Sem etapas</div>'}
-            <div class="card-actions">
-              ${
-                d.is_active
-                  ? ""
-                  : `<button class="btn btn-primary" type="button" data-publish="${esc(d.id)}">Publicar para clientes</button>`
-              }
-              <button class="btn btn-ghost" type="button" data-clone="${esc(d.id)}">Usar como base</button>
+            <div class="card-body">
+              <div class="steps">${esc(d.subtitle || "Complete os desafios seguidos e fature o saldo final com lucro.")}</div>
+              <div class="mini-grid">
+                <div class="mini"><div class="l">Etapas</div><div class="v">${steps.length}</div></div>
+                <div class="mini"><div class="l">Agendadas</div><div class="v">${upcoming}</div></div>
+                <div class="mini"><div class="l">Ao Vivo</div><div class="v ${live ? "lime" : ""}">${live}</div></div>
+                <div class="mini"><div class="l">Pendente</div><div class="v">${pending}</div></div>
+                <div class="mini"><div class="l">Saldo inicial</div><div class="v lime">${money(d.initial_balance_cents)}</div></div>
+              </div>
+              ${stepBlocks || '<div class="steps">Sem etapas</div>'}
+              <div class="card-actions">
+                ${
+                  d.is_active || isDesafioClosed(d)
+                    ? ""
+                    : `<button class="btn btn-primary" type="button" data-publish="${esc(d.id)}">Publicar para clientes</button>`
+                }
+                <button class="btn btn-ghost" type="button" data-clone="${esc(d.id)}">Usar como base</button>
+              </div>
             </div>
           </article>`;
         })
         .join("");
+
+      $("list").querySelectorAll("[data-toggle-desafio]").forEach((el) => {
+        const toggle = () => {
+          const id = el.getAttribute("data-toggle-desafio");
+          if (!id) return;
+          window.__desafioOpenId =
+            String(window.__desafioOpenId || "") === String(id) ? "" : id;
+          if (window.__desafioRows) render(window.__desafioRows);
+        };
+        el.addEventListener("click", toggle);
+        el.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggle();
+          }
+        });
+      });
 
       $("list").querySelectorAll("[data-settle]").forEach((btn) => {
         btn.addEventListener("click", async () => {
@@ -1044,6 +1607,9 @@
             const forfeits = (data.forfeits || []).filter((f) => f.forfeited);
             alert(
               "Etapa encerrada." +
+                (data.desafioDeactivated
+                  ? "\nDesafio marcado como Encerrado (sai de Ativos)."
+                  : "") +
                 (forfeits.length
                   ? `\n${forfeits.length} circuito(s) liquidados para provedores.`
                   : "")
@@ -1053,6 +1619,14 @@
             alert(err.message || "Erro ao encerrar etapa");
             btn.disabled = false;
           }
+        });
+      });
+
+      $("list").querySelectorAll("[data-parts]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const stepId = btn.getAttribute("data-parts");
+          const label = btn.getAttribute("data-step-label") || "Etapa";
+          if (stepId) openPartsDrawer(stepId, label);
         });
       });
 
@@ -1113,6 +1687,24 @@
               league_name: s.league_name || "",
               home_team: s.home_team || "",
               away_team: s.away_team || "",
+              home_logo:
+                s.home_logo ||
+                (s.casa_team_name && s.casa_team_name === s.home_team
+                  ? s.casa_team_logo_url
+                  : "") ||
+                (s.arbi_team_name && s.arbi_team_name === s.home_team
+                  ? s.arbi_team_logo_url
+                  : "") ||
+                "",
+              away_logo:
+                s.away_logo ||
+                (s.casa_team_name && s.casa_team_name === s.away_team
+                  ? s.casa_team_logo_url
+                  : "") ||
+                (s.arbi_team_name && s.arbi_team_name === s.away_team
+                  ? s.arbi_team_logo_url
+                  : "") ||
+                "",
               arbi_team_name: s.arbi_team_name || s.market_name_arbishield || "",
               arbi_odd: s.arbi_odd != null ? String(s.arbi_odd) : "",
               market_name_arbishield: s.market_name_arbishield || "",
@@ -1145,6 +1737,151 @@
       });
     }
 
+    let partsStepId = "";
+    let partsStepLabel = "";
+
+    function closePartsDrawer() {
+      const back = $("partsBack");
+      if (!back) return;
+      back.classList.remove("show");
+      back.setAttribute("aria-hidden", "true");
+      partsStepId = "";
+    }
+
+    function resultPill(result) {
+      const r = String(result || "pending").toLowerCase();
+      const label =
+        r === "won"
+          ? "Ganhou"
+          : r === "lost"
+            ? "Perdeu"
+            : r === "cancelled"
+              ? "Cancelada"
+              : "Pendente";
+      return `<span class="pill-res ${esc(r)}">${label}</span>`;
+    }
+
+    async function authToken() {
+      const session = await ArbiV2.client().auth.getSession();
+      return session.data.session && session.data.session.access_token;
+    }
+
+    async function loadPartsList() {
+      const host = $("partsList");
+      const totalsEl = $("partsTotals");
+      if (!partsStepId || !host) return;
+      host.innerHTML = `<div class="loading">Carregando entradas…</div>`;
+      try {
+        const token = await authToken();
+        const res = await fetch("/api/arbishield/desafio-participations", {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ stepId: partsStepId }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Falha ao listar entradas");
+        const rows = Array.isArray(data.rows) ? data.rows : [];
+        const t = data.totals || {};
+        if (totalsEl) {
+          totalsEl.innerHTML = `
+            <div class="mini"><div class="l">Total</div><div class="v">${Number(t.total) || rows.length}</div></div>
+            <div class="mini"><div class="l">ArbiShield</div><div class="v lime">${Number(t.arbishield) || 0} · ${money(t.amount_arbishield_cents || 0)}</div></div>
+            <div class="mini"><div class="l">Casa</div><div class="v">${Number(t.casa) || 0} · ${money(t.amount_casa_cents || 0)}</div></div>`;
+        }
+        if (!rows.length) {
+          host.innerHTML = `<div class="empty">Nenhuma entrada nesta etapa.</div>`;
+          return;
+        }
+        host.innerHTML = rows
+          .map((r) => {
+            const name =
+              (r.profiles && (r.profiles.full_name || r.profiles.email)) ||
+              "Cliente";
+            const uid = String(r.user_id || "").slice(0, 8);
+            const side = String(r.side || "arbishield").toLowerCase();
+            const result = String(r.result || "pending").toLowerCase();
+            const pending = result === "pending";
+            const cancelBtn = pending
+              ? `<button type="button" class="btn btn-danger" data-cancel-part="${esc(r.id)}" data-cancel-name="${esc(name)}" data-cancel-amount="${Number(r.amount_cents) || 0}">Cancelar / estornar</button>`
+              : "";
+            return `<div class="parts-row">
+              <div class="name">${esc(name)}</div>
+              <div class="meta-line">
+                <span>ID ${esc(uid)}…</span>
+                <span>Etapa · ${esc(partsStepLabel || "—")}</span>
+                <span>Lado · ${side === "casa" ? "Casa" : "ArbiShield"}</span>
+                <span>Valor · <strong style="color:var(--lime)">${money(r.amount_cents)}</strong></span>
+                ${resultPill(result)}
+              </div>
+              <div class="row-actions">${cancelBtn}</div>
+            </div>`;
+          })
+          .join("");
+
+        host.querySelectorAll("[data-cancel-part]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const id = btn.getAttribute("data-cancel-part");
+            const name = btn.getAttribute("data-cancel-name") || "cliente";
+            const amount = Number(btn.getAttribute("data-cancel-amount") || 0);
+            if (!id) return;
+            if (
+              !confirm(
+                `Cancelar entrada de ${name} (${money(amount)}) e estornar no saldo Desafio?`
+              )
+            ) {
+              return;
+            }
+            btn.disabled = true;
+            try {
+              const token = await authToken();
+              const res = await fetch("/api/arbishield/desafio-cancel", {
+                method: "POST",
+                headers: {
+                  Authorization: "Bearer " + token,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ participationId: id }),
+              });
+              const out = await res.json().catch(() => ({}));
+              if (!res.ok || out.ok !== true) {
+                throw new Error(out.error || "Falha ao cancelar");
+              }
+              alert(
+                "Entrada cancelada. Estornado: " + money(out.refundedCents || amount)
+              );
+              await loadPartsList();
+            } catch (err) {
+              alert(err.message || "Erro ao cancelar");
+              btn.disabled = false;
+            }
+          });
+        });
+      } catch (err) {
+        host.innerHTML = `<div class="error">${esc(err.message || "Erro")}</div>`;
+      }
+    }
+
+    function openPartsDrawer(stepId, label) {
+      partsStepId = stepId;
+      partsStepLabel = label || "Etapa";
+      const back = $("partsBack");
+      const title = $("partsTitle");
+      const sub = $("partsSub");
+      if (title) title.textContent = "Entradas · " + partsStepLabel;
+      if (sub) {
+        sub.textContent =
+          "Cliente · valor · resultado — cancele individualmente entradas pendentes (estorna saldo Desafio).";
+      }
+      if (back) {
+        back.classList.add("show");
+        back.setAttribute("aria-hidden", "false");
+      }
+      loadPartsList();
+    }
+
     async function load() {
       $("list").innerHTML = `<div class="loading">Carregando desafios…</div>`;
       $("meta").textContent = "Buscando…";
@@ -1171,13 +1908,15 @@
       }
     }
 
-    window.__desafioFilter = "all";
+    // Abre em Ativos (publicados com etapa em aberto) — não lista encerrados.
+    window.__desafioFilter = "active";
+    window.__desafioOpenId = "";
     window.__desafioQ = "";
     document.querySelectorAll(".filters .tab").forEach((btn) => {
       btn.addEventListener("click", () => {
         document.querySelectorAll(".filters .tab").forEach((b) => b.classList.remove("is-on"));
         btn.classList.add("is-on");
-        window.__desafioFilter = btn.getAttribute("data-f") || "all";
+        window.__desafioFilter = btn.getAttribute("data-f") || "active";
         if (window.__desafioRows) render(window.__desafioRows);
       });
     });
@@ -1262,7 +2001,8 @@
 
     $("btnLaunch").addEventListener("click", () => openDrawer(emptyDraft()));
     $("btnCancelDraft").addEventListener("click", closeDrawer);
-    $("drawerBackdrop").addEventListener("click", closeDrawer);
+    const btnBack = $("btnBackDraft");
+    if (btnBack) btnBack.addEventListener("click", closeDrawer);
     $("btnSaveDraft").addEventListener("click", saveDesafio);
     $("btnAddStep").addEventListener("click", () => {
       readFormIntoDraft();
@@ -1271,8 +2011,20 @@
       renderStepsEditor();
     });
     document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && $("partsBack") && $("partsBack").classList.contains("show")) {
+        closePartsDrawer();
+        return;
+      }
       if (e.key === "Escape" && $("drawer").classList.contains("open")) closeDrawer();
     });
+
+    if ($("partsClose")) $("partsClose").addEventListener("click", closePartsDrawer);
+    if ($("partsRefresh")) $("partsRefresh").addEventListener("click", loadPartsList);
+    if ($("partsBack")) {
+      $("partsBack").addEventListener("click", (e) => {
+        if (e.target === $("partsBack")) closePartsDrawer();
+      });
+    }
 
     $("btnRefresh").addEventListener("click", load);
     renderSuggestion();
