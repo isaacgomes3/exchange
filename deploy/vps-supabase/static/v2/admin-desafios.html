@@ -154,6 +154,13 @@
       border-top: 1px solid rgba(255,255,255,0.06);
     }
     .card.is-open .card-body { display: block; padding-top: 14px; }
+    .card-quick-actions {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      padding: 0 16px 14px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      padding-top: 12px;
+    }
+    .card-quick-actions .btn { padding: 8px 12px; font-size: 12px; }
     .title { font-weight: 900; font-size: 1.05rem; letter-spacing: -0.02em; }
     .badge {
       font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
@@ -1597,6 +1604,24 @@
                 <span class="chev" aria-hidden="true">▼</span>
               </div>
             </div>
+            <div class="card-quick-actions">
+              ${
+                !isDesafioCancelled(d) && !d.deleted_at
+                  ? `<button class="btn btn-warn" type="button" data-cancel-desafio="${esc(d.id)}">Cancelar · devolver saldo</button>`
+                  : ""
+              }
+              ${
+                !d.deleted_at
+                  ? `<button class="btn btn-danger" type="button" data-delete-desafio="${esc(d.id)}">Excluir</button>`
+                  : ""
+              }
+              ${
+                d.is_active || isDesafioClosed(d)
+                  ? ""
+                  : `<button class="btn btn-primary" type="button" data-publish="${esc(d.id)}">Publicar</button>`
+              }
+              <button class="btn btn-ghost" type="button" data-clone="${esc(d.id)}">Usar como base</button>
+            </div>
             <div class="card-body">
               <div class="steps">${esc(subText)}</div>
               <div class="mini-grid">
@@ -1607,24 +1632,6 @@
                 <div class="mini"><div class="l">Saldo inicial</div><div class="v lime">${money(d.initial_balance_cents)}</div></div>
               </div>
               ${stepBlocks || '<div class="steps">Sem etapas</div>'}
-              <div class="card-actions">
-                ${
-                  d.is_active || isDesafioClosed(d)
-                    ? ""
-                    : `<button class="btn btn-primary" type="button" data-publish="${esc(d.id)}">Publicar para clientes</button>`
-                }
-                <button class="btn btn-ghost" type="button" data-clone="${esc(d.id)}">Usar como base</button>
-                ${
-                  !isDesafioCancelled(d) && !d.deleted_at
-                    ? `<button class="btn btn-warn" type="button" data-cancel-desafio="${esc(d.id)}">Cancelar · devolver saldo</button>`
-                    : ""
-                }
-                ${
-                  !d.deleted_at
-                    ? `<button class="btn btn-danger" type="button" data-delete-desafio="${esc(d.id)}">Excluir</button>`
-                    : ""
-                }
-              </div>
             </div>
           </article>`;
         })
@@ -1745,7 +1752,8 @@
       });
 
       $("list").querySelectorAll("[data-delete-desafio]").forEach((btn) => {
-        btn.addEventListener("click", async () => {
+        btn.addEventListener("click", async (ev) => {
+          if (ev) { ev.preventDefault(); ev.stopPropagation(); }
           const id = btn.getAttribute("data-delete-desafio");
           if (!id) return;
           if (
@@ -1775,7 +1783,8 @@
       });
 
       $("list").querySelectorAll("[data-cancel-desafio]").forEach((btn) => {
-        btn.addEventListener("click", async () => {
+        btn.addEventListener("click", async (ev) => {
+          if (ev) { ev.preventDefault(); ev.stopPropagation(); }
           const id = btn.getAttribute("data-cancel-desafio");
           if (!id) return;
           const nClients = Number(

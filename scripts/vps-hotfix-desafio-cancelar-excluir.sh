@@ -12,7 +12,7 @@ BRANCH="${ARBISHIELD_BRANCH:-cursor/admin-cancelar-desafio-3cf9}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
-CACHE_V="desafio-cancel-1"
+CACHE_V="desafio-cancel-2"
 NGINX_MAIN="${ARBISHIELD_NGINX_CONF:-/etc/nginx/sites-available/arbishield.app}"
 
 log() { echo "==> $*"; }
