@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # Auditoria do dia — eventos, lucro (dedução), saldo empresa inicial/atual
+# Versão: v3 (retry de schema + fallback via wallet_transactions)
 #
-# Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/auditoria-dia-lucro-3cf9/scripts/vps-auditoria-dia.sh?v=2")
+# Na VPS (root) — use o SHA pinado (evita cache da v2):
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/CURSOR_SHA/scripts/vps-auditoria-dia.sh?v=3")
 #
 # Dia específico:
 #   DAY=2026-07-24 bash <(curl -fsSL "...")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/auditoria-dia-lucro-3cf9}"
+# Prefira SHA pinado via ARBISHIELD_REF; fallback = tip da branch
 REF="${ARBISHIELD_REF:-$BRANCH}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
@@ -22,8 +24,16 @@ curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
   "$RAW/scripts/vps-auditoria-dia.mjs" \
   -o "$SCRIPTS_DIR/vps-auditoria-dia.mjs"
 chmod 0644 "$SCRIPTS_DIR/vps-auditoria-dia.mjs"
-grep -q 'AUDITORIA DO DIA' "$SCRIPTS_DIR/vps-auditoria-dia.mjs" \
-  || { echo "ERRO: script inválido"; exit 1; }
+
+if ! grep -q 'AUDITORIA DO DIA' "$SCRIPTS_DIR/vps-auditoria-dia.mjs"; then
+  echo "ERRO: script inválido (sem banner AUDITORIA DO DIA)"
+  exit 1
+fi
+if ! grep -qE 'v3|AUDITORIA DO DIA.*v3|auditoria v3' "$SCRIPTS_DIR/vps-auditoria-dia.mjs"; then
+  echo "ERRO: script baixado não é v3 (possível cache/raw antigo). Use ARBISHIELD_REF=<sha>"
+  exit 1
+fi
+echo "==> script OK (v3)"
 
 export DAY JSON_OUT
 echo "==> rodando auditoria${DAY:+ do dia $DAY}"

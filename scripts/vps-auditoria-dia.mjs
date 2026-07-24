@@ -164,8 +164,53 @@ async function tableColumns(table) {
 }
 
 function pickSelect(cols, wanted) {
-  const list = wanted.filter((c) => cols.has(c));
-  return list.length ? list.join(",") : "*";
+  const DENY = new Set([
+    "match_label",
+    "league_name",
+    "market_id",
+    "used_liquidity_cents",
+  ]);
+  const base = wanted.filter((c) => !DENY.has(c));
+  if (!cols.size) return base;
+  return base.filter((c) => cols.has(c));
+}
+
+function missingColumnFromError(err) {
+  const msg = String((err && err.message) || err || "");
+  let m = msg.match(/column\s+[\w.]*?([A-Za-z_]\w*)\s+does not exist/i);
+  if (m) return m[1];
+  try {
+    const body = err && err.body;
+    const j = typeof body === "string" ? JSON.parse(body) : body;
+    const m2 = String((j && j.message) || "").match(
+      /column\s+[\w.]*?([A-Za-z_]\w*)\s+does not exist/i
+    );
+    if (m2) return m2[1];
+  } catch {}
+  return null;
+}
+
+async function sbSelectRetry(table, colList, querySuffix) {
+  let cols = [...colList];
+  for (let attempt = 0; attempt < 14; attempt++) {
+    const select = cols.length ? cols.join(",") : "*";
+    const path = `/rest/v1/${table}?select=${select}${querySuffix || ""}`;
+    try {
+      return await sbAll(path);
+    } catch (err) {
+      const bad = missingColumnFromError(err);
+      if (!bad) throw err;
+      const next = cols.filter((c) => c !== bad);
+      console.warn(`  schema: removendo ${table}.${bad}`);
+      if (!cols.length) throw err;
+      if (next.length === cols.length) {
+        // coluna vinha do *; não dá para filtrar — aborta esse caminho
+        throw err;
+      }
+      cols = next;
+    }
+  }
+  return [];
 }
 
 function matchLabel(m) {
@@ -204,7 +249,7 @@ function isSettledStatus(st) {
 async function main() {
   const { day, fromIso, toIso } = dayBounds(process.env.DAY || "");
   console.log("════════════════════════════════════════════════════════════");
-  console.log(` AUDITORIA DO DIA  ${day}  (America/Sao_Paulo)  v2`);
+  console.log(` AUDITORIA DO DIA  ${day}  (America/Sao_Paulo)  v3`);
   console.log(` Janela UTC: ${fromIso} → ${toIso}`);
   console.log(` Supabase: ${SUPABASE_URL}`);
   console.log("════════════════════════════════════════════════════════════");
@@ -297,60 +342,41 @@ async function main() {
   ];
   const protSelect = pickSelect(protCols, protWanted);
   const backSelect = pickSelect(backCols, protWanted);
+  console.log("  select protections:", (protSelect.join && protSelect.join(",")) || protSelect || "*");
+  console.log("  select back_protections:", (backSelect.join && backSelect.join(",")) || backSelect || "*");
 
   let lays = [];
   let backs = [];
 
-  async function loadSettledProtections(table, select) {
+  async function loadSettledProtections(table, colList) {
     const cols = table === "protections" ? protCols : backCols;
     const out = [];
-    // 1) por settled_at no dia
-    if (cols.has("settled_at")) {
+    if (cols.has("settled_at") || !cols.size) {
       try {
-        const rows = await sbAll(
-          `/rest/v1/${table}?select=${select}&settled_at=gte.${encodeURIComponent(fromIso)}&settled_at=lte.${encodeURIComponent(toIso)}&order=settled_at.asc`
+        const rows = await sbSelectRetry(
+          table,
+          colList,
+          `&settled_at=gte.${encodeURIComponent(fromIso)}&settled_at=lte.${encodeURIComponent(toIso)}&order=settled_at.asc`
         );
         out.push(...rows);
       } catch (e) {
         console.warn(`  ${table} settled_at:`, e.message);
       }
     }
-    // 2) fallback: status settled* + updated_at no dia
-    if (!out.length && cols.has("updated_at")) {
+    if (!out.length) {
       try {
-        const rows = await sbAll(
-          `/rest/v1/${table}?select=${select}&updated_at=gte.${encodeURIComponent(fromIso)}&updated_at=lte.${encodeURIComponent(toIso)}&order=updated_at.asc`
+        const rows = await sbSelectRetry(
+          table,
+          colList,
+          `&updated_at=gte.${encodeURIComponent(fromIso)}&updated_at=lte.${encodeURIComponent(toIso)}&order=updated_at.asc`
         );
         const filtered = rows.filter((r) => isSettledStatus(r.status || r.result));
         out.push(...filtered);
         if (filtered.length) {
-          console.log(
-            `  ${table}: fallback updated_at → ${filtered.length} liquidadas`
-          );
+          console.log(`  ${table}: fallback updated_at → ${filtered.length}`);
         }
       } catch (e) {
         console.warn(`  ${table} updated_at:`, e.message);
-      }
-    }
-    // 3) último recurso: puxa recentes e filtra
-    if (!out.length) {
-      try {
-        const rows = await sb(
-          `/rest/v1/${table}?select=${select}&order=created_at.desc&limit=500`
-        );
-        const list = (Array.isArray(rows) ? rows : []).filter((r) => {
-          if (!isSettledStatus(r.status || r.result)) return false;
-          const ts = r.settled_at || r.updated_at || r.created_at;
-          if (!ts) return false;
-          const t = new Date(ts).getTime();
-          return t >= new Date(fromIso).getTime() && t <= new Date(toIso).getTime();
-        });
-        out.push(...list);
-        if (list.length) {
-          console.log(`  ${table}: fallback sample → ${list.length}`);
-        }
-      } catch (e) {
-        console.warn(`  ${table} sample:`, e.message);
       }
     }
     return out;
@@ -365,6 +391,122 @@ async function main() {
     ...backs.map((r) => ({ ...r, _side: "BACK" })),
   ];
   console.log(`  LAY=${lays.length}  BACK=${backs.length}  total=${allProt.length}`);
+
+  // Fonte confiável do dia: créditos protection_settlement / unlock
+  if (!allProt.length) {
+    console.log("\n── FALLBACK VIA wallet_transactions (settlements do dia) ───");
+    try {
+      const txCols = await tableColumns("wallet_transactions");
+      const txSelect = pickSelect(txCols, [
+        "id",
+        "user_id",
+        "type",
+        "amount_cents",
+        "ref",
+        "reference_id",
+        "metadata",
+        "description",
+        "created_at",
+      ]);
+      const txRows = await sbSelectRetry(
+        "wallet_transactions",
+        txSelect,
+        `&type=in.(protection_settlement,protection_unlock,protection_release,unlock,release)&created_at=gte.${encodeURIComponent(fromIso)}&created_at=lte.${encodeURIComponent(toIso)}&order=created_at.asc`
+      );
+      console.log(`  tx settlements/unlock: ${txRows.length}`);
+      const ids = [];
+      const txByProt = new Map();
+      for (const tx of txRows) {
+        let meta = tx.metadata;
+        if (typeof meta === "string") {
+          try {
+            meta = JSON.parse(meta);
+          } catch {
+            meta = {};
+          }
+        }
+        meta = meta && typeof meta === "object" ? meta : {};
+        const pid =
+          tx.ref ||
+          tx.reference_id ||
+          meta.protection_id ||
+          meta.protectionId ||
+          null;
+        if (!pid) continue;
+        ids.push(String(pid));
+        if (!txByProt.has(String(pid))) txByProt.set(String(pid), []);
+        txByProt.get(String(pid)).push({ ...tx, metadata: meta });
+      }
+      const uniq = [...new Set(ids)];
+      console.log(`  protection ids nas txs: ${uniq.length}`);
+      const loaded = [];
+      for (let i = 0; i < uniq.length; i += 40) {
+        const chunk = uniq.slice(i, i + 40);
+        const inList = chunk.join(",");
+        try {
+          const rows = await sbSelectRetry(
+            "protections",
+            protSelect,
+            `&id=in.(${inList})`
+          );
+          for (const r of rows) loaded.push({ ...r, _side: "LAY", _fromTx: true });
+        } catch (e) {
+          console.warn("  load protections by id:", e.message);
+        }
+        try {
+          const rows = await sbSelectRetry(
+            "back_protections",
+            backSelect,
+            `&id=in.(${inList})`
+          );
+          for (const r of rows) loaded.push({ ...r, _side: "BACK", _fromTx: true });
+        } catch (e) {
+          console.warn("  load back_protections by id:", e.message);
+        }
+      }
+      if (loaded.length) {
+        allProt.push(...loaded);
+        console.log(`  proteções hidratadas via tx: ${loaded.length}`);
+      } else if (txRows.length) {
+        // Sem row de proteção — estima pelo metadata da tx
+        for (const tx of txRows) {
+          let meta = tx.metadata;
+          if (typeof meta === "string") {
+            try {
+              meta = JSON.parse(meta);
+            } catch {
+              meta = {};
+            }
+          }
+          meta = meta && typeof meta === "object" ? meta : {};
+          allProt.push({
+            id: tx.ref || tx.reference_id || tx.id,
+            user_id: tx.user_id,
+            match_id: meta.match_id || null,
+            status: "settled_via_tx",
+            amount_cents: n(meta.stake_cents) || n(tx.amount_cents),
+            responsibility_cents: n(meta.stake_cents) || 0,
+            platform_profit_cents:
+              n(meta.platform_profit_cents) ||
+              n(meta.fee_cents) ||
+              n(meta.platform_deduction_cents) ||
+              0,
+            exchange_fee_cents: n(meta.fee_cents) || 0,
+            user_profit_cents: n(meta.user_profit_cents),
+            settled_at: tx.created_at,
+            settled_outcome: meta.outcome || null,
+            _side: "TX",
+            _fromTx: true,
+            _credit_cents: n(tx.amount_cents),
+          });
+        }
+        console.log(`  usando metadata das txs: ${txRows.length}`);
+      }
+    } catch (e) {
+      console.warn("  fallback tx:", e.message);
+    }
+  }
+
 
   // ── Matches do dia (settled_at / via proteções) ────────────────────
   const matchWanted = [
@@ -382,21 +524,23 @@ async function main() {
     "used_protection_cents",
     "updated_at",
   ];
-  const matchSelect = pickSelect(matchCols, matchWanted);
+  const matchSelectCols = pickSelect(matchCols, matchWanted);
   let matches = [];
-  if (matchCols.has("settled_at")) {
-    try {
-      matches = await sbAll(
-        `/rest/v1/matches?select=${matchSelect}&settled_at=gte.${encodeURIComponent(fromIso)}&settled_at=lte.${encodeURIComponent(toIso)}&order=settled_at.asc`
-      );
-    } catch (e) {
-      console.warn("matches settled_at:", e.message);
-    }
+  try {
+    matches = await sbSelectRetry(
+      "matches",
+      matchSelectCols,
+      `&settled_at=gte.${encodeURIComponent(fromIso)}&settled_at=lte.${encodeURIComponent(toIso)}&order=settled_at.asc`
+    );
+  } catch (e) {
+    console.warn("matches settled_at:", e.message);
   }
-  if (!matches.length && matchCols.has("updated_at")) {
+  if (!matches.length) {
     try {
-      const rows = await sbAll(
-        `/rest/v1/matches?select=${matchSelect}&updated_at=gte.${encodeURIComponent(fromIso)}&updated_at=lte.${encodeURIComponent(toIso)}&order=updated_at.asc`
+      const rows = await sbSelectRetry(
+        "matches",
+        matchSelectCols,
+        `&updated_at=gte.${encodeURIComponent(fromIso)}&updated_at=lte.${encodeURIComponent(toIso)}&order=updated_at.asc`
       );
       matches = rows.filter((m) => {
         const st = String(m.status || "").toLowerCase();
@@ -414,8 +558,10 @@ async function main() {
   for (let i = 0; i < missingIds.length; i += 40) {
     const chunk = missingIds.slice(i, i + 40);
     try {
-      const rows = await sb(
-        `/rest/v1/matches?select=${matchSelect}&id=in.(${chunk.join(",")})`
+      const rows = await sbSelectRetry(
+        "matches",
+        matchSelectCols,
+        `&id=in.(${chunk.join(",")})`
       );
       for (const m of Array.isArray(rows) ? rows : []) matchMap.set(m.id, m);
     } catch (e) {
@@ -527,16 +673,16 @@ async function main() {
     "used_liquidity_cents",
     "updated_at",
   ];
-  const stepSelect = pickSelect(stepCols, stepWanted);
+  const stepSelectCols = pickSelect(stepCols, stepWanted);
   let steps = [];
-  if (stepCols.has("settled_at")) {
-    try {
-      steps = await sbAll(
-        `/rest/v1/desafio_steps?select=${stepSelect}&settled_at=gte.${encodeURIComponent(fromIso)}&settled_at=lte.${encodeURIComponent(toIso)}&order=settled_at.asc`
-      );
-    } catch (e) {
-      console.warn("desafio_steps:", e.message);
-    }
+  try {
+    steps = await sbSelectRetry(
+      "desafio_steps",
+      stepSelectCols,
+      `&settled_at=gte.${encodeURIComponent(fromIso)}&settled_at=lte.${encodeURIComponent(toIso)}&order=settled_at.asc`
+    );
+  } catch (e) {
+    console.warn("desafio_steps:", e.message);
   }
   console.log("\n── DESAFIOS / ETAPAS ENCERRADAS HOJE ────────────────────────");
   console.log(`  Total etapas: ${steps.length}`);
@@ -737,7 +883,7 @@ async function main() {
     console.log("\nJSON →", jsonOut);
   }
 
-  console.log("\nOK — auditoria v2 concluída.\n");
+  console.log("\nOK — auditoria v3 concluída.\n");
 }
 
 main().catch((err) => {
