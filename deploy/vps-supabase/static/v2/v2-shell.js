@@ -46,6 +46,7 @@
         p("jogos", "Jogos", "/admin-jogos.html"),
         p("desafios", "Desafios ArbiShield", "/admin-desafios.html"),
         p("monitoring-protections", "Monitor de Proteções", "/admin-monitoring-protections.html"),
+        p("monitoring-desafios", "Monitor de Desafios", "/admin-monitoring-desafios.html"),
       ],
     },
     {
