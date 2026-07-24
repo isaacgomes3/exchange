@@ -930,9 +930,118 @@ function extractServerFnData(rawBody) {
   return out;
 }
 
+function dashPlatformCut(row) {
+  const plat =
+    n(row.platform_profit_cents) ||
+    n(row.platform_deduction_cents) ||
+    n(row.locked_deduction_cents);
+  return plat + n(row.exchange_profit_net_cents) + n(row.exchange_fee_cents);
+}
+
+async function sbPageAll(basePath, hardCap = 20000) {
+  const pageSize = 1000;
+  let from = 0;
+  const out = [];
+  for (;;) {
+    const sep = basePath.includes("?") ? "&" : "?";
+    const rows = await sb(
+      `${basePath}${sep}limit=${pageSize}&offset=${from}`,
+      { token: SERVICE_KEY }
+    );
+    const list = Array.isArray(rows) ? rows : [];
+    out.push(...list);
+    if (list.length < pageSize) break;
+    from += pageSize;
+    if (from >= hardCap) break;
+  }
+  return out;
+}
+
+async function sumDesafioCasaWinProfit(fromIso) {
+  // Lucro desafio = stake zebra perdido quando etapa result=win (casa venceu)
+  let q =
+    "/rest/v1/desafio_steps?select=id,result,settled_at&result=eq.win&order=settled_at.asc";
+  if (fromIso) {
+    q += `&settled_at=gte.${encodeURIComponent(fromIso)}`;
+  }
+  let steps = [];
+  try {
+    steps = await sbPageAll(q);
+  } catch {
+    return { net: 0, steps: 0, zebra: 0, casaPaid: 0 };
+  }
+  let zebra = 0;
+  let casaPaid = 0;
+  for (let i = 0; i < steps.length; i += 50) {
+    const chunk = steps.slice(i, i + 50);
+    const ids = chunk.map((s) => s.id).join(",");
+    if (!ids) continue;
+    let parts = [];
+    try {
+      parts = await sbPageAll(
+        `/rest/v1/desafio_participations?select=step_id,side,result,amount_cents,profit_cents&step_id=in.(${ids})`
+      );
+    } catch {
+      parts = [];
+    }
+    for (const p of parts) {
+      const side = String(p.side || "").toLowerCase();
+      const res = String(p.result || "").toLowerCase();
+      if (
+        side === "arbishield" &&
+        res !== "won" &&
+        res !== "win" &&
+        res !== "pending"
+      ) {
+        zebra += n(p.amount_cents);
+      }
+      if (side === "casa" && (res === "won" || res === "win")) {
+        casaPaid += n(p.profit_cents);
+      }
+    }
+  }
+  return {
+    net: zebra - casaPaid,
+    steps: steps.length,
+    zebra,
+    casaPaid,
+  };
+}
+
+async function sumProtectionCuts(fromIso) {
+  const cols =
+    "id,status,settled_at,platform_profit_cents,platform_deduction_cents,locked_deduction_cents,exchange_profit_net_cents,exchange_fee_cents";
+  async function load(table) {
+    let q = `/rest/v1/${table}?select=${cols}&settled_at=not.is.null&order=settled_at.asc`;
+    if (fromIso) q += `&settled_at=gte.${encodeURIComponent(fromIso)}`;
+    try {
+      return await sbPageAll(q);
+    } catch {
+      return [];
+    }
+  }
+  const [lays, backs] = await Promise.all([
+    load("protections"),
+    load("back_protections"),
+  ]);
+  let cut = 0;
+  let nRows = 0;
+  for (const r of [...lays, ...backs]) {
+    const st = String(r.status || "").toLowerCase();
+    if (st.includes("won_platform")) continue;
+    const c = dashPlatformCut(r);
+    if (c > 0) {
+      cut += c;
+      nRows += 1;
+    }
+  }
+  return { cut, nRows };
+}
+
 async function getDashboardStats() {
   const dayStart = startOfDaySaoPaulo();
   const dayIso = dayStart.toISOString();
+  const dayYmd = dayIso.slice(0, 10);
 
   const [
     profiles,
@@ -943,42 +1052,70 @@ async function getDashboardStats() {
     depositsTodayWallet,
     depositsTodayManual,
     depositsTodayAsaas,
-    refundsToday,
+    refundsTodayWallet,
     expensesToday,
-    profits,
   ] = await Promise.all([
     sb(
-      "/rest/v1/profiles?select=id,balance_cents,locked_balance_cents,investor_balance_cents"
-    ),
-    sb("/rest/v1/platform_treasury?select=operational_balance_cents,reserve_balance_cents,locked_balance_cents&limit=1"),
-    sb(
-      "/rest/v1/protections?select=amount_cents,platform_profit_cents,exchange_profit_net_cents,exchange_fee_cents&status=eq.active"
-    ),
-    sb("/rest/v1/refund_requests?select=amount_cents,status"),
-    sb("/rest/v1/admin_expenses?select=amount_cents"),
-    sb(
-      `/rest/v1/wallet_transactions?select=amount_cents&type=eq.deposit&created_at=gte.${dayIso}`
+      "/rest/v1/profiles?select=id,balance_cents,locked_balance_cents,investor_balance_cents,demo_balance_provider_cents",
+      { token: SERVICE_KEY }
     ),
     sb(
-      `/rest/v1/manual_deposits?select=amount_cents&status=eq.APPROVED&created_at=gte.${dayIso}`
+      "/rest/v1/platform_treasury?select=id,operational_balance_cents,balance_cents,reserve_balance_cents,locked_balance_cents,updated_at&order=updated_at.desc&limit=1",
+      { token: SERVICE_KEY }
     ),
     sb(
-      `/rest/v1/asaas_payments?select=amount_cents,confirmed_amount_cents,status&created_at=gte.${dayIso}`
+      "/rest/v1/protections?select=amount_cents,platform_profit_cents,exchange_profit_net_cents,exchange_fee_cents&status=eq.active",
+      { token: SERVICE_KEY }
     ),
-    sb(`/rest/v1/refund_requests?select=amount_cents,status&updated_at=gte.${dayIso}`),
+    sb("/rest/v1/refund_requests?select=amount_cents,status", {
+      token: SERVICE_KEY,
+    }),
+    sb("/rest/v1/admin_expenses?select=amount_cents", { token: SERVICE_KEY }),
     sb(
-      `/rest/v1/admin_expenses?select=amount_cents&expense_date=eq.${dayIso.slice(0, 10)}`
+      `/rest/v1/wallet_transactions?select=amount_cents,type&type=in.(deposit,manual_credit,asaas_deposit,desafio_deposit,provider_deposit)&created_at=gte.${encodeURIComponent(dayIso)}`,
+      { token: SERVICE_KEY }
     ),
     sb(
-      "/rest/v1/protections?select=platform_profit_cents,exchange_profit_net_cents,exchange_fee_cents"
+      `/rest/v1/manual_deposits?select=amount_cents&status=eq.APPROVED&created_at=gte.${encodeURIComponent(dayIso)}`,
+      { token: SERVICE_KEY }
+    ).catch(() => []),
+    sb(
+      `/rest/v1/asaas_payments?select=amount_cents,confirmed_amount_cents,status&created_at=gte.${encodeURIComponent(dayIso)}`,
+      { token: SERVICE_KEY }
+    ).catch(() => []),
+    sb(
+      `/rest/v1/wallet_transactions?select=amount_cents,type&type=in.(protection_refund,refund,desafio_cancel_refund)&created_at=gte.${encodeURIComponent(dayIso)}`,
+      { token: SERVICE_KEY }
+    ).catch(() => []),
+    sb(
+      `/rest/v1/admin_expenses?select=amount_cents&expense_date=eq.${dayYmd}`,
+      { token: SERVICE_KEY }
+    ).catch(() =>
+      sb(
+        `/rest/v1/admin_expenses?select=amount_cents&created_at=gte.${encodeURIComponent(dayIso)}`,
+        { token: SERVICE_KEY }
+      ).catch(() => [])
     ),
+  ]);
+
+  const [
+    protToday,
+    protAll,
+    desafioToday,
+    desafioAll,
+  ] = await Promise.all([
+    sumProtectionCuts(dayIso),
+    sumProtectionCuts(null),
+    sumDesafioCasaWinProfit(dayIso),
+    sumDesafioCasaWinProfit(null),
   ]);
 
   const profileRows = Array.isArray(profiles) ? profiles : [];
   const totalUserBalance = profileRows.reduce((a, r) => a + n(r.balance_cents), 0);
   const totalUsers = profileRows.length;
   const totalInvestorBalance = profileRows.reduce(
-    (a, r) => a + n(r.investor_balance_cents),
+    (a, r) =>
+      a + n(r.investor_balance_cents) + n(r.demo_balance_provider_cents),
     0
   );
   const lockedFromProfiles = profileRows.reduce(
@@ -986,7 +1123,8 @@ async function getDashboardStats() {
     0
   );
   const activeRows = Array.isArray(activeProtections) ? activeProtections : [];
-  const totalBlocked = activeRows.reduce((a, r) => a + n(r.amount_cents), 0) || lockedFromProfiles;
+  const totalBlocked =
+    activeRows.reduce((a, r) => a + n(r.amount_cents), 0) || lockedFromProfiles;
 
   const refundRows = Array.isArray(refunds) ? refunds : [];
   const paidStatuses = new Set([
@@ -998,6 +1136,8 @@ async function getDashboardStats() {
     "completed",
     "COMPLETED",
     "PIX ENVIADO",
+    "approved",
+    "APPROVED",
   ]);
   const pendingStatuses = new Set([
     "EM ANÁLISE",
@@ -1019,47 +1159,58 @@ async function getDashboardStats() {
     (a, r) => a + n(r.amount_cents),
     0
   );
-  const profitRows = Array.isArray(profits) ? profits : [];
-  const platformProfit = profitRows.reduce(
-    (a, r) =>
-      a +
-      n(r.platform_profit_cents) +
-      n(r.exchange_profit_net_cents) +
-      n(r.exchange_fee_cents),
-    0
-  );
-  const realNetProfit = platformProfit - expenseTotal;
+
+  const profitProtectionsAll = protAll.cut;
+  const profitDesafioAll = desafioAll.net;
+  const realNetProfit =
+    profitProtectionsAll + profitDesafioAll - expenseTotal;
+
   const treasuryRow = Array.isArray(treasury) ? treasury[0] : null;
+  // Caixa = tesouraria real (não fallback em banca de usuários)
   const cashBalance =
-    n(treasuryRow?.operational_balance_cents) ||
-    Math.max(0, totalUserBalance + totalBlocked - totalRefunded);
+    treasuryRow == null
+      ? 0
+      : treasuryRow.operational_balance_cents != null
+        ? n(treasuryRow.operational_balance_cents)
+        : n(treasuryRow.balance_cents);
 
   const asaasRows = Array.isArray(depositsTodayAsaas) ? depositsTodayAsaas : [];
-  const asaasOk = new Set(["CONFIRMED", "RECEIVED", "confirmed", "received", "PAID", "paid"]);
+  const asaasOk = new Set([
+    "CONFIRMED",
+    "RECEIVED",
+    "confirmed",
+    "received",
+    "PAID",
+    "paid",
+  ]);
   const todayAsaas = asaasRows
     .filter((r) => asaasOk.has(String(r.status || "")))
     .reduce((a, r) => a + n(r.confirmed_amount_cents || r.amount_cents), 0);
-  const todayWallet = (Array.isArray(depositsTodayWallet) ? depositsTodayWallet : []).reduce(
-    (a, r) => a + n(r.amount_cents),
-    0
-  );
-  const todayManual = (Array.isArray(depositsTodayManual) ? depositsTodayManual : []).reduce(
-    (a, r) => a + n(r.amount_cents),
-    0
-  );
-  // wallet já inclui créditos de depósitos manuais aprovados — preferir o maior sinal
-  const todayEarnings = Math.max(todayWallet, todayManual + todayAsaas);
+  const todayWallet = (
+    Array.isArray(depositsTodayWallet) ? depositsTodayWallet : []
+  ).reduce((a, r) => a + n(r.amount_cents), 0);
+  const todayManual = (
+    Array.isArray(depositsTodayManual) ? depositsTodayManual : []
+  ).reduce((a, r) => a + n(r.amount_cents), 0);
+  // Depósitos do dia (não é lucro)
+  const todayDeposits = Math.max(todayWallet, todayManual + todayAsaas);
 
-  const todayRefundsOut = (Array.isArray(refundsToday) ? refundsToday : [])
-    .filter((r) => paidStatuses.has(String(r.status || "")))
-    .reduce((a, r) => a + n(r.amount_cents), 0);
-  const todayExpenses = (Array.isArray(expensesToday) ? expensesToday : []).reduce(
-    (a, r) => a + n(r.amount_cents),
-    0
-  );
-  const todayNetRevenue = todayEarnings - todayRefundsOut;
+  const todayRefundsOut = (
+    Array.isArray(refundsTodayWallet) ? refundsTodayWallet : []
+  ).reduce((a, r) => a + n(r.amount_cents), 0);
+  const todayExpenses = (
+    Array.isArray(expensesToday) ? expensesToday : []
+  ).reduce((a, r) => a + n(r.amount_cents), 0);
+
+  const todayProtectionProfit = protToday.cut;
+  const todayDesafioProfit = desafioToday.net;
+  // Receita/lucro operacional do dia — NÃO inclui depósitos
+  const todayNetRevenue = todayProtectionProfit + todayDesafioProfit;
   const todayRealProfit = todayNetRevenue - todayExpenses;
-  // margem sobre a banca sob gestão (usuários + bloqueado)
+
+  // Compat: todayEarnings era usado como "depósitos" no código antigo
+  const todayEarnings = todayDeposits;
+
   const marginBase = totalUserBalance + totalBlocked;
   const profitMargin =
     marginBase > 0 ? (realNetProfit / marginBase) * 100 : 0;
@@ -1069,16 +1220,25 @@ async function getDashboardStats() {
     totalUsers,
     totalInvestorBalance,
     realNetProfit,
+    profitProtectionsAll,
+    profitDesafioAll,
     profitMargin: Number(profitMargin.toFixed(1)),
     totalBlocked,
     totalRefunded,
     pendingRefunds,
     cashBalance,
+    treasuryUpdatedAt: treasuryRow?.updated_at || null,
     todayEarnings,
+    todayDeposits,
+    todayProtectionProfit,
+    todayDesafioProfit,
     todayNetRevenue,
     todayRefundsOut,
     todayExpenses,
     todayRealProfit,
+    todayProtectionCount: protToday.nRows,
+    todayDesafioSteps: desafioToday.steps,
+    fix: "dashboard-kpis-v1",
   };
 }
 
@@ -5761,6 +5921,9 @@ async function handleServerFn(req, res, id, rawBody = "") {
   if (id === FN.DASHBOARD_STATS) {
     console.log("[serverfn-shim] DASHBOARD_STATS");
     try {
+      if (!(await currentUserIsAdmin(token))) {
+        return sendTsrError(res, "Acesso negado");
+      }
       // agregações com service role (RLS bloqueia anon)
       const data = await getDashboardStats();
       return sendTsrOk(res, data);
@@ -5938,6 +6101,10 @@ const server = createServer(async (req, res) => {
 
   if (url.pathname === "/api/arbishield/dashboard-stats") {
     try {
+      const token = bearerFromReq(req);
+      if (!(await currentUserIsAdmin(token))) {
+        return sendJson(res, 403, { error: "Acesso negado" });
+      }
       const data = await getDashboardStats();
       return sendJson(res, 200, data);
     } catch (err) {

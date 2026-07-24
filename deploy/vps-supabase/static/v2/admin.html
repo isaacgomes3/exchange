@@ -8,15 +8,15 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/finance-admins.js?v=fin-acl-2"></script>
-  <script src="/v2.js?v=fin-acl-2"></script>
-  <script src="/v2-shell.js?v=fin-acl-2" defer></script>
+  <script src="/finance-admins.js?v=dash-kpi-1"></script>
+  <script src="/v2.js?v=dash-kpi-1"></script>
+  <script src="/v2-shell.js?v=dash-kpi-1" defer></script>
 </head>
 <body data-shell="admin" data-active="hub">
   <div class="page-head">
     <div>
       <h1>Dash<span>board</span></h1>
-      <p class="sub">Terminal institucional · template SPA · nativo v2</p>
+      <p class="sub">Terminal institucional · lucro ≠ depósito · tesouraria + desafio</p>
     </div>
     <button type="button" class="btn btn-primary" id="btnRefresh">Atualizar</button>
   </div>
@@ -26,20 +26,20 @@
   <div class="tpl-kpi-row" id="kpis">
     <div class="tpl-kpi"><div class="l">Banca Usuários</div><div class="v" id="kUsers">—</div><div class="s" id="kUsersSub">—</div></div>
     <div class="tpl-kpi"><div class="l">Banca Provedor</div><div class="v white" id="kProv">—</div><div class="s">Capital livre + travado</div></div>
-    <div class="tpl-kpi"><div class="l">Lucro Real</div><div class="v lime" id="kProfit">—</div><div class="s" id="kProfitSub">—</div></div>
+    <div class="tpl-kpi"><div class="l">Lucro Real</div><div class="v lime" id="kProfit">—</div><div class="s" id="kProfitSub">Acumulado − despesas</div></div>
     <div class="tpl-kpi"><div class="l">Bloqueado</div><div class="v" id="kLocked">—</div><div class="s">Proteções ativas</div></div>
     <div class="tpl-kpi"><div class="l">Reembolsado</div><div class="v white" id="kRefund">—</div><div class="s" id="kRefundSub">—</div></div>
-    <div class="tpl-kpi"><div class="l">Caixa</div><div class="v lime" id="kCash">—</div><div class="s">Bruto − reembolsos</div></div>
+    <div class="tpl-kpi"><div class="l">Caixa</div><div class="v lime" id="kCash">—</div><div class="s" id="kCashSub">Tesouraria operacional</div></div>
   </div>
 
   <section class="tpl-card">
     <div class="tpl-card-head"><h2>Indicadores do dia</h2></div>
     <div class="tpl-day-grid">
       <div class="tpl-day"><div class="l">Depósitos Hoje</div><div class="v pos" id="dDep">—</div></div>
-      <div class="tpl-day"><div class="l">Receita Líquida Hoje</div><div class="v pos" id="dRev">—</div></div>
+      <div class="tpl-day"><div class="l">Receita Líquida Hoje</div><div class="v pos" id="dRev">—</div><div class="s" id="dRevSub" style="font-size:10px;opacity:.7;margin-top:4px">Proteções + desafio</div></div>
       <div class="tpl-day"><div class="l">Reembolsos Hoje</div><div class="v neg" id="dRef">—</div></div>
       <div class="tpl-day"><div class="l">Despesas Hoje</div><div class="v neg" id="dExp">—</div></div>
-      <div class="tpl-day"><div class="l">Lucro Real Hoje</div><div class="v pos" id="dProfit">—</div></div>
+      <div class="tpl-day"><div class="l">Lucro Real Hoje</div><div class="v pos" id="dProfit">—</div><div class="s" id="dProfitSub" style="font-size:10px;opacity:.7;margin-top:4px">Receita − despesas</div></div>
     </div>
   </section>
 
@@ -86,6 +86,8 @@
         return;
       }
 
+      var FN_DASH =
+        "8867aca1da470aaa83906b6b13bb7e7018c9dea355ae3cff430f0f97ddbb4a62";
       var period = "today";
 
       function startIso(p) {
@@ -97,55 +99,76 @@
         return d.toISOString();
       }
 
-      function sum(rows, key) {
-        return (rows || []).reduce(function (a, r) { return a + Number(r[key] || 0); }, 0);
+      async function token() {
+        var s = await supa.auth.getSession();
+        return (s && s.data && s.data.session && s.data.session.access_token) || null;
+      }
+
+      async function loadStats() {
+        var t = await token();
+        if (!t) throw new Error("Sessão expirada");
+        var res = await fetch("/_serverFn/" + FN_DASH, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-arbishield-plain": "1",
+            Authorization: "Bearer " + t,
+          },
+          body: JSON.stringify({ data: {} }),
+        });
+        var text = await res.text();
+        var data = {};
+        try { data = text ? JSON.parse(text) : {}; } catch (e) {
+          throw new Error("Resposta inválida do dashboard");
+        }
+        if (data && data.result != null && data.error == null) data = data.result;
+        if (data && data.error) {
+          throw new Error(typeof data.error === "string" ? data.error : (data.error.message || "Erro dashboard"));
+        }
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        if (!data || data.fix !== "dashboard-kpis-v1") {
+          // aceita mesmo sem fix se campos novos existirem
+          if (data && data.todayDeposits == null && data.todayRealProfit != null && data.todayEarnings != null) {
+            // legado: lucro hoje = depósitos — rejeita para forçar hotfix do shim
+            throw new Error("Shim do dashboard desatualizado. Rode o hotfix treasury/dashboard na VPS.");
+          }
+        }
+        return data;
       }
 
       async function load() {
         document.getElementById("err").classList.remove("show");
         try {
-          var profiles = await supa.from("profiles").select("balance_cents,investor_balance_cents,demo_balance_provider_cents,locked_balance_cents");
-          if (profiles.error) throw profiles.error;
-          var rows = profiles.data || [];
-          var bancaUsers = sum(rows, "balance_cents");
-          var bancaProv = sum(rows, "investor_balance_cents") + sum(rows, "demo_balance_provider_cents");
-          var locked = sum(rows, "locked_balance_cents");
+          var d = await loadStats();
 
-          var act = await supa.from("protections").select("amount_cents,platform_profit_cents,user_profit_cents").eq("status", "active");
-          var actRows = act.data || [];
-          var blocked = sum(actRows, "amount_cents") || locked;
-          var profitPlat = sum(actRows, "platform_profit_cents");
+          document.getElementById("kUsers").textContent = money(d.totalUserBalance);
+          document.getElementById("kUsersSub").textContent = (d.totalUsers || 0) + " usuários";
+          document.getElementById("kProv").textContent = money(d.totalInvestorBalance);
+          document.getElementById("kProfit").textContent = money(d.realNetProfit);
+          document.getElementById("kProfitSub").textContent =
+            "Prot. " + money(d.profitProtectionsAll || 0) +
+            " · Desafio " + money(d.profitDesafioAll || 0);
+          document.getElementById("kLocked").textContent = money(d.totalBlocked);
+          document.getElementById("kRefund").textContent = money(d.totalRefunded);
+          document.getElementById("kRefundSub").textContent = (d.pendingRefunds || 0) + " pendente(s)";
+          document.getElementById("kCash").textContent = money(d.cashBalance);
+          var cashSub = "Tesouraria operacional";
+          if (d.treasuryUpdatedAt) {
+            cashSub += " · " + new Date(d.treasuryUpdatedAt).toLocaleString("pt-BR");
+          }
+          document.getElementById("kCashSub").textContent = cashSub;
 
-          var refs = await supa.from("refund_requests").select("amount_cents,status").in("status", ["pending", "approved", "paid"]);
-          var refRows = refs.data || [];
-          var refunded = sum(refRows.filter(function (r) { return r.status !== "pending"; }), "amount_cents");
-          var refundPending = refRows.filter(function (r) { return r.status === "pending"; }).length;
-
-          var treasury = await supa.from("platform_treasury").select("balance_cents").limit(1).maybeSingle();
-          var caixa = Number((treasury.data && treasury.data.balance_cents) || 0);
-
-          document.getElementById("kUsers").textContent = money(bancaUsers);
-          document.getElementById("kUsersSub").textContent = rows.length + " usuários";
-          document.getElementById("kProv").textContent = money(bancaProv);
-          document.getElementById("kProfit").textContent = money(profitPlat);
-          document.getElementById("kProfitSub").textContent = actRows.length ? "Proteções ativas" : "Sem ativo";
-          document.getElementById("kLocked").textContent = money(blocked);
-          document.getElementById("kRefund").textContent = money(refunded);
-          document.getElementById("kRefundSub").textContent = refundPending + " pendente(s)";
-          document.getElementById("kCash").textContent = money(caixa || Math.max(0, profitPlat - refunded));
-
-          var from = startIso("today");
-          var depToday = await supa.from("wallet_transactions").select("amount_cents,type").gte("created_at", from).in("type", ["deposit", "manual_credit", "asaas_deposit"]);
-          var refToday = await supa.from("wallet_transactions").select("amount_cents").gte("created_at", from).in("type", ["protection_refund", "refund"]);
-          var expToday = await supa.from("admin_expenses").select("amount_cents").gte("created_at", from);
-          var depSum = sum(depToday.data, "amount_cents");
-          var refSum = sum(refToday.data, "amount_cents");
-          var expSum = sum(expToday.data, "amount_cents");
-          document.getElementById("dDep").textContent = money(depSum);
-          document.getElementById("dRev").textContent = money(Math.max(0, profitPlat));
-          document.getElementById("dRef").textContent = money(refSum);
-          document.getElementById("dExp").textContent = money(expSum);
-          document.getElementById("dProfit").textContent = money(depSum - refSum - expSum);
+          var dep = d.todayDeposits != null ? d.todayDeposits : d.todayEarnings;
+          document.getElementById("dDep").textContent = money(dep);
+          document.getElementById("dRev").textContent = money(d.todayNetRevenue);
+          document.getElementById("dRevSub").textContent =
+            "Prot. " + money(d.todayProtectionProfit || 0) +
+            " + Desafio " + money(d.todayDesafioProfit || 0);
+          document.getElementById("dRef").textContent = money(d.todayRefundsOut);
+          document.getElementById("dExp").textContent = money(d.todayExpenses);
+          document.getElementById("dProfit").textContent = money(d.todayRealProfit);
+          document.getElementById("dProfitSub").textContent =
+            "Receita − despesas (não é depósito)";
 
           await loadTx();
         } catch (ex) {
@@ -164,7 +187,10 @@
           .order("created_at", { ascending: false })
           .limit(80);
         var list = tx.data || [];
-        var inflowTypes = { deposit: 1, manual_credit: 1, asaas_deposit: 1, protection_unlock: 1, protection_settlement: 1, bonus: 1 };
+        var inflowTypes = {
+          deposit: 1, manual_credit: 1, asaas_deposit: 1, desafio_deposit: 1,
+          provider_deposit: 1, protection_unlock: 1, protection_settlement: 1, bonus: 1
+        };
         var inn = 0, out = 0;
         list.forEach(function (r) {
           var a = Number(r.amount_cents || 0);
