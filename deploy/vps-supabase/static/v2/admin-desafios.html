@@ -161,6 +161,7 @@
       border: 1px solid var(--border); color: var(--muted);
     }
     .badge.on { color: var(--lime); border-color: rgba(201,242,35,0.35); background: rgba(201,242,35,0.08); }
+    .badge.amber { color: #fcd34d; border-color: rgba(245,158,11,0.5); background: rgba(245,158,11,0.1); }
     .mini-grid {
       display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
       gap: 8px; margin: 12px 0;
@@ -181,6 +182,11 @@
       background: transparent; color: #fca5a5;
       border: 1px solid rgba(248,113,113,0.45);
     }
+    .btn-warn {
+      background: transparent; color: #fcd34d;
+      border: 1px solid rgba(245,158,11,0.5);
+    }
+    .btn-warn:hover { background: rgba(245,158,11,0.12); }
     .parts-back {
       position: fixed; inset: 0; z-index: 80;
       background: rgba(0,0,0,0.72);
@@ -632,9 +638,14 @@
       return res === "win" || res === "zebra_protected" || res === "lost";
     }
 
+    function isDesafioCancelled(d) {
+      return String(d && d.status || "").toLowerCase() === "cancelled";
+    }
+
     /** Desafio com todas as etapas encerradas (não deve poluir "Ativos"). */
     function isDesafioClosed(d) {
       if (!d) return false;
+      if (isDesafioCancelled(d)) return true;
       const dst = String(d.status || "").toLowerCase();
       if (dst === "completed" || dst === "closed" || dst === "finished") return true;
       const s = d.desafio_steps || [];
@@ -644,10 +655,13 @@
 
     /** Publicado e ainda com etapa em aberto. */
     function isDesafioActiveOpen(d) {
-      return Boolean(d && d.is_active) && !isDesafioClosed(d);
+      return Boolean(d && d.is_active) && !isDesafioClosed(d) && !isDesafioCancelled(d);
     }
 
     function desafioBadge(d) {
+      if (isDesafioCancelled(d)) {
+        return { cls: "amber", label: "Cancelado" };
+      }
       if (isDesafioClosed(d)) {
         return { cls: "", label: "Encerrado" };
       }
@@ -1562,12 +1576,20 @@
           const open = String(window.__desafioOpenId || "") === String(d.id);
           const badge = desafioBadge(d);
           const teamsLabel = String(matchLabel || "Desafio").replace(/\s+x\s+/i, " vs ");
+          const pendingClients = Number(
+            (window.__desafioPendingCounts && window.__desafioPendingCounts[d.id]) || 0
+          );
+          const subText = isDesafioCancelled(d)
+            ? "Cancelado — entradas pendentes devolvidas à carteira Desafio"
+            : d.subtitle || "Complete os desafios seguidos e fature o saldo final com lucro.";
           return `<article class="card${open ? " is-open" : ""}" data-desafio-id="${esc(d.id)}">
             <div class="card-top" data-toggle-desafio="${esc(d.id)}" role="button" tabindex="0" aria-expanded="${open ? "true" : "false"}">
               <div class="title-wrap">
                 <div class="teams">${esc(teamsLabel)} <span class="num">#${String(d.number ?? "—").padStart(3, "0")}</span></div>
                 <div class="meta">${esc(league)}</div>
-                <div class="entries">${steps.length} etapa(s) · saldo ${money(d.initial_balance_cents)}</div>
+                <div class="entries">${steps.length} etapa(s) · saldo ${money(d.initial_balance_cents)}${
+                  pendingClients > 0 ? ` · ${pendingClients} cliente(s) ativo(s)` : ""
+                }</div>
               </div>
               <div class="side">
                 <span class="badge ${badge.cls}">${esc(badge.label)}</span>
@@ -1576,7 +1598,7 @@
               </div>
             </div>
             <div class="card-body">
-              <div class="steps">${esc(d.subtitle || "Complete os desafios seguidos e fature o saldo final com lucro.")}</div>
+              <div class="steps">${esc(subText)}</div>
               <div class="mini-grid">
                 <div class="mini"><div class="l">Etapas</div><div class="v">${steps.length}</div></div>
                 <div class="mini"><div class="l">Agendadas</div><div class="v">${upcoming}</div></div>
@@ -1592,6 +1614,16 @@
                     : `<button class="btn btn-primary" type="button" data-publish="${esc(d.id)}">Publicar para clientes</button>`
                 }
                 <button class="btn btn-ghost" type="button" data-clone="${esc(d.id)}">Usar como base</button>
+                ${
+                  !isDesafioCancelled(d) && !d.deleted_at
+                    ? `<button class="btn btn-warn" type="button" data-cancel-desafio="${esc(d.id)}">Cancelar · devolver saldo</button>`
+                    : ""
+                }
+                ${
+                  !d.deleted_at
+                    ? `<button class="btn btn-danger" type="button" data-delete-desafio="${esc(d.id)}">Excluir</button>`
+                    : ""
+                }
               </div>
             </div>
           </article>`;
@@ -1707,6 +1739,78 @@
             await load();
           } catch (err) {
             alert(err.message || "Erro ao publicar");
+            btn.disabled = false;
+          }
+        });
+      });
+
+      $("list").querySelectorAll("[data-delete-desafio]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const id = btn.getAttribute("data-delete-desafio");
+          if (!id) return;
+          if (
+            !confirm(
+              "Excluir este desafio?\nSó funciona se não houver nenhum cliente com entrada ativa.\nSe houver clientes, use Cancelar · devolver saldo."
+            )
+          ) {
+            return;
+          }
+          btn.disabled = true;
+          try {
+            const headers = await authHeaders();
+            const res = await fetch("/api/arbishield/desafio-delete", {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ id }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || "Falha ao excluir");
+            alert("Desafio excluído.");
+            await load();
+          } catch (err) {
+            alert(err.message || "Erro ao excluir");
+            btn.disabled = false;
+          }
+        });
+      });
+
+      $("list").querySelectorAll("[data-cancel-desafio]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const id = btn.getAttribute("data-cancel-desafio");
+          if (!id) return;
+          const nClients = Number(
+            (window.__desafioPendingCounts && window.__desafioPendingCounts[id]) || 0
+          );
+          if (
+            !confirm(
+              "Cancelar este desafio?\n" +
+                (nClients
+                  ? `Vai devolver o saldo de ${nClients} entrada(s) pendente(s) para a carteira Desafio de cada cliente.`
+                  : "Entradas pendentes serão devolvidas à carteira Desafio.")
+            )
+          ) {
+            return;
+          }
+          btn.disabled = true;
+          try {
+            const headers = await authHeaders();
+            const res = await fetch("/api/arbishield/desafio-cancel", {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ id, cancelWhole: true }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || "Falha ao cancelar");
+            alert(
+              "Desafio cancelado.\n" +
+                (data.refundedCount || 0) +
+                " cliente(s) reembolsados · " +
+                money(data.refundedCents || 0) +
+                " na carteira Desafio."
+            );
+            await load();
+          } catch (err) {
+            alert(err.message || "Erro ao cancelar");
             btn.disabled = false;
           }
         });
@@ -1939,6 +2043,24 @@
         if (!res.ok) throw new Error((data && data.error) || "HTTP " + res.status);
         if (!Array.isArray(data)) throw new Error("Resposta inválida da API");
         window.__desafioRows = data;
+        window.__desafioPendingCounts = {};
+        try {
+          const ids = data.map((d) => d.id).filter(Boolean);
+          if (ids.length) {
+            const headers = await authHeaders();
+            const pc = await fetch("/api/arbishield/desafio-pending-counts", {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ desafioIds: ids }),
+            });
+            const pcData = await pc.json().catch(() => ({}));
+            if (pc.ok && pcData && pcData.counts) {
+              window.__desafioPendingCounts = pcData.counts;
+            }
+          }
+        } catch (e) {
+          /* contagem é opcional */
+        }
         render(data);
       } catch (err) {
         $("stats").innerHTML = "";
