@@ -9,7 +9,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-restaurar-lancar-form.sh")
 set -euo pipefail
 
-REF="6a7cba7f4a1eaa9cc992a9fbb820c7e659ab5743"
+REF="488b49307c3f94fcdfa4759770fdd81d355488a0"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
@@ -41,6 +41,10 @@ grep -q 'bindMarketNamePicker\|market-suggest\|ARBISHIELD_MARKET_CATALOG' "$WEB/
   || die "admin-jogos sem autocomplete de mercados"
 grep -q 'btnBackManual\|Página completa\|app.hidden = true' "$WEB/admin-jogos.html" \
   || die "admin-jogos sem página justificada (ainda modal?)"
+grep -q 'data-f="odd"\|Liquidez real\|manualMarkets' "$WEB/admin-jogos.html" \
+  || die "admin-jogos sem campos de mercado/odd/liquidez"
+grep -q 'Mercados de proteção' "$WEB/admin-jogos.html" \
+  || die "admin-jogos sem seção de mercados visível"
 grep -q 'bindDesafioLaunchPickers\|football-teams' "$WEB/admin-desafios.html" \
   || die "admin-desafios sem busca de time"
 grep -q 'market-suggest\|market-catalog.js' "$WEB/admin-desafios.html" \

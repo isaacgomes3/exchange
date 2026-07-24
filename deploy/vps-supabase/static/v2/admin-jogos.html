@@ -707,16 +707,12 @@
         <input id="manExternalId" placeholder="Ex: 10574843" />
       </div>
 
-      <details style="margin:18px 0 8px;border-top:1px solid var(--border);padding-top:14px">
-        <summary style="cursor:pointer;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted)">
-          Mercados de proteção (opcional)
-        </summary>
-        <p class="hint" style="margin:10px 0">Se vazio, cria LAY HOME @ 2.00 com R$ 2.000 de liquidez.</p>
-        <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
-          <button type="button" class="btn btn-primary btn-sm" id="btnAddMarket">+ Adicionar mercado</button>
-        </div>
-        <div id="manMarkets"></div>
-      </details>
+      <div class="sec-label" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <span>Mercados de proteção</span>
+        <button type="button" class="btn btn-primary btn-sm" id="btnAddMarket">+ Adicionar mercado</button>
+      </div>
+      <p class="hint" style="margin:0 0 12px">Preencha tipo, nome, odd e liquidez. Se remover todos, ao salvar cria LAY HOME @ 2.00 com R$ 2.000.</p>
+      <div id="manMarkets"></div>
 
       <div class="drawer-actions">
         <button type="button" class="btn btn-ghost" id="btnCancelManual">Cancelar</button>
@@ -1929,12 +1925,12 @@
               '<div class="field"><label>ID externo</label>' +
               '<input data-f="external_id" value="' + String(m.external_id || "").replace(/"/g, "&quot;") + '" placeholder="Ex: 1.22456" /></div>' +
               '<div class="field"><label>Odd</label>' +
-              '<input data-f="odd" value="' + (m.odd != null ? m.odd : "") + '" placeholder="Ex: 2.00" /></div>' +
+              '<input data-f="odd" inputmode="decimal" value="' + (m.odd != null && m.odd !== "" ? m.odd : "2.00") + '" placeholder="Ex: 2.00" /></div>' +
               '</div><div class="grid2">' +
               '<div class="field"><label>Liquidez real (R$)</label>' +
-              '<input data-f="liquidity_brl" value="' + (m.liquidity_brl != null ? m.liquidity_brl : "2000") + '" placeholder="Controla a entrada" /></div>' +
+              '<input data-f="liquidity_brl" inputmode="decimal" value="' + (m.liquidity_brl != null && m.liquidity_brl !== "" ? m.liquidity_brl : "2000") + '" placeholder="Ex: 2000" /></div>' +
               '<div class="field"><label>Liquidez exibida (R$) — opcional</label>' +
-              '<input data-f="display_brl" value="' + (m.display_brl != null ? m.display_brl : "") + '" placeholder="O que o usuário vê" /></div>' +
+              '<input data-f="display_brl" inputmode="decimal" value="' + (m.display_brl != null ? m.display_brl : "") + '" placeholder="O que o usuário vê" /></div>' +
               "</div></div>"
             );
           })
@@ -2004,8 +2000,17 @@
           $("manLiberarProtecao").classList.add("on");
           $("manLiberarProtecao").setAttribute("aria-pressed", "true");
         }
-        // Mercado padrão oculto — só cria no save se a lista estiver vazia
-        manualMarkets = [];
+        // Já abre com 1 mercado visível (tipo, nome, odd, liquidez)
+        manualMarkets = [
+          {
+            market_type: "LAY",
+            name: "Lay Casa",
+            external_id: "",
+            odd: "2.00",
+            liquidity_brl: "2000",
+            display_brl: "",
+          },
+        ];
         renderManualMarkets();
         var app = $("app");
         if (app) app.hidden = true;
