@@ -227,8 +227,8 @@
       /** Janela pós-kickoff do legado (9000s ≈ 2h30). */
       var LIVE_WINDOW_MS = 9000 * 1000;
       /**
-       * Grade do cliente: mostra jogos publicados na janela (mesmo sem liquidez).
-       * Sem liquidez → botão desabilitado. Saldo do usuário NÃO esconde a lista.
+       * Legado Je: jogo fica na grade só com liquidez restante e ainda na janela.
+       * Quando a liquidez esgota (used >= max ou liqLeft <= 0), sai da grade.
        */
       function isOnAvailableGrid(m) {
         if (!m || !m.starts_at) return false;
@@ -244,16 +244,16 @@
         ) {
           return false;
         }
-        // Precisa ter sido configurado com alguma liquidez (mesmo que já esgotada)
-        var max = Number(m.max_protection_cents || 0);
-        if (!(max > 0)) return false;
-        return start + LIVE_WINDOW_MS > now;
-      }
-      function hasProtectLiquidity(m) {
+        // Legado Je: max > 0 && used < max  → senão some da grade
         var max = Number(m.max_protection_cents || 0);
         var used = Number(m.used_protection_cents || 0);
         if (!(max > 0 && used < max)) return false;
-        return liqLeft(m) > 0;
+        // Reforço: liquidez restante (mercados ou partida) deve ser > 0
+        if (liqLeft(m) <= 0) return false;
+        return start + LIVE_WINDOW_MS > now;
+      }
+      function hasProtectLiquidity(m) {
+        return isOnAvailableGrid(m) && liqLeft(m) > 0;
       }
       function marketsOf(m) {
         if (Array.isArray(m.markets) && m.markets.length) return m.markets;
@@ -475,8 +475,8 @@
         return (
           '<div class="term-empty">' +
           '<div class="term-empty-ico" aria-hidden="true">☰</div>' +
-          "<h2>Sem partidas na janela agora</h2>" +
-          "<p>Isso não depende do seu saldo. Quando houver jogos publicados com liquidez, eles aparecem aqui para todos os usuários.</p>" +
+          "<h2>Sem partidas com liquidez</h2>" +
+          "<p>Só aparecem jogos com liquidez disponível. Quando a liquidez esgota, o jogo sai da grade automaticamente.</p>" +
           '<button type="button" class="term-sync-btn" id="btnSync">' +
           '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
           "Sincronizar API</button></div>"
@@ -592,7 +592,7 @@
             });
             if (!match) return;
             if (!hasProtectLiquidity(match)) {
-              showErr("Este jogo está sem liquidez no momento. Ele permanece visível, mas não aceita novas proteções.");
+              showErr("Este jogo ficou sem liquidez e não aceita novas proteções.");
               return;
             }
             var wallet =
