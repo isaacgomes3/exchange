@@ -9,7 +9,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-back-market-id.sh")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-748fbe8ab8c024d660ca01a4c6756bc4d6a49915}"
+REF="${ARBISHIELD_REF:-84ce0fba572cd9f7eab9c6af5480c5d2e5a96ca8}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
