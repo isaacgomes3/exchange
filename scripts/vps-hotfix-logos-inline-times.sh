@@ -6,7 +6,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-logos-inline-times.sh")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-REPLACE_SHA}"
+REF="${ARBISHIELD_REF:-75d58e956828751564e6ee16a759d9900ffcc734}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
