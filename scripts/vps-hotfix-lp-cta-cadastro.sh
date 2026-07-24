@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Landing: CTA "Criar conta gratuitamente" → /auth.html?mode=signup
+# Landing: CTA "Criar conta gratuitamente" → /cadastro.html
 #
 # Na VPS:
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-lp-cta-cadastro.sh")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-41701e66e31b6cf37a93ff9890b13814e72dfabc}"
+REF="${ARBISHIELD_REF:-REPLACE_SHA}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
@@ -21,23 +21,22 @@ dl() {
   curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 "$RAW/$1?v=$BUST" -o "$2"
 }
 
-log "1/2 UI — index.html (CTA cadastro)"
+log "1/3 UI — index.html (CTA → /cadastro.html)"
 dl "deploy/vps-supabase/static/v2/index.html" "$WEB/index.html"
 chmod 0644 "$WEB/index.html"
 cp -f "$WEB/index.html" "$WEB_ROOT/index.html"
-
 grep -q 'Criar conta gratuitamente' "$WEB/index.html" || die "CTA não encontrado"
-grep -q 'href="/auth.html?mode=signup"' "$WEB/index.html" || die "CTA sem mode=signup"
-# garante que o botão grande aponta para signup (não só o do header)
-grep -q 'lp-btn-lg" href="/auth.html?mode=signup"' "$WEB/index.html" \
-  || grep -q 'lp-btn-solid lp-btn-lg" href="/auth.html?mode=signup"' "$WEB/index.html" \
-  || die "botão grande ainda sem mode=signup"
+grep -q 'href="/cadastro.html"' "$WEB/index.html" || die "CTA sem /cadastro.html"
 
-log "2/2 UI — auth.html (formulário Criar conta; produção estava só-login)"
+log "2/3 UI — cadastro.html"
+dl "deploy/vps-supabase/static/v2/cadastro.html" "$WEB/cadastro.html"
+chmod 0644 "$WEB/cadastro.html"
+cp -f "$WEB/cadastro.html" "$WEB_ROOT/cadastro.html"
+grep -q 'id="fullName"' "$WEB/cadastro.html" || die "cadastro.html sem nome"
+
+log "3/3 UI — auth.html (redirect signup → cadastro)"
 dl "deploy/vps-supabase/static/v2/auth.html" "$WEB/auth.html"
 chmod 0644 "$WEB/auth.html"
 cp -f "$WEB/auth.html" "$WEB_ROOT/auth.html"
-grep -q 'data-mode="signup"' "$WEB/auth.html" || die "auth.html sem aba Criar conta"
-grep -q 'mode === "signup"' "$WEB/auth.html" || die "auth.html sem mode=signup"
 
-log "OK — CTA + auth com cadastro. Hard refresh na home e em /auth.html?mode=signup."
+log "OK — CTA vai para /cadastro.html. Hard refresh na home."

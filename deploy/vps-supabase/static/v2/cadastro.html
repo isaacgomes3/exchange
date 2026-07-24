@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>ArbiShield — Criar conta</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/blocked-emails.js?v=1"></script>
+  <script src="/v2.js"></script>
+  <style>
+    .ref-banner {
+      display: none; margin: 0 0 14px; padding: 10px 12px; border-radius: 10px;
+      border: 1px solid rgba(201,242,35,0.35); background: rgba(201,242,35,0.08);
+      color: #d7ff1f; font-size: 12px; font-weight: 700;
+    }
+    .ref-banner.show { display: block; }
+    .auth-alt { margin-top: 16px; text-align: center; font-size: 13px; color: var(--muted, #8a9a92); }
+    .auth-alt a { color: var(--lime, #c9f223); font-weight: 700; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="auth-shell">
+    <section class="auth-hero">
+      <a class="brand" href="/" aria-label="ArbiShield">
+        <img class="brand-logo lg" src="/brand/logo.png" srcset="/brand/logo.png 1x, /brand/logo@2x.png 2x" width="180" height="42" alt="ArbiShield" decoding="async" />
+      </a>
+      <div>
+        <h1>Crie sua <span>conta</span></h1>
+        <p>Cadastro rápido de apostador. Depois você entra na área do membro com o mesmo e-mail e senha.</p>
+      </div>
+      <p class="meta" style="margin:0">Sistema novo · isolado do SPA</p>
+    </section>
+    <section class="auth-panel">
+      <div class="auth-card">
+        <h2>Criar conta</h2>
+        <p class="sub">Cadastro de apostador</p>
+        <div id="refBanner" class="ref-banner"></div>
+        <div id="err" class="err"></div>
+        <form id="form">
+          <label for="fullName">Nome completo</label>
+          <input id="fullName" name="fullName" type="text" required autocomplete="name" minlength="3" />
+          <label for="email">E-mail</label>
+          <input id="email" name="email" type="email" required autocomplete="username" />
+          <label for="password">Senha</label>
+          <input id="password" name="password" type="password" required autocomplete="new-password" minlength="6" />
+          <button class="btn btn-primary" type="submit" id="btnSubmit">Criar conta</button>
+        </form>
+        <p class="auth-alt">Já tem conta? <a href="/auth.html">Entrar</a></p>
+      </div>
+    </section>
+  </div>
+  <script>
+    (async function () {
+      var REF_KEY = "arbishield_referral_code";
+      var params = new URLSearchParams(location.search);
+      var refCode = String(params.get("ref") || "").trim().toUpperCase();
+      if (refCode) {
+        try { localStorage.setItem(REF_KEY, refCode); } catch (e) {}
+      } else {
+        try { refCode = String(localStorage.getItem(REF_KEY) || "").trim().toUpperCase(); } catch (e) {}
+      }
+
+      var refBanner = document.getElementById("refBanner");
+      if (refCode) {
+        refBanner.textContent = "Indicacao: codigo " + refCode;
+        refBanner.classList.add("show");
+      }
+
+      var supa = ArbiV2.client();
+      try {
+        var session = await supa.auth.getSession();
+        if (session.data.session) {
+          try { await supa.auth.signOut(); } catch (e) {}
+        }
+      } catch (e) {}
+
+      async function applyReferral(token, code) {
+        if (!token || !code) return;
+        var res = await fetch("/api/arbishield/apply-referral", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify({ code: code }),
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok) throw new Error(data.error || "Falha ao vincular indicacao");
+        return data;
+      }
+
+      function mapAuthError(ex) {
+        var raw = String((ex && ex.message) || ex || "");
+        var code = String((ex && (ex.code || ex.error_code)) || "").toLowerCase();
+        var low = raw.toLowerCase();
+        if (low.indexOf("user already registered") >= 0 || code === "user_already_exists") {
+          return "Este e-mail já está cadastrado. Vá em Entrar com a senha atual.";
+        }
+        if (low.indexOf("email not confirmed") >= 0 || code === "email_not_confirmed") {
+          return (
+            "E-mail ainda não confirmado. Peça ao admin para confirmar sua conta."
+          );
+        }
+        if (low.indexOf("rate") >= 0 || code.indexOf("rate") >= 0) {
+          return "Muitas tentativas. Aguarde um minuto e tente de novo.";
+        }
+        return raw || "Falha no cadastro";
+      }
+
+      var btnSubmit = document.getElementById("btnSubmit");
+      document.getElementById("form").addEventListener("submit", async function (e) {
+        e.preventDefault();
+        var err = document.getElementById("err");
+        err.classList.remove("show");
+        var email = document.getElementById("email").value.trim();
+        var password = document.getElementById("password").value;
+        var name = document.getElementById("fullName").value.trim();
+        btnSubmit.disabled = true;
+        try {
+          if (!name || name.length < 3) throw new Error("Informe seu nome completo");
+          if (window.ArbiIsBlockedEmail && ArbiIsBlockedEmail(email)) {
+            throw new Error("Esta conta está bloqueada. Contate o suporte.");
+          }
+          if (ArbiV2.isBlockedEmail(email)) {
+            throw new Error("Esta conta está bloqueada. Contate o suporte.");
+          }
+          var up = await supa.auth.signUp({
+            email: email,
+            password: password,
+            options: { data: { full_name: name } },
+          });
+          if (up.error) throw up.error;
+          var sess = up.data.session;
+          if (!sess) {
+            var login = await supa.auth.signInWithPassword({ email: email, password: password });
+            if (login.error) {
+              err.textContent =
+                "Conta criada. Confirme o e-mail (se exigido) e entre para continuar.";
+              err.classList.add("show");
+              btnSubmit.disabled = false;
+              return;
+            }
+            sess = login.data.session;
+          }
+          if (sess && sess.user && ArbiV2.isBlockedEmail(sess.user.email)) {
+            await supa.auth.signOut();
+            throw new Error("Esta conta está bloqueada. Contate o suporte.");
+          }
+          var uid = sess && sess.user && sess.user.id;
+          if (uid && name) {
+            try {
+              await supa
+                .from("profiles")
+                .upsert({ id: uid, full_name: name }, { onConflict: "id" });
+            } catch (e2) {}
+          }
+          var code = refCode;
+          if (!code) {
+            try { code = String(localStorage.getItem(REF_KEY) || "").trim().toUpperCase(); } catch (e3) {}
+          }
+          if (code && sess && sess.access_token) {
+            await applyReferral(sess.access_token, code);
+            try { localStorage.removeItem(REF_KEY); } catch (e4) {}
+          }
+          location.replace("/app.html");
+        } catch (ex) {
+          err.textContent = mapAuthError(ex);
+          err.classList.add("show");
+          btnSubmit.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

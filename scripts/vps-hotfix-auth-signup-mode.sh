@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Publica auth.html completo (abas Entrar / Criar conta + ?mode=signup).
-# Em produção havia uma versão só-login que ignorava mode=signup.
+# Página dedicada de cadastro (/cadastro.html) + CTA da landing.
+# auth.html?mode=signup redireciona para /cadastro.html (não fica no login).
 #
 # Na VPS:
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-auth-signup-mode.sh")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-41701e66e31b6cf37a93ff9890b13814e72dfabc}"
+REF="${ARBISHIELD_REF:-REPLACE_SHA}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
@@ -22,20 +22,59 @@ dl() {
   curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 "$RAW/$1?v=$BUST" -o "$2"
 }
 
-log "1/2 UI — auth.html (cadastro + mode=signup)"
+log "1/4 UI — cadastro.html (formulário só de criar conta)"
+dl "deploy/vps-supabase/static/v2/cadastro.html" "$WEB/cadastro.html"
+chmod 0644 "$WEB/cadastro.html"
+cp -f "$WEB/cadastro.html" "$WEB_ROOT/cadastro.html"
+grep -q 'Criar conta' "$WEB/cadastro.html" || die "cadastro.html sem Criar conta"
+grep -q 'id="fullName"' "$WEB/cadastro.html" || die "cadastro.html sem campo nome"
+
+log "2/4 UI — auth.html (mode=signup → /cadastro.html)"
 dl "deploy/vps-supabase/static/v2/auth.html" "$WEB/auth.html"
 chmod 0644 "$WEB/auth.html"
 cp -f "$WEB/auth.html" "$WEB_ROOT/auth.html"
+grep -q '/cadastro.html' "$WEB/auth.html" || die "auth.html sem redirect para cadastro"
 
-grep -q 'data-mode="signup"' "$WEB/auth.html" || die "auth.html sem aba Criar conta"
-grep -q 'mode === "signup"' "$WEB/auth.html" || die "auth.html sem suporte a mode=signup"
-grep -q 'Criar conta' "$WEB/auth.html" || die "auth.html sem texto Criar conta"
-
-log "2/2 UI — index.html (CTA → ?mode=signup)"
+log "3/4 UI — index.html (CTA → /cadastro.html)"
 dl "deploy/vps-supabase/static/v2/index.html" "$WEB/index.html"
 chmod 0644 "$WEB/index.html"
 cp -f "$WEB/index.html" "$WEB_ROOT/index.html"
-grep -q 'href="/auth.html?mode=signup"' "$WEB/index.html" || die "CTA sem mode=signup"
+grep -q 'href="/cadastro.html"' "$WEB/index.html" || die "CTA sem /cadastro.html"
 
-log "OK — /auth.html?mode=signup abre o formulário de cadastro. Hard refresh (Ctrl+F5)."
-echo "  Teste: https://arbishield.app/auth.html?mode=signup"
+log "4/4 nginx — /cadastro e preservar query em /auth"
+patched=0
+for conf in \
+  /etc/nginx/sites-enabled/arbishield.app \
+  /etc/nginx/sites-available/arbishield.app \
+  /etc/nginx/conf.d/arbishield.app.conf \
+  /etc/nginx/conf.d/arbishield-cutover.conf; do
+  [[ -f "$conf" ]] || continue
+  # /auth deve preservar ?mode= / ?ref=
+  if grep -qE 'location = /auth' "$conf"; then
+    if grep -qE 'location = /auth \{ return 302 /auth\.html; ?\}' "$conf" \
+      || grep -qE 'location = /auth \{ return 302 /auth\.html\$; ?\}' "$conf"; then
+      sed -i 's|location = /auth { return 302 /auth\.html; }|location = /auth { return 302 /auth.html$is_args$args; }|g' "$conf" || true
+      sed -i 's|location = /auth { return 302 /auth\.html\$; }|location = /auth { return 302 /auth.html$is_args$args; }|g' "$conf" || true
+      patched=1
+    fi
+    if ! grep -qE 'location = /auth \{ return 302 /auth\.html\$is_args\$args; \}' "$conf"; then
+      if grep -q 'location = /auth { return 302 /auth.html; }' "$conf"; then
+        sed -i 's|location = /auth { return 302 /auth.html; }|location = /auth { return 302 /auth.html$is_args$args; }|' "$conf"
+        patched=1
+      fi
+    fi
+  fi
+  if ! grep -q 'location = /cadastro' "$conf"; then
+    if grep -q 'location = /auth' "$conf"; then
+      sed -i '/location = \/auth {/a\    location = /cadastro { return 302 /cadastro.html$is_args$args; }\n    location = /register { return 302 /cadastro.html$is_args$args; }\n    location = /signup { return 302 /cadastro.html$is_args$args; }' "$conf"
+      patched=1
+    fi
+  fi
+done
+if [[ "$patched" -eq 1 ]] && command -v nginx >/dev/null 2>&1; then
+  nginx -t && systemctl reload nginx || die "nginx -t/reload falhou"
+fi
+
+log "OK — CTA abre /cadastro.html com formulário de criar conta."
+echo "  Teste: https://arbishield.app/cadastro.html"
+echo "  Hard refresh (Ctrl+F5) na home."
