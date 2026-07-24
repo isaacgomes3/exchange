@@ -5,7 +5,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-desafio-retorno-percentual.sh")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-PLACEHOLDER_SHA}"
+REF="${ARBISHIELD_REF:-3643db7b2a70b652cf46befa8d910a6bfa89f2e2}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
