@@ -157,7 +157,7 @@
           var cents = Number(prof.data && prof.data.desafio_balance_cents) || 0;
           desafioBalCents = cents;
           if (balEl) balEl.textContent = money(cents);
-          var unlocked = cents >= MIN_ACCESS_CENTS;
+          var unlocked = cents > 0;
           if (titleEl) {
             titleEl.textContent = unlocked
               ? "Acesso aos desafios liberado"
@@ -166,7 +166,7 @@
           if (hintEl) {
             hintEl.textContent = unlocked
               ? "Saldo exclusivo do Desafio. Use nas entradas do ciclo — separado do saldo do apostador."
-              : "Deposite via PIX o valor mínimo (R$ 200) para liberar o acesso aos desafios disponíveis.";
+              : "Deposite via PIX no saldo do Desafio para liberar o acesso aos eventos disponíveis.";
           }
           if (box) box.classList.toggle("is-unlocked", unlocked);
           var filters = document.getElementById("filters");
@@ -593,11 +593,9 @@
       function render() {
         var now = Date.now();
         var host = document.getElementById("list");
-        if (desafioBalCents < MIN_ACCESS_CENTS) {
+        if (!(desafioBalCents > 0)) {
           host.innerHTML =
-            '<div class="ops-empty"><h2>Acesso aos desafios bloqueado</h2><p>Deposite pelo menos ' +
-            money(MIN_ACCESS_CENTS) +
-            ' no saldo do Desafio para ver e entrar nos jogos disponíveis.</p></div>';
+            '<div class="ops-empty"><h2>Acesso aos desafios bloqueado</h2><p>Deposite no saldo do Desafio para ver e entrar nos jogos disponíveis.</p></div>';
           return;
         }
         var visible = applyFilter(items);
