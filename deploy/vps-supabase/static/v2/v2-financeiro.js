@@ -1209,62 +1209,27 @@
     });
   }
 
+  var TRANSFER_DESAFIO_BLOCKED =
+    "Transferência interna para a banca do Desafio está bloqueada. Deposite via PIX no saldo do Desafio.";
+
   function openTransfer() {
-    var modal = document.getElementById("finTransferModal");
-    var banca = Number(state.transferableReal != null ? state.transferableReal : state.realBalance) || 0;
-    var max = Math.floor(banca / 2);
-    setText("finTransferAvail", money(banca));
-    setText("finTransferMax", money(max));
-    document.getElementById("finTransferAmount").value = "";
-    var err = document.getElementById("finTransferErr");
-    err.hidden = true;
-    err.textContent = "";
-    modal.setAttribute("aria-hidden", "false");
-    modal.classList.add("open");
+    alert(TRANSFER_DESAFIO_BLOCKED);
+    closeTransfer();
   }
   function closeTransfer() {
     var modal = document.getElementById("finTransferModal");
+    if (!modal) return;
     modal.setAttribute("aria-hidden", "true");
     modal.classList.remove("open");
   }
 
   async function submitTransfer() {
     var err = document.getElementById("finTransferErr");
-    var raw = document.getElementById("finTransferAmount").value || "";
-    var normalized = raw.replace(/\./g, "").replace(",", ".");
-    var reais = parseFloat(normalized);
-    var cents = Math.round((reais || 0) * 100);
-    if (!cents || cents <= 0) {
-      err.textContent = "Informe um valor válido.";
+    if (err) {
+      err.textContent = TRANSFER_DESAFIO_BLOCKED;
       err.hidden = false;
-      return;
-    }
-    var btn = document.getElementById("finTransferSubmit");
-    btn.disabled = true;
-    try {
-      var supa = ArbiV2.client();
-      var sess = await supa.auth.getSession();
-      var token = sess && sess.data && sess.data.session && sess.data.session.access_token;
-      if (!token) throw new Error("Sessão expirada");
-      var res = await fetch("/api/arbishield/transfer-desafio", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + token,
-        },
-        body: JSON.stringify({ amountCents: cents }),
-      });
-      var data = await res.json().catch(function () {
-        return {};
-      });
-      if (!res.ok) throw new Error(data.error || "Falha na transferência");
-      closeTransfer();
-      location.reload();
-    } catch (ex) {
-      err.textContent = ex.message || "Erro";
-      err.hidden = false;
-    } finally {
-      btn.disabled = false;
+    } else {
+      alert(TRANSFER_DESAFIO_BLOCKED);
     }
   }
 
@@ -1469,8 +1434,25 @@
           .scrollIntoView({ behavior: "smooth" });
       });
     }
-    document.getElementById("finOpenTransfer").addEventListener("click", openTransfer);
-    document.getElementById("finTransferSubmit").addEventListener("click", submitTransfer);
+    var openTransferBtn = document.getElementById("finOpenTransfer");
+    if (openTransferBtn) {
+      openTransferBtn.disabled = true;
+      openTransferBtn.setAttribute("aria-disabled", "true");
+      openTransferBtn.classList.add("is-disabled");
+      openTransferBtn.title = TRANSFER_DESAFIO_BLOCKED;
+      openTransferBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        openTransfer();
+      });
+    }
+    var transferSubmit = document.getElementById("finTransferSubmit");
+    if (transferSubmit) {
+      transferSubmit.disabled = true;
+      transferSubmit.addEventListener("click", function (e) {
+        e.preventDefault();
+        submitTransfer();
+      });
+    }
     document.getElementById("finTransferModal").addEventListener("click", function (e) {
       if (e.target && e.target.getAttribute && e.target.getAttribute("data-fin-close") === "1") {
         closeTransfer();

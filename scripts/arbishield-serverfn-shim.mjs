@@ -2080,70 +2080,16 @@ async function requestDeductionWithdrawal(token, body) {
   return { ok: true, withdrawal: row, amountCents, availableAfter: afterCents };
 }
 
-async function transferRealToDesafio(token, body) {
-  const userId = requireUserId(token);
-  const amountCents = Math.round(Number(body?.amountCents ?? body?.amount_cents ?? 0));
-  if (!Number.isFinite(amountCents) || amountCents <= 0) {
-    throw new Error("Valor inválido");
-  }
-  const rows = await sb(
-    `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents,desafio_balance_cents&id=eq.${userId}&limit=1`,
-    { token: SERVICE_KEY }
+async function transferRealToDesafio(_token, _body) {
+  // Bloqueado por pedido do produto: sem transferência Banca → Desafio.
+  // Cliente deve depositar via PIX no saldo do Desafio.
+  void _token;
+  void _body;
+  const err = new Error(
+    "Transferência interna para a banca do Desafio está bloqueada. Deposite via PIX no saldo do Desafio."
   );
-  const p = Array.isArray(rows) ? rows[0] : null;
-  if (!p) throw new Error("Perfil não encontrado");
-  // Só saldo real livre. Nunca reusable (legado) nem locked/congelado em proteção.
-  const balance = n(p.balance_cents);
-  const desafio = n(p.desafio_balance_cents);
-  const banca = balance;
-  const maxTransfer = Math.floor(banca / 2);
-  if (amountCents > maxTransfer) {
-    throw new Error(
-      `Valor acima do limite de 50% do saldo da banca (máx. ${(maxTransfer / 100).toFixed(2)})`
-    );
-  }
-  if (amountCents > banca) throw new Error("Saldo insuficiente");
-
-  const nextBalance = balance - amountCents;
-
-  await sb(`/rest/v1/profiles?id=eq.${userId}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: {
-      balance_cents: nextBalance,
-      desafio_balance_cents: desafio + amountCents,
-      updated_at: new Date().toISOString(),
-    },
-  });
-
-  try {
-    await sb("/rest/v1/wallet_transactions", {
-      method: "POST",
-      token: SERVICE_KEY,
-      body: {
-        user_id: userId,
-        type: "transfer_to_desafio",
-        amount_cents: -amountCents,
-        balance_after_cents: nextBalance,
-        metadata: {
-          destino: "desafio",
-          amount_cents: amountCents,
-          from: "balance_cents",
-        },
-      },
-    });
-  } catch {
-    /* extrato opcional */
-  }
-
-  return {
-    ok: true,
-    amountCents,
-    balance_cents: nextBalance,
-    reusable_balance_cents: n(p.reusable_balance_cents),
-    locked_balance_cents: n(p.locked_balance_cents),
-    desafio_balance_cents: desafio + amountCents,
-  };
+  err.status = 403;
+  throw err;
 }
 
 /** Remove do saldo usável do Desafio o valor retido/congelado do ciclo (não é stake de entrada). */
@@ -6679,22 +6625,12 @@ const server = createServer(async (req, res) => {
   }
 
   if (url.pathname === "/api/arbishield/transfer-desafio" && req.method === "POST") {
-    try {
-      const token = bearerFromReq(req);
-      const raw = await parseBody(req);
-      let body = {};
-      try {
-        body = JSON.parse(raw || "{}");
-      } catch {
-        body = {};
-      }
-      const data = await transferRealToDesafio(token, body.data || body);
-      return sendJson(res, 200, data);
-    } catch (err) {
-      return sendJson(res, 400, {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+    return sendJson(res, 403, {
+      ok: false,
+      error:
+        "Transferência interna para a banca do Desafio está bloqueada. Deposite via PIX no saldo do Desafio.",
+      blocked: true,
+    });
   }
 
   if (url.pathname === "/api/arbishield/affiliate-ensure-code" && req.method === "POST") {

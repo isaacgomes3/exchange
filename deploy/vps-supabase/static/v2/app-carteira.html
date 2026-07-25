@@ -4,14 +4,24 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
+  <meta name="arbishield-build" content="carteira-block-transfer-desafio-v1" />
   <title>Centro Financeiro — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css" />
+  <link rel="stylesheet" href="/v2.css?v=block-xfer-desafio-1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
   <script src="/v2-shell.js" defer></script>
-  <script src="/v2-financeiro.js" defer></script>
+  <script src="/v2-financeiro.js?v=block-xfer-desafio-1" defer></script>
+  <style>
+    .fin-action.is-disabled,
+    .fin-action:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      filter: grayscale(0.35);
+      pointer-events: none;
+    }
+  </style>
 </head>
 <body data-shell="app" data-active="carteira">
   <div class="fin-page">
@@ -275,7 +285,7 @@
           <button type="button" class="fin-action" id="finFilterReembolso">Extrato Reembolso</button>
           <button type="button" class="fin-action" id="finScrollExtrato">Extrato Completo</button>
           <button type="button" class="fin-action" id="finFilterProofs">Comprovantes Pagos</button>
-          <button type="button" class="fin-action" id="finOpenTransfer">Transferência Interna</button>
+          <button type="button" class="fin-action is-disabled" id="finOpenTransfer" disabled title="Transferência interna Banca → Desafio bloqueada. Use depósito PIX no Desafio." aria-disabled="true">Transferência Interna (bloqueada)</button>
         </div>
       </aside>
     </section>
