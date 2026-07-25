@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Proteger (cliente): botão Sincronizar API sempre visível (header + empty state).
+# Proteger (cliente): REMOVE o botão "Sincronizar API" da área do cliente.
 set -euo pipefail
 
 REF="${ARBISHIELD_REF:-cursor/fix-proteger-js-e85c}"
@@ -32,16 +32,21 @@ download_repo_file() {
   [[ -s "$out" ]] || die "download vazio: $rel"
 }
 
-log "1/1 UI app-proteger.html"
+log "1/1 UI app-proteger.html (sem Sincronizar API no cliente)"
 tmp_html="$(mktemp)"
 download_repo_file "deploy/vps-supabase/static/v2/app-proteger.html" "$tmp_html"
-grep -q 'proteger-sync-api-btn-v10' "$tmp_html" || die "sem marker proteger-sync-api-btn-v10"
-grep -q 'btnSyncApiHead' "$tmp_html" || die "sem botão header Sincronizar API"
-grep -q 'syncGrade' "$tmp_html" || die "sem syncGrade"
-grep -q 'Sincronizar API' "$tmp_html" || die "sem texto Sincronizar API"
+grep -q 'proteger-sem-sync-api-cliente-v11' "$tmp_html" || die "sem marker proteger-sem-sync-api-cliente-v11"
+grep -q 'Sem partidas com liquidez' "$tmp_html" || die "sem empty state"
+# Não pode ter o botão de sync API no cliente
+if grep -q 'Sincronizar API' "$tmp_html"; then
+  die "ainda contém texto Sincronizar API"
+fi
+if grep -qE 'btnSyncApiHead|id="btnSync"' "$tmp_html"; then
+  die "ainda contém botão sync API"
+fi
 
 while IFS= read -r -d '' f; do
-  cp -a "$f" "${f}.bak-sync-btn-$(date +%s)" 2>/dev/null || true
+  cp -a "$f" "${f}.bak-no-sync-btn-$(date +%s)" 2>/dev/null || true
   cp -f "$tmp_html" "$f"
   chmod 0644 "$f"
   echo "  OK $f"
@@ -56,5 +61,4 @@ done
 rm -f "$tmp_html"
 
 log "OK — Ctrl+Shift+R em /app-proteger.html"
-echo "  Botão Sincronizar API no topo + no empty state da grade."
-echo "  Hotfix: bash <(curl -fsSL https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}/scripts/vps-hotfix-proteger-sync-api-btn.sh)"
+echo "  Cliente sem botão Sincronizar API (só ícone atualizar + auto-refresh)."
