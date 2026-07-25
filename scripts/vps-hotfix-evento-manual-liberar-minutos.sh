@@ -2,11 +2,11 @@
 # Hotfix: opção "Liberar entrada quantos minutos antes" no evento manual
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/CURSOR_SHA/scripts/vps-hotfix-evento-manual-liberar-minutos.sh?v=1")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/d9acaed3f997e3067d1909b19348a150afeb435d/scripts/vps-hotfix-evento-manual-liberar-minutos.sh?v=1")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/evento-manual-liberar-minutos-3cf9}"
-REF="${ARBISHIELD_REF:-$BRANCH}"
+REF="${ARBISHIELD_REF:-d9acaed3f997e3067d1909b19348a150afeb435d}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
