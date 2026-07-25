@@ -37,7 +37,7 @@ tmpd="$(mktemp -d)"
 n=0
 for f in \
   index.html auth.html bots.html criar.html modelos.html ordens.html integracoes.html \
-  botshield.css botshield.js botshield-shell.js; do
+  conta-betbra.html botshield.css botshield.js botshield-shell.js; do
   fetch "deploy/vps-supabase/static/botshield/$f" "$tmpd/$f" || die "falha $f"
   cp -f "$tmpd/$f" "$WEB_ROOT/$f"
   chmod 0644 "$WEB_ROOT/$f"
@@ -47,12 +47,42 @@ done
 rm -rf "$tmpd"
 
 grep -q 'data-active="bots"' "$WEB_ROOT/bots.html" || die "bots.html sem marker"
+grep -q 'conta-betbra' "$WEB_ROOT/botshield-shell.js" || die "nav sem Conta BetBra"
 grep -q 'botshield.arbishield.app' "$WEB_ROOT/botshield.js" || die "host check ausente"
-# garantia: não misturar no v2 principal
-if [[ -f /var/www/arbishield/v2/bots.html ]] && grep -q 'botshield' /var/www/arbishield/v2/bots.html 2>/dev/null; then
-  echo "  AVISO: há bots.html no v2 principal — remova se quiser isolamento total"
+
+# API: login/senha BetBra + status (shim + service)
+SHIM_DIR="${ARBISHIELD_SHIM_DIR:-/opt/arbishield/scripts}"
+[[ -d /opt/arbishield/scripts ]] || SHIM_DIR="/var/www/arbishield/scripts"
+mkdir -p "$SHIM_DIR/lib"
+fetch "scripts/lib/exchange-orders-service.mjs" "$SHIM_DIR/lib/exchange-orders-service.mjs" \
+  || echo "  AVISO: service orders não atualizado"
+fetch "scripts/lib/exchange-orders-adapter.mjs" "$SHIM_DIR/lib/exchange-orders-adapter.mjs" \
+  || true
+fetch "scripts/lib/exchange-orders-contract.mjs" "$SHIM_DIR/lib/exchange-orders-contract.mjs" \
+  || true
+if [[ -f "$SHIM_DIR/arbishield-serverfn-shim.mjs" ]] || fetch "scripts/arbishield-serverfn-shim.mjs" "$SHIM_DIR/arbishield-serverfn-shim.mjs"; then
+  grep -q 'exchange-session/status' "$SHIM_DIR/arbishield-serverfn-shim.mjs" \
+    && echo "  OK shim com exchange-session/status" \
+    || echo "  AVISO: shim sem status — rode hotfix exchange-orders"
+  systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 fi
 
+# nginx: inclui exchange-session/status
+tmpc="$(mktemp)"
+if [[ -f /etc/letsencrypt/live/botshield.arbishield.app/fullchain.pem ]] \
+  && fetch "deploy/vps-supabase/nginx-botshield.arbishield.app.conf" "$tmpc"; then
+  if [[ -d /etc/nginx/sites-available ]]; then
+    cp -f "$tmpc" /etc/nginx/sites-available/botshield.arbishield.app
+    ln -sfn /etc/nginx/sites-available/botshield.arbishield.app \
+      /etc/nginx/sites-enabled/botshield.arbishield.app 2>/dev/null || true
+  else
+    cp -f "$tmpc" /etc/nginx/conf.d/botshield.arbishield.app.conf
+  fi
+  nginx -t && (systemctl reload nginx || true)
+  echo "  OK nginx botshield (status path)"
+fi
+rm -f "$tmpc"
+
 echo ""
-echo "OK ($n arquivos). https://botshield.arbishield.app/bots.html"
+echo "OK ($n arquivos UI). Conta BetBra: https://botshield.arbishield.app/conta-betbra.html"
 echo "Hard refresh. Sem entrada no menu de clientes/admin."

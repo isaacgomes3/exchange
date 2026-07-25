@@ -45,7 +45,7 @@ mkdir -p "$WEB_ROOT"
 tmpd="$(mktemp -d)"
 for f in \
   index.html auth.html bots.html criar.html modelos.html ordens.html integracoes.html \
-  botshield.css botshield.js botshield-shell.js; do
+  conta-betbra.html botshield.css botshield.js botshield-shell.js; do
   fetch "deploy/vps-supabase/static/botshield/$f" "$tmpd/$f" || die "falha $f"
   cp -f "$tmpd/$f" "$WEB_ROOT/$f"
   chmod 0644 "$WEB_ROOT/$f"

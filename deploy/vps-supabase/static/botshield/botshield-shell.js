@@ -22,6 +22,11 @@
     {
       label: "Integrações",
       items: [
+        {
+          href: "/conta-betbra.html",
+          id: "conta-betbra",
+          title: "Conta BetBra",
+        },
         { href: "/integracoes.html", id: "integracoes", title: "Minhas integrações" },
       ],
     },
@@ -132,6 +137,7 @@
       criar: "Criar bot",
       modelos: "Modelos de Bots",
       ordens: "Minhas ordens",
+      "conta-betbra": "Conta BetBra",
       integracoes: "Minhas integrações",
     };
     top.querySelector("strong").textContent = titles[active] || "BotShield";

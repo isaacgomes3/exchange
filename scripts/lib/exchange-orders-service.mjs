@@ -70,29 +70,65 @@ export function createExchangeOrdersService(deps) {
     throw err;
   }
 
+  function maskLogin(login) {
+    const s = String(login || "").trim();
+    if (!s) return null;
+    if (s.includes("@")) {
+      const [u, d] = s.split("@");
+      const head = u.slice(0, Math.min(2, u.length));
+      return `${head}***@${d}`;
+    }
+    if (s.length <= 3) return "***";
+    return `${s.slice(0, 2)}***${s.slice(-1)}`;
+  }
+
   async function connectSession(token, body) {
     const userId = await requireUserId(token);
     let accessToken = String(
       body?.accessToken || body?.sessionToken || body?.token || ""
     ).trim();
     const provider = String(body?.provider || "demo").toLowerCase();
+    const login = String(
+      body?.login || body?.email || body?.username || body?.user || ""
+    ).trim();
+    const password = String(body?.password || body?.senha || "").trim();
     // Atalho demo: sem token da casa, aceita "demo" / vazio com provider=demo
-    if (!accessToken && (provider === "demo" || body?.demo === true)) {
+    if (!accessToken && (provider === "demo" || body?.demo === true) && !login) {
       accessToken = "demo";
     }
-    if (!accessToken) {
-      const err = new Error("accessToken / sessionToken obrigatório");
+    // Conta BetBra: login+senha criptografados (sem devolver a senha nas respostas)
+    if (!accessToken && login && password) {
+      accessToken = `cred:${login}`;
+    }
+    if (!accessToken && !(login && password)) {
+      const err = new Error(
+        "Informe login+senha da BetBra, ou accessToken / sessionToken"
+      );
+      err.status = 400;
+      throw err;
+    }
+    if (login && !password && provider !== "demo") {
+      const err = new Error("Senha da BetBra obrigatória junto com o login");
       err.status = 400;
       throw err;
     }
     const payload = {
-      accessToken,
+      accessToken: accessToken || `cred:${login}`,
       refreshToken: body?.refreshToken || null,
       expiresAt: body?.expiresAt || null,
-      accountLabel: body?.accountLabel || body?.label || (provider === "demo" ? "Conta demo" : null),
+      accountLabel:
+        body?.accountLabel ||
+        body?.label ||
+        (login ? login : provider === "demo" ? "Conta demo" : null),
       extraHeaders: body?.extraHeaders || null,
       connectedAt: new Date().toISOString(),
       demo: provider === "demo" || accessToken === "demo",
+      login: login || null,
+      // senha só no blob AES-GCM — nunca em metadata / response
+      password: password || null,
+      authMode: password ? "credentials" : accessToken?.startsWith("cred:")
+        ? "credentials"
+        : "token",
     };
     const sessionEnc = encryptSessionPayload(payload);
     const now = new Date().toISOString();
@@ -105,6 +141,9 @@ export function createExchangeOrdersService(deps) {
       metadata: {
         provider,
         has_refresh: !!payload.refreshToken,
+        has_login: !!login,
+        login_masked: maskLogin(login),
+        auth_mode: payload.authMode,
         contract: EXCHANGE_ORDERS_CONTRACT_VERSION,
       },
       updated_at: now,
@@ -132,6 +171,9 @@ export function createExchangeOrdersService(deps) {
         provider,
         status: "active",
         demo: !!payload.demo,
+        hasLogin: !!login,
+        loginMasked: maskLogin(login),
+        authMode: payload.authMode,
         contract: EXCHANGE_ORDERS_CONTRACT_VERSION,
         adapter: adapter.provider,
         live:
@@ -143,9 +185,68 @@ export function createExchangeOrdersService(deps) {
     }
   }
 
+  /** Status da sessão (login mascarado — nunca devolve senha). */
+  async function sessionStatus(token, query = {}) {
+    const userId = await requireUserId(token);
+    const provider = String(query?.provider || "betbra").toLowerCase();
+    try {
+      const rows = await sb(
+        `/rest/v1/exchange_connections?user_id=eq.${encodeURIComponent(userId)}&status=eq.active&provider=eq.${encodeURIComponent(provider)}&select=id,provider,status,account_label,metadata,connected_at,updated_at&order=connected_at.desc&limit=1`,
+        { token: serviceKey }
+      );
+      const conn = Array.isArray(rows) ? rows[0] : null;
+      if (!conn) {
+        return {
+          ok: true,
+          connected: false,
+          provider,
+          hasLogin: false,
+          hasPassword: false,
+          loginMasked: null,
+        };
+      }
+      let hasPassword = false;
+      let loginMasked = conn.metadata?.login_masked || null;
+      let authMode = conn.metadata?.auth_mode || null;
+      try {
+        const full = await sb(
+          `/rest/v1/exchange_connections?id=eq.${encodeURIComponent(conn.id)}&select=session_enc&limit=1`,
+          { token: serviceKey }
+        );
+        const enc = Array.isArray(full) ? full[0]?.session_enc : full?.session_enc;
+        if (enc) {
+          const session = decryptSessionPayload(enc);
+          hasPassword = !!session?.password;
+          if (!loginMasked && session?.login) loginMasked = maskLogin(session.login);
+          authMode = session?.authMode || authMode;
+        }
+      } catch {
+        /* ignore decrypt errors */
+      }
+      return {
+        ok: true,
+        connected: true,
+        connectionId: conn.id,
+        provider: conn.provider,
+        status: conn.status,
+        accountLabel: conn.account_label,
+        hasLogin: !!conn.metadata?.has_login || !!loginMasked,
+        hasPassword,
+        loginMasked,
+        authMode,
+        connectedAt: conn.connected_at,
+        demo: conn.provider === "demo",
+        contract: EXCHANGE_ORDERS_CONTRACT_VERSION,
+      };
+    } catch (err) {
+      return ensureTablesHint(err);
+    }
+  }
+
   async function disconnectSession(token, body) {
     const userId = await requireUserId(token);
     const connectionId = String(body?.connectionId || body?.id || "").trim();
+    const provider = String(body?.provider || "").trim().toLowerCase();
     const now = new Date().toISOString();
     try {
       if (connectionId) {
@@ -158,14 +259,15 @@ export function createExchangeOrdersService(deps) {
           }
         );
       } else {
-        await sb(
-          `/rest/v1/exchange_connections?user_id=eq.${encodeURIComponent(userId)}&status=eq.active`,
-          {
-            method: "PATCH",
-            token: serviceKey,
-            body: { status: "revoked", updated_at: now, session_enc: null },
-          }
-        );
+        let path = `/rest/v1/exchange_connections?user_id=eq.${encodeURIComponent(userId)}&status=eq.active`;
+        if (provider) {
+          path += `&provider=eq.${encodeURIComponent(provider)}`;
+        }
+        await sb(path, {
+          method: "PATCH",
+          token: serviceKey,
+          body: { status: "revoked", updated_at: now, session_enc: null },
+        });
       }
       return { ok: true };
     } catch (err) {
@@ -342,6 +444,7 @@ export function createExchangeOrdersService(deps) {
   return {
     connectSession,
     disconnectSession,
+    sessionStatus,
     placeOrder,
     cancelOrder,
     orderStatus,

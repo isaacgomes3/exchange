@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Conta BetBra — BotShield</title>
+  <link rel="stylesheet" href="/botshield.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/botshield.js"></script>
+  <script src="/botshield-shell.js" defer></script>
+</head>
+<body data-active="conta-betbra">
+  <div id="page" hidden>
+    <div class="page-head">
+      <div>
+        <h1>Conta BetBra</h1>
+        <p class="sub">
+          Login e senha da exchange — guardados criptografados. Só neste subdomínio.
+        </p>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px">
+      <h2>Status</h2>
+      <p id="statusLine" class="notice" style="margin:0">Carregando…</p>
+      <div id="statusBox" class="form-grid" style="margin-top:14px;display:none">
+        <div class="field" style="flex-direction:column;align-items:flex-start;padding:12px;gap:4px">
+          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Login</span>
+          <strong id="stLogin">—</strong>
+        </div>
+        <div class="field" style="flex-direction:column;align-items:flex-start;padding:12px;gap:4px">
+          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Senha</span>
+          <strong id="stPass">—</strong>
+        </div>
+        <div class="field" style="flex-direction:column;align-items:flex-start;padding:12px;gap:4px">
+          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Rótulo</span>
+          <strong id="stLabel">—</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Salvar login e senha</h2>
+      <p>
+        Use o e-mail/usuário e a senha da sua conta na BetBra / Mexchange.
+        A senha <strong>nunca</strong> é exibida de volta — só confirmação de que está salva.
+      </p>
+      <div id="err" class="err"></div>
+      <div id="ok" class="notice" style="display:none;color:var(--good);border-color:rgba(61,222,160,.35);background:rgba(61,222,160,.08)"></div>
+      <form id="form" class="form-grid" autocomplete="off">
+        <label>
+          Login / e-mail BetBra
+          <input
+            name="login"
+            id="login"
+            type="text"
+            required
+            autocomplete="username"
+            placeholder="seu@email.com"
+          />
+        </label>
+        <label>
+          Senha BetBra
+          <input
+            name="password"
+            id="password"
+            type="password"
+            required
+            autocomplete="current-password"
+            placeholder="••••••••"
+          />
+        </label>
+        <label>
+          Mostrar senha ao digitar
+          <span style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" id="showPass" style="width:auto;accent-color:var(--accent)" />
+            <span style="color:var(--muted);font-size:13px">revelar no campo (só enquanto digita)</span>
+          </span>
+        </label>
+        <label>
+          Rótulo da conta (opcional)
+          <input name="accountLabel" placeholder="Ex.: Conta principal" />
+        </label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" type="submit">Salvar credenciais</button>
+          <button class="btn btn-secondary" type="button" id="btnDisconnect">
+            Remover conta
+          </button>
+        </div>
+      </form>
+      <p class="notice">
+        Armazenamento AES-GCM no servidor (exchange_connections). Não aparece no app
+        nem no admin ArbiShield — só em botshield.arbishield.app.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener("botshield:ready", async (ev) => {
+      const { sb } = ev.detail;
+      const err = document.getElementById("err");
+      const ok = document.getElementById("ok");
+      const statusLine = document.getElementById("statusLine");
+      const statusBox = document.getElementById("statusBox");
+
+      async function bearer() {
+        const { data } = await sb.auth.getSession();
+        return data?.session?.access_token || "";
+      }
+
+      async function refreshStatus() {
+        statusLine.textContent = "Consultando…";
+        statusBox.style.display = "none";
+        try {
+          const res = await fetch(
+            "/api/arbishield/exchange-session/status?provider=betbra",
+            {
+              headers: {
+                Accept: "application/json",
+                Authorization: "Bearer " + (await bearer()),
+              },
+            }
+          );
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || "Falha ao ler status");
+          if (!json.connected) {
+            statusLine.textContent =
+              "Nenhuma conta BetBra salva. Preencha login e senha abaixo.";
+            return;
+          }
+          statusLine.textContent =
+            "Conta conectada" +
+            (json.connectedAt
+              ? " · desde " + new Date(json.connectedAt).toLocaleString("pt-BR")
+              : "");
+          statusBox.style.display = "grid";
+          document.getElementById("stLogin").textContent =
+            json.loginMasked || "(login salvo)";
+          document.getElementById("stPass").textContent = json.hasPassword
+            ? "•••••••• (salva)"
+            : "não salva";
+          document.getElementById("stLabel").textContent =
+            json.accountLabel || "—";
+          if (json.loginMasked && json.loginMasked.includes("@")) {
+            // pré-preenche só o formato — usuário redigita login completo ao atualizar
+          }
+        } catch (ex) {
+          statusLine.textContent =
+            (ex instanceof Error ? ex.message : String(ex)) +
+            " — se a API não estiver no ar, rode o hotfix de ordens + BotShield.";
+        }
+      }
+
+      document.getElementById("showPass").addEventListener("change", (e) => {
+        document.getElementById("password").type = e.target.checked
+          ? "text"
+          : "password";
+      });
+
+      document.getElementById("form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        err.classList.remove("show");
+        ok.style.display = "none";
+        const fd = new FormData(e.target);
+        const login = String(fd.get("login") || "").trim();
+        const password = String(fd.get("password") || "");
+        const accountLabel = String(fd.get("accountLabel") || "").trim();
+        if (!login || !password) {
+          err.textContent = "Login e senha obrigatórios";
+          err.classList.add("show");
+          return;
+        }
+        try {
+          const res = await fetch("/api/arbishield/exchange-session/connect", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + (await bearer()),
+            },
+            body: JSON.stringify({
+              provider: "betbra",
+              login,
+              password,
+              accountLabel: accountLabel || login,
+            }),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || "Falha ao salvar");
+          document.getElementById("password").value = "";
+          document.getElementById("showPass").checked = false;
+          document.getElementById("password").type = "password";
+          ok.style.display = "block";
+          ok.textContent =
+            "Credenciais salvas · login " +
+            (json.loginMasked || "ok") +
+            " · senha criptografada";
+          await refreshStatus();
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+        }
+      });
+
+      document.getElementById("btnDisconnect").addEventListener("click", async () => {
+        err.classList.remove("show");
+        ok.style.display = "none";
+        if (!confirm("Remover login/senha BetBra salvos?")) return;
+        try {
+          const res = await fetch("/api/arbishield/exchange-session/disconnect", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + (await bearer()),
+            },
+            body: JSON.stringify({ provider: "betbra" }),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || "Falha ao remover");
+          ok.style.display = "block";
+          ok.textContent = "Conta BetBra removida.";
+          await refreshStatus();
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+        }
+      });
+
+      await refreshStatus();
+    });
+  </script>
+</body>
+</html>
