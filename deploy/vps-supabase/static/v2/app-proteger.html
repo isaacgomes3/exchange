@@ -347,14 +347,18 @@
 
       function updatePreview() {
         if (!state.selected) return;
-        var amountReais = Number(document.getElementById("amount").value || 0);
-        // Odd sempre do mercado (nunca confiar em edição do cliente)
-        var odd = Number(state.selected.market && state.selected.market.odd) || Number(document.getElementById("odd").value || 0);
+        var amountReais = Number(
+          String(document.getElementById("amount").value || "0").replace(",", ".")
+        );
+        // Odd do mercado; fallback parseia "11,00"
+        var odd =
+          Number(state.selected.market && state.selected.market.odd) ||
+          Number(String(document.getElementById("odd").value || "0").replace(",", "."));
         var amountCents = Math.round(amountReais * 100);
         var mt = state.selected.marketType;
-        // Cálculo local (não depender de calcLay legado sem grossReturnCents)
-        var effOdd =
-          mt === "LAY" ? layToBackOdd(odd) : odd > 1.01 ? odd : 1.01;
+        // Cálculo 100% local — nunca usar calcLay legado (zerava retorno/dedução)
+        var layOdd = Number(odd) > 1.01 ? Number(odd) : 1.01;
+        var effOdd = mt === "LAY" ? layOdd / (layOdd - 1) : layOdd;
         var retorno = Math.round(amountCents * effOdd);
         var lucroBruto = Math.max(0, retorno - amountCents);
         var seuLucro = Math.round(amountCents * 0.015);
