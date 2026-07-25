@@ -61,6 +61,9 @@ grep -q 'fee_upfront_v1' "$PRELIVE_DST" || die "prelive sem fee_upfront_v1"
 grep -q 'isFeeUpfrontProtection' "$PRELIVE_DST" || die "prelive sem dual-path legado/fee_upfront"
 grep -q 'layToBackOdd' "$PRELIVE_DST" || die "prelive sem layToBackOdd"
 grep -qE 'protection-fee-upfront-v[0-9]+' "$PRELIVE_DST" || die "prelive sem marker health"
+# Nunca publicar worker sem API de logos (já sumiu várias vezes)
+grep -q 'searchFootballTeams' "$PRELIVE_DST" || die "prelive sem searchFootballTeams (logos)"
+grep -q '/api/arbishield/football-teams' "$PRELIVE_DST" || die "prelive sem rota football-teams"
 
 systemctl restart arbishield-prelive-events.service 2>/dev/null || \
   systemctl restart arbishield-prelive.service 2>/dev/null || \

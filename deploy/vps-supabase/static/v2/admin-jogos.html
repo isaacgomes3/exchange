@@ -739,10 +739,10 @@
       <div class="field">
         <label for="manReleaseMinutes">Liberar entrada quantos minutos antes</label>
         <select id="manReleaseMinutes">
-          <option value="0">No horário do jogo</option>
+          <option value="0" selected>No horário do jogo</option>
           <option value="15">15 minutos antes</option>
           <option value="30">30 minutos antes</option>
-          <option value="60" selected>60 minutos antes</option>
+          <option value="60">60 minutos antes</option>
           <option value="120">120 minutos antes</option>
         </select>
         <p class="hint" style="margin:6px 0 0">
@@ -2608,7 +2608,7 @@
         $("manSport").value = "futebol";
         $("manStatus").value = "open";
         $("manStarts").value = "";
-        if ($("manReleaseMinutes")) $("manReleaseMinutes").value = "60";
+        if ($("manReleaseMinutes")) $("manReleaseMinutes").value = "0";
         resetManualBetbraAssist();
         ["manLiberarProtecao", "manLiberarLive", "manEsconder"].forEach(function (id) {
           var el = $(id);
@@ -2702,7 +2702,7 @@
         btn.textContent = "Salvando…";
         try {
           var releaseMinutes = Number(
-            ($("manReleaseMinutes") && $("manReleaseMinutes").value) || 60
+            ($("manReleaseMinutes") && $("manReleaseMinutes").value) || 0
           );
           if (![0, 15, 30, 60, 120].includes(releaseMinutes)) releaseMinutes = 60;
           var betLink =
