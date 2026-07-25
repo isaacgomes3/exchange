@@ -2235,7 +2235,11 @@ async function transferDeductionToDesafio(token, body) {
   };
 }
 
-/** Remove do saldo usável do Desafio o valor retido/congelado do ciclo (não é stake de entrada). */
+/**
+ * Legado: removia “retido” do saldo usável.
+ * Com desafio-saldo-reutilizavel-v1 o green na zebra credita o retorno no saldo;
+ * esta função permanece só para hotfixes antigos / reparos manuais.
+ */
 async function clawbackDesafioRetainedFromSpendable(userId, retainedCents) {
   const takeWanted = Math.max(0, Math.round(Number(retainedCents) || 0));
   if (!(takeWanted > 0) || !userId) return 0;
@@ -2548,10 +2552,11 @@ async function getDesafioCircuitForUser(desafioId, userId) {
   // 5 zebras won without casa → circuit exhausted (forfeit path)
   const cycleEndedMax = won.length >= maxEntries && !pending;
   const entryIndex = list.length + (pending ? 0 : 1);
-  let retainedCents = 0;
+  // Último retorno da zebra (stake+lucro) — só sugestão de stake; NÃO é saldo travado.
+  let lastPayoutCents = 0;
   if (won.length) {
     const lastWin = won[won.length - 1];
-    retainedCents = n(lastWin.amount_cents) + n(lastWin.profit_cents);
+    lastPayoutCents = n(lastWin.amount_cents) + n(lastWin.profit_cents);
   }
   return {
     desafio,
@@ -2559,11 +2564,14 @@ async function getDesafioCircuitForUser(desafioId, userId) {
     entryIndex: Math.min(entryIndex, maxEntries + 1),
     participations: list,
     pending,
-    retainedCents,
+    lastPayoutCents,
+    /** @deprecated use lastPayoutCents — não há mais retenção/congelamento */
+    retainedCents: lastPayoutCents,
     cycleEndedSuccess,
     cycleEndedMax,
     targetProfitPct: Number(desafio.target_profit_pct) || 5,
     entriesPlayed: list.length,
+    saldoMode: "desafio-saldo-reutilizavel-v1",
   };
 }
 
@@ -2906,7 +2914,7 @@ async function settleDesafioStep(token, body) {
     let credit = 0;
     if (won) {
       if (side === "arbishield") {
-        // Green na Zebra: retém aposta + lucro na plataforma (payout completo)
+        // Green na Zebra: retorno (stake + lucro) volta ao saldo Desafio usável.
         profit = calcZebraPayoutCents(
           p.amount_cents,
           step.arbi_odd ?? step.home_odd,
@@ -2947,10 +2955,9 @@ async function settleDesafioStep(token, body) {
         },
       }
     );
-    // Green na zebra: payout fica RETIDO/CONGELADO no ciclo (não volta para
-    // desafio_balance usável). Entradas seguintes usam retainedCents, não o saldo.
-    // Green no lado casa (participação side=casa): credita lucro no saldo desafio.
-    if (won && credit > 0 && p.user_id && side === "casa") {
+    // Green na zebra OU participação side=casa: credita no saldo Desafio usável.
+    // Cliente reutiliza o valor em qualquer entrada seguinte (sem retenção).
+    if (won && credit > 0 && p.user_id && (side === "arbishield" || side === "casa")) {
       try {
         const pr = await sb(
           `/rest/v1/profiles?select=desafio_balance_cents&id=eq.${encodeURIComponent(p.user_id)}&limit=1`,
@@ -2967,19 +2974,6 @@ async function settleDesafioStep(token, body) {
             },
           });
         }
-      } catch {
-        /* */
-      }
-    }
-    // Bateu casa (zebra perdeu): zera do saldo usável qualquer payout de zebra
-    // que tenha sido creditado por engano (saldo congelado do ciclo).
-    if (!won && side === "arbishield" && p.user_id && winningSide === "casa" && step.desafio_id) {
-      try {
-        const circuit = await getDesafioCircuitForUser(step.desafio_id, p.user_id);
-        await clawbackDesafioRetainedFromSpendable(
-          p.user_id,
-          n(circuit?.retainedCents)
-        );
       } catch {
         /* */
       }
@@ -3001,12 +2995,14 @@ async function settleDesafioStep(token, body) {
           userId: p.user_id,
           nextStepId: next.id,
           nextStepIndex: next.step_index,
+          creditedCents: credit,
           retainedCents: credit,
         });
       } else {
         advances.push({
           userId: p.user_id,
           nextStepId: null,
+          creditedCents: credit,
           retainedCents: credit,
           awaitingAdminSignal: true,
         });
@@ -3118,7 +3114,7 @@ async function settleDesafioStep(token, body) {
     desafioDeactivated,
     treasury,
     ciclo: "desafio-ciclo-sinais-v1",
-    fix: "treasury-writers-v1",
+    fix: "desafio-saldo-reutilizavel-v1",
   };
 }
 
@@ -3168,20 +3164,16 @@ async function registerDesafioEntry(token, body) {
     Number(body?.amountCents ?? body?.amount_cents ?? 0)
   );
 
-  // Entrada 1: só saldo usável do Desafio (depósitos/transferências).
-  // Entradas 2–5: stake = saldo RETIDO/CONGELADO do ciclo (não é saldo usável).
-  // O congelado NUNCA financia entrada via desafio_balance — fica retido até bateu casa.
-  if (entryNumber === 1) {
-    if (!(amountCents > 0)) {
-      amountCents = n(step.desafios?.initial_balance_cents) || 0;
-    }
-    if (!(amountCents > 0)) throw new Error("Informe o valor da aposta na zebra");
-  } else {
-    amountCents = circuit.retainedCents;
-    if (!(amountCents > 0)) {
-      throw new Error("Sem saldo retido para a próxima entrada do ciclo");
-    }
+  // Todas as entradas (1–5) debitam o saldo Desafio usável.
+  // Green na zebra devolve o retorno ao mesmo saldo — valor reutilizável.
+  if (!(amountCents > 0)) {
+    amountCents =
+      n(circuit.lastPayoutCents) ||
+      n(circuit.retainedCents) ||
+      n(step.desafios?.initial_balance_cents) ||
+      0;
   }
+  if (!(amountCents > 0)) throw new Error("Informe o valor da aposta na zebra");
 
   const existing = await sb(
     `/rest/v1/desafio_participations?select=id&user_id=eq.${userId}&step_id=eq.${encodeURIComponent(stepId)}&side=eq.${side}&limit=1`,
@@ -3211,22 +3203,15 @@ async function registerDesafioEntry(token, body) {
     targetPct
   );
 
-  if (entryNumber === 1) {
-    // Entrada 1 debita apenas desafio_balance usável — nunca locked/congelado.
-    if (bal < amountCents) throw new Error("insufficient");
-    await sb(`/rest/v1/profiles?id=eq.${userId}`, {
-      method: "PATCH",
-      token: SERVICE_KEY,
-      body: {
-        desafio_balance_cents: bal - amountCents,
-        updated_at: new Date().toISOString(),
-      },
-    });
-  } else {
-    // Retido já saiu do saldo usável na entrada 1 (e não deve voltar).
-    // Se um settle antigo creditou o payout por engano, remove do usável agora.
-    await clawbackDesafioRetainedFromSpendable(userId, amountCents);
-  }
+  if (bal < amountCents) throw new Error("insufficient");
+  await sb(`/rest/v1/profiles?id=eq.${userId}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: {
+      desafio_balance_cents: bal - amountCents,
+      updated_at: new Date().toISOString(),
+    },
+  });
 
   const created = await sb("/rest/v1/desafio_participations", {
     method: "POST",
@@ -3274,9 +3259,11 @@ async function registerDesafioEntry(token, body) {
       favoriteTeam: step.casa_team_name || step.home_team || step.away_team,
       matchLabel: step.match_label,
       externalBetLink: step.external_bet_link,
-      allocatedAutomatically: entryNumber > 1,
+      allocatedAutomatically: false,
+      debitedFromDesafioBalance: true,
     },
     ciclo: "desafio-ciclo-sinais-v1",
+    fix: "desafio-saldo-reutilizavel-v1",
   };
 }
 
@@ -3746,12 +3733,12 @@ async function previewDesafioSinal(token, body) {
   let zebraStakeCents = Math.round(
     Number(body?.amountCents ?? body?.amount_cents ?? 0)
   );
-  if (entryNumber === 1) {
-    if (!(zebraStakeCents > 0)) {
-      zebraStakeCents = n(step.desafios?.initial_balance_cents) || 0;
-    }
-  } else {
-    zebraStakeCents = circuit.retainedCents;
+  if (!(zebraStakeCents > 0)) {
+    zebraStakeCents =
+      n(circuit.lastPayoutCents) ||
+      n(circuit.retainedCents) ||
+      n(step.desafios?.initial_balance_cents) ||
+      0;
   }
   const casaStakeCents = calcCasaStakeFromZebra(
     zebraStakeCents,
@@ -3784,8 +3771,10 @@ async function previewDesafioSinal(token, body) {
           : "ready",
     entryNumber: Math.min(entryNumber, circuit.maxEntries),
     maxEntries: circuit.maxEntries,
+    lastPayoutCents: circuit.lastPayoutCents,
     retainedCents: circuit.retainedCents,
     desafioBalanceCents: bal,
+    fix: "desafio-saldo-reutilizavel-v1",
     sinal: {
       zebraStakeCents,
       casaStakeCents,
@@ -3799,7 +3788,7 @@ async function previewDesafioSinal(token, body) {
       marketZebra: step.market_name_arbishield || step.market_name,
       marketFavorite: step.market_name_casa || step.market_name,
       externalBetLink: step.external_bet_link,
-      allocatedAutomatically: entryNumber > 1,
+      allocatedAutomatically: false,
       stepId: step.id,
       desafioId,
       title: step.desafios?.title || circuit.desafio?.title,
