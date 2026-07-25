@@ -117,6 +117,6 @@ print("   ", row.get("home_team"), "×", row.get("away_team"))
 print("    começa:", row.get("starts_at"))
 print("    publicado:", row.get("is_published"))
 print()
-print("Abrir → https://arbishield.app/sandbox/app-proteger.html")
-print("       filtro Todos · buscar ArbiShield Teste · F5")
+print("Abrir PRODUÇÃO → https://arbishield.app/app-proteger.html")
+print("  filtro Todos · buscar ArbiShield Teste · F5 (anônima)")
 PY
