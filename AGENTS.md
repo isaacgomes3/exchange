@@ -30,10 +30,9 @@ Se um pedido tangenciar esses arquivos por outro motivo (hotfix de JS, Encerrado
 
 1. **Ativação:** cobra só a **dedução ArbiShield** (lucro bruto − 1,5% da cobertura). Não trava o stake/responsabilidade.
 2. **LAY** = responsabilidade; **BACK** = stake. Nunca lançar LAY+BACK no mesmo evento de teste.
-3. **Bateu ArbiShield:** credita **stake/responsabilidade + dedução** automaticamente.
-   - REAL → `deduction_balance_cents` (UI: **Saldo Reembolso** — usável + sacável; stake + dedução)
-   - DEMO → `demo_balance_cents`
-   - INVESTOR → `investor_balance_cents`
+3. **Bateu ArbiShield:** credita **stake/responsabilidade + dedução** automaticamente em
+   `deduction_balance_cents` (UI: **Saldo Reembolso** — usável + sacável), independente
+   da carteira usada na ativação (REAL/DEMO só define de onde a dedução foi cobrada).
 4. **Bateu Exchange:** não devolve nada (dedução já cobrada na entrada).
 5. **Cancelar proteção:** estorna a dedução (fee_upfront); cliente não precisa solicitar reembolso no caso ArbiShield.
 6. Cliente **não** precisa pedir reembolso para ver stake/dedução quando o resultado é ArbiShield — o crédito é imediato.

@@ -123,8 +123,8 @@ describe("settle — fee_upfront", () => {
     assert.equal(settlementStatusForOutcome("arbishield"), "lost_exchange");
     assert.equal(settlementStatusForOutcome("exchange"), "won_exchange");
     assert.equal(creditBucketForSettlement("REAL"), "deduction_balance_cents");
-    assert.equal(creditBucketForSettlement("DEMO"), "demo_balance_cents");
-    assert.equal(creditBucketForSettlement("INVESTOR"), "investor_balance_cents");
+    assert.equal(creditBucketForSettlement("DEMO"), "deduction_balance_cents");
+    assert.equal(creditBucketForSettlement("INVESTOR"), "deduction_balance_cents");
   });
 });
 
