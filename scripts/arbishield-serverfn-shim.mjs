@@ -5542,6 +5542,8 @@ async function settleMatch(token, body) {
     patchMatch.settled_at = now;
     patchMatch.status = "settled";
     patchMatch.settled_by = adminId;
+    // Finalizado NUNCA fica publicado — some da grade do cliente e da Fila.
+    patchMatch.is_published = false;
   }
 
   // status_v2 enum VPS: "closed" (não "settled"); updated_by alimenta trigger admin_id

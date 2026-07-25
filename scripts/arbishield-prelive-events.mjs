@@ -1531,10 +1531,12 @@ async function settleMatchFromBody(body, token) {
   // Só agora marca a partida (evita o trigger de proteções ativas).
   // updated_by/settled_by = adminId: trigger match_change_logs exige admin_id NOT NULL.
   // status_v2 enum na VPS aceita "closed" (não "settled").
+  // Finalizado NUNCA fica publicado — some da grade do cliente e da Fila.
   const basePatch = {
     final_score: String(finalScore),
     settled_at: now,
     status: "settled",
+    is_published: false,
     markets,
     updated_at: now,
     updated_by: adminId,
@@ -3170,6 +3172,46 @@ async function syncBetbraInplayScores({ force = false } = {}) {
   };
 }
 
+/**
+ * Finalizados / fora da janela (~3h) não podem ficar is_published=true.
+ * Limpa lixo histórico e evita que a grade do cliente leia dezenas de mortos.
+ */
+async function unpublishExpiredPublishedMatches() {
+  if (!SERVICE_KEY) {
+    return { ok: false, error: "SERVICE_KEY ausente", unpublished: 0 };
+  }
+  const now = new Date().toISOString();
+  const cutoff = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+  const body = { is_published: false, updated_at: now };
+  const queries = [
+    `/rest/v1/matches?is_published=eq.true&settled_at=not.is.null`,
+    `/rest/v1/matches?is_published=eq.true&status=in.(settled,finished,closed,cancelled,finalizado)`,
+    `/rest/v1/matches?is_published=eq.true&status_v2=in.(settled,finished,closed,cancelled,finalizado)`,
+    `/rest/v1/matches?is_published=eq.true&starts_at=lt.${encodeURIComponent(cutoff)}`,
+  ];
+  let unpublished = 0;
+  const errors = [];
+  for (const q of queries) {
+    try {
+      const rows = await sb(q, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body,
+      });
+      unpublished += Array.isArray(rows) ? rows.length : 0;
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : String(err));
+    }
+  }
+  return {
+    ok: errors.length < queries.length,
+    unpublished,
+    cutoff,
+    errors: errors.slice(0, 3),
+    at: now,
+  };
+}
+
 let inplaySyncTimer = null;
 let inplaySyncRunning = false;
 
@@ -3186,6 +3228,19 @@ function startBetbraInplaySyncLoop() {
     if (inplaySyncRunning) return;
     inplaySyncRunning = true;
     try {
+      try {
+        const clean = await unpublishExpiredPublishedMatches();
+        if (clean.unpublished > 0) {
+          console.log(
+            `[unpublish-expired] unpublished=${clean.unpublished}`
+          );
+        }
+      } catch (eClean) {
+        console.warn(
+          "[unpublish-expired] falhou",
+          eClean instanceof Error ? eClean.message : eClean
+        );
+      }
       const result = await syncBetbraInplayScores();
       if (result.updated > 0 || result.error) {
         console.log(
@@ -3229,6 +3284,7 @@ async function handleApi(req, res) {
       testEvent: "/api/arbishield/test-event",
       footballTeams: "/api/arbishield/football-teams",
       matchLiveSync: "/api/arbishield/match-live-sync",
+      unpublishExpired: "/api/arbishield/unpublish-expired",
     });
   }
 
@@ -3333,7 +3389,30 @@ async function handleApi(req, res) {
     (req.method === "POST" || req.method === "GET")
   ) {
     try {
+      const clean = await unpublishExpiredPublishedMatches().catch((e) => ({
+        ok: false,
+        unpublished: 0,
+        error: e instanceof Error ? e.message : String(e),
+      }));
       const result = await syncBetbraInplayScores({ force: true });
+      return sendJson(res, result.ok ? 200 : 502, {
+        ...result,
+        unpublishExpired: clean,
+      });
+    } catch (err) {
+      return sendJson(res, 500, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (
+    url.pathname === "/api/arbishield/unpublish-expired" &&
+    (req.method === "POST" || req.method === "GET")
+  ) {
+    try {
+      const result = await unpublishExpiredPublishedMatches();
       return sendJson(res, result.ok ? 200 : 502, result);
     } catch (err) {
       return sendJson(res, 500, {
