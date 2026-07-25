@@ -168,25 +168,27 @@
         );
       }
 
-      function calcLay(amountCents, odd) {
-        var r = Math.floor(amountCents);
+      /** fee_upfront: cobra só (lucro na odd − 1,5% da stake). Não trava o stake. */
+      function calcFeeUpfront(amountCents, odd) {
+        var stake = Math.floor(amountCents);
         var a = odd > 1.01 ? odd : 1.01;
-        var stake = Math.round(r / (a - 1));
-        var locked = Math.round(stake * 0.9073);
-        var fee = Math.round(stake * 0.045);
-        var net = stake - fee;
-        var userProfit = Math.round(r * 0.015);
-        return { kind: "LAY", stakeRealCents: stake, lockedDeductionCents: locked, userProfitCents: userProfit, platformCents: net - userProfit };
+        var grossReturn = Math.round(stake * a);
+        var profit = Math.max(0, grossReturn - stake);
+        var userProfit = Math.round(stake * 0.015);
+        var feeNow = Math.max(0, profit - userProfit);
+        return {
+          stakeCents: stake,
+          grossReturnCents: grossReturn,
+          grossProfitCents: profit,
+          userProfitCents: userProfit,
+          feeChargedCents: feeNow,
+        };
+      }
+      function calcLay(amountCents, odd) {
+        return calcFeeUpfront(amountCents, odd);
       }
       function calcBack(amountCents, odd) {
-        var n = Math.floor(amountCents);
-        var a = odd >= 1.01 ? odd : 1.01;
-        var gross = Math.round(n * a);
-        var profit = Math.max(0, gross - n);
-        var fee = Math.round(profit * 0.045);
-        var net = profit - fee;
-        var userProfit = Math.round(n * 0.015);
-        return { kind: "BACK", stakeRealCents: n, lockedDeductionCents: n, userProfitCents: userProfit, platformCents: net - userProfit };
+        return calcFeeUpfront(amountCents, odd);
       }
       function available(type) {
         var p = state.profile || {};
@@ -322,12 +324,15 @@
         var odd = Number(state.selected.market && state.selected.market.odd) || Number(document.getElementById("odd").value || 0);
         var amountCents = Math.round(amountReais * 100);
         var mt = state.selected.marketType;
-        var c = mt === "BACK" ? calcBack(amountCents, odd) : calcLay(amountCents, odd);
+        var c = calcFeeUpfront(amountCents, odd);
+        var avail = available(document.getElementById("balanceType").value);
         document.getElementById("preview").innerHTML =
           "<div><span>Tipo</span><b>" + mt + "</b></div>" +
-          "<div><span>Valor</span><b>" + money(amountCents) + "</b></div>" +
-          "<div><span>Lucro estimado (1,5%)</span><b>" + money(c.userProfitCents) + "</b></div>" +
-          "<div><span>Saldo disponível</span><b>" + money(available(document.getElementById("balanceType").value)) + "</b></div>";
+          "<div><span>Stake (não trava)</span><b>" + money(amountCents) + "</b></div>" +
+          "<div><span>Retorno na casa</span><b>" + money(c.grossReturnCents) + "</b></div>" +
+          "<div><span>Seu lucro (1,5%)</span><b>" + money(c.userProfitCents) + "</b></div>" +
+          "<div><span>Cobrado agora (ArbiShield)</span><b>" + money(c.feeChargedCents) + "</b></div>" +
+          "<div><span>Saldo disponível</span><b>" + money(avail) + "</b></div>";
       }
 
       function openDrawer(match, market) {
@@ -383,11 +388,14 @@
           return;
         }
         var balType = document.getElementById("balanceType").value;
-        if (!(available(balType) >= amountCents)) {
+        var feeNeed = calcFeeUpfront(amountCents, odd).feeChargedCents;
+        if (!(available(balType) >= feeNeed)) {
           showErr(
-            "Saldo insuficiente nesta carteira (" +
+            "Saldo insuficiente para a dedução de " +
+              money(feeNeed) +
+              " (stake não é travado). Disponível: " +
               money(available(balType)) +
-              "). O jogo continua visível — deposite ou escolha outro saldo."
+              "."
           );
           return;
         }
@@ -441,7 +449,13 @@
             );
           }
           closeDrawer();
-          showOk("Proteção ativada · " + String(data.protectionId).slice(0, 8) + "…");
+          showOk(
+            "Proteção ativada · cobrado " +
+              money(data.feeChargedCents != null ? data.feeChargedCents : feeNeed) +
+              " · " +
+              String(data.protectionId).slice(0, 8) +
+              "…"
+          );
           await load();
         } catch (ex) {
           showErr(ex.message || "Erro ao ativar proteção");
