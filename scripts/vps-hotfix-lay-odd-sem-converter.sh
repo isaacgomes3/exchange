@@ -85,6 +85,10 @@ for pair in \
   grep -q "$marker" "$tmp" || die "$name sem $marker"
   if [[ "$name" == "admin-monitoring-protections.html" ]]; then
     grep -q 'matchMarketOf' "$tmp" || die "$name sem matchMarketOf"
+    grep -q 'marketTypeOf' "$tmp" || die "$name sem marketTypeOf"
+    if grep -q 'odd,market_category,metadata' "$tmp"; then
+      die "$name ainda seleciona market_category (coluna inexistente)"
+    fi
   fi
   n=0
   while IFS= read -r -d '' f; do
