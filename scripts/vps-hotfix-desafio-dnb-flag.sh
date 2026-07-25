@@ -46,7 +46,9 @@ grep -q 'desafio-ou-flag-v1' "$tmp_html" || die "sem marker desafio-ou-flag-v1"
 grep -q 'isDnb' "$tmp_html" || die "sem logica isDnb"
 grep -q 'namesOverlap' "$tmp_html" || die "sem namesOverlap"
 grep -q 'is-void' "$tmp_html" || die "sem estilo void"
-grep -q 'mais(?:\\s+de)?' "$tmp_html" || die "sem regex mais/menos sem 'de'"
+# -F: literal (o JS tem \s; grep BRE quebrava o check)
+grep -qF 'mais(?:\s+de)?' "$tmp_html" || die "sem regex mais/menos sem de"
+grep -qF 'menos(?:\s+de)?' "$tmp_html" || die "sem regex menos sem de"
 
 while IFS= read -r -d '' f; do
   cp -a "$f" "${f}.bak-dz-dnb-$(date +%s)" 2>/dev/null || true
