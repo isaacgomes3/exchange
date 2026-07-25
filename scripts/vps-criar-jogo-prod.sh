@@ -2,7 +2,7 @@
 # Cria 1 jogo teste na PRODUÇÃO (BACK+LAY @ 1.10).
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-fee-upfront-3cf9/scripts/vps-jogo-teste.sh?$(date +%s)")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-fee-upfront-3cf9/scripts/vps-criar-jogo-prod.sh?$(date +%s)")
 set -euo pipefail
 
 # Lê KEY=VAL do .env sem source (evita "Organization: command not found")

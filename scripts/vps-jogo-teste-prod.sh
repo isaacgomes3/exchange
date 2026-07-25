@@ -1,37 +1,54 @@
 #!/usr/bin/env bash
-# Cria 1 jogo teste (BACK+LAY @ 1.10) — só curl + python3.
+# Cria 1 jogo teste na PRODUÇÃO (BACK+LAY @ 1.10).
 #
 # Na VPS (root):
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-fee-upfront-3cf9/scripts/vps-jogo-teste-prod.sh?$(date +%s)")
 set -euo pipefail
 
-for f in \
-  "${ENV_FILE:-}" \
-  /opt/arbishield/deploy/vps-supabase/.env \
-  /opt/arbishield/.env \
-  /opt/arbishield-teste/.env
-do
-  [[ -n "${f:-}" && -f "$f" ]] || continue
-  set -a
-  # shellcheck disable=SC1090
-  source <(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$f" | sed 's/\r$//')
-  set +a
-done
+# Lê KEY=VAL do .env sem source (evita "Organization: command not found")
+read_env_key() {
+  local want="$1" file val
+  for file in \
+    "${ENV_FILE:-}" \
+    /opt/arbishield/deploy/vps-supabase/.env \
+    /opt/arbishield/.env \
+    /opt/arbishield-teste/.env
+  do
+    [[ -n "${file:-}" && -f "$file" ]] || continue
+    val="$(
+      grep -E "^${want}=" "$file" 2>/dev/null | tail -1 | cut -d= -f2- | sed 's/\r$//' | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"
+    )"
+    if [[ -n "${val:-}" ]]; then
+      printf '%s' "$val"
+      return 0
+    fi
+  done
+  return 1
+}
 
 KEY="${ARBISHIELD_SERVICE_ROLE_KEY:-${SERVICE_ROLE_KEY:-${SUPABASE_SERVICE_ROLE_KEY:-}}}"
-URL="${ARBISHIELD_SUPABASE_URL:-${SUPABASE_URL:-${API_EXTERNAL_URL:-http://127.0.0.1:8000}}}"
+URL="${ARBISHIELD_SUPABASE_URL:-${SUPABASE_URL:-${API_EXTERNAL_URL:-}}}"
+[[ -n "$KEY" ]] || KEY="$(read_env_key ARBISHIELD_SERVICE_ROLE_KEY || true)"
+[[ -n "$KEY" ]] || KEY="$(read_env_key SERVICE_ROLE_KEY || true)"
+[[ -n "$KEY" ]] || KEY="$(read_env_key SUPABASE_SERVICE_ROLE_KEY || true)"
+[[ -n "$URL" ]] || URL="$(read_env_key ARBISHIELD_SUPABASE_URL || true)"
+[[ -n "$URL" ]] || URL="$(read_env_key SUPABASE_URL || true)"
+[[ -n "$URL" ]] || URL="$(read_env_key API_EXTERNAL_URL || true)"
+URL="${URL:-http://127.0.0.1:8000}"
 URL="${URL%/}"
-[[ -n "$KEY" ]] || { echo "ERRO: SERVICE_ROLE_KEY ausente"; exit 1; }
 
+[[ -n "$KEY" ]] || { echo "ERRO: SERVICE_ROLE_KEY ausente no .env"; exit 1; }
+
+export SERVICE_ROLE_KEY="$KEY"
+export SUPABASE_URL="$URL"
 export TEST_ODD="${TEST_ODD:-1.1}"
 export TEST_LIQ_CENTS="${TEST_LIQ_CENTS:-500000}"
 export TEST_MINUTES_AHEAD="${TEST_MINUTES_AHEAD:-45}"
 export TEST_HOME="${TEST_HOME:-ArbiShield Teste A}"
 export TEST_AWAY="${TEST_AWAY:-ArbiShield Teste B}"
-export SUPABASE_URL="$URL"
-export SERVICE_ROLE_KEY="$KEY"
 
-echo "==> Criando jogo teste @ ${TEST_ODD} (kickoff +${TEST_MINUTES_AHEAD} min)"
+echo "==> Criando jogo teste PRODUÇÃO @ ${TEST_ODD} (kickoff +${TEST_MINUTES_AHEAD} min)"
+echo "    supabase: $URL"
 
 python3 - <<'PY'
 import json, os, urllib.request, uuid
@@ -99,13 +116,12 @@ def post(payload):
         with urllib.request.urlopen(req, timeout=30) as res:
             return res.status, json.loads(res.read().decode() or "null")
     except urllib.error.HTTPError as e:
-        err = e.read().decode()
-        return e.code, err
+        return e.code, e.read().decode()
 
 code, data = post(body)
 if code >= 400:
     body.pop("external_id", None)
-    print("  aviso:", str(data)[:200], "→ retry sem external_id")
+    print("  aviso:", str(data)[:180], "→ retry sem external_id")
     code, data = post(body)
 
 if code >= 400:
@@ -118,5 +134,5 @@ print("    começa:", row.get("starts_at"))
 print("    publicado:", row.get("is_published"))
 print()
 print("Abrir PRODUÇÃO → https://arbishield.app/app-proteger.html")
-print("  filtro Todos · buscar ArbiShield Teste · F5 (anônima)")
+print("  filtro Todos · buscar ArbiShield Teste · F5")
 PY
