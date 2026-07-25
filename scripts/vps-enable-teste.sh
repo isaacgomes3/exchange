@@ -14,14 +14,14 @@
 #   A  teste.arbishield.app  →  IP da VPS
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/BRANCH_OR_SHA/scripts/vps-enable-teste.sh?v=1")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/a21da36d9e4fc196d68e2fad70fef994803fb670/scripts/vps-enable-teste.sh?v=1")
 #
 # Depois publique uma branch/SHA no teste:
 #   ARBISHIELD_REF=<sha> bash /opt/arbishield-teste/scripts/vps-deploy-teste.sh
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/ambiente-teste-3cf9}"
-REF="${ARBISHIELD_REF:-$BRANCH}"
+REF="${ARBISHIELD_REF:-a21da36d9e4fc196d68e2fad70fef994803fb670}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_TESTE_WEB:-/var/www/arbishield-teste}"
 WEB="$WEB_ROOT/v2"
