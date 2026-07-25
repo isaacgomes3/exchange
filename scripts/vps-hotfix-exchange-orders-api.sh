@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Hotfix: API ArbiShield de ordens (connect sessão + place/cancel/status).
-# Padrão: provider=demo (simula place/cancel). Live só com EXCHANGE_ORDERS_LIVE=1 + doc da casa.
+# Padrão: provider=demo. Live: EXCHANGE_ORDERS_LIVE=1 + sessão cliente na API pública autenticada.
 #
 # Na VPS:
 #   bash <(curl -fsSL "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-hotfix-exchange-orders-api.sh?ref=cursor/exchange-orders-api-e85c&t=$(date +%s%N)" \
@@ -150,4 +150,5 @@ echo "  GET  /api/arbishield/exchange-orders/status?orderId="
 echo "  GET  /api/arbishield/exchange-orders"
 echo ""
 echo "Demo: EXCHANGE_ORDERS_PROVIDER=demo (padrão)"
-echo "Live: EXCHANGE_ORDERS_LIVE=1 + EXCHANGE_ORDERS_PROVIDER=betbra + doc da casa"
+echo "Live: EXCHANGE_ORDERS_LIVE=1 + EXCHANGE_ORDERS_PROVIDER=betbra + sessão do cliente"
+echo "Probe paths (VPS/BR): scripts/vps-probe-mexchange-orders-api.sh"

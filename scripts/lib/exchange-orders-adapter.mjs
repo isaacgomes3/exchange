@@ -1,18 +1,31 @@
 /**
- * Adapter de ordens na exchange.
+ * Adapter de ordens na exchange (BetBra / Mexchange / Fulltbet).
  *
- * - demo (padrão): simula place/cancel/status sem chamar a casa.
+ * A API de trading autenticada da exchange pública existe
+ * (mexchange-api.*.bet.br). Catálogo (events/odds) é anônimo;
+ * place/cancel/status exigem sessão do cliente.
+ *
+ * - demo (padrão seguro): simula place/cancel/status.
  * - stub: rejeita com EXCHANGE_ORDERS_NOT_WIRED.
- * - betbra: esqueleto; sem EXCHANGE_ORDERS_LIVE=1 cai no demo.
+ * - betbra: chama a API pública com a sessão do cliente quando
+ *   EXCHANGE_ORDERS_LIVE=1; senão cai no demo.
  *
- * Quando a casa enviar a doc oficial, mapear paths em BetbraOrdersAdapter
- * e setar EXCHANGE_ORDERS_PROVIDER=betbra + EXCHANGE_ORDERS_LIVE=1.
+ * Paths/auth configuráveis (a casa pode variar o path exato):
+ *   EXCHANGE_ORDERS_BASE_URL / MEXCHANGE_API_BASE_URL
+ *   EXCHANGE_ORDERS_PLACE_PATH   (default /orders)
+ *   EXCHANGE_ORDERS_CANCEL_PATH  (default /orders/{id}/cancel)
+ *   EXCHANGE_ORDERS_STATUS_PATH  (default /orders/{id})
+ *   EXCHANGE_ORDERS_AUTH_STYLE   bearer | x-auth-token | cookie
+ *   EXCHANGE_ORDERS_PAYLOAD      exchange | snake
  */
 import {
   EXCHANGE_ORDERS_CONTRACT_VERSION,
   EXCHANGE_ORDERS_LOCK,
   normalizeOrderStatus,
 } from "./exchange-orders-contract.mjs";
+
+/** Marker: API pública autenticada da exchange existe (não só catálogo). */
+export const EXCHANGE_PUBLIC_TRADING_API = "mexchange-public-trading-api-v1";
 
 export class ExchangeOrdersNotWiredError extends Error {
   constructor(message) {
@@ -32,6 +45,12 @@ function envLive() {
   return v === "1" || v === "true" || v === "yes" || v === "on";
 }
 
+function envStr(name, fallback = "") {
+  const v = process.env[name];
+  if (v == null || String(v).trim() === "") return fallback;
+  return String(v).trim();
+}
+
 export function resolveOrdersProviderName() {
   const raw = String(process.env.EXCHANGE_ORDERS_PROVIDER || "demo")
     .trim()
@@ -43,6 +62,142 @@ export function resolveOrdersProviderName() {
   return "demo";
 }
 
+export function resolveOrdersApiBase() {
+  return envStr(
+    "MEXCHANGE_ORDERS_API_BASE",
+    envStr(
+      "EXCHANGE_ORDERS_BASE_URL",
+      envStr("MEXCHANGE_API_BASE_URL", "https://mexchange-api.betbra.bet.br/api")
+    )
+  ).replace(/\/$/, "");
+}
+
+/**
+ * Monta headers de auth da sessão do cliente para a API pública.
+ * @param {object} session
+ * @param {string} [style]
+ */
+export function buildExchangeAuthHeaders(session = {}, style) {
+  const mode = String(
+    style || envStr("EXCHANGE_ORDERS_AUTH_STYLE", "bearer")
+  )
+    .toLowerCase()
+    .trim();
+  const token = String(session.accessToken || session.sessionToken || "").trim();
+  const headers = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    "Accept-Language": "pt-BR,pt;q=0.9",
+    Referer: envStr(
+      "MEXCHANGE_REFERER",
+      "https://mexchange.betbra.bet.br/"
+    ),
+    "User-Agent": envStr(
+      "MEXCHANGE_USER_AGENT",
+      "Mozilla/5.0 (compatible; ArbiShieldOrders/1.0)"
+    ),
+  };
+  if (!token) return { ...headers, ...(session.extraHeaders || {}) };
+
+  if (mode === "x-auth-token" || mode === "x_auth_token") {
+    headers["X-Auth-Token"] = token;
+  } else if (mode === "cookie") {
+    const lang = envStr("MEXCHANGE_BIAB_LANGUAGE", "PT_BR");
+    headers.Cookie = `BIAB_LANGUAGE=${lang}; ${
+      session.cookieName || "SESSION"
+    }=${token}${session.cookieExtra ? `; ${session.cookieExtra}` : ""}`;
+  } else {
+    // bearer (padrão da API autenticada pública)
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return { ...headers, ...(session.extraHeaders || {}) };
+}
+
+/**
+ * Body de place para a API pública da exchange.
+ * @param {object} payload validatePlaceOrderBody result
+ */
+export function buildExchangePlaceBody(payload = {}, style) {
+  const mode = String(style || envStr("EXCHANGE_ORDERS_PAYLOAD", "exchange"))
+    .toLowerCase()
+    .trim();
+  const stakeBrl = Number(payload.stakeCents || 0) / 100;
+  const side = String(payload.side || "").toUpperCase();
+  if (mode === "snake") {
+    return {
+      side,
+      odd: payload.odd,
+      price: payload.odd,
+      stake_cents: payload.stakeCents,
+      stake: stakeBrl,
+      size: stakeBrl,
+      event_id: payload.eventId,
+      market_id: payload.marketId,
+      selection_id: payload.selectionId,
+      client_order_id: payload.clientOrderId,
+    };
+  }
+  // exchange: shape típico BACK/LAY (API pública autenticada)
+  return {
+    side,
+    price: payload.odd,
+    odd: payload.odd,
+    size: stakeBrl,
+    stake: stakeBrl,
+    stakeCents: payload.stakeCents,
+    eventId: payload.eventId,
+    marketId: payload.marketId,
+    selectionId: payload.selectionId,
+    runnerId: payload.selectionId,
+    clientOrderId: payload.clientOrderId,
+    persistenceType: "LAPSE",
+    orderType: "LIMIT",
+  };
+}
+
+function expandPath(template, vars = {}) {
+  return String(template || "").replace(/\{(\w+)\}/g, (_, k) =>
+    encodeURIComponent(String(vars[k] ?? ""))
+  );
+}
+
+async function parseJsonResponse(res) {
+  const text = await res.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = { raw: text };
+  }
+  return { text, data };
+}
+
+function extractOrderId(data, fallback = "") {
+  return String(
+    data?.id ||
+      data?.orderId ||
+      data?.order_id ||
+      data?.betId ||
+      data?.bet_id ||
+      data?.data?.id ||
+      data?.data?.orderId ||
+      data?.result?.orderId ||
+      fallback ||
+      ""
+  );
+}
+
+function extractStatus(data, fallback = "pending") {
+  return normalizeOrderStatus(
+    data?.status ||
+      data?.orderStatus ||
+      data?.order_status ||
+      data?.data?.status ||
+      data?.result?.status ||
+      fallback
+  );
+}
+
 /** Stub — não envia ordem. */
 export class StubOrdersAdapter {
   constructor() {
@@ -51,7 +206,7 @@ export class StubOrdersAdapter {
 
   async placeOrder(_session, _payload) {
     throw new ExchangeOrdersNotWiredError(
-      "Adapter stub: use provider=demo ou configure a API da casa."
+      "Adapter stub: use provider=demo ou EXCHANGE_ORDERS_PROVIDER=betbra + LIVE=1."
     );
   }
 
@@ -133,21 +288,31 @@ export class DemoOrdersAdapter {
 }
 
 /**
- * Skeleton BetBra/Mexchange — preencher URLs/auth quando a doc chegar.
- * Sem EXCHANGE_ORDERS_LIVE=1 usa DemoOrdersAdapter (sem aposta real).
+ * Adapter da API pública autenticada Mexchange/BetBra.
+ * LIVE só com sessão do cliente + EXCHANGE_ORDERS_LIVE=1.
  */
 export class BetbraOrdersAdapter {
   constructor(opts = {}) {
     this.provider = "betbra";
-    this.apiBase = String(
-      opts.apiBase ||
-        process.env.MEXCHANGE_ORDERS_API_BASE ||
-        process.env.EXCHANGE_ORDERS_BASE_URL ||
-        process.env.MEXCHANGE_API_BASE_URL ||
-        "https://mexchange-api.betbra.bet.br/api"
-    ).replace(/\/$/, "");
+    this.apiBase = String(opts.apiBase || resolveOrdersApiBase()).replace(
+      /\/$/,
+      ""
+    );
     this.live = Boolean(opts.live) || envLive();
     this.demo = new DemoOrdersAdapter();
+    this.placePath = envStr("EXCHANGE_ORDERS_PLACE_PATH", "/orders");
+    this.cancelPath = envStr(
+      "EXCHANGE_ORDERS_CANCEL_PATH",
+      "/orders/{id}/cancel"
+    );
+    this.statusPath = envStr("EXCHANGE_ORDERS_STATUS_PATH", "/orders/{id}");
+    this.publicApi = EXCHANGE_PUBLIC_TRADING_API;
+  }
+
+  url(pathTemplate, vars) {
+    const path = expandPath(pathTemplate, vars);
+    if (/^https?:\/\//i.test(path)) return path;
+    return `${this.apiBase}${path.startsWith("/") ? path : `/${path}`}`;
   }
 
   async placeOrder(session, payload) {
@@ -156,139 +321,115 @@ export class BetbraOrdersAdapter {
       return {
         ...r,
         provider: this.provider,
+        publicApi: this.publicApi,
         message:
-          "Betbra em modo demo (EXCHANGE_ORDERS_LIVE≠1). Ordem simulada — nenhuma aposta real.",
+          "Betbra em modo demo (EXCHANGE_ORDERS_LIVE≠1). Ordem simulada — nenhuma aposta real. A API pública autenticada existe; ligue LIVE com sessão do cliente.",
       };
     }
-    if (!session?.accessToken) {
+    if (!session?.accessToken && !session?.sessionToken) {
       throw new ExchangeOrdersNotWiredError(
-        `${EXCHANGE_ORDERS_LOCK}: sessão do cliente obrigatória para place live.`
+        `${EXCHANGE_ORDERS_LOCK}: sessão do cliente obrigatória para place na API pública.`
       );
     }
-    const url = `${this.apiBase}/orders`;
+    const url = this.url(this.placePath, {});
     const res = await fetch(url, {
       method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${session.accessToken}`,
-        ...(session.extraHeaders || {}),
-      },
-      body: JSON.stringify({
-        side: payload.side,
-        odd: payload.odd,
-        stake_cents: payload.stakeCents,
-        event_id: payload.eventId,
-        market_id: payload.marketId,
-        selection_id: payload.selectionId,
-        client_order_id: payload.clientOrderId,
-      }),
+      headers: buildExchangeAuthHeaders(session),
+      body: JSON.stringify(buildExchangePlaceBody(payload)),
     });
-    const text = await res.text();
-    let data;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      data = { raw: text };
-    }
+    const { data } = await parseJsonResponse(res);
     if (!res.ok) {
       const err = new Error(
-        (data && (data.message || data.error)) ||
+        (data && (data.message || data.error || data.title)) ||
           `Exchange place HTTP ${res.status}`
       );
       err.status = res.status;
       err.code = "EXCHANGE_PLACE_FAILED";
       err.details = data;
+      err.url = url;
       throw err;
     }
-    const orderId = String(data?.id || data?.orderId || data?.order_id || "");
+    const orderId = extractOrderId(data);
     return {
       orderId,
-      status: normalizeOrderStatus(data?.status || "pending"),
+      status: extractStatus(data, "pending"),
       provider: this.provider,
+      publicApi: this.publicApi,
       raw: data,
       wired: true,
       demo: false,
+      url,
     };
   }
 
   async cancelOrder(session, orderId) {
     if (!this.live) {
       const r = await this.demo.cancelOrder(session, orderId);
-      return { ...r, provider: this.provider };
+      return { ...r, provider: this.provider, publicApi: this.publicApi };
     }
-    const url = `${this.apiBase}/orders/${encodeURIComponent(orderId)}/cancel`;
+    const id = String(orderId || "");
+    const url = this.url(this.cancelPath, { id, orderId: id });
     const res = await fetch(url, {
       method: "POST",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${session.accessToken}`,
-        ...(session.extraHeaders || {}),
-      },
+      headers: buildExchangeAuthHeaders(session),
+      body: JSON.stringify({ orderId: id }),
     });
-    const text = await res.text();
-    let data;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      data = { raw: text };
-    }
+    const { data } = await parseJsonResponse(res);
     if (!res.ok) {
       const err = new Error(
-        (data && (data.message || data.error)) ||
+        (data && (data.message || data.error || data.title)) ||
           `Exchange cancel HTTP ${res.status}`
       );
       err.status = res.status;
       err.code = "EXCHANGE_CANCEL_FAILED";
+      err.details = data;
+      err.url = url;
       throw err;
     }
     return {
-      orderId: String(orderId),
-      status: normalizeOrderStatus(data?.status || "cancelled"),
+      orderId: extractOrderId(data, id),
+      status: extractStatus(data, "cancelled"),
       provider: this.provider,
+      publicApi: this.publicApi,
       raw: data,
       wired: true,
       demo: false,
+      url,
     };
   }
 
   async getOrderStatus(session, orderId) {
     if (!this.live) {
       const r = await this.demo.getOrderStatus(session, orderId);
-      return { ...r, provider: this.provider };
+      return { ...r, provider: this.provider, publicApi: this.publicApi };
     }
-    const url = `${this.apiBase}/orders/${encodeURIComponent(orderId)}`;
+    const id = String(orderId || "");
+    const url = this.url(this.statusPath, { id, orderId: id });
     const res = await fetch(url, {
       method: "GET",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${session.accessToken}`,
-        ...(session.extraHeaders || {}),
-      },
+      headers: buildExchangeAuthHeaders(session),
     });
-    const text = await res.text();
-    let data;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      data = { raw: text };
-    }
+    const { data } = await parseJsonResponse(res);
     if (!res.ok) {
       const err = new Error(
-        (data && (data.message || data.error)) ||
+        (data && (data.message || data.error || data.title)) ||
           `Exchange status HTTP ${res.status}`
       );
       err.status = res.status;
       err.code = "EXCHANGE_STATUS_FAILED";
+      err.details = data;
+      err.url = url;
       throw err;
     }
     return {
-      orderId: String(data?.id || orderId),
-      status: normalizeOrderStatus(data?.status),
+      orderId: extractOrderId(data, id),
+      status: extractStatus(data, "unknown"),
       provider: this.provider,
+      publicApi: this.publicApi,
       raw: data,
       wired: true,
       demo: false,
+      url,
     };
   }
 }

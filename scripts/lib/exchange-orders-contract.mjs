@@ -1,8 +1,9 @@
 /**
  * Contrato da API de ordens ArbiShield ↔ exchange (BetBra / Fulltbet / Mexchange).
  *
- * A ArbiShield expõe place / cancel / status.
- * O adapter concreto da casa é plugado depois (EXCHANGE_ORDERS_PROVIDER).
+ * A API de trading autenticada da exchange pública existe
+ * (mexchange-api). ArbiShield espelha place/cancel/status com a
+ * sessão do cliente — nunca com credencial da plataforma sozinha.
  *
  * Marker: DO_NOT_PLACE_WITHOUT_CLIENT_SESSION
  */

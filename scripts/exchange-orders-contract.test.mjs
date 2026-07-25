@@ -11,7 +11,13 @@ import {
   encryptSessionPayload,
   decryptSessionPayload,
 } from "./lib/exchange-orders-service.mjs";
-import { createOrdersAdapter } from "./lib/exchange-orders-adapter.mjs";
+import {
+  createOrdersAdapter,
+  buildExchangeAuthHeaders,
+  buildExchangePlaceBody,
+  EXCHANGE_PUBLIC_TRADING_API,
+  BetbraOrdersAdapter,
+} from "./lib/exchange-orders-adapter.mjs";
 
 describe("exchange-orders contract", () => {
   it("mantém versão e lock", () => {
@@ -81,5 +87,46 @@ describe("adapter default", () => {
     assert.equal(st.status, "matched");
     const c = await a.cancelOrder({}, r.orderId);
     assert.equal(c.status, "cancelled");
+  });
+});
+
+describe("public trading API adapter", () => {
+  it("marca API pública autenticada", () => {
+    assert.equal(EXCHANGE_PUBLIC_TRADING_API, "mexchange-public-trading-api-v1");
+    const a = new BetbraOrdersAdapter({ live: false });
+    assert.equal(a.publicApi, EXCHANGE_PUBLIC_TRADING_API);
+  });
+
+  it("monta Authorization Bearer por defeito", () => {
+    const h = buildExchangeAuthHeaders({ accessToken: "tok-abc" }, "bearer");
+    assert.equal(h.Authorization, "Bearer tok-abc");
+    assert.ok(h.Referer.includes("mexchange"));
+  });
+
+  it("monta X-Auth-Token quando style=x-auth-token", () => {
+    const h = buildExchangeAuthHeaders(
+      { accessToken: "tok-xyz" },
+      "x-auth-token"
+    );
+    assert.equal(h["X-Auth-Token"], "tok-xyz");
+    assert.equal(h.Authorization, undefined);
+  });
+
+  it("body exchange inclui side LAY e price", () => {
+    const b = buildExchangePlaceBody(
+      {
+        side: "LAY",
+        odd: 2,
+        stakeCents: 20000,
+        eventId: "e1",
+        marketId: "m1",
+        selectionId: "s1",
+      },
+      "exchange"
+    );
+    assert.equal(b.side, "LAY");
+    assert.equal(b.price, 2);
+    assert.equal(b.size, 200);
+    assert.equal(b.marketId, "m1");
   });
 });
