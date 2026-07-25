@@ -13,13 +13,65 @@ import {
   desafioStepEventId,
   formatElapsedLabel,
   parseScoreSide,
+  extractScorePair,
+  isLiveStatus,
   inferMatchFinished,
   applyFinishedInference,
 } from "./lib/betbra-inplay-sync.mjs";
 
 describe("betbra-inplay-sync", () => {
   it("mantém versão", () => {
-    assert.equal(BETBRA_INPLAY_SYNC_VERSION, "betbra-inplay-sync-v7");
+    assert.equal(BETBRA_INPLAY_SYNC_VERSION, "betbra-inplay-sync-v8");
+  });
+
+  it("não trata status open como ao vivo", () => {
+    assert.equal(isLiveStatus("open", ""), false);
+    assert.equal(isLiveStatus("InPlay", ""), true);
+    assert.equal(isLiveStatus("", "SecondHalf"), true);
+    const open = normalizeInplayItem({
+      eventId: "1",
+      status: "open",
+      score: { home: { score: "0" }, away: { score: "0" } },
+    });
+    assert.equal(open.live, false);
+  });
+
+  it("parseia placar em string 0-1", () => {
+    const p = extractScorePair({ score: "0-1" });
+    assert.equal(p.home, 0);
+    assert.equal(p.away, 1);
+  });
+
+  it("não grava stub live vazio e limpa stub quebrado", () => {
+    const feed = indexInplayFeed([
+      { eventId: "42", status: "open" },
+    ]);
+    const match = {
+      id: "m1",
+      external_id: "42",
+      starts_at: "2026-07-25T16:00:00.000Z",
+      metadata: {
+        betbra_event_id: "42",
+        live: {
+          live: true,
+          score: null,
+          elapsed: null,
+          home_score: null,
+          away_score: null,
+          status: "open",
+          match_status: "open",
+          finished: false,
+        },
+      },
+    };
+    const built = buildMatchInplayPatch(
+      match,
+      feed,
+      "2026-07-25T16:05:00.000Z"
+    );
+    assert.ok(built);
+    assert.equal(built.live, null);
+    assert.equal(built.patch.metadata.live, null);
   });
 
   it("extrai eventId de links BetBra", () => {

@@ -3,7 +3,7 @@
  * Lógica pura (testável) + helpers de normalização.
  */
 
-export const BETBRA_INPLAY_SYNC_VERSION = "betbra-inplay-sync-v7";
+export const BETBRA_INPLAY_SYNC_VERSION = "betbra-inplay-sync-v8";
 
 /**
  * Extrai eventId BetBra de um link de mercado/evento.
@@ -225,8 +225,9 @@ export function buildDesafioStepInplayPatch(step, inplayByEventId, nowIso) {
 
 const FINISHED_RE =
   /finished|\bended\b|full[\s_-]?time|\bft\b|after[\s_-]?f\.?t\.?|match[\s_-]?finished|match[\s_-]?ended|game[\s_-]?finished|second[\s_-]?half[\s_-]?ended|\bcompleted?\b|\bclosed\b|finalizado|resultado\s*final|abandoned|walkover|\bawarded\b/i;
+// Word-boundary em tokens curtos: "pen" não pode casar dentro de "open".
 const LIVE_RE =
-  /in[\s_-]?play|live|1st|2nd|first|second|half|ht|et|extra|pen|break|pause|kick/i;
+  /in[\s_-]?play|\blive\b|1st|2nd|first\s*half|second\s*half|\bfirsthalf\b|\bsecondhalf\b|\bhalf\b|\bht\b|\bet\b|\bextra\b|\bpen(?:alty|alties)?\b|\bbreak\b|\bpause\b|\bkick/i;
 
 /**
  * Infere encerramento quando o feed atrasa (ex.: 90' + SecondHalfKickOff)
@@ -324,11 +325,59 @@ export function normalizeEventId(raw) {
 export function parseScoreSide(raw) {
   if (raw == null || raw === "") return null;
   if (typeof raw === "object" && raw !== null) {
-    const nested = raw.score ?? raw.value ?? raw.goals;
+    const nested = raw.score ?? raw.value ?? raw.goals ?? raw.total;
     return parseScoreSide(nested);
   }
-  const n = Number(String(raw).replace(/[^\d.-]/g, ""));
+  const s = String(raw).trim();
+  // "0-1" / "0:1" → não é um lado só
+  if (/^\d+\s*[-:x×]\s*\d+$/i.test(s)) return null;
+  const n = Number(s.replace(/[^\d.-]/g, ""));
   return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : null;
+}
+
+/**
+ * Aceita score em formatos comuns Soft2Bet/Mexchange.
+ * @param {any} item
+ * @returns {{ home: number|null, away: number|null }}
+ */
+export function extractScorePair(item) {
+  if (!item || typeof item !== "object") return { home: null, away: null };
+  const score = item.score && typeof item.score === "object" ? item.score : null;
+  let home = parseScoreSide(
+    score?.home?.score ??
+      score?.home ??
+      item.homeScore ??
+      item.home_score ??
+      item["home-score"] ??
+      item.homeGoals ??
+      item.home_goals
+  );
+  let away = parseScoreSide(
+    score?.away?.score ??
+      score?.away ??
+      item.awayScore ??
+      item.away_score ??
+      item["away-score"] ??
+      item.awayGoals ??
+      item.away_goals
+  );
+  if (home != null && away != null) return { home, away };
+
+  const combined =
+    item.scoreLabel ??
+    item.score_label ??
+    item.matchScore ??
+    item["match-score"] ??
+    (typeof item.score === "string" ? item.score : null) ??
+    (typeof score === "string" ? score : null);
+  const m = String(combined || "").trim().match(
+    /^(\d+)\s*[-:x×]\s*(\d+)$/i
+  );
+  if (m) {
+    home = parseScoreSide(m[1]);
+    away = parseScoreSide(m[2]);
+  }
+  return { home, away };
 }
 
 /**
@@ -361,8 +410,9 @@ export function isLiveStatus(status, inPlayMatchStatus) {
   if (isFinishedStatus(status, inPlayMatchStatus)) return false;
   const a = String(status || "").trim();
   const b = String(inPlayMatchStatus || "").trim();
-  if (!a && !b) return false;
-  return LIVE_RE.test(a) || LIVE_RE.test(b) || Boolean(a || b);
+  // NÃO tratar status genérico ("open", "scheduled") como ao vivo —
+  // isso gravava metadata.live vazio e travava o sync (same → skip).
+  return LIVE_RE.test(a) || LIVE_RE.test(b);
 }
 
 /**
@@ -388,31 +438,43 @@ export function normalizeInplayItem(item) {
   );
   if (!eventId) return null;
 
-  const score = item.score && typeof item.score === "object" ? item.score : {};
-  const homeScore = parseScoreSide(
-    score.home?.score ?? score.home ?? item.homeScore ?? item.home_score
-  );
-  const awayScore = parseScoreSide(
-    score.away?.score ?? score.away ?? item.awayScore ?? item.away_score
-  );
+  const { home: homeScore, away: awayScore } = extractScorePair(item);
   const scoreLabel =
     homeScore != null && awayScore != null ? `${homeScore}-${awayScore}` : null;
 
   const elapsedRaw =
     item.elapsedRegularTime ??
+    item["elapsed-regular-time"] ??
     item.timeElapsed ??
+    item.time_elapsed ??
     item.elapsed ??
     item.minute ??
+    item.clock ??
+    item.matchTime ??
+    item["match-time"] ??
     "";
   const elapsed = String(elapsedRaw || "").trim();
   const elapsedLabel = formatElapsedLabel(elapsed);
 
   const status = String(item.status || "").trim();
   const inPlayMatchStatus = String(
-    item.inPlayMatchStatus || item.in_play_match_status || ""
+    item.inPlayMatchStatus ||
+      item.in_play_match_status ||
+      item["in-play-match-status"] ||
+      ""
   ).trim();
   const finished = isFinishedStatus(status, inPlayMatchStatus);
-  const live = !finished && isLiveStatus(status, inPlayMatchStatus);
+  const flaggedLive = Boolean(
+    item["in-running-flag"] ||
+      item.inRunning ||
+      item.in_running ||
+      item.inPlay ||
+      item.in_play
+  );
+  const live =
+    !finished &&
+    (isLiveStatus(status, inPlayMatchStatus) ||
+      (flaggedLive && (scoreLabel != null || Boolean(elapsed))));
 
   return {
     eventId,
@@ -426,6 +488,18 @@ export function normalizeInplayItem(item) {
     finished,
     live,
   };
+}
+
+/**
+ * Item útil para gravar no match? Evita stub "AO VIVO" sem placar/minuto.
+ * @param {ReturnType<typeof normalizeInplayItem>} info
+ */
+export function inplayInfoHasDisplayData(info) {
+  if (!info) return false;
+  if (info.finished) return true;
+  if (info.scoreLabel) return true;
+  if (info.elapsed) return true;
+  return Boolean(info.live);
 }
 
 /**
@@ -565,6 +639,34 @@ export function buildMatchInplayPatch(match, inplayByEventId, nowIso) {
   if (info) info = applyFinishedInference(info, match, now);
   if (!info) return null;
 
+  const prevMeta =
+    match.metadata && typeof match.metadata === "object" ? match.metadata : {};
+  const prevLive =
+    prevMeta.live && typeof prevMeta.live === "object" ? prevMeta.live : {};
+  const prevBrokenStub =
+    Boolean(prevLive.live) &&
+    !prevLive.score &&
+    !prevLive.elapsed &&
+    prevLive.home_score == null &&
+    prevLive.away_score == null &&
+    !prevLive.finished;
+
+  // Não gravar stub "live" sem placar/minuto (status open virava AO VIVO vazio).
+  if (!inplayInfoHasDisplayData(info)) {
+    if (!prevBrokenStub) return null;
+    // Limpa stub ruim anterior
+    const patch = {
+      metadata: {
+        ...prevMeta,
+        betbra_event_id: ext,
+        score_sync_enabled: true,
+        live: null,
+      },
+      updated_at: nowIso,
+    };
+    return { patch, live: null };
+  }
+
   const live = buildLiveMetadata(info, nowIso);
   if (!live) return null;
   if (info.finished) {
@@ -573,19 +675,16 @@ export function buildMatchInplayPatch(match, inplayByEventId, nowIso) {
     live.inferred_finished = true;
   }
 
-  const prevMeta =
-    match.metadata && typeof match.metadata === "object" ? match.metadata : {};
-  const prevLive =
-    prevMeta.live && typeof prevMeta.live === "object" ? prevMeta.live : {};
-
   const hadExternal = Boolean(normalizeEventId(match.external_id));
   const hadBetbraMeta = Boolean(normalizeEventId(prevMeta.betbra_event_id));
 
-  // evita writes inúteis
+  // evita writes inúteis — mas nunca engolir stub quebrado
   const same =
+    !prevBrokenStub &&
     String(prevLive.score || "") === String(live.score || "") &&
     String(prevLive.elapsed || "") === String(live.elapsed || "") &&
     Boolean(prevLive.finished) === Boolean(live.finished) &&
+    Boolean(prevLive.live) === Boolean(live.live) &&
     String(prevLive.match_status || "") === String(live.match_status || "") &&
     hadExternal &&
     hadBetbraMeta;

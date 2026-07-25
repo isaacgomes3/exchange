@@ -3350,13 +3350,33 @@ async function probeBetbraEventsRadar(opts = {}) {
 async function fetchBetbraEventInplayInfo(eventId) {
   const id = normalizeEventId(eventId);
   if (!id) return null;
-  const detail = await spaced(() =>
-    betbra(`${API_BASE}/events/${id}?sport-id=${SOCCER_ID}`, {
-      Referer: `${REFERER.replace(/\/$/, "")}/exchange/sport/soccer/event/${id}`,
-      "Accept-Encoding": "identity",
-    })
-  );
+  const sportIds = [
+    SOCCER_ID,
+    Number(process.env.MEXCHANGE_SOCCER_ID || 0) || null,
+    15,
+    1,
+    13,
+  ].filter((n, i, arr) => Number.isFinite(Number(n)) && arr.indexOf(n) === i);
+
+  let detail = null;
+  for (const sportId of sportIds) {
+    try {
+      const row = await spaced(() =>
+        betbra(`${API_BASE}/events/${id}?sport-id=${sportId}`, {
+          Referer: `${REFERER.replace(/\/$/, "")}/exchange/sport/soccer/event/${id}`,
+          "Accept-Encoding": "identity",
+        })
+      );
+      if (row && typeof row === "object") {
+        detail = row;
+        break;
+      }
+    } catch {
+      /* tenta próximo sport-id */
+    }
+  }
   if (!detail || typeof detail !== "object") return null;
+
   const scoreObj =
     detail.score && typeof detail.score === "object"
       ? detail.score
@@ -3368,6 +3388,7 @@ async function fetchBetbraEventInplayInfo(eventId) {
                 detail.homeScore ??
                 detail["home-score"] ??
                 detail.home_score ??
+                detail.homeGoals ??
                 null,
             },
             away: {
@@ -3375,15 +3396,25 @@ async function fetchBetbraEventInplayInfo(eventId) {
                 detail.awayScore ??
                 detail["away-score"] ??
                 detail.away_score ??
+                detail.awayGoals ??
                 null,
             },
           };
   const liveFlag = Boolean(
     detail["in-running-flag"] ||
       detail.inRunning ||
-      /in[\s_-]?play|live/i.test(String(detail.status || ""))
+      detail.in_running ||
+      /in[\s_-]?play|live/i.test(String(detail.status || "")) ||
+      /in[\s_-]?play|live|half|ht|et/i.test(
+        String(
+          detail.inPlayMatchStatus ||
+            detail["in-play-match-status"] ||
+            detail.in_play_match_status ||
+            ""
+        )
+      )
   );
-  return normalizeInplayItem({
+  const info = normalizeInplayItem({
     eventId: String(detail.id || id),
     status: detail.status || (liveFlag ? "InPlay" : ""),
     inPlayMatchStatus:
@@ -3397,9 +3428,20 @@ async function fetchBetbraEventInplayInfo(eventId) {
       detail.timeElapsed ||
       detail.elapsed ||
       detail.minute ||
+      detail.clock ||
+      detail.matchTime ||
+      detail["match-time"] ||
       "",
     score: scoreObj,
+    "in-running-flag": liveFlag,
+    inRunning: liveFlag,
   });
+  // Só devolve se tiver algo para mostrar (placar/minuto/live real)
+  if (!info) return null;
+  if (!info.finished && !info.scoreLabel && !info.elapsed && !info.live) {
+    return null;
+  }
+  return info;
 }
 
 /**
@@ -3508,7 +3550,7 @@ async function syncBetbraInplayScores({ force = false } = {}) {
       skipped += 1;
       continue;
     }
-    if (built.live.finished) finishedSeen += 1;
+    if (built.live && built.live.finished) finishedSeen += 1;
     try {
       await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(match.id)}`, {
         method: "PATCH",
@@ -3521,9 +3563,10 @@ async function syncBetbraInplayScores({ force = false } = {}) {
           kind: "match",
           id: match.id,
           external_id: match.external_id || matchBetbraEventId(match),
-          score: built.live.score,
-          elapsed: built.live.elapsed_label,
-          finished: built.live.finished,
+          score: built.live ? built.live.score : null,
+          elapsed: built.live ? built.live.elapsed_label : null,
+          finished: built.live ? built.live.finished : false,
+          clearedStub: !built.live,
         });
       }
     } catch (err) {
