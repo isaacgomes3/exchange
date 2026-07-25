@@ -63,12 +63,23 @@
     return "";
   }
 
+  var COL_LABELS = {
+    user_name: "nome",
+    user_id: "user id",
+    amount_cents: "valor",
+    created_at: "criado em",
+  };
+
+  function colLabel(c) {
+    return COL_LABELS[c] || c.replace(/_/g, " ");
+  }
+
   function renderTable(cols, rows) {
     var head =
       "<tr>" +
       cols
         .map(function (c) {
-          return "<th>" + esc(c.replace(/_/g, " ")) + "</th>";
+          return "<th>" + esc(colLabel(c)) + "</th>";
         })
         .join("") +
       "</tr>";
@@ -183,6 +194,34 @@
       }
     }
     throw lastErr || new Error("Nenhuma tabela disponível");
+  }
+
+  /** Anexa profiles.full_name em cada linha com user_id → campo user_name */
+  async function enrichUserNames(supa, rows) {
+    if (!rows || !rows.length) return rows || [];
+    var ids = {};
+    rows.forEach(function (r) {
+      if (r && r.user_id) ids[String(r.user_id)] = 1;
+    });
+    var list = Object.keys(ids);
+    if (!list.length) return rows;
+
+    var map = {};
+    for (var i = 0; i < list.length; i += 80) {
+      var chunk = list.slice(i, i + 80);
+      var res = await supa.from("profiles").select("id,full_name").in("id", chunk);
+      if (res.error) break;
+      (res.data || []).forEach(function (p) {
+        var name = p.full_name && String(p.full_name).trim();
+        map[String(p.id)] = name || "—";
+      });
+    }
+
+    return rows.map(function (r) {
+      var copy = Object.assign({}, r);
+      copy.user_name = map[String(r.user_id)] || "—";
+      return copy;
+    });
   }
 
   function uniqueStatuses(rows) {
@@ -316,8 +355,15 @@
       });
       try {
         var loaded = await tryTables(supa, cfg.sources);
-        var cols = pickCols(loaded.rows, cfg.cols || loaded.spec.cols);
-        bindFilters(loaded.rows, cols, loaded.spec.table, run);
+        var rows = loaded.rows;
+        var wantName =
+          cfg.enrichUserNames === true ||
+          (cfg.cols || []).indexOf("user_name") >= 0;
+        if (wantName) {
+          rows = await enrichUserNames(supa, rows);
+        }
+        var cols = pickCols(rows, cfg.cols || loaded.spec.cols);
+        bindFilters(rows, cols, loaded.spec.table, run);
       } catch (ex) {
         if (err) {
           err.textContent = (ex && ex.message) || "Erro ao carregar";
