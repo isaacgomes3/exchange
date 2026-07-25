@@ -184,7 +184,6 @@ head -c 200 /tmp/bs-acc.json 2>/dev/null; echo
 echo ""
 echo "OK — Mexchange /offers LIVE + Testar sessão"
 echo "  1) Conta BetBra → cURL → Extrair → Salvar → Testar sessão (precisa accountId)"
-echo "  2) Se Testar sessão falhar: Cookie Chrome ≠ IP VPS — use login/senha + device"
+echo "  2) Se Testar sessão falhar: Cookie Chrome != IP VPS — use login/senha + device"
 echo "  3) https://botshield.arbishield.app/ordens.html (LAY+BACK, confirmLive)"
 echo "  Atenção: ordem REAL — use stake mínima"
-)
