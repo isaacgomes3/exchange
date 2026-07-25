@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Hotfix: API ArbiShield de ordens (connect sessão + place/cancel/status).
-# Adapter da casa fica stub até EXCHANGE_ORDERS_LIVE=1 + doc da BetBra/Fulltbet.
+# Padrão: provider=demo (simula place/cancel). Live só com EXCHANGE_ORDERS_LIVE=1 + doc da casa.
 #
 # Na VPS:
 #   bash <(curl -fsSL "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-hotfix-exchange-orders-api.sh?ref=cursor/exchange-orders-api-e85c&t=$(date +%s%N)" \
