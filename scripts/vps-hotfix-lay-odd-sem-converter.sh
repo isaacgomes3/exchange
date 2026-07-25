@@ -77,12 +77,15 @@ rm -f "$tmp_pre"
 
 log "3/4 UIs (monitor + proteções cliente)"
 for pair in \
-  "deploy/vps-supabase/static/v2/admin-monitoring-protections.html:admin-monitoring-protections.html:displayOddOf" \
+  "deploy/vps-supabase/static/v2/admin-monitoring-protections.html:admin-monitoring-protections.html:loadProtections" \
   "deploy/vps-supabase/static/v2/app-protecoes.html:app-protecoes.html:displayOddOf"; do
   IFS=: read -r rel name marker <<<"$pair"
   tmp="$(mktemp)"
   download_repo_file "$rel" "$tmp"
   grep -q "$marker" "$tmp" || die "$name sem $marker"
+  if [[ "$name" == "admin-monitoring-protections.html" ]]; then
+    grep -q 'matchMarketOf' "$tmp" || die "$name sem matchMarketOf"
+  fi
   n=0
   while IFS= read -r -d '' f; do
     cp -a "$f" "${f}.bak-lay-odd-$(date +%s)" 2>/dev/null || true
@@ -100,7 +103,7 @@ for pair in \
   rm -f "$tmp"
 done
 
-log "4/4 restart + backfill odd = metadata.market_odd"
+log "4/4 restart + backfill odd do mercado (metadata + matches.markets)"
 systemctl restart arbishield-prelive-events.service 2>/dev/null || true
 systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 systemctl restart arbishield-prelive-events-teste.service 2>/dev/null || true
@@ -108,7 +111,7 @@ systemctl restart arbishield-serverfn-shim-teste.service 2>/dev/null || true
 
 if [[ -n "$SERVICE_KEY" ]]; then
   SUPABASE_URL="$SUPABASE_URL" SUPABASE_SERVICE_ROLE_KEY="$SERVICE_KEY" python3 - <<'PY' || echo "AVISO: backfill falhou"
-import json, os, urllib.request
+import json, os, urllib.request, urllib.parse
 
 url = os.environ.get("SUPABASE_URL", "http://127.0.0.1:54321").rstrip("/")
 key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or ""
@@ -121,57 +124,101 @@ headers = {
 
 def get(path):
     req = urllib.request.Request(url + path, headers=headers)
-    with urllib.request.urlopen(req, timeout=60) as r:
+    with urllib.request.urlopen(req, timeout=90) as r:
         return json.loads(r.read().decode())
 
 def patch(path, body):
     data = json.dumps(body).encode()
-    h = dict(headers)
-    req = urllib.request.Request(url + path, data=data, headers=h, method="PATCH")
+    req = urllib.request.Request(url + path, data=data, headers=headers, method="PATCH")
     with urllib.request.urlopen(req, timeout=60) as r:
         r.read()
+
+def fnum(v):
+    try:
+        n = float(v)
+        return n if n > 1.01 else None
+    except (TypeError, ValueError):
+        return None
 
 updated = 0
 for table in ("protections", "back_protections"):
     try:
-        rows = get(f"/rest/v1/{table}?select=id,odd,metadata&order=created_at.desc&limit=2000")
+        rows = get(
+            f"/rest/v1/{table}?select=id,match_id,odd,metadata&order=created_at.desc&limit=2000"
+        )
     except Exception as e:
         print(f"  skip {table}: {e}")
         continue
     if not isinstance(rows, list):
         continue
+    match_ids = sorted({str(r.get("match_id")) for r in rows if r.get("match_id")})
+    matches = {}
+    # batch in chunks of 80
+    for i in range(0, len(match_ids), 80):
+        chunk = match_ids[i : i + 80]
+        inlist = ",".join(urllib.parse.quote(x, safe="") for x in chunk)
+        try:
+            ms = get(f"/rest/v1/matches?select=id,markets&id=in.({inlist})")
+        except Exception as e:
+            print("  matches skip:", e)
+            ms = []
+        for m in ms or []:
+            matches[str(m.get("id"))] = m
+
     for row in rows:
         meta = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
-        mt = str(meta.get("market_type") or ("BACK" if table.startswith("back") else "LAY")).upper()
-        market_odd = meta.get("market_odd")
-        try:
-            market_odd_n = float(market_odd)
-        except (TypeError, ValueError):
+        mt = str(
+            meta.get("market_type")
+            or ("BACK" if table.startswith("back") else "LAY")
+        ).upper()
+        calc = meta.get("calculations") if isinstance(meta.get("calculations"), dict) else {}
+        market_odd_n = (
+            fnum(meta.get("market_odd"))
+            or fnum(calc.get("marketOdd"))
+            or fnum(calc.get("market_odd"))
+        )
+        m = matches.get(str(row.get("match_id") or "")) or {}
+        markets = m.get("markets") if isinstance(m.get("markets"), list) else []
+        mid = meta.get("market_id") or meta.get("marketId")
+        mk = None
+        if mid:
+            for x in markets:
+                if str(x.get("id")) == str(mid):
+                    mk = x
+                    break
+        if mk is None and markets:
+            mk = markets[0]
+        if mk is not None:
+            market_odd_n = fnum(mk.get("odd")) or market_odd_n
+        if market_odd_n is None:
             continue
-        if not (market_odd_n > 1.01):
-            continue
-        try:
-            cur = float(row.get("odd") or 0)
-        except (TypeError, ValueError):
-            cur = 0
-        # Só corrige quando a coluna odd parece a back-equivalente (≠ mercado)
+        cur = fnum(row.get("odd")) or 0
         if abs(cur - market_odd_n) < 1e-6:
+            # ainda garante market_odd no metadata
+            if fnum(meta.get("market_odd")) != market_odd_n:
+                meta2 = dict(meta)
+                meta2["market_odd"] = market_odd_n
+                try:
+                    patch(f"/rest/v1/{table}?id=eq.{row['id']}", {"metadata": meta2})
+                    updated += 1
+                except Exception as e:
+                    print("  skip meta", row.get("id"), e)
             continue
-        # LAY: se odd ≈ L/(L-1), era conversão errada
         if mt == "LAY":
-            equiv = market_odd_n / (market_odd_n - 1) if market_odd_n > 1.01 else 0
-            if abs(cur - equiv) > 0.05 and cur > 2:
-                # odd já alta e diferente — não mexe
+            equiv = market_odd_n / (market_odd_n - 1)
+            # corrige se odd ≈ conversão OU odd baixa (<2) com mercado alto
+            looks_converted = abs(cur - equiv) <= 0.08 or (cur < 2 and market_odd_n >= 2)
+            if not looks_converted and cur > 2:
                 continue
         body = {"odd": market_odd_n}
-        # guarda a convertida só como info
         meta2 = dict(meta)
-        if mt == "LAY" and cur > 1.01 and abs(cur - market_odd_n) > 1e-6:
+        meta2["market_odd"] = market_odd_n
+        if mt == "LAY" and cur > 1.01:
             meta2["effective_back_odd"] = cur
             meta2["odd_was_converted_bug"] = True
-            body["metadata"] = meta2
+        body["metadata"] = meta2
         try:
-            patch(f"/rest/v1/{table}?id=eq.{row['id']}", body)
+            patch(f"/rest/v1/{table}?id=eq.{urllib.parse.quote(str(row['id']), safe='')}", body)
             updated += 1
         except Exception as e:
             print("  skip", row.get("id"), e)
@@ -182,5 +229,5 @@ else
 fi
 
 echo ""
-echo "OK. LAY lançado @ 30 deve aparecer LAY 30 no monitor e nas proteções."
-echo "Hard refresh (Ctrl+Shift+R)."
+echo "OK. Monitor resolve odd pelo mercado do jogo (LAY 36 → 36)."
+echo "Hard refresh (Ctrl+Shift+R) no Monitor de Proteções."

@@ -401,10 +401,49 @@
       /** Odd do mercado lançado (LAY 30 → 30), nunca a back-equivalente. */
       function displayOddOf(it) {
         var meta = metaOf(it);
-        var marketOdd = Number(meta.market_odd);
-        if (marketOdd > 1.01) return marketOdd;
-        var o = Number(it && it.odd);
-        return o > 0 ? o : 0;
+        var calc =
+          meta.calculations && typeof meta.calculations === "object"
+            ? meta.calculations
+            : {};
+        var match = it.matches || {};
+        var markets = Array.isArray(match.markets) ? match.markets : [];
+        var mid = meta.market_id || meta.marketId || null;
+        var mk =
+          (mid &&
+            markets.find(function (x) {
+              return String(x.id) === String(mid);
+            })) ||
+          markets[0] ||
+          null;
+        var candidates = [
+          mk && mk.odd,
+          meta.market_odd,
+          calc.marketOdd,
+          calc.market_odd,
+        ];
+        var marketOdd = null;
+        for (var i = 0; i < candidates.length; i++) {
+          var n = Number(candidates[i]);
+          if (n > 1.01) {
+            marketOdd = n;
+            break;
+          }
+        }
+        var stored = Number(it && it.odd);
+        if (marketOdd != null) {
+          if (stored > 1.01) {
+            var equiv = marketOdd / (marketOdd - 1);
+            if (Math.abs(stored - equiv) <= 0.08) return marketOdd;
+            if (stored < 2 && marketOdd >= 2) return marketOdd;
+          }
+          return marketOdd;
+        }
+        var mt = String(it.side || it.market_category || "LAY").toUpperCase();
+        if (mt !== "BACK" && stored > 1.01 && stored < 2) {
+          var reversed = stored / (stored - 1);
+          if (reversed >= 2) return Math.round(reversed * 100) / 100;
+        }
+        return stored > 0 ? stored : 0;
       }
       function teamsOf(it) {
         var meta = metaOf(it);
@@ -565,7 +604,7 @@
         if (matchIds.length) {
           var mres = await supa
             .from("matches")
-            .select("id,home_team,away_team,league,starts_at")
+            .select("id,home_team,away_team,league,starts_at,markets")
             .in("id", matchIds);
           if (!mres.error) {
             (mres.data || []).forEach(function (m) {
