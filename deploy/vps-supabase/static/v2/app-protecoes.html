@@ -825,5 +825,37 @@
       }
     })();
   </script>
+  <script id="arbishield-hide-cancelled-protections">
+    (function () {
+      function hide() {
+        try {
+          document
+            .querySelectorAll(".prot-list .term-row, #list .term-row")
+            .forEach(function (row) {
+              var badge = row.querySelector(".prot-badge, .term-col-status");
+              var txt = (
+                (badge && badge.textContent) ||
+                row.textContent ||
+                ""
+              ).toLowerCase();
+              if (txt.indexOf("cancelad") >= 0) {
+                row.style.display = "none";
+                row.setAttribute("data-hidden-cancelled", "1");
+              }
+            });
+        } catch (e) {}
+      }
+      var obs = new MutationObserver(hide);
+      function boot() {
+        var list = document.getElementById("list");
+        if (list) obs.observe(list, { childList: true, subtree: true });
+        hide();
+        setInterval(hide, 600);
+      }
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", boot);
+      } else boot();
+    })();
+  </script>
 </body>
 </html>

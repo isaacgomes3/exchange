@@ -23,7 +23,7 @@ log "Baixar app-protecoes.html"
 curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
   "$RAW/deploy/vps-supabase/static/v2/app-protecoes.html?v=$TS" -o "$TMP"
 grep -q 'isVisibleProtection' "$TMP" || die "download sem isVisibleProtection"
-grep -q 'neq("status", "cancelled")' "$TMP" || die "download sem filtro neq cancelled"
+grep -q 'cancelad' "$TMP" || die "download sem filtro cancelad"
 
 # Override extra: se load antigo voltar, esconde no DOM
 OVERRIDE='

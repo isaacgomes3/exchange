@@ -58,7 +58,7 @@ do
   curl -fsSL --retry 3 "$RAW/deploy/vps-supabase/static/v2/app-protecoes.html?v=$TS" -o "$dest"
   sed -i "s/?v=[^\"']*/?v=cancel-fee-$TS/g" "$dest" || true
   grep -q 'btnCancelProt' "$dest" || die "$dest sem btnCancelProt"
-  grep -q 'isVisibleProtection\|neq("status", "cancelled")' "$dest" \
+  grep -q 'isVisibleProtection\|arbishield-hide-cancelled-protections' "$dest" \
     || die "$dest ainda lista canceladas"
   echo "  OK $dest"
 done
