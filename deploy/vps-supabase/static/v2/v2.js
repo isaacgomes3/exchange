@@ -50,11 +50,13 @@
     return !!FINANCE_PAGE_IDS[String(id || "")];
   }
 
-  /** Ambiente de teste: porta 8090 (localhost) ou host teste.* */
+  /** Sandbox/teste: /sandbox/ no domínio prod, porta 8090, ou host teste.* */
   function isTesteEnv() {
     var loc = global.location || {};
     var h = String(loc.hostname || "").toLowerCase();
     var p = String(loc.port || "");
+    var path = String(loc.pathname || "");
+    if (path.indexOf("/sandbox/") === 0) return true;
     if (p === "8090" || p === "8091") return true;
     if (h === "teste.arbishield.app" || h.indexOf("teste.") === 0) return true;
     return false;
