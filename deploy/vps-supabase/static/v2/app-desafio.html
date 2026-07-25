@@ -6,54 +6,58 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-mercado-vx-v2" />
-  <link rel="stylesheet" href="/v2.css?v=dz-mercado-vx-2" />
+  <meta name="arbishield-build" content="desafio-mercado-vx-v3" />
+  <link rel="stylesheet" href="/v2.css?v=dz-mercado-vx-3" />
   <style>
+    /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
     .dz-sb-market {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      width: 100%;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: 10px !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
     }
     .dz-sb-market-txt {
-      flex: 1;
-      min-width: 0;
-      padding-right: 4px;
+      flex: 1 1 auto !important;
+      min-width: 0 !important;
+      order: 1 !important;
     }
     .dz-mkt-flag {
-      flex: 0 0 auto;
-      margin-left: auto;
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      display: inline-grid;
-      place-items: center;
-      font-size: 11px;
-      font-weight: 900;
-      line-height: 1;
-      letter-spacing: 0;
-      text-transform: none;
-      border: 1.5px solid rgba(255, 255, 255, 0.28);
-      background: transparent;
-      color: transparent;
-      box-sizing: border-box;
+      flex: 0 0 auto !important;
+      order: 2 !important;
+      margin-left: auto !important;
+      width: 22px !important;
+      height: 22px !important;
+      border-radius: 50% !important;
+      display: inline-grid !important;
+      place-items: center !important;
+      font-size: 11px !important;
+      font-weight: 900 !important;
+      line-height: 1 !important;
+      letter-spacing: 0 !important;
+      text-transform: none !important;
+      border: 1.5px solid rgba(255, 255, 255, 0.28) !important;
+      background: transparent !important;
+      color: transparent !important;
+      box-sizing: border-box !important;
     }
     .dz-mkt-flag.is-pending {
-      border-color: rgba(255, 255, 255, 0.28);
-      background: rgba(255, 255, 255, 0.04);
-      color: transparent;
+      border-color: rgba(255, 255, 255, 0.28) !important;
+      background: rgba(255, 255, 255, 0.04) !important;
+      color: transparent !important;
     }
     .dz-mkt-flag.is-win {
-      color: #08140a;
-      background: #c9f223;
-      border-color: rgba(201, 242, 35, 0.85);
-      box-shadow: 0 0 0 1px rgba(201, 242, 35, 0.25);
+      color: #08140a !important;
+      background: #c9f223 !important;
+      border-color: rgba(201, 242, 35, 0.85) !important;
+      box-shadow: 0 0 0 1px rgba(201, 242, 35, 0.25) !important;
     }
     .dz-mkt-flag.is-lose {
-      color: #fff;
-      background: #dc2626;
-      border-color: rgba(248, 113, 113, 0.65);
-      box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.25);
+      color: #fff !important;
+      background: #dc2626 !important;
+      border-color: rgba(248, 113, 113, 0.65) !important;
+      box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.25) !important;
     }
     .dz-v2-score {
       font-size: clamp(1.8rem, 4vw, 2.6rem);
