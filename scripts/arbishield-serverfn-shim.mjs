@@ -2136,6 +2136,105 @@ async function transferRealToDesafio(_token, _body) {
   throw err;
 }
 
+/**
+ * Transferência interna: Saldo Reembolso → Desafio (100% do disponível, sem teto 50%).
+ * Banca Real → Desafio continua bloqueada.
+ */
+async function transferDeductionToDesafio(token, body) {
+  const userId = requireUserId(token);
+  const amountCents = Math.round(
+    Number(body?.amountCents ?? body?.amount_cents ?? 0)
+  );
+  if (!Number.isFinite(amountCents) || amountCents <= 0) {
+    const err = new Error("Valor inválido");
+    err.status = 400;
+    throw err;
+  }
+
+  const rows = await sb(
+    `/rest/v1/profiles?select=deduction_balance_cents,desafio_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const p = Array.isArray(rows) ? rows[0] : null;
+  if (!p) {
+    const err = new Error("Perfil não encontrado");
+    err.status = 404;
+    throw err;
+  }
+  const dedBefore = n(p.deduction_balance_cents);
+  const desBefore = n(p.desafio_balance_cents);
+  if (amountCents > dedBefore) {
+    const err = new Error(
+      `Saldo Reembolso insuficiente (disponível ${(dedBefore / 100).toFixed(2)})`
+    );
+    err.status = 400;
+    throw err;
+  }
+
+  const dedAfter = dedBefore - amountCents;
+  const desAfter = desBefore + amountCents;
+  await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: {
+      deduction_balance_cents: dedAfter,
+      desafio_balance_cents: desAfter,
+      updated_at: new Date().toISOString(),
+    },
+  });
+
+  const verify = await sb(
+    `/rest/v1/profiles?select=deduction_balance_cents,desafio_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const v = Array.isArray(verify) ? verify[0] : null;
+  if (
+    !v ||
+    n(v.deduction_balance_cents) !== dedAfter ||
+    n(v.desafio_balance_cents) !== desAfter
+  ) {
+    const err = new Error("Falha ao confirmar transferência Reembolso → Desafio");
+    err.status = 500;
+    throw err;
+  }
+
+  try {
+    await sb("/rest/v1/wallet_transactions", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        user_id: userId,
+        type: "internal_transfer",
+        amount_cents: amountCents,
+        balance_before_cents: dedBefore,
+        balance_after_cents: dedAfter,
+        metadata: {
+          from_bucket: "deduction_balance_cents",
+          to_bucket: "desafio_balance_cents",
+          label: "Saldo Reembolso → Desafio",
+          source: "transfer_reembolso_desafio_v1",
+          desafio_before_cents: desBefore,
+          desafio_after_cents: desAfter,
+        },
+      },
+    });
+  } catch (e) {
+    console.warn(
+      "[transferDeductionToDesafio] wallet_transactions:",
+      e instanceof Error ? e.message : e
+    );
+  }
+
+  return {
+    ok: true,
+    amountCents,
+    deductionBefore: dedBefore,
+    deductionAfter: dedAfter,
+    desafioBefore: desBefore,
+    desafioAfter: desAfter,
+  };
+}
+
 /** Remove do saldo usável do Desafio o valor retido/congelado do ciclo (não é stake de entrada). */
 async function clawbackDesafioRetainedFromSpendable(userId, retainedCents) {
   const takeWanted = Math.max(0, Math.round(Number(retainedCents) || 0));
@@ -6773,12 +6872,46 @@ const server = createServer(async (req, res) => {
   }
 
   if (url.pathname === "/api/arbishield/transfer-desafio" && req.method === "POST") {
-    return sendJson(res, 403, {
-      ok: false,
-      error:
-        "Transferência interna para a banca do Desafio está bloqueada. Deposite via PIX no saldo do Desafio.",
-      blocked: true,
-    });
+    try {
+      const token = bearerFromReq(req);
+      if (!token) {
+        return sendJson(res, 401, { ok: false, error: "Não autorizado" });
+      }
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      const payload = body.data || body;
+      const source = String(
+        payload.source || payload.from || payload.bucket || ""
+      )
+        .toLowerCase()
+        .trim();
+      // Só libera Reembolso → Desafio. Banca Real → Desafio permanece bloqueada.
+      if (
+        source === "reembolso" ||
+        source === "deduction" ||
+        source === "deduction_balance" ||
+        source === "saldo_reembolso"
+      ) {
+        const data = await transferDeductionToDesafio(token, payload);
+        return sendJson(res, 200, data);
+      }
+      return sendJson(res, 403, {
+        ok: false,
+        error:
+          "Transferência Banca → Desafio está bloqueada. Use Saldo Reembolso → Desafio, ou deposite via PIX no Desafio.",
+        blocked: true,
+      });
+    } catch (err) {
+      return sendJson(res, err.status || 400, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   if (url.pathname === "/api/arbishield/affiliate-ensure-code" && req.method === "POST") {

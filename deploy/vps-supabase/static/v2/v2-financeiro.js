@@ -777,6 +777,10 @@
     if (btnDed) {
       btnDed.disabled = !(state.deductionBalance > 0);
     }
+    var btnXferDed = document.getElementById("btnTransferDeductionDesafio");
+    if (btnXferDed) {
+      btnXferDed.disabled = !(state.deductionBalance > 0);
+    }
     setText("finProtCount", String(state.activeCount));
     setText("finProtLocked", money(state.locked));
     setText("metTotal", money(state.metrics.total));
@@ -1210,12 +1214,48 @@
   }
 
   var TRANSFER_DESAFIO_BLOCKED =
-    "Transferência interna para a banca do Desafio está bloqueada. Deposite via PIX no saldo do Desafio.";
+    "Transferência Banca → Desafio está bloqueada. Use Saldo Reembolso → Desafio, ou deposite via PIX no Desafio.";
+
+  var transferMode = "reembolso"; // reembolso | real(blocked)
 
   function openTransfer() {
     alert(TRANSFER_DESAFIO_BLOCKED);
     closeTransfer();
   }
+
+  function openTransferReembolsoDesafio() {
+    var avail = Number(state.deductionBalance || 0);
+    if (!(avail > 0)) {
+      alert("Saldo Reembolso zerado.");
+      return;
+    }
+    transferMode = "reembolso";
+    var modal = document.getElementById("finTransferModal");
+    if (!modal) return;
+    var title = document.getElementById("finTransferTitle");
+    var note = document.getElementById("finTransferNote");
+    var availEl = document.getElementById("finTransferAvail");
+    var maxEl = document.getElementById("finTransferMax");
+    var amountEl = document.getElementById("finTransferAmount");
+    var err = document.getElementById("finTransferErr");
+    if (title) title.textContent = "Reembolso → Desafio";
+    if (note) {
+      note.textContent =
+        "Mova seu Saldo Reembolso para o saldo do Desafio ArbiShield. A transferência é imediata.";
+    }
+    if (availEl) availEl.textContent = money(avail);
+    if (maxEl) maxEl.textContent = money(avail);
+    if (amountEl) {
+      amountEl.value = (avail / 100).toFixed(2).replace(".", ",");
+    }
+    if (err) {
+      err.hidden = true;
+      err.textContent = "";
+    }
+    modal.setAttribute("aria-hidden", "false");
+    modal.classList.add("open");
+  }
+
   function closeTransfer() {
     var modal = document.getElementById("finTransferModal");
     if (!modal) return;
@@ -1223,13 +1263,85 @@
     modal.classList.remove("open");
   }
 
+  function parseBrlToCents(raw) {
+    var normalized = String(raw || "")
+      .trim()
+      .replace(/\s/g, "")
+      .replace(/\./g, "")
+      .replace(",", ".");
+    var n = parseFloat(normalized);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return Math.round(n * 100);
+  }
+
   async function submitTransfer() {
     var err = document.getElementById("finTransferErr");
-    if (err) {
-      err.textContent = TRANSFER_DESAFIO_BLOCKED;
-      err.hidden = false;
-    } else {
-      alert(TRANSFER_DESAFIO_BLOCKED);
+    function showErr(msg) {
+      if (err) {
+        err.textContent = msg;
+        err.hidden = false;
+      } else {
+        alert(msg);
+      }
+    }
+    if (transferMode !== "reembolso") {
+      showErr(TRANSFER_DESAFIO_BLOCKED);
+      return;
+    }
+    var avail = Number(state.deductionBalance || 0);
+    var amountEl = document.getElementById("finTransferAmount");
+    var cents = parseBrlToCents(amountEl && amountEl.value);
+    if (!(cents > 0)) {
+      showErr("Valor inválido.");
+      return;
+    }
+    if (cents > avail) {
+      showErr("Valor acima do Saldo Reembolso disponível.");
+      return;
+    }
+    var submitBtn = document.getElementById("finTransferSubmit");
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+      var supa = ArbiV2.client();
+      var sess = await supa.auth.getSession();
+      var token =
+        sess && sess.data && sess.data.session && sess.data.session.access_token;
+      if (!token) throw new Error("Sessão expirada");
+      var res = await fetch("/api/arbishield/transfer-desafio", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+        },
+        body: JSON.stringify({
+          source: "reembolso",
+          amountCents: cents,
+        }),
+      });
+      var rawText = await res.text();
+      var data = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch (_) {
+        data = {};
+      }
+      if (!res.ok || !data.ok) {
+        throw new Error(
+          (data && (data.error || data.message)) ||
+            "Falha na transferência (HTTP " + res.status + ")"
+        );
+      }
+      closeTransfer();
+      alert(
+        "Transferido " +
+          money(cents) +
+          " do Saldo Reembolso para o Desafio."
+      );
+      location.reload();
+    } catch (ex) {
+      showErr(ex.message || "Erro ao transferir");
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
     }
   }
 
@@ -1349,6 +1461,10 @@
   function bindUi() {
     var btnDed = document.getElementById("btnSaqueDeduction");
     if (btnDed) btnDed.addEventListener("click", requestDeductionWithdraw);
+    var btnXferDed = document.getElementById("btnTransferDeductionDesafio");
+    if (btnXferDed) {
+      btnXferDed.addEventListener("click", openTransferReembolsoDesafio);
+    }
     document.getElementById("finPeriod").addEventListener("change", function (e) {
       state.period = e.target.value;
       state.page = 1;
@@ -1447,7 +1563,7 @@
     }
     var transferSubmit = document.getElementById("finTransferSubmit");
     if (transferSubmit) {
-      transferSubmit.disabled = true;
+      transferSubmit.disabled = false;
       transferSubmit.addEventListener("click", function (e) {
         e.preventDefault();
         submitTransfer();
