@@ -2,7 +2,7 @@
 # Hotfix: religa catálogo/API BetBra no worker :3098
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/CURSOR_SHA/scripts/vps-hotfix-reconectar-betbra-api.sh?v=1")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/4331d0b008daf290a685f254f82ecd4649301a9d/scripts/vps-hotfix-reconectar-betbra-api.sh?v=1")
 #
 # Se a VPS estiver fora do Brasil e a BetBra bloquear (Cloudflare),
 # configure proxy em /opt/arbishield/.arbishield-odds-sync.env:
@@ -11,10 +11,12 @@
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/reconectar-betbra-api-3cf9}"
-REF="${ARBISHIELD_REF:-$BRANCH}"
+REF="${ARBISHIELD_REF:-4331d0b008daf290a685f254f82ecd4649301a9d}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
 PRELIVE_DIR="${ARBISHIELD_PRELIVE_DIR:-/opt/arbishield}"
+WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
+WEB="$WEB_ROOT/v2"
 ENV_FILE="${ARBISHIELD_ODDS_ENV:-/opt/arbishield/.arbishield-odds-sync.env}"
 MARKER="betbra-api-v1"
 
@@ -22,7 +24,7 @@ log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null || die "$1 não encontrado"; }
 need curl
-mkdir -p "$SCRIPTS_DIR"
+mkdir -p "$SCRIPTS_DIR" "$WEB" "$WEB_ROOT"
 
 log "Prelive :3098 ($MARKER) ref=$REF"
 PRELIVE_DST="$PRELIVE_DIR/arbishield-prelive-events.mjs"
