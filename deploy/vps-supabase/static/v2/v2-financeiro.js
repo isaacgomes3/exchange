@@ -1318,14 +1318,14 @@
         data = {};
       }
       if (!res.ok) {
-        var msg =
-          data.error ||
-          data.message ||
-          (res.status === 405
-            ? "Rota de saque bloqueada no nginx (rode o hotfix Saldo Reembolso na VPS)."
-            : res.status === 404
-              ? "API de saque indisponível. Atualize o shim na VPS."
-              : "Falha ao solicitar saque (" + res.status + ")");
+        var errCode = String(data.error || data.message || "");
+        var msg = errCode;
+        if (!msg || errCode === "not_found") {
+          msg =
+            res.status === 405
+              ? "Rota de saque bloqueada no nginx — rode o hotfix na VPS."
+              : "API de saque desatualizada na VPS (not_found). Rode: vps-hotfix-saldo-reembolso-saque.sh";
+        }
         throw new Error(msg);
       }
       alert("Saque do Saldo Reembolso solicitado. Aguarde a análise.");
