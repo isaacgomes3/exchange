@@ -127,6 +127,10 @@
     .card-top .entries {
       margin-top: 4px; font-size: 12px; color: var(--muted); font-weight: 600;
     }
+    .launched-by {
+      margin-top: 6px; font-size: 11px; color: #86efac; font-weight: 700;
+    }
+    .launched-by span { color: #e2e8f0; font-weight: 800; }
     .card-top .side {
       text-align: right; white-space: nowrap; flex-shrink: 0;
       display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
@@ -1606,6 +1610,11 @@
                 <div class="entries">${steps.length} etapa(s) · saldo ${money(d.initial_balance_cents)}${
                   pendingClients > 0 ? ` · ${pendingClients} cliente(s) ativo(s)` : ""
                 }</div>
+                <div class="launched-by">Lançado por: <span>${esc(
+                  d._createdByName ||
+                    (d.metadata && d.metadata.created_by_name) ||
+                    "—"
+                )}</span></div>
               </div>
               <div class="side">
                 <span class="badge ${badge.cls}">${esc(badge.label)}</span>

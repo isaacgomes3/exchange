@@ -526,12 +526,85 @@ async function sb(path, { token, method = "GET", body } = {}) {
   return data;
 }
 
+/** Nome amigável do admin (full_name → email → id curto). */
+async function resolveAdminDisplayName(adminId) {
+  const id = String(adminId || "").trim();
+  if (!id) return null;
+  let name = id.slice(0, 8);
+  try {
+    const profRows = await sb(
+      `/rest/v1/profiles?select=full_name,email&id=eq.${encodeURIComponent(id)}&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    const prof = Array.isArray(profRows) ? profRows[0] : null;
+    if (prof) {
+      name =
+        (prof.full_name && String(prof.full_name).trim()) ||
+        (prof.email && String(prof.email).trim()) ||
+        name;
+    }
+  } catch {
+    /* keep short id */
+  }
+  return name;
+}
+
+function creatorMetaPatch(prevMeta, adminId, adminName) {
+  const meta =
+    prevMeta && typeof prevMeta === "object" ? { ...prevMeta } : {};
+  meta.created_by = adminId;
+  meta.created_by_name = adminName;
+  return meta;
+}
+
+async function enrichDesafiosWithCreatorNames(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const ids = {};
+  for (const d of list) {
+    const meta =
+      d && d.metadata && typeof d.metadata === "object" ? d.metadata : {};
+    const id = d?.created_by || meta.created_by || null;
+    if (id) ids[String(id)] = true;
+  }
+  const idList = Object.keys(ids);
+  const nameMap = {};
+  if (idList.length) {
+    try {
+      const profs = await sb(
+        `/rest/v1/profiles?select=id,full_name,email&id=in.(${idList
+          .map(encodeURIComponent)
+          .join(",")})`,
+        { token: SERVICE_KEY }
+      );
+      for (const p of Array.isArray(profs) ? profs : []) {
+        nameMap[String(p.id)] =
+          (p.full_name && String(p.full_name).trim()) ||
+          (p.email && String(p.email).trim()) ||
+          String(p.id).slice(0, 8);
+      }
+    } catch {
+      /* nomes opcionais */
+    }
+  }
+  for (const d of list) {
+    const meta =
+      d && d.metadata && typeof d.metadata === "object" ? d.metadata : {};
+    const sid = d?.created_by || meta.created_by || null;
+    d._createdById = sid || null;
+    d._createdByName =
+      (meta.created_by_name && String(meta.created_by_name).trim()) ||
+      (sid && nameMap[String(sid)]) ||
+      null;
+  }
+  return list;
+}
+
 async function listDesafios(token) {
   const rows = await sb(
     "/rest/v1/desafios?select=*,desafio_steps(*)&order=updated_at.desc",
     { token: token || SERVICE_KEY }
   );
-  return Array.isArray(rows) ? rows : [];
+  return enrichDesafiosWithCreatorNames(Array.isArray(rows) ? rows : []);
 }
 
 async function nextDesafioNumber(token) {
@@ -666,6 +739,45 @@ function buildStepRow(desafioId, stepIn, isActive) {
   };
 }
 
+async function insertDesafioRow(auth, desafioRow) {
+  // Tenta gravar created_by + metadata; schema antigo pode não ter as colunas.
+  const attempts = [
+    desafioRow,
+    (() => {
+      const { metadata: _m, ...rest } = desafioRow;
+      return rest;
+    })(),
+    (() => {
+      const { created_by: _c, metadata: _m, ...rest } = desafioRow;
+      return rest;
+    })(),
+  ];
+  let lastErr;
+  for (const body of attempts) {
+    try {
+      const created = await sb("/rest/v1/desafios", {
+        method: "POST",
+        token: auth,
+        body,
+      });
+      return Array.isArray(created) ? created[0] : created;
+    } catch (err) {
+      lastErr = err;
+      const msg = String(err?.message || err || "").toLowerCase();
+      if (
+        msg.includes("created_by") ||
+        msg.includes("metadata") ||
+        msg.includes("column") ||
+        msg.includes("schema cache")
+      ) {
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr || new Error("Falha ao criar desafio");
+}
+
 async function createDesafio(token, body) {
   const auth = token || SERVICE_KEY;
   const stepIn = body.step || (body.steps && body.steps[0]) || {};
@@ -674,12 +786,19 @@ async function createDesafio(token, body) {
     desafioRow.number = await nextDesafioNumber(auth);
   }
 
-  const created = await sb("/rest/v1/desafios", {
-    method: "POST",
-    token: auth,
-    body: desafioRow,
-  });
-  const desafio = Array.isArray(created) ? created[0] : created;
+  const payload = decodeJwtPayload(token);
+  const adminId = payload?.sub ? String(payload.sub) : null;
+  if (adminId) {
+    const createdByName = await resolveAdminDisplayName(adminId);
+    desafioRow.created_by = adminId;
+    desafioRow.metadata = creatorMetaPatch(
+      desafioRow.metadata,
+      adminId,
+      createdByName
+    );
+  }
+
+  const desafio = await insertDesafioRow(auth, desafioRow);
   if (!desafio?.id) throw new Error("Falha ao criar desafio");
 
   const stepsOut = [];
