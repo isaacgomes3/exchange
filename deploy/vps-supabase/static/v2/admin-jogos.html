@@ -2704,7 +2704,9 @@
           var releaseMinutes = Number(
             ($("manReleaseMinutes") && $("manReleaseMinutes").value) || 0
           );
-          if (![0, 15, 30, 60, 120].includes(releaseMinutes)) releaseMinutes = 60;
+          if (![0, 15, 30, 60, 120].includes(releaseMinutes)) releaseMinutes = 0;
+          // Se publicou na fila, libera na hora do lançamento (cliente vê agora)
+          if (published) releaseMinutes = 0;
           var betLink =
             ($("manExternalBetLink") && $("manExternalBetLink").value.trim()) ||
             null;
@@ -2718,7 +2720,8 @@
             external_id: $("manExternalId").value.trim() || null,
             starts_at: new Date(starts).toISOString(),
             sport_type: $("manSport").value,
-            status: $("manStatus").value,
+            status: "open",
+            status_v2: "open",
             is_published: published,
             score_sync_enabled: false,
             has_live_stream: $("manLiberarLive") && $("manLiberarLive").classList.contains("on"),
