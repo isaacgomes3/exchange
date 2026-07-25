@@ -6,11 +6,32 @@ import {
   normalizeEventsRadarItem,
   summarizeEventsRadarFeed,
   buildMradarWidgetUrl,
+  resolveSoft2BetHost,
+  eventsRadarUrlForSite,
+  resolveMradarForEventId,
 } from "./lib/betbra-events-radar.mjs";
 
 describe("betbra-events-radar", () => {
   it("mantém versão", () => {
-    assert.equal(BETBRA_EVENTS_RADAR_VERSION, "betbra-events-radar-v1");
+    assert.equal(BETBRA_EVENTS_RADAR_VERSION, "betbra-events-radar-v2");
+  });
+
+  it("resolve host Soft2Bet a partir do link", () => {
+    assert.equal(
+      resolveSoft2BetHost("https://bolsadeaposta.bet.br/event/123"),
+      "bolsadeaposta.bet.br"
+    );
+    assert.equal(
+      resolveSoft2BetHost("https://mexchange.betbra.bet.br/exchange"),
+      "betbra.bet.br"
+    );
+  });
+
+  it("monta URL eventsRadar por marca", () => {
+    assert.equal(
+      eventsRadarUrlForSite("https://bolsadeaposta.bet.br/x"),
+      "https://bolsadeaposta.bet.br/client/api/jumper/feedSports/inplayInfo/eventsRadar"
+    );
   });
 
   it("normaliza item com eventIdMbook + StatsPerform", () => {
@@ -39,6 +60,19 @@ describe("betbra-events-radar", () => {
     assert.equal(
       coerceEventsRadarFeed({ data: [{ eventIdMbook: "9" }] }).length,
       1
+    );
+  });
+
+  it("resolve mradar por eventId", () => {
+    const r = resolveMradarForEventId(
+      "111",
+      [{ eventIdMbook: "111", eventIdStatsPerform: "999" }],
+      "https://bolsadeaposta.bet.br/event/111"
+    );
+    assert.equal(r.found, true);
+    assert.equal(
+      r.mradarUrl,
+      "https://bolsadeaposta.bet.br/widget/mradar?id=999"
     );
   });
 

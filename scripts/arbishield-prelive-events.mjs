@@ -39,9 +39,12 @@ import {
 import {
   BETBRA_EVENTS_RADAR_VERSION,
   DEFAULT_EVENTS_RADAR_URL,
-  DEFAULT_MRADAR_WIDGET_URL,
   summarizeEventsRadarFeed,
   buildMradarWidgetUrl,
+  eventsRadarUrlForSite,
+  mradarWidgetBaseForSite,
+  resolveMradarForEventId,
+  resolveSoft2BetHost,
 } from "./lib/betbra-events-radar.mjs";
 
 // Trava de produto: fluxo de proteção — não alterar sem pedido explícito.
@@ -3236,27 +3239,94 @@ async function fetchBetbraInplayFeed() {
  * Feed índice do radar de movimento (campo 2D / Stats Perform).
  * Não traz coordenadas — só o mapa eventId exchange → Stats Perform.
  */
-async function fetchBetbraEventsRadar() {
+const RADAR_CACHE_TTL_MS = Number(
+  process.env.BETBRA_EVENTS_RADAR_CACHE_MS || 5 * 60 * 1000
+);
+/** @type {Map<string, { at: number, feed: unknown, error: string|null }>} */
+const eventsRadarCache = new Map();
+
+async function fetchBetbraEventsRadar(siteOrUrl) {
+  const url = siteOrUrl
+    ? eventsRadarUrlForSite(siteOrUrl)
+    : EVENTS_RADAR_URL;
+  const host = resolveSoft2BetHost(siteOrUrl || SITE);
   return spaced(() =>
-    betbra(EVENTS_RADAR_URL, {
-      Referer: `${SITE}/`,
+    betbra(url, {
+      Referer: `https://${host}/`,
     })
   );
 }
 
-async function probeBetbraEventsRadar() {
-  const started = Date.now();
+async function getEventsRadarFeedCached(siteOrUrl, { force = false } = {}) {
+  const host = resolveSoft2BetHost(siteOrUrl || SITE);
+  const cached = eventsRadarCache.get(host);
+  const now = Date.now();
+  if (
+    !force &&
+    cached &&
+    cached.feed != null &&
+    now - cached.at < RADAR_CACHE_TTL_MS
+  ) {
+    return { host, url: eventsRadarUrlForSite(host), feed: cached.feed, cached: true };
+  }
   try {
-    const feed = await fetchBetbraEventsRadar();
-    const summary = summarizeEventsRadarFeed(feed);
+    const feed = await fetchBetbraEventsRadar(host);
+    eventsRadarCache.set(host, { at: now, feed, error: null });
+    return { host, url: eventsRadarUrlForSite(host), feed, cached: false };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (cached?.feed != null) {
+      return {
+        host,
+        url: eventsRadarUrlForSite(host),
+        feed: cached.feed,
+        cached: true,
+        stale: true,
+        warning: msg,
+      };
+    }
+    eventsRadarCache.set(host, { at: now, feed: null, error: msg });
+    throw err;
+  }
+}
+
+async function probeBetbraEventsRadar(opts = {}) {
+  const started = Date.now();
+  const eventId = normalizeEventId(opts.eventId || "");
+  const siteOrUrl = opts.link || opts.site || SITE;
+  const host = resolveSoft2BetHost(siteOrUrl);
+  const widgetBase = mradarWidgetBaseForSite(host);
+  try {
+    const pack = await getEventsRadarFeedCached(host, { force: !!opts.force });
+    const summary = summarizeEventsRadarFeed(pack.feed);
+    if (eventId) {
+      const resolved = resolveMradarForEventId(eventId, pack.feed, host);
+      return {
+        ok: true,
+        version: BETBRA_EVENTS_RADAR_VERSION,
+        latencyMs: Date.now() - started,
+        url: pack.url,
+        host,
+        mradarWidget: widgetBase,
+        cached: Boolean(pack.cached),
+        stale: Boolean(pack.stale),
+        warning: pack.warning || null,
+        feedCount: summary.count,
+        ...resolved,
+      };
+    }
     const firstSp = summary.sample?.[0]?.eventIdStatsPerform || null;
     return {
       ok: true,
       version: BETBRA_EVENTS_RADAR_VERSION,
       latencyMs: Date.now() - started,
-      url: EVENTS_RADAR_URL,
-      mradarWidget: DEFAULT_MRADAR_WIDGET_URL,
-      mradarExample: buildMradarWidgetUrl(firstSp),
+      url: pack.url,
+      host,
+      mradarWidget: widgetBase,
+      mradarExample: buildMradarWidgetUrl(firstSp, widgetBase),
+      cached: Boolean(pack.cached),
+      stale: Boolean(pack.stale),
+      warning: pack.warning || null,
       ...summary,
     };
   } catch (err) {
@@ -3264,8 +3334,9 @@ async function probeBetbraEventsRadar() {
       ok: false,
       version: BETBRA_EVENTS_RADAR_VERSION,
       latencyMs: Date.now() - started,
-      url: EVENTS_RADAR_URL,
-      mradarWidget: DEFAULT_MRADAR_WIDGET_URL,
+      url: eventsRadarUrlForSite(host),
+      host,
+      mradarWidget: widgetBase,
       error: err instanceof Error ? err.message : String(err),
     };
   }
@@ -3842,11 +3913,25 @@ async function handleApi(req, res) {
 
   if (
     (url.pathname === "/api/arbishield/betbra-events-radar" ||
-      url.pathname === "/api/arbishield/betbra-movimento") &&
+      url.pathname === "/api/arbishield/betbra-movimento" ||
+      url.pathname === "/api/arbishield/desafio-mradar") &&
     req.method === "GET"
   ) {
     try {
-      const result = await probeBetbraEventsRadar();
+      const result = await probeBetbraEventsRadar({
+        eventId:
+          url.searchParams.get("eventId") ||
+          url.searchParams.get("event_id") ||
+          "",
+        link:
+          url.searchParams.get("link") ||
+          url.searchParams.get("external") ||
+          "",
+        site: url.searchParams.get("site") || "",
+        force:
+          url.searchParams.get("force") === "1" ||
+          url.searchParams.get("refresh") === "1",
+      });
       return sendJson(res, result.ok ? 200 : 502, result);
     } catch (err) {
       return sendJson(res, 500, {

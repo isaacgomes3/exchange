@@ -12,6 +12,7 @@ import {
   DEFAULT_MRADAR_WIDGET_URL,
   summarizeEventsRadarFeed,
   buildMradarWidgetUrl,
+  eventsRadarUrlForSite,
   BETBRA_EVENTS_RADAR_VERSION,
 } from "./lib/betbra-events-radar.mjs";
 
@@ -21,7 +22,9 @@ const REFERER = process.env.MEXCHANGE_REFERER || "https://mexchange.betbra.bet.b
 const INPLAY_URL =
   process.env.MEXCHANGE_INPLAY_FEED_URL ||
   "https://betbra.bet.br/client/api/jumper/feedSports/inplay-info";
-const RADAR_URL = DEFAULT_EVENTS_RADAR_URL;
+// Aceita SITE bolsadeaposta/betbra/fulltbet
+const RADAR_URL =
+  process.env.MEXCHANGE_EVENTS_RADAR_URL || eventsRadarUrlForSite(SITE) || DEFAULT_EVENTS_RADAR_URL;
 
 const outIdx = process.argv.indexOf("--out");
 const outPath = outIdx >= 0 ? process.argv[outIdx + 1] : null;

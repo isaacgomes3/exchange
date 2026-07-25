@@ -6,8 +6,8 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-mercado-vx-v3" />
-  <link rel="stylesheet" href="/v2.css?v=dz-mercado-vx-3" />
+  <meta name="arbishield-build" content="desafio-mradar-v1" />
+  <link rel="stylesheet" href="/v2.css?v=dz-mradar-1" />
   <style>
     /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
     .dz-sb-market {
@@ -200,11 +200,78 @@
     @media (prefers-reduced-motion: reduce) {
       .dz-live-toast, .dz-v2-elapsed .dot { animation: none !important; }
     }
+
+    /* Radar de movimento (Soft2Bet mradar / Stats Perform) */
+    .dz-radar {
+      margin: 0 0 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background:
+        linear-gradient(180deg, rgba(28, 42, 24, 0.55) 0%, rgba(10, 12, 9, 0.9) 100%);
+      overflow: hidden;
+    }
+    .dz-radar[hidden] { display: none !important; }
+    .dz-radar-toggle {
+      appearance: none;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 11px 14px;
+      border: 0;
+      background: transparent;
+      color: #e8ff8a;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .dz-radar-toggle span.hint {
+      color: rgba(255, 255, 255, 0.45);
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: none;
+      font-size: 11px;
+    }
+    .dz-radar-toggle[disabled] {
+      cursor: default;
+      color: rgba(255, 255, 255, 0.4);
+    }
+    .dz-radar-frame-wrap {
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      background: #0a1f12;
+    }
+    .dz-radar-frame-wrap[hidden] { display: none !important; }
+    .dz-radar-frame-wrap iframe {
+      display: block;
+      width: 100%;
+      height: min(52vw, 340px);
+      min-height: 220px;
+      border: 0;
+      background: #0a1f12;
+    }
+    .dz-radar-foot {
+      display: flex;
+      justify-content: flex-end;
+      padding: 6px 10px 8px;
+      background: rgba(0, 0, 0, 0.25);
+    }
+    .dz-radar-foot a {
+      color: rgba(232, 255, 138, 0.85);
+      font-size: 11px;
+      font-weight: 800;
+      text-decoration: none;
+      letter-spacing: 0.04em;
+    }
+    .dz-radar-foot a:hover { color: #c9f223; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=dz-mercado-vx-2"></script>
-  <script src="/desafio-ciclo-math.js?v=dz-mercado-vx-2"></script>
-  <script src="/v2-shell.js?v=dz-mercado-vx-2" defer></script>
+  <script src="/v2.js?v=dz-mradar-1"></script>
+  <script src="/desafio-ciclo-math.js?v=dz-mradar-1"></script>
+  <script src="/v2-shell.js?v=dz-mradar-1" defer></script>
   <style>
     .dz-access-history {
       appearance: none;
@@ -518,10 +585,24 @@
 
       function casaBrandFromLink(url) {
         var u = String(url || "").toLowerCase();
+        if (u.indexOf("bolsadeaposta") >= 0) return "Bolsa de Aposta";
         if (u.indexOf("betbra") >= 0) return "Betbra";
+        if (u.indexOf("fulltbet") >= 0) return "FulltBet";
         if (u.indexOf("bet365") >= 0) return "Bet365";
         if (u.indexOf("betano") >= 0) return "Betano";
         return "Casa externa";
+      }
+
+      /** Extrai eventId Soft2Bet/BetBra do link da casa. */
+      function extractBetbraEventId(url) {
+        var s = String(url || "").trim();
+        if (!s) return "";
+        var m = s.match(/[?&#](?:eventId|event_id|eventID|event)=([0-9]{6,})/i);
+        if (m) return m[1];
+        m = s.match(/\/(?:event|evento|e)\/([0-9]{6,})(?:\/|$|\?|#)/i);
+        if (m) return m[1];
+        m = s.match(/(?:^|[^\d])([0-9]{12,})(?:[^\d]|$)/);
+        return m ? m[1] : "";
       }
 
       function fmtOdd(v) {
@@ -1451,8 +1532,27 @@
           casaCommissionPct: Number(step.casa_commission_pct) || 0,
           externalBetLink: external,
           casaBrand: casaBrandFromLink(external),
+          betbraEventId: extractBetbraEventId(external),
           liveInfo: stepLiveInfo(step, Date.now()),
         };
+      }
+
+      function radarBlockHtml(item, phase) {
+        var isLive = phase === "live" || (item.liveInfo && item.liveInfo.live);
+        if (!isLive || !item.betbraEventId) return "";
+        return (
+          '<div class="dz-radar" data-radar data-event-id="' +
+          esc(item.betbraEventId) +
+          '" data-link="' +
+          esc(item.externalBetLink || "") +
+          '">' +
+          '<button type="button" class="dz-radar-toggle" data-radar-toggle>' +
+          "<span>Radar do jogo</span>" +
+          '<span class="hint" data-radar-hint>Carregar</span>' +
+          "</button>" +
+          '<div class="dz-radar-frame-wrap" data-radar-frame hidden></div>' +
+          "</div>"
+        );
       }
 
       function cardHtml(item, now) {
@@ -1571,6 +1671,7 @@
           "</div>" +
           teamBlock(item.awayTeam, item.awayLogo, "is-away") +
           "</div>" +
+          radarBlockHtml(item, phase) +
           '<div class="dz-v2-compare">' +
           '<div class="dz-v2-panel arbi" data-side="arbi">' +
           '<div class="dz-v2-panel-top"><div class="dz-v2-panel-brand"><img src="/brand/favicon-192.png" alt="" width="20" height="20" />ArbiShield</div>' +
@@ -1639,6 +1740,94 @@
         });
       }
 
+      var radarResolveCache = Object.create(null);
+      /** eventId → true quando o usuário deixou o radar expandido */
+      var radarOpenByEvent = Object.create(null);
+
+      async function resolveMradarUrl(eventId, link) {
+        var key = String(eventId || "") + "|" + String(link || "");
+        if (radarResolveCache[key]) return radarResolveCache[key];
+        var qs =
+          "/api/arbishield/desafio-mradar?eventId=" +
+          encodeURIComponent(eventId || "");
+        if (link) qs += "&link=" + encodeURIComponent(link);
+        var res = await fetch(qs, { credentials: "same-origin" });
+        var data = await res.json().catch(function () {
+          return null;
+        });
+        radarResolveCache[key] = data || { ok: false, found: false };
+        return radarResolveCache[key];
+      }
+
+      function mountRadarIframe(wrap, mradarUrl) {
+        wrap.innerHTML =
+          '<iframe title="Radar do jogo" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen src="' +
+          esc(mradarUrl) +
+          '"></iframe>' +
+          '<div class="dz-radar-foot"><a href="' +
+          esc(mradarUrl) +
+          '" target="_blank" rel="noopener">Abrir em nova aba</a></div>';
+        wrap.hidden = false;
+      }
+
+      async function openRadarBox(box) {
+        var btn = box.querySelector("[data-radar-toggle]");
+        var wrap = box.querySelector("[data-radar-frame]");
+        var hint = box.querySelector("[data-radar-hint]");
+        var eventId = box.getAttribute("data-event-id") || "";
+        var link = box.getAttribute("data-link") || "";
+        if (!btn || !wrap) return;
+        if (wrap.querySelector("iframe")) {
+          wrap.hidden = false;
+          if (hint) hint.textContent = "Recolher";
+          radarOpenByEvent[eventId] = true;
+          return;
+        }
+        btn.disabled = true;
+        if (hint) hint.textContent = "Carregando…";
+        try {
+          var data = await resolveMradarUrl(eventId, link);
+          if (data && data.ok && data.found && data.mradarUrl) {
+            mountRadarIframe(wrap, data.mradarUrl);
+            if (hint) hint.textContent = "Recolher";
+            radarOpenByEvent[eventId] = true;
+            btn.disabled = false;
+          } else {
+            if (hint) hint.textContent = "Indisponível";
+            btn.disabled = true;
+            radarOpenByEvent[eventId] = false;
+          }
+        } catch (ex) {
+          console.warn("[desafio-mradar]", ex);
+          if (hint) hint.textContent = "Erro";
+          btn.disabled = false;
+        }
+      }
+
+      function wireRadarBlocks(host) {
+        if (!host) return;
+        host.querySelectorAll("[data-radar]").forEach(function (box) {
+          var btn = box.querySelector("[data-radar-toggle]");
+          var wrap = box.querySelector("[data-radar-frame]");
+          var hint = box.querySelector("[data-radar-hint]");
+          var eventId = box.getAttribute("data-event-id") || "";
+          if (!btn || !wrap || btn.getAttribute("data-wired") === "1") return;
+          btn.setAttribute("data-wired", "1");
+          btn.addEventListener("click", async function () {
+            if (!wrap.hidden && wrap.querySelector("iframe")) {
+              wrap.hidden = true;
+              if (hint) hint.textContent = "Expandir";
+              radarOpenByEvent[eventId] = false;
+              return;
+            }
+            await openRadarBox(box);
+          });
+          if (radarOpenByEvent[eventId]) {
+            openRadarBox(box);
+          }
+        });
+      }
+
       function render() {
         var now = Date.now();
         var host = document.getElementById("list");
@@ -1654,6 +1843,7 @@
           return;
         }
         host.innerHTML = visible.map(function (it) { return cardHtml(it, now); }).join("");
+        wireRadarBlocks(host);
 
         function refreshCardMath(card) {
           var id = card.getAttribute("data-card");

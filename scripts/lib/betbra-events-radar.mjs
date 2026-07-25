@@ -1,24 +1,77 @@
 /**
- * Descoberta / normalização do feed BetBra "eventsRadar"
- * (mapa evento exchange → Stats Perform / radar de movimento).
+ * Feed BetBra/Soft2Bet "eventsRadar" — mapa exchange → Stats Perform / mradar.
  *
- * Fonte (JS mexchange):
  *   GET {brand}/client/api/jumper/feedSports/inplayInfo/eventsRadar
- * Widget:
- *   https://{brand}/widget/mradar
- * Livestream (mesmo id Stats Perform):
- *   https://{brand}/widget/livestream?id={eventIdStatsPerform}
+ *   Widget: https://{brand}/widget/mradar?id={eventIdStatsPerform}
  */
 
-export const BETBRA_EVENTS_RADAR_VERSION = "betbra-events-radar-v1";
+export const BETBRA_EVENTS_RADAR_VERSION = "betbra-events-radar-v2";
+
+export const KNOWN_SOFT2BET_HOSTS = [
+  "betbra.bet.br",
+  "bolsadeaposta.bet.br",
+  "fulltbet.bet.br",
+  "betespecial.bet.br",
+  "matchbook.bet.br",
+];
+
+export const DEFAULT_SITE_HOST =
+  process.env.EXCHANGE_SITE_HOST ||
+  (process.env.EXCHANGE_SITE_ORIGIN || "https://betbra.bet.br")
+    .replace(/^https?:\/\//, "")
+    .replace(/\/$/, "") ||
+  "betbra.bet.br";
 
 export const DEFAULT_EVENTS_RADAR_URL =
   process.env.MEXCHANGE_EVENTS_RADAR_URL ||
-  "https://betbra.bet.br/client/api/jumper/feedSports/inplayInfo/eventsRadar";
+  `https://${DEFAULT_SITE_HOST}/client/api/jumper/feedSports/inplayInfo/eventsRadar`;
 
 export const DEFAULT_MRADAR_WIDGET_URL =
   process.env.MEXCHANGE_MRADAR_WIDGET_URL ||
-  "https://betbra.bet.br/widget/mradar";
+  `https://${DEFAULT_SITE_HOST}/widget/mradar`;
+
+/**
+ * @param {unknown} siteOrUrl
+ * @returns {string} hostname sem protocolo
+ */
+export function resolveSoft2BetHost(siteOrUrl) {
+  const raw = String(siteOrUrl || "").trim();
+  if (!raw) return DEFAULT_SITE_HOST;
+  let host = raw;
+  try {
+    if (/^https?:\/\//i.test(raw)) host = new URL(raw).hostname;
+    else host = raw.replace(/^\/\//, "").split("/")[0];
+  } catch {
+    host = raw.replace(/^https?:\/\//i, "").split("/")[0];
+  }
+  host = String(host || "")
+    .toLowerCase()
+    .replace(/^www\./, "");
+  if (KNOWN_SOFT2BET_HOSTS.includes(host)) return host;
+  // subdomínio mexchange.* → apex brand
+  for (const h of KNOWN_SOFT2BET_HOSTS) {
+    if (host === h || host.endsWith("." + h) || host.includes(h.split(".")[0])) {
+      return h;
+    }
+  }
+  return DEFAULT_SITE_HOST;
+}
+
+/**
+ * @param {unknown} siteOrUrl
+ */
+export function eventsRadarUrlForSite(siteOrUrl) {
+  const host = resolveSoft2BetHost(siteOrUrl);
+  return `https://${host}/client/api/jumper/feedSports/inplayInfo/eventsRadar`;
+}
+
+/**
+ * @param {unknown} siteOrUrl
+ */
+export function mradarWidgetBaseForSite(siteOrUrl) {
+  const host = resolveSoft2BetHost(siteOrUrl);
+  return `https://${host}/widget/mradar`;
+}
 
 /**
  * @param {unknown} feed
@@ -68,6 +121,20 @@ export function normalizeEventsRadarItem(item) {
 
 /**
  * @param {unknown} feed
+ * @returns {Map<string, ReturnType<typeof normalizeEventsRadarItem>>}
+ */
+export function indexEventsRadarByMbook(feed) {
+  const map = new Map();
+  for (const raw of coerceEventsRadarFeed(feed)) {
+    const n = normalizeEventsRadarItem(raw);
+    if (!n?.eventIdMbook) continue;
+    map.set(String(n.eventIdMbook), n);
+  }
+  return map;
+}
+
+/**
+ * @param {unknown} feed
  */
 export function summarizeEventsRadarFeed(feed) {
   const list = coerceEventsRadarFeed(feed);
@@ -108,7 +175,38 @@ export function buildMradarWidgetUrl(
 ) {
   const id = String(statsPerformEventId || "").trim();
   if (!id) return null;
-  const base = String(widgetBase || DEFAULT_MRADAR_WIDGET_URL).replace(/\/$/, "");
-  // Mesmo padrão do livestream Soft2Bet: ?id={statsPerformEventId}
+  const base = String(widgetBase || DEFAULT_MRADAR_WIDGET_URL).replace(
+    /\/$/,
+    ""
+  );
   return `${base}?id=${encodeURIComponent(id)}`;
+}
+
+/**
+ * @param {string} eventIdMbook
+ * @param {unknown} feed
+ * @param {unknown} [siteOrUrl]
+ */
+export function resolveMradarForEventId(eventIdMbook, feed, siteOrUrl) {
+  const id = String(eventIdMbook || "").trim();
+  if (!id) {
+    return {
+      found: false,
+      eventIdMbook: null,
+      eventIdStatsPerform: null,
+      mradarUrl: null,
+      host: resolveSoft2BetHost(siteOrUrl),
+    };
+  }
+  const hit = indexEventsRadarByMbook(feed).get(id) || null;
+  const sp = hit?.eventIdStatsPerform || null;
+  const base = mradarWidgetBaseForSite(siteOrUrl);
+  return {
+    found: Boolean(sp),
+    eventIdMbook: id,
+    eventIdStatsPerform: sp,
+    mradarUrl: buildMradarWidgetUrl(sp, base),
+    host: resolveSoft2BetHost(siteOrUrl),
+    keys: hit?.rawKeys || [],
+  };
 }
