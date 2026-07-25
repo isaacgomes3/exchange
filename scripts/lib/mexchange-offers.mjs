@@ -125,22 +125,35 @@ export function sessionCookieHeader(session = {}) {
   return "";
 }
 
+/** Cookie de auth Soft2Bet/Mexchange (SESSION ou JWT sb / BIAB_CUSTOMER). */
+export function cookieLooksAuthed(cookieHeader = "") {
+  const c = String(cookieHeader || "");
+  return (
+    /(?:^|;\s*)SESSION=/i.test(c) ||
+    /(?:^|;\s*)sb=/i.test(c) ||
+    /(?:^|;\s*)BIAB_CUSTOMER=/i.test(c)
+  );
+}
+
 export function buildMexchangeAuthHeaders(session = {}) {
+  const jarHeader = sessionCookieHeader(session);
+  const browserish = cookieLooksAuthed(jarHeader);
   const headers = {
     Accept: "application/json",
     "Content-Type": "application/json",
-    "Accept-Language": "pt-BR,pt;q=0.9",
-    Origin: envStr("BETBRA_ORIGIN", "https://betbra.bet.br"),
+    "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+    Origin: envStr("MEXCHANGE_ORIGIN", "https://mexchange.betbra.bet.br"),
     Referer: envStr(
       "MEXCHANGE_REFERER",
       "https://mexchange.betbra.bet.br/"
     ),
     "User-Agent": envStr(
       "MEXCHANGE_USER_AGENT",
-      "Mozilla/5.0 (compatible; ArbiShieldOrders/1.0)"
+      browserish
+        ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
+        : "Mozilla/5.0 (compatible; ArbiShieldOrders/1.0)"
     ),
   };
-  const jarHeader = sessionCookieHeader(session);
   const lang = envStr("MEXCHANGE_BIAB_LANGUAGE", "PT_BR");
   if (jarHeader) {
     headers.Cookie = jarHeader.includes("BIAB_LANGUAGE=")
@@ -149,21 +162,26 @@ export function buildMexchangeAuthHeaders(session = {}) {
   } else {
     headers.Cookie = `BIAB_LANGUAGE=${lang}`;
   }
-  const token = String(
+  // JWT do cookie sb / BIAB_CUSTOMER também como Bearer (alguns endpoints aceitam)
+  let token = String(
     session.houseToken ||
       session.accessToken ||
       session.sessionToken ||
       ""
   ).trim();
-  // ignora placeholder "cred:..." — não é JWT de exchange
-  if (token && !token.startsWith("cred:")) {
+  if ((!token || token.startsWith("cred:") || token === "browser-session") && jarHeader) {
+    const m = jarHeader.match(/(?:^|;\s*)(?:sb|BIAB_CUSTOMER)=([^;]+)/i);
+    if (m) token = m[1].trim();
+  }
+  if (token && !token.startsWith("cred:") && token !== "browser-session" && token !== "demo") {
     headers.Authorization = `Bearer ${token}`;
   }
   return { ...headers, ...(session.extraHeaders || {}) };
 }
 
 export function hasTradingSession(session = {}) {
-  if (sessionCookieHeader(session)) return true;
+  const cookie = sessionCookieHeader(session);
+  if (cookieLooksAuthed(cookie)) return true;
   const token = String(
     session.houseToken || session.accessToken || session.sessionToken || ""
   ).trim();
@@ -171,6 +189,47 @@ export function hasTradingSession(session = {}) {
   if (token.startsWith("cred:")) return false;
   if (token === "browser-session" || token === "demo") return false;
   return true;
+}
+
+/**
+ * Extrai Cookie de um "Copy as cURL" (Chrome Windows/Linux/macOS).
+ */
+export function extractCookieFromCurl(text = "") {
+  const raw = String(text || "").trim();
+  if (!raw) return "";
+  // já é só o cookie
+  if (!/^curl\b/i.test(raw) && /(?:^|;\s*)(?:sb|BIAB_CUSTOMER|SESSION)=/i.test(raw)) {
+    return decodeWindowsCurlEscapes(raw.replace(/^cookie:\s*/i, "").trim());
+  }
+  // -b / --cookie
+  let m = raw.match(/(?:^|\s)(?:-b|--cookie)\s+(?:\$)?'([^']+)'/i);
+  if (!m) m = raw.match(/(?:^|\s)(?:-b|--cookie)\s+(?:\$)?"([^"]+)"/i);
+  if (!m) {
+    // Windows cmd: -b ^"....^"
+    m = raw.match(/(?:^|\s)-b\s+\^?"([\s\S]*?)\^?"/i);
+  }
+  if (!m) {
+    m = raw.match(/-H\s+\^?"[Cc]ookie:\s*([\s\S]*?)\^?"/i);
+  }
+  if (!m) {
+    m = raw.match(/-H\s+'[Cc]ookie:\s*([^']+)'/i);
+  }
+  if (!m) {
+    m = raw.match(/-H\s+"[Cc]ookie:\s*([^"]+)"/i);
+  }
+  if (!m) return "";
+  return decodeWindowsCurlEscapes(m[1].trim());
+}
+
+function decodeWindowsCurlEscapes(s) {
+  let out = String(s || "");
+  out = out.replace(/\^%\^/g, "%");
+  out = out.replace(/\^\$/g, "$");
+  out = out.replace(/\^&/g, "&");
+  out = out.replace(/\^"/g, '"');
+  out = out.replace(/\^\^/g, "^");
+  out = out.replace(/\^(.)/g, "$1");
+  return out.trim();
 }
 
 export function extractOfferId(data, fallback = "") {

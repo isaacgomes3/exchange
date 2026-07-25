@@ -46,7 +46,10 @@ function extractFromHar(har) {
       url,
       cookie,
       started: entry.startedDateTime || null,
-      hasSession: /(?:^|;\s*)SESSION=/i.test(cookie),
+      hasSession:
+        /(?:^|;\s*)SESSION=/i.test(cookie) ||
+        /(?:^|;\s*)sb=/i.test(cookie) ||
+        /(?:^|;\s*)BIAB_CUSTOMER=/i.test(cookie),
     });
   }
   return hits;

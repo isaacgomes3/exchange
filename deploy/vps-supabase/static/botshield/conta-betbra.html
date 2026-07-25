@@ -61,11 +61,25 @@
         console). O jeito mais fácil é exportar um HAR e capturar aqui:
       </p>
       <ol class="notice" style="margin:10px 0;padding-left:1.2em">
-        <li>Chrome logado na exchange → <kbd>F12</kbd> → Network</li>
-        <li>Filtro: <code>mexchange-api</code> → recarregue a página</li>
-        <li>Botão direito na lista → <strong>Save all as HAR with content</strong></li>
-        <li>Arraste o arquivo <code>.har</code> para a caixa abaixo</li>
+        <li>Chrome logado na exchange → <kbd>F12</kbd> → Network → filtro <code>mexchange-api</code></li>
+        <li>Botão direito num pedido → <strong>Copiar → Copiar como cURL</strong></li>
+        <li>Cole o cURL na caixa abaixo (ou arraste um arquivo <code>.har</code>)</li>
       </ol>
+
+      <label style="display:block;margin-top:10px">
+        Colar cURL completo (Copy as cURL)
+        <textarea
+          id="curlPaste"
+          rows="4"
+          placeholder="curl &quot;https://mexchange-api.betbra.bet.br/...&quot; -b &quot;BIAB_LANGUAGE=PT_BR; sb=...&quot; ..."
+          style="width:100%;margin-top:6px"
+        ></textarea>
+      </label>
+      <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-secondary" type="button" id="btnParseCurl">
+          Extrair Cookie do cURL
+        </button>
+      </div>
 
       <div
         id="harDrop"
@@ -78,7 +92,7 @@
           cursor:pointer;
         "
       >
-        Arraste o arquivo <strong>.har</strong> aqui ou clique para escolher
+        Ou arraste o arquivo <strong>.har</strong> aqui
         <input id="harFile" type="file" accept=".har,application/json" hidden />
       </div>
 
@@ -87,7 +101,7 @@
         <textarea
           id="cookieHeader"
           rows="3"
-          placeholder="BIAB_LANGUAGE=PT_BR; SESSION=...; ..."
+          placeholder="BIAB_LANGUAGE=PT_BR; sb=...; BIAB_CUSTOMER=..."
           style="width:100%;margin-top:6px"
         ></textarea>
       </label>
@@ -345,19 +359,58 @@
         return "";
       }
 
+      function cookieAuthed(c) {
+        return (
+          /(?:^|;\s*)SESSION=/i.test(c) ||
+          /(?:^|;\s*)sb=/i.test(c) ||
+          /(?:^|;\s*)BIAB_CUSTOMER=/i.test(c)
+        );
+      }
+
+      function decodeWindowsCurlEscapes(s) {
+        let out = String(s || "");
+        out = out.replace(/\^%\^/g, "%");
+        out = out.replace(/\^\$/g, "$");
+        out = out.replace(/\^&/g, "&");
+        out = out.replace(/\^"/g, '"');
+        out = out.replace(/\^\^/g, "^");
+        out = out.replace(/\^(.)/g, "$1");
+        return out.trim();
+      }
+
+      function extractCookieFromCurl(text) {
+        const raw = String(text || "").trim();
+        if (!raw) return "";
+        if (!/^curl\b/i.test(raw) && cookieAuthed(raw)) {
+          return decodeWindowsCurlEscapes(raw.replace(/^cookie:\s*/i, ""));
+        }
+        let m = raw.match(/(?:^|\s)(?:-b|--cookie)\s+\^?"([\s\S]*?)\^?"/i);
+        if (!m) m = raw.match(/(?:^|\s)(?:-b|--cookie)\s+'([^']+)'/i);
+        if (!m) m = raw.match(/(?:^|\s)(?:-b|--cookie)\s+"([^"]+)"/i);
+        if (!m) m = raw.match(/-H\s+\^?"[Cc]ookie:\s*([\s\S]*?)\^?"/i);
+        if (!m) m = raw.match(/-H\s+'[Cc]ookie:\s*([^']+)'/i);
+        if (!m) m = raw.match(/-H\s+"[Cc]ookie:\s*([^"]+)"/i);
+        return m ? decodeWindowsCurlEscapes(m[1]) : "";
+      }
+
       function extractCookieFromHar(har) {
         const entries = har?.log?.entries || [];
         const hits = [];
         for (const entry of entries) {
           const url = String(entry?.request?.url || "");
           if (!/mexchange-api\.betbra\.bet\.br/i.test(url)) continue;
-          const cookie = headerFromHar(entry.request?.headers, "Cookie");
+          let cookie = headerFromHar(entry.request?.headers, "Cookie");
+          if (!cookie && entry.request?.cookies?.length) {
+            cookie = entry.request.cookies
+              .map((c) => c.name + "=" + c.value)
+              .join("; ");
+          }
           if (!cookie) continue;
           hits.push({
             url,
             cookie,
             started: entry.startedDateTime || "",
-            hasSession: /(?:^|;\s*)SESSION=/i.test(cookie),
+            hasSession: cookieAuthed(cookie),
           });
         }
         hits.sort((a, b) => {
@@ -366,6 +419,26 @@
         });
         return hits[0] || null;
       }
+
+      document.getElementById("btnParseCurl")?.addEventListener("click", () => {
+        err.classList.remove("show");
+        const curl = document.getElementById("curlPaste").value;
+        const cookie = extractCookieFromCurl(curl);
+        const hint = document.getElementById("cookieHint");
+        if (!cookie || !cookieAuthed(cookie)) {
+          err.textContent =
+            "Não achei Cookie de sessão (sb / BIAB_CUSTOMER / SESSION) no cURL.";
+          err.classList.add("show");
+          return;
+        }
+        document.getElementById("cookieHeader").value = cookie;
+        hint.textContent =
+          "Cookie extraído do cURL" +
+          (/(?:^|;\s*)sb=/i.test(cookie) ? " (sb JWT)" : "") +
+          ". Clique em Salvar sessão.";
+        ok.style.display = "block";
+        ok.textContent = "Cookie preenchido. Agora salve a sessão.";
+      });
 
       async function ingestHarFile(file) {
         const hint = document.getElementById("cookieHint");
