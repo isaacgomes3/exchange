@@ -593,7 +593,7 @@
       <div class="field prelive-liq" style="margin:0 16px 14px;max-width:420px">
         <label for="preliveLiquidityBrl">Liquidez real (R$) — usada ao lançar cada seleção BetBra</label>
         <div style="display:flex;gap:10px;align-items:stretch">
-          <input id="preliveLiquidityBrl" type="text" inputmode="decimal" value="2000" placeholder="Ex.: 2000 ou 2.500,00" autocomplete="off" style="flex:1;min-width:0" />
+          <input id="preliveLiquidityBrl" type="text" inputmode="decimal" value="200" placeholder="Ex.: 200 ou 2.500,00" autocomplete="off" style="flex:1;min-width:0" />
           <button type="button" class="btn btn-primary btn-sm" id="btnConfirmPreliveLiq" style="white-space:nowrap;align-self:stretch">Confirmar</button>
         </div>
         <p class="hint" id="preliveLiqStatus" style="margin:6px 0 0">Informe o valor e clique em Confirmar. Padrão R$ 2.000.</p>
@@ -1486,7 +1486,7 @@
         }
         var el = $("preliveLiquidityBrl");
         if (!el) return null;
-        if (!String(el.value || "").trim()) el.value = "2000";
+        if (!String(el.value || "").trim()) el.value = "200";
         return parseMoneyToNumber(el.value);
       }
 
@@ -1500,12 +1500,12 @@
       function confirmPreliveLiquidity() {
         var el = $("preliveLiquidityBrl");
         if (!el) return false;
-        if (!String(el.value || "").trim()) el.value = "2000";
+        if (!String(el.value || "").trim()) el.value = "200";
         var liqBrl = parseMoneyToNumber(el.value);
         if (liqBrl == null || !(liqBrl > 0)) {
           confirmedPreliveLiqBrl = null;
-          setPreliveLiqStatus(false, "Informe um valor válido (ex.: 2000) e confirme.");
-          alert("Informe a liquidez real (R$) para confirmar. Ex.: 2000");
+          setPreliveLiqStatus(false, "Informe um valor válido (ex.: 200) e confirme.");
+          alert("Informe a liquidez real (R$) para confirmar. Ex.: 200");
           el.focus();
           return false;
         }
@@ -1606,7 +1606,7 @@
         }
         var liqBrl = readPreliveLiquidityBrl();
         if (confirmedPreliveLiqBrl == null || liqBrl == null || !(liqBrl > 0)) {
-          alert("Confirme a liquidez no botão acima de Próximos jogos. Ex.: 2000");
+          alert("Confirme a liquidez no botão acima de Próximos jogos. Ex.: 200");
           $("createModal").classList.remove("show");
           if ($("preliveLiquidityBrl")) $("preliveLiquidityBrl").focus();
           return;
@@ -2823,7 +2823,7 @@
               '<div class="field"><label>ID externo</label>' +
               '<input data-f="external_id" value="' + String(m.external_id || "").replace(/"/g, "&quot;") + '" placeholder="Ex: market:runner" /></div>' +
               '<div class="field"><label>Liquidez real (R$)</label>' +
-              '<input data-f="liquidity_brl" inputmode="decimal" value="' + (m.liquidity_brl != null && m.liquidity_brl !== "" ? m.liquidity_brl : "2000") + '" placeholder="Ex: 2000" /></div>' +
+              '<input data-f="liquidity_brl" inputmode="decimal" value="' + (m.liquidity_brl != null && m.liquidity_brl !== "" ? m.liquidity_brl : "200") + '" placeholder="Ex: 200" /></div>' +
               '</div><div class="field"><label>Liquidez exibida (R$) — opcional</label>' +
               '<input data-f="display_brl" inputmode="decimal" value="' + (m.display_brl != null ? m.display_brl : "") + '" placeholder="O que o usuário vê" /></div>' +
               "</div>"
@@ -2997,7 +2997,7 @@
         var liq =
           manualMarkets[0] && manualMarkets[0].liquidity_brl
             ? manualMarkets[0].liquidity_brl
-            : "2000";
+            : "200";
         manualMarkets = [
           {
             market_type: side,
@@ -3301,7 +3301,7 @@
             name: "Lay Casa",
             external_id: "",
             odd: "2.00",
-            liquidity_brl: "2000",
+            liquidity_brl: "200",
             display_brl: "",
           },
         ];
@@ -3350,7 +3350,7 @@
               name: "LAY HOME",
               external_id: "",
               odd: "2.00",
-              liquidity_brl: "2000",
+              liquidity_brl: "200",
               display_brl: "",
             },
           ];
@@ -3365,7 +3365,7 @@
             market_type: side === "BACK" ? "BACK" : "LAY",
             external_id: m.external_id || null,
             odd: odd,
-            liquidity_brl: liqBrl != null ? liqBrl : 2000,
+            liquidity_brl: liqBrl != null ? liqBrl : 200,
             display_liquidity: dispBrl != null ? Math.round(dispBrl * 100) : null,
           };
         });
@@ -3781,7 +3781,7 @@
             name: "LAY HOME",
             external_id: "",
             odd: "2.00",
-            liquidity_brl: "2000",
+            liquidity_brl: "200",
             display_brl: "",
           });
           renderManualMarkets();

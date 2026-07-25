@@ -438,7 +438,7 @@ async function createMatchFromMarket(body, token) {
     if (Number.isFinite(brl) && brl > 0) {
       liquidityCents = Math.round(brl * 100);
     } else {
-      liquidityCents = 200_000; // fallback R$ 2.000
+      liquidityCents = 20_000; // fallback R$ 200
     }
   }
   if (!(liquidityCents >= 100)) {
@@ -727,7 +727,7 @@ async function createManualMatch(body, token) {
     if (!Number.isFinite(liquidity) || liquidity <= 0) {
       // aceita valor em reais (ex.: 25000) se liquidity_brl vier
       const brl = Number(m.liquidity_brl ?? m.liquidityBrl);
-      liquidity = Number.isFinite(brl) && brl > 0 ? Math.round(brl * 100) : 200_000;
+      liquidity = Number.isFinite(brl) && brl > 0 ? Math.round(brl * 100) : 20_000;
     } else if (liquidity < 1000) {
       // valor pequeno provavelmente veio em reais
       liquidity = Math.round(liquidity * 100);

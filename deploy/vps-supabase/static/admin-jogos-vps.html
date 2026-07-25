@@ -868,7 +868,7 @@
               '<input data-f="odd" value="' + (m.odd != null ? m.odd : "") + '" placeholder="Ex: 2.00" /></div>' +
               '</div><div class="grid2">' +
               '<div class="field"><label>Liquidez real (R$)</label>' +
-              '<input data-f="liquidity_brl" value="' + (m.liquidity_brl != null ? m.liquidity_brl : "2000") + '" placeholder="Controla a entrada" /></div>' +
+              '<input data-f="liquidity_brl" value="' + (m.liquidity_brl != null ? m.liquidity_brl : "200") + '" placeholder="Controla a entrada" /></div>' +
               '<div class="field"><label>Liquidez exibida (R$) — opcional</label>' +
               '<input data-f="display_brl" value="' + (m.display_brl != null ? m.display_brl : "") + '" placeholder="O que o usuário vê" /></div>' +
               "</div></div>"
@@ -937,7 +937,7 @@
             name: "LAY HOME",
             external_id: "",
             odd: "2.00",
-            liquidity_brl: "2000",
+            liquidity_brl: "200",
             display_brl: "",
           },
         ];
@@ -979,7 +979,7 @@
             market_type: m.market_type || "LAY",
             external_id: m.external_id || null,
             odd: odd,
-            liquidity_brl: liqBrl != null ? liqBrl : 2000,
+            liquidity_brl: liqBrl != null ? liqBrl : 200,
             display_liquidity: dispBrl != null ? Math.round(dispBrl * 100) : null,
           };
         });
@@ -1067,7 +1067,7 @@
             name: "LAY HOME",
             external_id: "",
             odd: "2.00",
-            liquidity_brl: "2000",
+            liquidity_brl: "200",
             display_brl: "",
           });
           renderManualMarkets();
