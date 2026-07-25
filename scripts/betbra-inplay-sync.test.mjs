@@ -16,7 +16,7 @@ import {
 
 describe("betbra-inplay-sync", () => {
   it("mantém versão", () => {
-    assert.equal(BETBRA_INPLAY_SYNC_VERSION, "betbra-inplay-sync-v3");
+    assert.equal(BETBRA_INPLAY_SYNC_VERSION, "betbra-inplay-sync-v4");
   });
 
   it("extrai eventId de links BetBra", () => {
@@ -86,6 +86,9 @@ describe("betbra-inplay-sync", () => {
     assert.equal(result.live.score, "1-0");
     assert.equal(result.patch.final_score_home, 1);
     assert.equal(result.patch.final_score_away, 0);
+    assert.equal(result.slimPatch.final_score_home, 1);
+    assert.equal(result.slimPatch.final_score_away, 0);
+    assert.ok(!("metadata" in result.slimPatch));
   });
 
   it("parseia placar e minuto", () => {

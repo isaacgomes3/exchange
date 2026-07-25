@@ -3,7 +3,7 @@
  * Lógica pura (testável) + helpers de normalização.
  */
 
-export const BETBRA_INPLAY_SYNC_VERSION = "betbra-inplay-sync-v3";
+export const BETBRA_INPLAY_SYNC_VERSION = "betbra-inplay-sync-v4";
 
 /**
  * Extrai eventId BetBra de um link de mercado/evento.
@@ -74,7 +74,11 @@ export function desafioStepEligibleForInplaySync(step, nowMs = Date.now()) {
 }
 
 /**
- * @returns {null|{ patch: Record<string, unknown>, live: Record<string, unknown> }}
+ * @returns {null|{
+ *   patch: Record<string, unknown>,
+ *   slimPatch: Record<string, unknown>,
+ *   live: Record<string, unknown>
+ * }}
  */
 export function buildDesafioStepInplayPatch(step, inplayByEventId, nowIso) {
   const ext = desafioStepEventId(step);
@@ -89,25 +93,38 @@ export function buildDesafioStepInplayPatch(step, inplayByEventId, nowIso) {
   const prev =
     prevMeta.live && typeof prevMeta.live === "object" ? prevMeta.live : {};
 
-  const same =
+  const prevHome =
+    step.final_score_home != null ? Number(step.final_score_home) : null;
+  const prevAway =
+    step.final_score_away != null ? Number(step.final_score_away) : null;
+
+  const sameMeta =
     String(prev.score || "") === String(live.score || "") &&
     String(prev.elapsed || "") === String(live.elapsed || "") &&
     Boolean(prev.finished) === Boolean(live.finished);
-  if (same) return null;
+  const sameScores =
+    prevHome === (info.homeScore != null ? Number(info.homeScore) : null) &&
+    prevAway === (info.awayScore != null ? Number(info.awayScore) : null);
+  // VPS sem coluna metadata: só compara placar nas colunas finais
+  if (sameScores && (sameMeta || !step.metadata)) return null;
+
+  const slimPatch = {
+    updated_at: nowIso,
+  };
+  if (info.homeScore != null) slimPatch.final_score_home = info.homeScore;
+  if (info.awayScore != null) slimPatch.final_score_away = info.awayScore;
+  if (info.live) slimPatch.status = "live";
 
   const patch = {
+    ...slimPatch,
     metadata: {
       ...prevMeta,
       betbra_event_id: ext,
       score_sync_enabled: true,
       live,
     },
-    updated_at: nowIso,
   };
-  if (info.homeScore != null) patch.final_score_home = info.homeScore;
-  if (info.awayScore != null) patch.final_score_away = info.awayScore;
-  if (info.live) patch.status = "live";
-  return { patch, live };
+  return { patch, slimPatch, live };
 }
 
 const FINISHED_RE =
