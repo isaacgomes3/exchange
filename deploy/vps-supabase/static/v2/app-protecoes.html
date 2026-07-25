@@ -7,10 +7,11 @@
   <title>Gestão de Proteções — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css" />
+  <meta name="arbishield-build" content="espelho-protecoes-v1" />
+  <link rel="stylesheet" href="/v2.css?v=espelho-protecoes-1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js"></script>
-  <script src="/v2-shell.js" defer></script>
+  <script src="/v2.js?v=espelho-protecoes-1"></script>
+  <script src="/v2-shell.js?v=espelho-protecoes-1" defer></script>
   <style>
     .prot-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 16px; align-items: start; }
     @media (max-width: 960px) {
@@ -240,6 +241,11 @@
       var supa = ArbiV2.client();
       var user = await ArbiV2.requireUser(supa);
       if (!user) return;
+      // Modo espelho: dados do cliente espelhado (não do admin logado)
+      var viewUserId = ArbiV2.getEffectiveUserId
+        ? ArbiV2.getEffectiveUserId(user)
+        : user.id;
+      if (!viewUserId) return;
 
       var items = [];
       var selectedId = null;
@@ -351,13 +357,13 @@
             .select(
               "id,status,amount_cents,responsibility_cents,odd,match_id,created_at,metadata,user_profit_cents"
             )
-            .eq("user_id", user.id)
+            .eq("user_id", viewUserId)
             .order("created_at", { ascending: false })
             .limit(200),
           supa
             .from("back_protections")
             .select("id,status,amount_cents,odd,match_id,created_at,metadata,user_profit_cents")
-            .eq("user_id", user.id)
+            .eq("user_id", viewUserId)
             .order("created_at", { ascending: false })
             .limit(200),
         ]);
@@ -556,7 +562,7 @@
           .from(table)
           .select("*")
           .eq("id", payload.protectionId)
-          .eq("user_id", user.id)
+          .eq("user_id", viewUserId)
           .maybeSingle();
         if (got.error) throw got.error;
         var row = got.data;
@@ -589,7 +595,9 @@
           proof_url: payload.proofUrl || null,
           reason: payload.reason || null,
           requested_at: new Date().toISOString(),
-          requested_by: user.id,
+          requested_by: user.id, // admin autenticado (auditoria)
+          impersonated_user_id:
+            viewUserId !== user.id ? viewUserId : undefined,
         };
         var meta = Object.assign({}, row.metadata || {});
         meta.contestation = contestation;
@@ -605,7 +613,7 @@
           .from(table)
           .update(patch)
           .eq("id", row.id)
-          .eq("user_id", user.id)
+          .eq("user_id", viewUserId)
           .select("id,status");
         if (up.error) throw up.error;
         if (!up.data || !up.data.length) {
@@ -615,7 +623,7 @@
         }
         try {
           await supa.from("odd_contestations").insert({
-            user_id: user.id,
+            user_id: viewUserId,
             protection_id: row.id,
             status: "pending",
             contest_type: payload.contestType,

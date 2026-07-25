@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <meta name="arbishield-build" content="proteger-sem-sync-api-cliente-v11" />
+  <meta name="arbishield-build" content="proteger-espelho-userid-v12" />
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=proteger-sem-sync-api-cliente-v11" />
+  <link rel="stylesheet" href="/v2.css?v=proteger-espelho-userid-v12" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=proteger-sem-sync-api-cliente-v11"></script>
-  <script src="/v2-shell.js?v=proteger-sem-sync-api-cliente-v11" defer></script>
+  <script src="/v2.js?v=proteger-espelho-userid-v12"></script>
+  <script src="/v2-shell.js?v=proteger-espelho-userid-v12" defer></script>
 </head>
 <body data-shell="app" data-active="proteger">
   <div class="page-head term-head">
@@ -124,6 +124,9 @@
       var supa = ArbiV2.client();
       var user = await ArbiV2.requireUser(supa);
       if (!user) return;
+      var viewUserId = ArbiV2.getEffectiveUserId
+        ? ArbiV2.getEffectiveUserId(user)
+        : user.id;
 
       /** Sandbox: cobrança fee_upfront via worker :3198. Produção: não misturar eventos de teste. */
       var IS_SANDBOX =
@@ -874,7 +877,7 @@
             .select(
               "balance_cents,reusable_balance_cents,deduction_balance_cents,demo_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,locked_balance_cents"
             )
-            .eq("id", user.id)
+            .eq("id", viewUserId)
             .maybeSingle();
           if (profileRes.error) throw profileRes.error;
           state.profile = profileRes.data;
@@ -883,7 +886,7 @@
           var act = await supa
             .from("protections")
             .select("id", { count: "exact", head: true })
-            .eq("user_id", user.id)
+            .eq("user_id", viewUserId)
             .eq("status", "active");
           document.getElementById("stAct").textContent = String(act.count || 0);
 

@@ -452,6 +452,9 @@
       var supa = ArbiV2.client();
       var user = await ArbiV2.requireUser(supa);
       if (!user) return;
+      var viewUserId = ArbiV2.getEffectiveUserId
+        ? ArbiV2.getEffectiveUserId(user)
+        : user.id;
 
       var filter = "Todos";
       var items = [];
@@ -540,7 +543,7 @@
           var prof = await supa
             .from("profiles")
             .select("desafio_balance_cents")
-            .eq("id", user.id)
+            .eq("id", viewUserId)
             .maybeSingle();
           var cents = Number(prof.data && prof.data.desafio_balance_cents) || 0;
           desafioBalCents = cents;
@@ -865,7 +868,7 @@
           .select(
             "id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at"
           )
-          .eq("user_id", user.id)
+          .eq("user_id", viewUserId)
           .order("created_at", { ascending: false })
           .limit(500);
         if (pr.error) throw new Error(pr.error.message || "Falha no histórico");

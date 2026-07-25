@@ -630,6 +630,9 @@
       var supa = ArbiV2.client();
       var user = await ArbiV2.requireUser(supa);
       if (!user) return;
+      var viewUserId = ArbiV2.getEffectiveUserId
+        ? ArbiV2.getEffectiveUserId(user)
+        : user.id;
 
       var journey = null;
       var selected = null;
@@ -907,7 +910,7 @@
           var prof = await supa
             .from("profiles")
             .select("desafio_balance_cents")
-            .eq("id", user.id)
+            .eq("id", viewUserId)
             .maybeSingle();
           bal = Number(prof.data && prof.data.desafio_balance_cents) || 0;
         } catch (e) { /* */ }
@@ -916,7 +919,7 @@
             var pr = await supa
               .from("desafio_participations")
               .select("*")
-              .eq("user_id", user.id)
+              .eq("user_id", viewUserId)
               .eq("desafio_id", desafio.id)
               .eq("side", "arbishield")
               .order("created_at", { ascending: true })
