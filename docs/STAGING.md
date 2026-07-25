@@ -1,11 +1,30 @@
 # Ambiente de teste (localhost — sem DNS)
 
-Acesso prático, **sem subdomínio**:
+Acesso prático, **sem subdomínio / sem DNS**.
+
+### Forma recomendada (localhost no seu PC)
+
+No PowerShell do **seu computador** (não na VPS):
+
+```bash
+ssh -L 8090:127.0.0.1:8090 root@IP_DA_VPS
+```
+
+Deixe o SSH aberto e no Chrome:
 
 ```
 http://127.0.0.1:8090/admin-jogos.html
+```
+
+### Alternativa (IP direto)
+
+```
 http://IP_DA_VPS:8090/admin-jogos.html
 ```
+
+Só funciona se a porta **8090** estiver liberada no **Firewall da Hostinger**.
+
+> `127.0.0.1` no Chrome **sem túnel SSH** = seu PC, não a VPS → `ERR_CONNECTION_REFUSED`.
 
 Produção (`https://arbishield.app`) **não é alterada**.
 
