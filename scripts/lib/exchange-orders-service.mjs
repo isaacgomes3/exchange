@@ -72,22 +72,27 @@ export function createExchangeOrdersService(deps) {
 
   async function connectSession(token, body) {
     const userId = await requireUserId(token);
-    const accessToken = String(
+    let accessToken = String(
       body?.accessToken || body?.sessionToken || body?.token || ""
     ).trim();
+    const provider = String(body?.provider || "demo").toLowerCase();
+    // Atalho demo: sem token da casa, aceita "demo" / vazio com provider=demo
+    if (!accessToken && (provider === "demo" || body?.demo === true)) {
+      accessToken = "demo";
+    }
     if (!accessToken) {
       const err = new Error("accessToken / sessionToken obrigatório");
       err.status = 400;
       throw err;
     }
-    const provider = String(body?.provider || "betbra").toLowerCase();
     const payload = {
       accessToken,
       refreshToken: body?.refreshToken || null,
       expiresAt: body?.expiresAt || null,
-      accountLabel: body?.accountLabel || body?.label || null,
+      accountLabel: body?.accountLabel || body?.label || (provider === "demo" ? "Conta demo" : null),
       extraHeaders: body?.extraHeaders || null,
       connectedAt: new Date().toISOString(),
+      demo: provider === "demo" || accessToken === "demo",
     };
     const sessionEnc = encryptSessionPayload(payload);
     const now = new Date().toISOString();
@@ -126,6 +131,7 @@ export function createExchangeOrdersService(deps) {
         connectionId: conn?.id,
         provider,
         status: "active",
+        demo: !!payload.demo,
         contract: EXCHANGE_ORDERS_CONTRACT_VERSION,
         adapter: adapter.provider,
         live:
@@ -245,9 +251,11 @@ export function createExchangeOrdersService(deps) {
         orderId: result.orderId,
         status: result.status,
         provider: adapter.provider,
+        demo: !!result.demo,
         wired: !!result.wired,
         recordId: saved?.id || null,
         contract: EXCHANGE_ORDERS_CONTRACT_VERSION,
+        message: result.message || undefined,
       };
     } catch (err) {
       if (err instanceof ExchangeOrdersNotWiredError) {
@@ -294,8 +302,10 @@ export function createExchangeOrdersService(deps) {
       orderId: result.orderId || orderId,
       status: result.status,
       provider: adapter.provider,
+      demo: !!result.demo,
       wired: !!result.wired,
       contract: EXCHANGE_ORDERS_CONTRACT_VERSION,
+      message: result.message || undefined,
     };
   }
 

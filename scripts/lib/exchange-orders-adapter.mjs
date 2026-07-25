@@ -1,11 +1,16 @@
 /**
  * Adapter de ordens na exchange.
- * Hoje: stub (NOT_WIRED). Quando a casa liberar a API, implementar
- * `BetbraOrdersAdapter` / `FulltbetOrdersAdapter` e setar
- * EXCHANGE_ORDERS_PROVIDER=betbra|fulltbet e EXCHANGE_ORDERS_LIVE=1.
+ *
+ * - demo (padrão): simula place/cancel/status sem chamar a casa.
+ * - stub: rejeita com EXCHANGE_ORDERS_NOT_WIRED.
+ * - betbra: esqueleto; sem EXCHANGE_ORDERS_LIVE=1 cai no demo.
+ *
+ * Quando a casa enviar a doc oficial, mapear paths em BetbraOrdersAdapter
+ * e setar EXCHANGE_ORDERS_PROVIDER=betbra + EXCHANGE_ORDERS_LIVE=1.
  */
 import {
   EXCHANGE_ORDERS_CONTRACT_VERSION,
+  EXCHANGE_ORDERS_LOCK,
   normalizeOrderStatus,
 } from "./exchange-orders-contract.mjs";
 
@@ -18,10 +23,27 @@ export class ExchangeOrdersNotWiredError extends Error {
     this.name = "ExchangeOrdersNotWiredError";
     this.status = 503;
     this.code = "EXCHANGE_ORDERS_NOT_WIRED";
+    this.lock = EXCHANGE_ORDERS_LOCK;
   }
 }
 
-/** Stub — não envia ordem real. */
+function envLive() {
+  const v = String(process.env.EXCHANGE_ORDERS_LIVE || "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
+export function resolveOrdersProviderName() {
+  const raw = String(process.env.EXCHANGE_ORDERS_PROVIDER || "demo")
+    .trim()
+    .toLowerCase();
+  if (raw === "betbra" || raw === "mexchange" || raw === "fulltbet" || raw === "live") {
+    return "betbra";
+  }
+  if (raw === "stub") return "stub";
+  return "demo";
+}
+
+/** Stub — não envia ordem. */
 export class StubOrdersAdapter {
   constructor() {
     this.provider = "stub";
@@ -29,7 +51,7 @@ export class StubOrdersAdapter {
 
   async placeOrder(_session, _payload) {
     throw new ExchangeOrdersNotWiredError(
-      "Adapter stub: configure EXCHANGE_ORDERS_PROVIDER + credenciais da casa."
+      "Adapter stub: use provider=demo ou configure a API da casa."
     );
   }
 
@@ -46,13 +68,73 @@ export class StubOrdersAdapter {
       provider: this.provider,
       contract: EXCHANGE_ORDERS_CONTRACT_VERSION,
       wired: false,
+      demo: false,
+    };
+  }
+}
+
+/** Simula aceitação/cancelamento; nada é enviado à exchange. */
+export class DemoOrdersAdapter {
+  constructor() {
+    this.provider = "demo";
+    /** @type {Map<string, string>} */
+    this._status = new Map();
+  }
+
+  async placeOrder(_session, payload = {}) {
+    const orderId = `demo_${Date.now().toString(36)}_${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+    const status = "matched";
+    this._status.set(orderId, status);
+    return {
+      orderId,
+      status,
+      side: payload.side,
+      odd: payload.odd,
+      stakeCents: payload.stakeCents,
+      eventId: payload.eventId,
+      marketId: payload.marketId,
+      selectionId: payload.selectionId,
+      provider: this.provider,
+      demo: true,
+      wired: false,
+      message: "Ordem simulada (demo). Nenhuma aposta real foi enviada à exchange.",
+      contract: EXCHANGE_ORDERS_CONTRACT_VERSION,
+    };
+  }
+
+  async cancelOrder(_session, orderId) {
+    const id = String(orderId || "");
+    this._status.set(id, "cancelled");
+    return {
+      orderId: id,
+      status: "cancelled",
+      provider: this.provider,
+      demo: true,
+      wired: false,
+      message: "Cancelamento simulado (demo).",
+      contract: EXCHANGE_ORDERS_CONTRACT_VERSION,
+    };
+  }
+
+  async getOrderStatus(_session, orderId) {
+    const id = String(orderId || "");
+    const status = this._status.get(id) || "matched";
+    return {
+      orderId: id,
+      status: normalizeOrderStatus(status),
+      provider: this.provider,
+      demo: true,
+      wired: false,
+      contract: EXCHANGE_ORDERS_CONTRACT_VERSION,
     };
   }
 }
 
 /**
  * Skeleton BetBra/Mexchange — preencher URLs/auth quando a doc chegar.
- * Não chamar em produção sem EXCHANGE_ORDERS_LIVE=1 e testes.
+ * Sem EXCHANGE_ORDERS_LIVE=1 usa DemoOrdersAdapter (sem aposta real).
  */
 export class BetbraOrdersAdapter {
   constructor(opts = {}) {
@@ -60,21 +142,29 @@ export class BetbraOrdersAdapter {
     this.apiBase = String(
       opts.apiBase ||
         process.env.MEXCHANGE_ORDERS_API_BASE ||
+        process.env.EXCHANGE_ORDERS_BASE_URL ||
         process.env.MEXCHANGE_API_BASE_URL ||
         "https://mexchange-api.betbra.bet.br/api"
     ).replace(/\/$/, "");
-    this.live =
-      process.env.EXCHANGE_ORDERS_LIVE === "1" ||
-      process.env.EXCHANGE_ORDERS_LIVE === "true";
+    this.live = Boolean(opts.live) || envLive();
+    this.demo = new DemoOrdersAdapter();
   }
 
   async placeOrder(session, payload) {
     if (!this.live) {
+      const r = await this.demo.placeOrder(session, payload);
+      return {
+        ...r,
+        provider: this.provider,
+        message:
+          "Betbra em modo demo (EXCHANGE_ORDERS_LIVE≠1). Ordem simulada — nenhuma aposta real.",
+      };
+    }
+    if (!session?.accessToken) {
       throw new ExchangeOrdersNotWiredError(
-        "BetbraOrdersAdapter em modo dry-run (EXCHANGE_ORDERS_LIVE≠1)."
+        `${EXCHANGE_ORDERS_LOCK}: sessão do cliente obrigatória para place live.`
       );
     }
-    // Placeholder: a doc da casa define path/headers reais.
     const url = `${this.apiBase}/orders`;
     const res = await fetch(url, {
       method: "POST",
@@ -111,23 +201,21 @@ export class BetbraOrdersAdapter {
       err.details = data;
       throw err;
     }
-    const orderId = String(
-      data?.id || data?.orderId || data?.order_id || ""
-    );
+    const orderId = String(data?.id || data?.orderId || data?.order_id || "");
     return {
       orderId,
       status: normalizeOrderStatus(data?.status || "pending"),
       provider: this.provider,
       raw: data,
       wired: true,
+      demo: false,
     };
   }
 
   async cancelOrder(session, orderId) {
     if (!this.live) {
-      throw new ExchangeOrdersNotWiredError(
-        "BetbraOrdersAdapter em modo dry-run (EXCHANGE_ORDERS_LIVE≠1)."
-      );
+      const r = await this.demo.cancelOrder(session, orderId);
+      return { ...r, provider: this.provider };
     }
     const url = `${this.apiBase}/orders/${encodeURIComponent(orderId)}/cancel`;
     const res = await fetch(url, {
@@ -160,18 +248,14 @@ export class BetbraOrdersAdapter {
       provider: this.provider,
       raw: data,
       wired: true,
+      demo: false,
     };
   }
 
   async getOrderStatus(session, orderId) {
     if (!this.live) {
-      return {
-        orderId: String(orderId),
-        status: "unknown",
-        provider: this.provider,
-        wired: false,
-        note: "dry-run",
-      };
+      const r = await this.demo.getOrderStatus(session, orderId);
+      return { ...r, provider: this.provider };
     }
     const url = `${this.apiBase}/orders/${encodeURIComponent(orderId)}`;
     const res = await fetch(url, {
@@ -204,16 +288,16 @@ export class BetbraOrdersAdapter {
       provider: this.provider,
       raw: data,
       wired: true,
+      demo: false,
     };
   }
 }
 
-export function createOrdersAdapter() {
-  const name = String(process.env.EXCHANGE_ORDERS_PROVIDER || "stub")
-    .toLowerCase()
-    .trim();
-  if (name === "betbra" || name === "mexchange" || name === "fulltbet") {
-    return new BetbraOrdersAdapter();
+export function createOrdersAdapter(name = resolveOrdersProviderName()) {
+  const n = String(name || "demo").toLowerCase().trim();
+  if (n === "betbra" || n === "mexchange" || n === "fulltbet" || n === "live") {
+    return new BetbraOrdersAdapter({ live: envLive() });
   }
-  return new StubOrdersAdapter();
+  if (n === "stub") return new StubOrdersAdapter();
+  return new DemoOrdersAdapter();
 }

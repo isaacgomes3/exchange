@@ -142,13 +142,12 @@ systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 systemctl restart arbishield-serverfn-shim-teste.service 2>/dev/null || true
 
 echo ""
-echo "OK. Endpoints:"
-echo "  POST /api/arbishield/exchange-session/connect"
-echo "  POST /api/arbishield/exchange-session/disconnect"
-echo "  POST /api/arbishield/exchange-orders/place"
+echo "OK. Endpoints (modo DEMO por padrão — não envia ordem real):"
+echo "  POST /api/arbishield/exchange-session/connect   { \"provider\":\"demo\" }"
+echo "  POST /api/arbishield/exchange-orders/place      { side, odd, stakeCents, eventId, marketId }"
 echo "  POST /api/arbishield/exchange-orders/cancel"
 echo "  GET  /api/arbishield/exchange-orders/status?orderId="
 echo "  GET  /api/arbishield/exchange-orders"
 echo ""
-echo "Place real só com EXCHANGE_ORDERS_LIVE=1 + EXCHANGE_ORDERS_PROVIDER=betbra"
-echo "e paths da API da casa confirmados no adapter."
+echo "Demo: EXCHANGE_ORDERS_PROVIDER=demo (padrão)"
+echo "Live: EXCHANGE_ORDERS_LIVE=1 + EXCHANGE_ORDERS_PROVIDER=betbra + doc da casa"

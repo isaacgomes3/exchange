@@ -57,8 +57,29 @@ describe("exchange session crypto", () => {
 });
 
 describe("adapter default", () => {
-  it("usa stub por defeito", () => {
+  it("usa demo por defeito", () => {
     const a = createOrdersAdapter();
-    assert.equal(a.provider, "stub");
+    assert.equal(a.provider, "demo");
+  });
+
+  it("place demo gera orderId", async () => {
+    const a = createOrdersAdapter();
+    const r = await a.placeOrder(
+      { accessToken: "demo" },
+      {
+        side: "LAY",
+        odd: 36,
+        stakeCents: 25000,
+        eventId: "e1",
+        marketId: "m1",
+      }
+    );
+    assert.match(r.orderId, /^demo_/);
+    assert.equal(r.demo, true);
+    assert.equal(r.status, "matched");
+    const st = await a.getOrderStatus({}, r.orderId);
+    assert.equal(st.status, "matched");
+    const c = await a.cancelOrder({}, r.orderId);
+    assert.equal(c.status, "cancelled");
   });
 });
