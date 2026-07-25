@@ -115,12 +115,12 @@ describe("public trading API adapter", () => {
     assert.equal(h["X-Auth-Token"], "tok-xyz");
   });
 
-  it("body mexchange usa POST /offers shape", () => {
+  it("body mexchange LAY: responsabilidade → stake = resp/(odd-1)", () => {
     const b = buildExchangePlaceBody(
       {
         side: "LAY",
         odd: 65,
-        stakeCents: 100,
+        stakeCents: 6400, // R$ 64 de responsabilidade
         eventId: "e1",
         marketId: "m1",
         selectionId: "s1",
@@ -132,9 +132,26 @@ describe("public trading API adapter", () => {
     assert.equal(b.offers.length, 1);
     assert.equal(b.offers[0].side, "lay");
     assert.equal(b.offers[0].odds, 65);
+    // 64 / (65-1) = 1
     assert.equal(b.offers[0].stake, 1);
     assert.equal(b.offers[0]["runner-id"], "s1");
     assert.equal(b.offers[0]["market-id"], "m1");
+  });
+
+  it("body mexchange BACK: stake direto", () => {
+    const b = buildExchangePlaceBody(
+      {
+        side: "BACK",
+        odd: 100,
+        stakeCents: 100,
+        eventId: "e1",
+        marketId: "m1",
+        selectionId: "s1",
+      },
+      "mexchange"
+    );
+    assert.equal(b.offers[0].side, "back");
+    assert.equal(b.offers[0].stake, 1);
   });
 
   it("body exchange legado inclui side LAY e price", () => {

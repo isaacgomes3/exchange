@@ -39,18 +39,71 @@ export function toMexchangeSide(side) {
 }
 
 /**
+ * Mexchange `stake` no POST /offers = tamanho casado (size).
+ * - BACK: usuário informa stake → envia stake
+ * - LAY: usuário informa responsabilidade (liability) → stake = liability / (odds - 1)
+ *   (igual calculateStake do frontend Mexchange)
+ */
+export function amountToMexchangeStake({ side, odd, stakeCents, liabilityCents } = {}) {
+  const s = toMexchangeSide(side);
+  const odds = Number(odd);
+  if (!(odds > 1.01)) {
+    const err = new Error("odd inválida para converter stake");
+    err.status = 400;
+    err.code = "INVALID_ODD";
+    throw err;
+  }
+  if (s === "lay") {
+    const liabCents =
+      liabilityCents != null && Number(liabilityCents) > 0
+        ? Math.floor(Number(liabilityCents))
+        : Math.floor(Number(stakeCents || 0)); // stakeCents = responsabilidade no LAY
+    if (!(liabCents > 0)) {
+      const err = new Error("responsabilidade (LAY) inválida");
+      err.status = 400;
+      err.code = "INVALID_LIABILITY";
+      throw err;
+    }
+    const liabilityBrl = liabCents / 100;
+    const stakeBrl = liabilityBrl / (odds - 1);
+    return {
+      side: s,
+      stakeBrl,
+      liabilityBrl,
+      stakeCents: Math.round(stakeBrl * 100),
+      liabilityCents: liabCents,
+    };
+  }
+  // BACK: stakeCents = stake
+  const stakeC = Math.floor(Number(stakeCents || 0));
+  if (!(stakeC > 0)) {
+    const err = new Error("stake (BACK) inválido");
+    err.status = 400;
+    err.code = "INVALID_STAKE";
+    throw err;
+  }
+  const stakeBrl = stakeC / 100;
+  return {
+    side: s,
+    stakeBrl,
+    liabilityBrl: stakeBrl, // risco = stake no back
+    stakeCents: stakeC,
+    liabilityCents: stakeC,
+  };
+}
+
+/**
  * Body real de POST /offers (frontend submitOffersFromBetSlip).
  */
 export function buildMexchangeOffersBody(payload = {}) {
-  const side = toMexchangeSide(payload.side);
-  const stakeBrl = Number(payload.stakeCents || 0) / 100;
+  const conv = amountToMexchangeStake(payload);
   const offer = {
     "runner-id": String(payload.selectionId || payload.runnerId || ""),
     "event-id": String(payload.eventId || ""),
     "market-id": String(payload.marketId || ""),
-    side,
+    side: conv.side,
     odds: Number(payload.odd),
-    stake: stakeBrl,
+    stake: Number(conv.stakeBrl.toFixed(4)),
     "keep-in-play": payload.keepInPlay === true,
   };
   const body = {

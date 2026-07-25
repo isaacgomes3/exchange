@@ -40,12 +40,14 @@ export function normalizeOrderStatus(status) {
 }
 
 /**
- * Valida payload de place. stakeCents = responsabilidade (LAY) ou stake (BACK).
+ * Valida payload de place.
+ * - BACK: stakeCents / amountCents = stake
+ * - LAY: liabilityCents (ou stakeCents/amountCents) = responsabilidade;
+ *   o adapter converte para stake da Mexchange: stake = resp / (odd - 1)
  */
 export function validatePlaceOrderBody(body) {
   const side = normalizeOrderSide(body?.side || body?.marketType);
   const odd = Number(String(body?.odd ?? "").replace(",", "."));
-  const stakeCents = Math.floor(Number(body?.stakeCents ?? body?.amountCents ?? 0));
   const eventId = String(body?.eventId || body?.externalEventId || "").trim();
   const marketId = String(body?.marketId || body?.externalMarketId || "").trim();
   const selectionId = String(
@@ -66,11 +68,37 @@ export function validatePlaceOrderBody(body) {
     err.code = "INVALID_ODD";
     throw err;
   }
-  if (!(stakeCents > 0)) {
-    const err = new Error("stakeCents / amountCents inválido");
-    err.status = 400;
-    err.code = "INVALID_STAKE";
-    throw err;
+  let stakeCents = 0;
+  let liabilityCents = null;
+  if (side === "LAY") {
+    const liab = Math.floor(
+      Number(
+        body?.liabilityCents ??
+          body?.responsabilidadeCents ??
+          body?.stakeCents ??
+          body?.amountCents ??
+          0
+      )
+    );
+    if (!(liab > 0)) {
+      const err = new Error(
+        "responsabilidade inválida (liabilityCents / stakeCents no LAY)"
+      );
+      err.status = 400;
+      err.code = "INVALID_LIABILITY";
+      throw err;
+    }
+    liabilityCents = liab;
+    // persistimos a responsabilidade em stake_cents (contrato histórico LAY)
+    stakeCents = liab;
+  } else {
+    stakeCents = Math.floor(Number(body?.stakeCents ?? body?.amountCents ?? 0));
+    if (!(stakeCents > 0)) {
+      const err = new Error("stakeCents / amountCents inválido");
+      err.status = 400;
+      err.code = "INVALID_STAKE";
+      throw err;
+    }
   }
   if (!eventId && !marketId) {
     const err = new Error("eventId ou marketId obrigatório");
@@ -82,6 +110,7 @@ export function validatePlaceOrderBody(body) {
     side,
     odd,
     stakeCents,
+    liabilityCents,
     eventId: eventId || null,
     marketId: marketId || null,
     selectionId: selectionId || null,
