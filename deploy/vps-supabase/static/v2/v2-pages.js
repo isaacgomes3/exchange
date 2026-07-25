@@ -232,8 +232,11 @@
       var spec = specs[i];
       try {
         var rows = await loadTable(supa, spec.table, spec);
+        if (typeof spec.keep === "function") {
+          rows = rows.filter(spec.keep);
+        }
         var tag = spec.tag || spec.table;
-        labels.push(tag);
+        if (rows.length) labels.push(tag);
         rows.forEach(function (r) {
           var copy = Object.assign({}, r);
           copy.origem = tag;

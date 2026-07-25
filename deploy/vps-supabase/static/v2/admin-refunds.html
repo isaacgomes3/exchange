@@ -32,12 +32,9 @@
           table: "withdrawals",
           limit: 200,
           tag: "Saldo Reembolso",
-          // PostgREST: filtra saques da carteira Saldo Reembolso
-          or:
-            "metadata->>origin.eq.SALDO_REEMBOLSO_WITHDRAWAL," +
-            "metadata->>origin.eq.DEDUCTION_WITHDRAWAL," +
-            "metadata->>origin.eq.SALDO_DEDUCAO_WITHDRAWAL," +
-            "metadata->>origin.eq.REFUND_BALANCE_WITHDRAWAL",
+          keep: function (r) {
+            return ArbiV2Page.isSaldoReembolsoWithdrawal(r);
+          },
         },
       ],
       cols: ["id", "user_name", "origem", "amount_cents", "status", "created_at"],
