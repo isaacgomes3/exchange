@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test scripts/protection-flow-contract.test.mjs",
+    "test": "node --test scripts/protection-flow-contract.test.mjs scripts/betbra-inplay-sync.test.mjs",
     "arbishield:sync-odds": "node scripts/arbishield-sync-odds.mjs",
     "arbishield:mirror": "node scripts/mirror-arbishield-app.mjs",
     "arbishield:cutover": "bash scripts/arbishield-cutover-frontend.sh",

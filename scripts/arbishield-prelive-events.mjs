@@ -24,6 +24,12 @@ import {
   calcBack,
   layToBackOdd,
 } from "./lib/protection-flow-contract.mjs";
+import {
+  BETBRA_INPLAY_SYNC_VERSION,
+  indexInplayFeed,
+  matchEligibleForInplaySync,
+  buildMatchInplayPatch,
+} from "./lib/betbra-inplay-sync.mjs";
 
 // Trava de produto: fluxo de proteção — não alterar sem pedido explícito.
 void PROTECTION_FLOW_LOCK;
@@ -77,6 +83,17 @@ const REFERER =
 const SITE = process.env.EXCHANGE_SITE_ORIGIN || "https://betbra.bet.br";
 const SOCCER_ID = Number(process.env.FULLTBET_SOCCER_SPORT_ID || "15");
 const SPACING = Number(process.env.MEXCHANGE_REQUEST_SPACING_MS || 200);
+const INPLAY_FEED_URL =
+  process.env.MEXCHANGE_INPLAY_FEED_URL ||
+  "https://betbra.bet.br/client/api/jumper/feedSports/inplay-info";
+const INPLAY_SYNC_MS = Number(
+  process.env.BETBRA_INPLAY_SYNC_MS ||
+    process.env.MEXCHANGE_POLL_INTERVAL_MS ||
+    "15000"
+);
+const INPLAY_SYNC_ENABLED =
+  process.env.BETBRA_INPLAY_SYNC_ENABLED !== "0" &&
+  process.env.BETBRA_INPLAY_SYNC_ENABLED !== "false";
 
 
 
@@ -543,6 +560,7 @@ async function createMatchFromMarket(body, token) {
     const patchBody = {
       markets: nextMarkets,
       max_protection_cents: nextMax,
+      score_sync_enabled: true,
       updated_by: adminId,
       metadata: {
         ...prevMeta,
@@ -553,6 +571,8 @@ async function createMatchFromMarket(body, token) {
         market_id: body.marketId,
         runner_id: body.runnerId || null,
         source: "betbra_prelive_catalog",
+        score_sync_enabled: true,
+        score_sync_source: "betbra_inplay",
       },
       updated_at: new Date().toISOString(),
     };
@@ -585,7 +605,7 @@ async function createMatchFromMarket(body, token) {
     used_protection_cents: 0,
     protection_odds: { home: odd, away: odd },
     external_id: eventExternalId,
-    score_sync_enabled: false,
+    score_sync_enabled: true,
     has_live_stream: false,
     created_by: adminId,
     updated_by: adminId,
@@ -596,6 +616,8 @@ async function createMatchFromMarket(body, token) {
       market_id: body.marketId,
       runner_id: body.runnerId || null,
       source: "betbra_prelive_catalog",
+      score_sync_enabled: true,
+      score_sync_source: "betbra_inplay",
     },
     markets: [newMarket],
   };
@@ -3042,6 +3064,151 @@ async function launchTestEvent(query = {}) {
   };
 }
 
+async function fetchBetbraInplayFeed() {
+  return spaced(() =>
+    betbra(INPLAY_FEED_URL, {
+      Referer: `${SITE}/`,
+    })
+  );
+}
+
+/**
+ * Puxa inplay-info BetBra e atualiza placar/minuto nos matches elegíveis.
+ * Não liquida automaticamente — settle continua manual.
+ */
+async function syncBetbraInplayScores({ force = false } = {}) {
+  if (!SERVICE_KEY && !force) {
+    return { ok: false, error: "SERVICE_KEY ausente", updated: 0 };
+  }
+  const nowIso = new Date().toISOString();
+  const nowMs = Date.now();
+
+  const rows = await sb(
+    "/rest/v1/matches?deleted_at=is.null&settled_at=is.null&select=id,external_id,starts_at,status,status_v2,final_score,settled_at,score_sync_enabled,metadata,updated_at&order=starts_at.asc&limit=300",
+    { token: SERVICE_KEY }
+  );
+  const candidates = (Array.isArray(rows) ? rows : []).filter((m) =>
+    matchEligibleForInplaySync(m, nowMs)
+  );
+
+  if (!candidates.length) {
+    return {
+      ok: true,
+      version: BETBRA_INPLAY_SYNC_VERSION,
+      feedSize: 0,
+      candidates: 0,
+      updated: 0,
+      skipped: 0,
+      finishedSeen: 0,
+    };
+  }
+
+  let feedRaw;
+  try {
+    feedRaw = await fetchBetbraInplayFeed();
+  } catch (err) {
+    return {
+      ok: false,
+      version: BETBRA_INPLAY_SYNC_VERSION,
+      error: err instanceof Error ? err.message : String(err),
+      candidates: candidates.length,
+      updated: 0,
+    };
+  }
+
+  const byEvent = indexInplayFeed(feedRaw);
+  let updated = 0;
+  let skipped = 0;
+  let finishedSeen = 0;
+  const samples = [];
+
+  for (const match of candidates) {
+    const built = buildMatchInplayPatch(match, byEvent, nowIso);
+    if (!built) {
+      skipped += 1;
+      continue;
+    }
+    if (built.live.finished) finishedSeen += 1;
+    try {
+      await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(match.id)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: built.patch,
+      });
+      updated += 1;
+      if (samples.length < 8) {
+        samples.push({
+          id: match.id,
+          external_id: match.external_id,
+          score: built.live.score,
+          elapsed: built.live.elapsed_label,
+          finished: built.live.finished,
+        });
+      }
+    } catch (err) {
+      skipped += 1;
+      console.warn(
+        "[betbra-inplay-sync] patch falhou",
+        match.id,
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    version: BETBRA_INPLAY_SYNC_VERSION,
+    feedSize: byEvent.size,
+    candidates: candidates.length,
+    updated,
+    skipped,
+    finishedSeen,
+    samples,
+    at: nowIso,
+  };
+}
+
+let inplaySyncTimer = null;
+let inplaySyncRunning = false;
+
+function startBetbraInplaySyncLoop() {
+  if (!INPLAY_SYNC_ENABLED) {
+    console.log("[betbra-inplay-sync] desligado (BETBRA_INPLAY_SYNC_ENABLED=0)");
+    return;
+  }
+  if (!SERVICE_KEY) {
+    console.warn("[betbra-inplay-sync] sem SERVICE_KEY — loop não iniciado");
+    return;
+  }
+  const tick = async () => {
+    if (inplaySyncRunning) return;
+    inplaySyncRunning = true;
+    try {
+      const result = await syncBetbraInplayScores();
+      if (result.updated > 0 || result.error) {
+        console.log(
+          `[betbra-inplay-sync] updated=${result.updated} candidates=${result.candidates} feed=${result.feedSize || 0}` +
+            (result.error ? ` err=${result.error}` : "")
+        );
+      }
+    } catch (err) {
+      console.warn(
+        "[betbra-inplay-sync] tick falhou",
+        err instanceof Error ? err.message : err
+      );
+    } finally {
+      inplaySyncRunning = false;
+    }
+  };
+  // primeiro tick após 8s (deixa o server subir)
+  setTimeout(tick, 8000);
+  inplaySyncTimer = setInterval(tick, Math.max(8000, INPLAY_SYNC_MS));
+  if (typeof inplaySyncTimer.unref === "function") inplaySyncTimer.unref();
+  console.log(
+    `[betbra-inplay-sync] loop a cada ${Math.max(8000, INPLAY_SYNC_MS)}ms (${BETBRA_INPLAY_SYNC_VERSION})`
+  );
+}
+
 async function handleApi(req, res) {
   if (req.method === "OPTIONS") return sendJson(res, 204, {});
 
@@ -3053,10 +3220,13 @@ async function handleApi(req, res) {
       service: "arbishield-matches",
       fix: "protection-flow-contract-v1",
       protectionFlowLock: PROTECTION_FLOW_LOCK,
+      inplaySync: BETBRA_INPLAY_SYNC_VERSION,
+      inplaySyncEnabled: INPLAY_SYNC_ENABLED,
       env: process.env.ARBISHIELD_ENV || "production",
       listen: LISTEN,
       testEvent: "/api/arbishield/test-event",
       footballTeams: "/api/arbishield/football-teams",
+      matchLiveSync: "/api/arbishield/match-live-sync",
     });
   }
 
@@ -3147,6 +3317,22 @@ async function handleApi(req, res) {
       }
       const result = await listPreliveEventsForDay();
       return sendJson(res, 200, { ok: true, ...result });
+    } catch (err) {
+      return sendJson(res, 500, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (
+    (url.pathname === "/api/arbishield/match-live-sync" ||
+      url.pathname === "/api/arbishield/match-score-sync") &&
+    (req.method === "POST" || req.method === "GET")
+  ) {
+    try {
+      const result = await syncBetbraInplayScores({ force: true });
+      return sendJson(res, result.ok ? 200 : 502, result);
     } catch (err) {
       return sendJson(res, 500, {
         ok: false,
@@ -3303,6 +3489,7 @@ async function main() {
   });
   server.listen(port, host, () => {
     console.log(`prelive-events (BetBra+manual) on http://${host}:${port}`);
+    startBetbraInplaySyncLoop();
   });
 }
 

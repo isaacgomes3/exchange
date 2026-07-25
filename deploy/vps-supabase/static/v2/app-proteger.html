@@ -721,9 +721,31 @@
               mks.find(function (mk) {
                 return String(mk.market_type || "LAY").toUpperCase() === (state.side === "back" ? "BACK" : "LAY");
               }) || mks[0];
+            var liveMeta =
+              m.metadata && m.metadata.live && typeof m.metadata.live === "object"
+                ? m.metadata.live
+                : null;
+            var liveScore =
+              liveMeta &&
+              (liveMeta.score ||
+                (liveMeta.home_score != null && liveMeta.away_score != null
+                  ? liveMeta.home_score + "-" + liveMeta.away_score
+                  : ""));
+            var liveElapsed = liveMeta
+              ? liveMeta.elapsed_label || liveMeta.elapsed || ""
+              : "";
+            if (liveElapsed && !/['′]$/.test(String(liveElapsed))) {
+              liveElapsed = liveElapsed + "'";
+            }
             var whenHtml;
-            if (isLive(m)) {
-              whenHtml = '<span class="term-live">AO VIVO</span>';
+            if (isLive(m) || (liveMeta && liveMeta.live && !liveMeta.finished)) {
+              whenHtml =
+                '<span class="term-live">AO VIVO</span>' +
+                (liveElapsed
+                  ? '<span class="term-date" style="display:block;margin-top:2px">' +
+                    esc(liveElapsed) +
+                    "</span>"
+                  : "");
             } else if (!m.starts_at) {
               whenHtml = "—";
             } else {
@@ -743,6 +765,12 @@
             var actionBtn = canProtect
               ? '<button type="button" class="term-protect-btn" data-protect="1">Proteger</button>'
               : '<button type="button" class="term-protect-btn" disabled title="Liquidez esgotada">Sem liquidez</button>';
+            var scoreHtml = liveScore
+              ? '<div class="term-comp" style="margin-top:4px;color:var(--lime);font-weight:800">' +
+                esc(liveScore) +
+                (liveElapsed ? " · " + esc(liveElapsed) : "") +
+                "</div>"
+              : "";
             return (
               '<article class="term-row' +
               (canProtect ? "" : " is-exhausted") +
@@ -760,7 +788,9 @@
               esc(m.away_team || "?") +
               "</strong>" +
               teamLogoHtml(m.away_logo) +
-              "</div></div>" +
+              "</div>" +
+              scoreHtml +
+              "</div>" +
               '<div class="term-col-comp">' +
               '<span class="term-comp">' +
               esc(competition || "—") +

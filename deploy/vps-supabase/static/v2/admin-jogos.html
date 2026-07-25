@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta name="arbishield-vps-page" content="jogos" />
-  <meta name="arbishield-build" content="admin-jogos-betbra-first-v4" />
+  <meta name="arbishield-build" content="admin-jogos-betbra-live-sync-v5" />
   <title>Gestão de Jogos — ArbiShield v2</title>
   <link rel="stylesheet" href="/v2.css" />
   <script src="/v2-shell.js" defer></script>
@@ -1608,6 +1608,30 @@
         return "manual";
       }
 
+      /** Placar/minuto syncados da BetBra (metadata.live). */
+      function matchLiveInfo(m) {
+        var meta = m && m.metadata && typeof m.metadata === "object" ? m.metadata : {};
+        var live = meta.live && typeof meta.live === "object" ? meta.live : null;
+        if (!live) return null;
+        var score =
+          live.score ||
+          (live.home_score != null && live.away_score != null
+            ? live.home_score + "-" + live.away_score
+            : null);
+        var elapsed = live.elapsed_label || live.elapsed || "";
+        if (elapsed && !/['′]$/.test(String(elapsed))) elapsed = elapsed + "'";
+        return {
+          score: score,
+          elapsed: elapsed,
+          finished: Boolean(live.finished),
+          live: Boolean(live.live) && !live.finished,
+          matchStatus: live.match_status || live.status || "",
+          homeScore: live.home_score,
+          awayScore: live.away_score,
+          updatedAt: live.updated_at || null,
+        };
+      }
+
       function sortPlatform(rows) {
         var rank = { settle: 0, live: 1, open: 2, draft: 3, done: 4 };
         return rows.slice().sort(function (a, b) {
@@ -1745,6 +1769,30 @@
                     : "") +
                   "</div>";
               }
+              var liveInfo = matchLiveInfo(m);
+              var liveHtml = "";
+              if (liveInfo && (liveInfo.score || liveInfo.elapsed)) {
+                liveHtml =
+                  '<div class="entries" style="color:var(--lime);font-weight:800;margin-top:4px">' +
+                  (liveInfo.finished
+                    ? "FT"
+                    : liveInfo.live
+                      ? "AO VIVO"
+                      : "BetBra") +
+                  (liveInfo.score ? " · " + escHtml(liveInfo.score) : "") +
+                  (liveInfo.elapsed ? " · " + escHtml(liveInfo.elapsed) : "") +
+                  (liveInfo.matchStatus
+                    ? ' <span style="color:var(--muted);font-weight:600">(' +
+                      escHtml(liveInfo.matchStatus) +
+                      ")</span>"
+                    : "") +
+                  "</div>";
+              } else if (m.final_score) {
+                liveHtml =
+                  '<div class="entries" style="color:var(--muted);margin-top:4px">Placar: ' +
+                  escHtml(m.final_score) +
+                  "</div>";
+              }
               return (
                 '<div class="row" style="cursor:default">' +
                 "<div><div class=\"teams row-teams-with-logos\">" +
@@ -1760,6 +1808,7 @@
                 escHtml(m.league || "—") +
                 (names ? " · " + escHtml(names) + extra : "") +
                 "</div>" +
+                liveHtml +
                 '<div class="entries">' +
                 markets.length +
                 " entrada(s) · liquidez " +
@@ -2961,8 +3010,22 @@
           $("settleStakeKeepHint").textContent =
             "No fee_upfront a dedução já foi cobrada na entrada; ao bater Exchange ela permanece na plataforma.";
         }
-        $("settleHome").value = "";
-        $("settleAway").value = "";
+        var liveInfo = matchLiveInfo(m);
+        if (
+          liveInfo &&
+          liveInfo.homeScore != null &&
+          liveInfo.awayScore != null
+        ) {
+          $("settleHome").value = String(liveInfo.homeScore);
+          $("settleAway").value = String(liveInfo.awayScore);
+        } else if (m.final_score && /^\d+\s*[-x:]\s*\d+$/i.test(String(m.final_score))) {
+          var parts = String(m.final_score).split(/[-x:]/i);
+          $("settleHome").value = String(parts[0]).trim();
+          $("settleAway").value = String(parts[1]).trim();
+        } else {
+          $("settleHome").value = "";
+          $("settleAway").value = "";
+        }
         setSettleOutcome("arbishield");
         $("settleModal").classList.add("show");
       }
@@ -3086,7 +3149,15 @@
           resolveAuth(false).then(function (next) {
             auth = next;
             showAuthBanner(!auth);
-            loadPlatformMatches({ force: true });
+            fetch("/api/arbishield/match-live-sync", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+            })
+              .catch(function () {})
+              .finally(function () {
+                loadPlatformMatches({ force: true });
+              });
           });
         });
         $("search").addEventListener("input", function (e) {
@@ -3193,6 +3264,21 @@
         showAuthBanner(!auth);
         setView("prelive");
         await loadPlatformMatches();
+        // Sync placar/minuto BetBra em background + refresh da lista
+        async function triggerLiveSync() {
+          try {
+            await fetch("/api/arbishield/match-live-sync", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+            });
+          } catch (e) {}
+          if (view === "platform" || platformLoaded) {
+            await loadPlatformMatches({ force: true });
+          }
+        }
+        setTimeout(triggerLiveSync, 4000);
+        setInterval(triggerLiveSync, 20000);
       }
 
       boot().catch(function (err) {
