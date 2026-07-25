@@ -2129,7 +2129,7 @@
             var extra = await rest(
               "matches?id=in.(" +
                 missingIds.map(encodeURIComponent).join(",") +
-                ")&deleted_at=is.null&select=id,home_team,away_team,home_logo,away_logo,league,starts_at,is_published,status,status_v2,final_score,settled_at,max_protection_cents,used_protection_cents,markets,metadata,external_id",
+                ")&deleted_at=is.null&select=id,home_team,away_team,home_logo,away_logo,league,sport_type,starts_at,is_published,status,status_v2,final_score,settled_at,max_protection_cents,used_protection_cents,markets,metadata,external_id",
               auth.token
             );
             (extra || []).forEach(function (m) {
