@@ -548,6 +548,14 @@
     </section>
 
     <section class="panel" id="prelivePanel" hidden>
+      <div class="field prelive-liq" style="margin:0 16px 14px;max-width:420px">
+        <label for="preliveLiquidityBrl">Liquidez real (R$) — usada ao lançar cada seleção BetBra</label>
+        <div style="display:flex;gap:10px;align-items:stretch">
+          <input id="preliveLiquidityBrl" type="text" inputmode="decimal" value="2000" placeholder="Ex.: 2000 ou 2.500,00" autocomplete="off" style="flex:1;min-width:0" />
+          <button type="button" class="btn btn-primary btn-sm" id="btnConfirmPreliveLiq" style="white-space:nowrap;align-self:stretch">Confirmar</button>
+        </div>
+        <p class="hint" id="preliveLiqStatus" style="margin:6px 0 0">Informe o valor e clique em Confirmar. Padrão R$ 2.000.</p>
+      </div>
       <div class="panel-head">
         <div>
           <h2>Próximos jogos (BetBra) — só cadastro</h2>
@@ -1236,11 +1244,71 @@
         });
       }
 
+      var confirmedPreliveLiqBrl = null;
+
+      function readPreliveLiquidityBrl() {
+        if (confirmedPreliveLiqBrl != null && confirmedPreliveLiqBrl > 0) {
+          return confirmedPreliveLiqBrl;
+        }
+        var el = $("preliveLiquidityBrl");
+        if (!el) return null;
+        if (!String(el.value || "").trim()) el.value = "2000";
+        return parseMoneyToNumber(el.value);
+      }
+
+      function setPreliveLiqStatus(ok, msg) {
+        var st = $("preliveLiqStatus");
+        if (!st) return;
+        st.textContent = msg;
+        st.style.color = ok ? "var(--lime)" : "";
+      }
+
+      function confirmPreliveLiquidity() {
+        var el = $("preliveLiquidityBrl");
+        if (!el) return false;
+        if (!String(el.value || "").trim()) el.value = "2000";
+        var liqBrl = parseMoneyToNumber(el.value);
+        if (liqBrl == null || !(liqBrl > 0)) {
+          confirmedPreliveLiqBrl = null;
+          setPreliveLiqStatus(false, "Informe um valor válido (ex.: 2000) e confirme.");
+          alert("Informe a liquidez real (R$) para confirmar. Ex.: 2000");
+          el.focus();
+          return false;
+        }
+        if (Math.round(liqBrl * 100) < 100) {
+          confirmedPreliveLiqBrl = null;
+          setPreliveLiqStatus(false, "Liquidez mínima: R$ 1,00.");
+          alert("Liquidez mínima: R$ 1,00");
+          el.focus();
+          return false;
+        }
+        confirmedPreliveLiqBrl = liqBrl;
+        el.value = String(
+          liqBrl.toLocaleString("pt-BR", {
+            minimumFractionDigits: liqBrl % 1 ? 2 : 0,
+            maximumFractionDigits: 2,
+          })
+        );
+        setPreliveLiqStatus(
+          true,
+          "Liquidez confirmada: " +
+            liqBrl.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) +
+            " — pode escolher o jogo."
+        );
+        return true;
+      }
+
       function openCreateModal(market, runner) {
+        if (confirmedPreliveLiqBrl == null || !(confirmedPreliveLiqBrl > 0)) {
+          alert("Confirme a liquidez no botão acima de Próximos jogos antes de lançar.");
+          if ($("preliveLiquidityBrl")) $("preliveLiquidityBrl").focus();
+          return;
+        }
         selectedMarket = market;
         selectedRunner = runner;
         var ev = selectedEvent;
         var link = ev.betbraLink + "/market/" + market.marketId;
+        var liqBrl = readPreliveLiquidityBrl();
         $("createSummary").innerHTML = [
           ["Jogo", ev.homeTeam + " vs " + ev.awayTeam],
           ["Liga", ev.league || "—"],
@@ -1248,6 +1316,12 @@
           ["Mercado", market.name],
           ["Seleção", runner.name],
           ["Odd", runner.odd != null ? runner.odd.toFixed(2) : "—"],
+          [
+            "Liquidez",
+            liqBrl != null && liqBrl > 0
+              ? liqBrl.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+              : "não informada",
+          ],
         ].map(function (row) {
           return "<div><span>" + row[0] + "</span><span>" + row[1] + "</span></div>";
         }).join("");
@@ -1266,6 +1340,18 @@
         var ev = selectedEvent;
         var market = selectedMarket;
         var runner = selectedRunner;
+        var liqBrl = readPreliveLiquidityBrl();
+        if (confirmedPreliveLiqBrl == null || liqBrl == null || !(liqBrl > 0)) {
+          alert("Confirme a liquidez no botão acima de Próximos jogos. Ex.: 2000");
+          $("createModal").classList.remove("show");
+          if ($("preliveLiquidityBrl")) $("preliveLiquidityBrl").focus();
+          return;
+        }
+        var liquidityCents = Math.round(liqBrl * 100);
+        if (!(liquidityCents >= 100)) {
+          alert("Liquidez mínima: R$ 1,00");
+          return;
+        }
         $("btnConfirmCreate").disabled = true;
         $("btnConfirmCreate").textContent = "Criando…";
         var publishNow = !($("publishNow") && !$("publishNow").checked);
@@ -1284,6 +1370,8 @@
             odd: runner.odd,
             betbraLink: betbraLink,
             isPublished: publishNow,
+            liquidityCents: liquidityCents,
+            liquidity_brl: liqBrl,
           });
           $("createModal").classList.remove("show");
           var msg =
@@ -1316,205 +1404,6 @@
           $("btnConfirmCreate").disabled = false;
           $("btnConfirmCreate").textContent = "Confirmar lançamento";
         }
-      }
-
-      function matchIsFinished(m) {
-        if (!m) return true;
-        if (m.final_score || m.settled_at) return true;
-        var st = String(m.status || m.status_v2 || "").toLowerCase();
-        return ["settled", "finished", "closed", "cancelled", "finalizado"].indexOf(st) >= 0;
-      }
-
-      /** Kickoff já passou e ainda dentro da janela de jogo (~3h). */
-      function matchIsLiveWindow(m) {
-        if (!m || matchIsFinished(m)) return false;
-        var start = m.starts_at ? new Date(m.starts_at).getTime() : NaN;
-        if (!Number.isFinite(start)) return false;
-        var now = Date.now();
-        return start <= now && start > now - 3 * 60 * 60 * 1000;
-      }
-
-      function matchNeedsSettle(m) {
-        if (!m) return false;
-        if (matchIsFinished(m)) return false;
-        return Number(m.used_protection_cents || 0) > 0 || Number(m._openProtections || 0) > 0;
-      }
-
-      function matchBucket(m) {
-        if (matchIsFinished(m)) return "done";
-        // Ao vivo tem prioridade de badge na janela do jogo (mesmo com proteção aberta)
-        if (matchIsLiveWindow(m)) return "live";
-        // Proteção aberta fora da janela ao vivo → liquidar
-        if (matchNeedsSettle(m)) return "settle";
-        var start = m.starts_at ? new Date(m.starts_at).getTime() : NaN;
-        if (Number.isFinite(start) && start <= Date.now() - 3 * 60 * 60 * 1000) {
-          return "done";
-        }
-        if (!m.is_published) return "draft";
-        if (Number.isFinite(start) && start <= Date.now()) return "live";
-        return "open";
-      }
-
-      function sortPlatform(rows) {
-        var rank = { settle: 0, live: 1, open: 2, draft: 3, done: 4 };
-        return rows.slice().sort(function (a, b) {
-          var ba = matchBucket(a);
-          var bb = matchBucket(b);
-          if (rank[ba] !== rank[bb]) return rank[ba] - rank[bb];
-          var ta = new Date(a.starts_at || 0).getTime();
-          var tb = new Date(b.starts_at || 0).getTime();
-          if (ba === "done" && bb === "done") return tb - ta;
-          return ta - tb;
-        });
-      }
-
-      function renderPlatformList() {
-        var filtered = sortPlatform(
-          platformMatches.filter(function (m) {
-            if (!filterText(m)) return false;
-            var bucket = matchBucket(m);
-            if (platformFilter === "fila") {
-              return (
-                bucket === "open" ||
-                bucket === "live" ||
-                matchNeedsSettle(m)
-              );
-            }
-            if (platformFilter === "live") return matchIsLiveWindow(m) || bucket === "live";
-            // A liquidar: qualquer proteção aberta (inclui ao vivo)
-            if (platformFilter === "settle") return matchNeedsSettle(m);
-            if (platformFilter === "draft") return bucket === "draft";
-            if (platformFilter === "done") return bucket === "done";
-            return true;
-          })
-        );
-        var counts = { fila: 0, live: 0, settle: 0, draft: 0, done: 0, all: platformMatches.length };
-        platformMatches.forEach(function (m) {
-          var b = matchBucket(m);
-          if (b === "open" || b === "live" || matchNeedsSettle(m)) counts.fila += 1;
-          if (matchIsLiveWindow(m) || b === "live") counts.live += 1;
-          if (matchNeedsSettle(m)) counts.settle += 1;
-          if (b === "draft") counts.draft += 1;
-          if (b === "done") counts.done += 1;
-        });
-        $("platformMeta").textContent =
-          filtered.length +
-          " na vista · ao vivo " +
-          counts.live +
-          " · a liquidar " +
-          counts.settle +
-          " · fila " +
-          counts.fila +
-          " · rascunhos " +
-          counts.draft +
-          " · finalizados " +
-          counts.done;
-
-        if (!filtered.length) {
-          $("platformContent").innerHTML =
-            '<div class="empty">' +
-            (platformFilter === "fila"
-              ? "Nenhum jogo atual/próximo na fila. Use a aba “A liquidar” para jogos com proteção ainda aberta."
-              : platformFilter === "live"
-                ? "Nenhum jogo ao vivo na janela de ~3h após o kickoff."
-              : platformFilter === "settle"
-                ? "Nenhum jogo pendente de liquidação (com proteção aberta)."
-                : "Nenhum jogo encontrado nesta categoria") +
-            "</div>";
-          return;
-        }
-        $("platformContent").innerHTML =
-          '<div class="list">' +
-          filtered
-            .map(function (m) {
-              var bucket = matchBucket(m);
-              var badge =
-                bucket === "settle"
-                  ? '<span class="badge live">A liquidar</span>'
-                  : bucket === "live"
-                    ? '<span class="badge live">Ao vivo</span>'
-                    : bucket === "done"
-                      ? '<span class="badge done">Finalizado</span>'
-                      : m.is_published
-                        ? '<span class="badge pub">Na fila</span>'
-                        : '<span class="badge draft">Rascunho</span>';
-              var markets = Array.isArray(m.markets) ? m.markets : [];
-              var names = markets
-                .map(function (x) { return x && x.name; })
-                .filter(Boolean)
-                .slice(0, 3)
-                .join(" · ");
-              var extra =
-                markets.length > 3 ? " + " + (markets.length - 3) + " mais" : "";
-              var publishBtn =
-                bucket === "draft"
-                  ? '<button class="btn btn-primary btn-sm" type="button" data-publish="' +
-                    m.id +
-                    '" style="margin-top:8px">Publicar</button>'
-                  : "";
-              var settleBtn =
-                matchNeedsSettle(m) || bucket === "live" || bucket === "settle"
-                  ? '<button class="btn btn-primary btn-sm" type="button" data-settle="' +
-                    m.id +
-                    '" style="margin-top:8px">Encerrar partida</button>'
-                  : "";
-              var used = Number(m.used_protection_cents || 0);
-              var openN = Number(m._openProtections || 0);
-              var homeLogo = m.home_logo
-                ? '<img src="' +
-                  escHtml(m.home_logo) +
-                  '" alt="" onerror="this.style.display=\'none\'" />'
-                : "";
-              var awayLogo = m.away_logo
-                ? '<img src="' +
-                  escHtml(m.away_logo) +
-                  '" alt="" onerror="this.style.display=\'none\'" />'
-                : "";
-              return (
-                '<div class="row" style="cursor:default">' +
-                "<div><div class=\"teams row-teams-with-logos\">" +
-                homeLogo +
-                "<span>" +
-                escHtml(m.home_team) +
-                "</span><span>vs</span>" +
-                awayLogo +
-                "<span>" +
-                escHtml(m.away_team) +
-                "</span></div>" +
-                '<div class="meta">' +
-                escHtml(m.league || "—") +
-                (names ? " · " + escHtml(names) + extra : "") +
-                "</div>" +
-                '<div class="entries">' +
-                markets.length +
-                " entrada(s) · liquidez " +
-                money(m.max_protection_cents) +
-                (used > 0 ? " · protegido " + money(used) : "") +
-                (openN > 0 ? " · " + openN + " proteção(ões) aberta(s)" : "") +
-                "</div>" +
-                publishBtn +
-                settleBtn +
-                "</div>" +
-                '<div class="time">' +
-                badge +
-                '<div class="when">' +
-                fmtDate(m.starts_at) +
-                "</div></div></div>"
-              );
-            })
-            .join("") +
-          "</div>";
-
-        $("platformContent").querySelectorAll("button[data-publish]").forEach(function (btn) {
-          btn.addEventListener("click", function () {
-            publishMatch(btn.getAttribute("data-publish"), btn);
-          });
-        });
-        $("platformContent").querySelectorAll("button[data-settle]").forEach(function (btn) {
-          btn.addEventListener("click", function () {
-            openSettleModal(btn.getAttribute("data-settle"));
-          });
-        });
       }
 
       async function publishMatch(matchId, btn) {
@@ -2414,6 +2303,21 @@
         $("btnAddMatch").addEventListener("click", openNormalLaunch);
         if ($("btnManualMatch")) {
           $("btnManualMatch").addEventListener("click", openManualDrawer);
+        }
+        if ($("btnConfirmPreliveLiq")) {
+          $("btnConfirmPreliveLiq").addEventListener("click", confirmPreliveLiquidity);
+        }
+        if ($("preliveLiquidityBrl")) {
+          $("preliveLiquidityBrl").addEventListener("input", function () {
+            confirmedPreliveLiqBrl = null;
+            setPreliveLiqStatus(false, "Informe o valor e clique em Confirmar. Padrão R$ 2.000.");
+          });
+          $("preliveLiquidityBrl").addEventListener("keydown", function (e) {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              confirmPreliveLiquidity();
+            }
+          });
         }
         $("btnCancelManual").addEventListener("click", closeManualDrawer);
         $("btnSaveManual").addEventListener("click", saveManualMatch);

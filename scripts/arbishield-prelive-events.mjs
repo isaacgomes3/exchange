@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
- * Serviço ArbiShield (VPS): matches manuais, settle e proteções.
- * Catálogo/API BetBra removidos — lançamento só via modo manual.
+ * Serviço ArbiShield (VPS): catálogo BetBra, matches manuais, settle e proteções.
  *
  *   node scripts/arbishield-prelive-events.mjs --serve
  *   PRELIVE_LISTEN=127.0.0.1:3098 node scripts/arbishield-prelive-events.mjs --serve
@@ -44,6 +43,17 @@ const SERVICE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY;
 const ANON_KEY = process.env.ANON_KEY || process.env.SUPABASE_ANON_KEY;
 
+const UA = process.env.MEXCHANGE_BOT_USER_AGENT || "BOT/SOFTWARE;Arbitrex;1.0";
+const API_BASE =
+  process.env.MEXCHANGE_API_BASE_URL ||
+  "https://mexchange-api.betbra.bet.br/api";
+const REFERER =
+  process.env.MEXCHANGE_REFERER || "https://mexchange.betbra.bet.br/";
+const SITE = process.env.EXCHANGE_SITE_ORIGIN || "https://betbra.bet.br";
+const SOCCER_ID = Number(process.env.FULLTBET_SOCCER_SPORT_ID || "15");
+const SPACING = Number(process.env.MEXCHANGE_REQUEST_SPACING_MS || 200);
+
+
 
 async function sb(path, { token, method = "GET", body } = {}) {
   const key = token || SERVICE_KEY || ANON_KEY;
@@ -76,6 +86,435 @@ async function sb(path, { token, method = "GET", body } = {}) {
   }
   return data;
 }
+
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let lastReq = 0;
+async function spaced(fn) {
+  const wait = Math.max(0, SPACING - (Date.now() - lastReq));
+  if (wait) await sleep(wait);
+  lastReq = Date.now();
+  return fn();
+}
+
+async function betbra(url, headers = {}) {
+  const res = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      "Accept-Language": "pt-BR,pt;q=0.9",
+      "User-Agent": UA,
+      Referer: REFERER,
+      Cookie: "BIAB_LANGUAGE=PT_BR",
+      ...headers,
+    },
+  });
+  const text = await res.text();
+  if (!res.ok || text.trim().startsWith("<!")) {
+    throw new Error(`BetBra ${res.status}: ${text.slice(0, 120)}`);
+  }
+  return JSON.parse(text);
+}
+
+function endOfDaySaoPaulo(from = Date.now()) {
+  const hours = Number(process.env.PRELIVE_WINDOW_HOURS || "24");
+  if (hours > 0 && hours <= 168) {
+    return from + hours * 60 * 60 * 1000;
+  }
+  const brDay = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(from));
+  return Date.parse(`${brDay}T23:59:59.999-03:00`);
+}
+
+function parseTeams(event) {
+  const parts = event.name.split(/\s+vs\.?\s+/i);
+  if (parts.length >= 2) {
+    return { home: parts[0].trim(), away: parts[1].trim() };
+  }
+  return { home: event.name, away: "—" };
+}
+
+function extractLeague(event) {
+  for (const tag of event["meta-tags"] || []) {
+    if (tag.type === "COMPETITION" || tag.type === "competition") {
+      return tag.name || "Competição";
+    }
+    if (tag["meta-tags"]) {
+      for (const sub of tag["meta-tags"]) {
+        if (sub.name) return sub.name;
+      }
+    }
+    if (tag.name && tag.name !== event.name) return tag.name;
+  }
+  return "Exchange BetBra";
+}
+
+function priceDecimal(p) {
+  if (!p || typeof p !== "object") return null;
+  const n = Number(p["decimal-odds"] ?? p.odds ?? p.decimalOdds);
+  return Number.isFinite(n) && n > 1 ? n : null;
+}
+
+function priceSide(p) {
+  return String(p?.side || p?.Side || "")
+    .trim()
+    .toLowerCase();
+}
+
+/** Melhor odd disponível: back → lay → last-matched (exchange pode só ter um lado). */
+function runnerBestOdd(runner) {
+  const prices = Array.isArray(runner?.prices)
+    ? runner.prices
+    : Array.isArray(runner?.Prices)
+      ? runner.Prices
+      : [];
+  const backs = prices
+    .filter((p) => priceSide(p) === "back")
+    .map(priceDecimal)
+    .filter((n) => n != null);
+  if (backs.length) {
+    return Number(Math.max(...backs).toFixed(3));
+  }
+  const lays = prices
+    .filter((p) => priceSide(p) === "lay")
+    .map(priceDecimal)
+    .filter((n) => n != null);
+  if (lays.length) {
+    return Number(Math.min(...lays).toFixed(3));
+  }
+  const last = runner?.["last-matched-odds"] ?? runner?.lastMatchedOdds;
+  return typeof last === "number" && last > 1 ? Number(last.toFixed(3)) : null;
+}
+
+function eventLink(sportId, eventId) {
+  return `${SITE}/b/exchange/sport/soccer/event/${eventId}`;
+}
+
+function marketLink(sportId, eventId, marketId) {
+  return `${eventLink(sportId, eventId)}/market/${marketId}`;
+}
+
+function toSummary(event) {
+  if (event["in-running-flag"]) return null;
+  if (!/vs\.?/i.test(event.name)) return null;
+  const startMs = new Date(event.start).getTime();
+  if (!Number.isFinite(startMs) || startMs < Date.now()) return null;
+  const teams = parseTeams(event);
+  return {
+    eventId: String(event.id),
+    eventName: event.name,
+    homeTeam: teams.home,
+    awayTeam: teams.away,
+    league: extractLeague(event),
+    startsAt: event.start,
+    minutesToKickoff: Math.max(
+      0,
+      Math.round((startMs - Date.now()) / 60_000)
+    ),
+    sportId: event["sport-id"] || SOCCER_ID,
+    betbraLink: eventLink(event["sport-id"] || SOCCER_ID, event.id),
+  };
+}
+
+async function listPreliveEventsForDay() {
+  const now = Date.now();
+  const end = endOfDaySaoPaulo(now);
+  const params = new URLSearchParams({
+    offset: "0",
+    "per-page": "80",
+    after: String(Math.floor(now / 1000)),
+    before: String(Math.floor(end / 1000)),
+    ids: "",
+    "sport-ids": String(SOCCER_ID),
+    "sort-by": "start-time",
+    "sort-direction": "asc",
+    "en-market-names": "Moneyline,Match Odds,Winner",
+  });
+  const list = await spaced(() => betbra(`${API_BASE}/events?${params}`));
+  const events = (list.events || [])
+    .map(toSummary)
+    .filter(Boolean)
+    .sort(
+      (a, b) =>
+        new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+    );
+  return {
+    events,
+    total: events.length,
+    window: {
+      from: new Date(now).toISOString(),
+      to: new Date(end).toISOString(),
+      timezone: "America/Sao_Paulo",
+    },
+  };
+}
+
+async function getPreliveEventMarkets(eventId, sportId = SOCCER_ID) {
+  // sport-id + referer mexchange: mesmo padrão do sync-odds (mais estável p/ prices)
+  const detail = await spaced(() =>
+    betbra(`${API_BASE}/events/${eventId}?sport-id=${sportId}`, {
+      Referer: `${REFERER.replace(/\/$/, "")}/exchange/sport/soccer/event/${eventId}`,
+      "Accept-Encoding": "identity",
+    })
+  );
+  const event = toSummary(detail);
+  if (!event) throw new Error("Evento indisponível ou já iniciado");
+
+  let runnersTotal = 0;
+  let withPrices = 0;
+  let withOdd = 0;
+
+  const markets = (detail.markets || [])
+    .map((market) => {
+      const runners = (market.runners || [])
+        .map((runner) => {
+          runnersTotal += 1;
+          const prices = runner.prices || runner.Prices || [];
+          if (Array.isArray(prices) && prices.length) withPrices += 1;
+          const odd = runnerBestOdd(runner);
+          if (odd != null) withOdd += 1;
+          return {
+            runnerId: String(runner.id),
+            name: runner.name || "—",
+            odd,
+          };
+        })
+        .filter((r) => r.name !== "—");
+      if (!runners.length) return null;
+      return {
+        marketId: String(market.id),
+        name: market.name || "Mercado",
+        marketType: market["market-type"] || market.type,
+        status: market.status,
+        runners,
+        hasOdds: runners.some((r) => r.odd != null),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      // mercados com odd primeiro; depois nome
+      if (a.hasOdds !== b.hasOdds) return a.hasOdds ? -1 : 1;
+      return a.name.localeCompare(b.name, "pt-BR");
+    });
+
+  return {
+    event,
+    markets,
+    oddsMeta: {
+      runnersTotal,
+      withPrices,
+      withOdd,
+      coveragePct: runnersTotal
+        ? Math.round((withOdd / runnersTotal) * 100)
+        : 0,
+    },
+  };
+}
+
+async function createMatchFromMarket(body, token) {
+  // Guarda: liquidação nunca deve cair neste fluxo (evita "Odd inválida" no Encerrar)
+  if (
+    body?.mode === "settle" ||
+    body?.action === "settle" ||
+    (body?.matchId && body?.outcome && !body?.odd && !body?.marketId)
+  ) {
+    throw Object.assign(
+      new Error(
+        "Pedido de liquidação recebido no endpoint de criar jogo. Atualize o serviço prelive (hotfix Encerrar)."
+      ),
+      { status: 400 }
+    );
+  }
+  const odd = Number(body.odd);
+  if (!Number.isFinite(odd) || odd <= 1) throw new Error("Odd inválida");
+
+  const payload = decodeJwtPayload(token);
+  const adminId = payload?.sub ? String(payload.sub) : null;
+  if (!adminId) {
+    const err = new Error("Login admin necessário para lançar evento");
+    err.status = 401;
+    throw err;
+  }
+
+  // Liquidez: cents direto, ou R$ via liquidity_brl (UI BetBra / manual)
+  let liquidityCents = Number(body.liquidityCents);
+  if (!Number.isFinite(liquidityCents) || liquidityCents <= 0) {
+    const brl = Number(body.liquidity_brl ?? body.liquidityBrl);
+    if (Number.isFinite(brl) && brl > 0) {
+      liquidityCents = Math.round(brl * 100);
+    } else {
+      liquidityCents = 200_000; // fallback R$ 2.000
+    }
+  }
+  if (!(liquidityCents >= 100)) {
+    const err = new Error("Informe a liquidez (mín. R$ 1,00) antes de lançar");
+    err.status = 400;
+    throw err;
+  }
+  const marketLabel = body.runnerName
+    ? `${body.marketName} · ${body.runnerName}`
+    : body.marketName;
+  const marketUuid = randomUUID();
+  // Escrita com service role (triggers/RLS); admin_id vem do JWT em created_by/updated_by
+  const dbToken = SERVICE_KEY || token;
+  const eventExternalId = String(body.eventId);
+  const betbraMarketId = String(body.marketId);
+  // Mesmo mercado BetBra (ex. placar exato) tem vários runners — chave por mercado+seleção
+  const betbraSelectionKey = body.runnerId
+    ? `${betbraMarketId}:${body.runnerId}`
+    : betbraMarketId;
+
+  const newMarket = {
+    id: marketUuid,
+    name: marketLabel,
+    odd,
+    liquidity: liquidityCents,
+    display_liquidity: null,
+    used_liquidity: 0,
+    market_type: "LAY",
+    external_id: betbraSelectionKey,
+    betbra_market_id: betbraMarketId,
+    betbra_runner_id: body.runnerId ? String(body.runnerId) : null,
+  };
+
+  const existingRows = await sb(
+    `/rest/v1/matches?external_id=eq.${encodeURIComponent(eventExternalId)}&deleted_at=is.null&select=id,home_team,away_team,markets,max_protection_cents,used_protection_cents,is_published&limit=1`,
+    { token: dbToken }
+  );
+  const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+
+  if (existing?.id) {
+    const markets = Array.isArray(existing.markets) ? existing.markets : [];
+    const dup = markets.find((m) => {
+      const ext = String(m.external_id || "");
+      const runner = String(m.betbra_runner_id || m.runner_id || "");
+      // chave nova mercado:runner
+      if (ext === betbraSelectionKey) return true;
+      // legado: só marketId + mesmo runner
+      if (
+        body.runnerId &&
+        (ext === betbraMarketId ||
+          String(m.betbra_market_id || "") === betbraMarketId) &&
+        runner === String(body.runnerId)
+      ) {
+        return true;
+      }
+      // sem runnerId: só bloqueia nome idêntico no mesmo jogo
+      if (
+        !body.runnerId &&
+        String(m.name || "").toLowerCase() === marketLabel.toLowerCase()
+      ) {
+        return true;
+      }
+      return false;
+    });
+    if (dup) {
+      const err = new Error(
+        `Esta seleção já está cadastrada em ${existing.home_team} vs ${existing.away_team}. Escolha outra entrada (ex.: outro placar).`
+      );
+      err.status = 409;
+      err.code = "MARKET_EXISTS";
+      throw err;
+    }
+
+    const nextMarkets = [...markets, newMarket];
+    const nextMax = nextMarkets.reduce(
+      (sum, m) => sum + Number(m.liquidity || 0),
+      0
+    );
+
+    const patchBody = {
+      markets: nextMarkets,
+      max_protection_cents: nextMax,
+      updated_by: adminId,
+      metadata: {
+        external_bet_link: body.betbraLink,
+        external_bet_name: "BetBra",
+        external_bet_logo: "https://betbra.bet.br/favicon.ico",
+        market_id: body.marketId,
+        runner_id: body.runnerId || null,
+        source: "betbra_prelive_catalog",
+      },
+      updated_at: new Date().toISOString(),
+    };
+    // Lançar com "publicar" promove rascunho existente para a fila do cliente
+    if (body.isPublished) patchBody.is_published = true;
+
+    const updated = await sb(`/rest/v1/matches?id=eq.${existing.id}`, {
+      method: "PATCH",
+      token: dbToken,
+      body: patchBody,
+    });
+    const match = Array.isArray(updated) ? updated[0] : updated;
+    return {
+      action: "market_added",
+      match: match || { ...existing, markets: nextMarkets },
+      marketsCount: nextMarkets.length,
+    };
+  }
+
+  const row = {
+    home_team: body.homeTeam,
+    away_team: body.awayTeam,
+    league: body.league,
+    starts_at: new Date(body.startsAt).toISOString(),
+    status: "open",
+    status_v2: "open",
+    is_published: Boolean(body.isPublished),
+    sport_type: "futebol",
+    max_protection_cents: liquidityCents,
+    used_protection_cents: 0,
+    protection_odds: { home: odd, away: odd },
+    external_id: eventExternalId,
+    score_sync_enabled: false,
+    has_live_stream: false,
+    created_by: adminId,
+    updated_by: adminId,
+    metadata: {
+      external_bet_link: body.betbraLink,
+      external_bet_name: "BetBra",
+      external_bet_logo: "https://betbra.bet.br/favicon.ico",
+      market_id: body.marketId,
+      runner_id: body.runnerId || null,
+      source: "betbra_prelive_catalog",
+    },
+    markets: [newMarket],
+  };
+
+  try {
+    const created = await sb("/rest/v1/matches", {
+      method: "POST",
+      token: dbToken,
+      body: row,
+    });
+    const match = Array.isArray(created) ? created[0] : created;
+    return { action: "created", match };
+  } catch (err) {
+    if (
+      !body.__retried &&
+      (String(err.message || "").includes("matches_external_id_key") ||
+        String(err.message || "").toLowerCase().includes("duplicate key"))
+    ) {
+      return createMatchFromMarket({ ...body, __retried: true }, token);
+    }
+    // Fallback: se o trigger ainda reclamar de admin_id, tenta log explícito não bloqueia
+    if (
+      String(err.message || "").includes("match_change_logs") &&
+      String(err.message || "").includes("admin_id")
+    ) {
+      const err2 = new Error(
+        "Falha ao auditar lançamento (admin_id). Confirme o login admin e tente de novo."
+      );
+      err2.status = 500;
+      throw err2;
+    }
+    throw err;
+  }
+}
+
 
 /** Criação manual (drawer "Adicionar jogo" / SPA Lançar Novo Evento) */
 async function createManualMatch(body, token) {
@@ -918,7 +1357,7 @@ async function settleMatchFromBody(body, token) {
           settledCount,
           refundedCents,
           repaired,
-          fix: "sem-betbra-api-v1",
+          fix: "settle-arbishield-saldo-real-v1",
         },
       },
     });
@@ -934,7 +1373,7 @@ async function settleMatchFromBody(body, token) {
     settledCount,
     refundedCents,
     repaired,
-    fix: "sem-betbra-api-v1",
+    fix: "settle-arbishield-saldo-real-v1",
   };
 }
 
@@ -2038,7 +2477,7 @@ async function handleApi(req, res) {
     return sendJson(res, 200, {
       ok: true,
       service: "arbishield-matches",
-      fix: "sem-betbra-api-v1",
+      fix: "betbra-api-v1",
     });
   }
 
@@ -2067,11 +2506,22 @@ async function handleApi(req, res) {
     }
   }
 
-  if (url.pathname === "/api/arbishield/prelive-events") {
-    return sendJson(res, 410, {
-      ok: false,
-      error: "Catálogo BetBra removido. Use lançamento manual (mode=manual).",
-    });
+  if (url.pathname === "/api/arbishield/prelive-events" && req.method === "GET") {
+    try {
+      const eventId = url.searchParams.get("eventId");
+      if (eventId) {
+        const sportId = Number(url.searchParams.get("sportId") || SOCCER_ID);
+        const result = await getPreliveEventMarkets(eventId, sportId);
+        return sendJson(res, 200, { ok: true, ...result });
+      }
+      const result = await listPreliveEventsForDay();
+      return sendJson(res, 200, { ok: true, ...result });
+    } catch (err) {
+      return sendJson(res, 500, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   if (url.pathname === "/api/arbishield/matches" && req.method === "POST") {
@@ -2097,13 +2547,9 @@ async function handleApi(req, res) {
         body.mode === "manual" ||
         Array.isArray(body.markets) ||
         (!body.marketId && (body.home_team || body.homeTeam));
-      if (!manual) {
-        return sendJson(res, 410, {
-          ok: false,
-          error: "Lançamento via API BetBra removido. Use mode=manual.",
-        });
-      }
-      const result = await createManualMatch(body, token);
+      const result = manual
+        ? await createManualMatch(body, token)
+        : await createMatchFromMarket(body, token);
       return sendJson(res, 200, { ok: true, ...result });
     } catch (err) {
       const status = err.status === 409 ? 409 : err.status || 500;
@@ -2212,8 +2658,9 @@ async function handleApi(req, res) {
 
 async function main() {
   if (!process.argv.includes("--serve")) {
-    console.error("Use --serve (catálogo BetBra CLI removido).");
-    process.exit(2);
+    const result = await listPreliveEventsForDay();
+    console.log(JSON.stringify(result, null, 2));
+    return;
   }
 
   const [host, portStr] = LISTEN.split(":");
@@ -2224,7 +2671,7 @@ async function main() {
     });
   });
   server.listen(port, host, () => {
-    console.log(`arbishield-matches on http://${host}:${port}`);
+    console.log(`prelive-events (BetBra+manual) on http://${host}:${port}`);
   });
 }
 
