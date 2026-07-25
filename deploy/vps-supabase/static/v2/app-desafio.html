@@ -6,8 +6,9 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-ft-result-v1" />
-  <link rel="stylesheet" href="/v2.css?v=dz-ft-result-1" />
+  <meta name="arbishield-build" content="desafio-live-pack-v1" />
+  <meta name="arbishield-features" content="desafio-mradar-v2 desafio-ft-result-v1" />
+  <link rel="stylesheet" href="/v2.css?v=dz-live-pack-1" />
   <style>
     /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
     .dz-sb-market {
@@ -269,9 +270,9 @@
     .dz-radar-foot a:hover { color: #c9f223; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=dz-ft-result-1"></script>
-  <script src="/desafio-ciclo-math.js?v=dz-ft-result-1"></script>
-  <script src="/v2-shell.js?v=dz-ft-result-1" defer></script>
+  <script src="/v2.js?v=dz-live-pack-1"></script>
+  <script src="/desafio-ciclo-math.js?v=dz-live-pack-1"></script>
+  <script src="/v2-shell.js?v=dz-live-pack-1" defer></script>
   <style>
     .dz-access-history {
       appearance: none;
@@ -1247,7 +1248,8 @@
         var startsMs = step.starts_at ? new Date(step.starts_at).getTime() : NaN;
         var kickedOff = Number.isFinite(startsMs) && now >= startsMs;
         var ageMin = kickedOff ? (now - startsMs) / 60000 : 0;
-        var elapsedNum = Number(String(elapsed || "").match(/\d+/)?.[0] || NaN);
+        var elapsedMatch = String(elapsed || "").match(/\d+/);
+        var elapsedNum = elapsedMatch ? Number(elapsedMatch[0]) : NaN;
         // Feed BetBra às vezes fica preso em 90'/SecondHalf após o apito final
         if (
           !finished &&

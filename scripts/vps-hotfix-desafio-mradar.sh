@@ -62,7 +62,8 @@ publish_web() {
   local tmp
   tmp="$(mktemp)"
   download_repo_file "$rel" "$tmp" || die "download falhou: $rel"
-  grep -q 'desafio-mradar-v2' "$tmp" || die "UI sem marker desafio-mradar-v2"
+  grep -qE 'desafio-mradar-v2|desafio-live-pack-v1|desafio-ft-result-v1' "$tmp" \
+    || die "UI sem marker de desafio/radar"
   grep -q 'data-radar' "$tmp" || die "UI sem bloco data-radar"
   cp -f "$tmp" "$WEB/$name"
   cp -f "$tmp" "$WEB_ROOT/$name" 2>/dev/null || true
@@ -75,10 +76,13 @@ publish_web() {
   echo "  OK $WEB/$name ($(wc -c < "$WEB/$name" | tr -d ' ') bytes)"
 }
 
-log "1/4 lib + prelive (eventsRadar v2)"
+log "1/4 lib + prelive (eventsRadar v3+)"
 install_lib "scripts/lib/betbra-events-radar.mjs"
-grep -q 'betbra-events-radar-v3' "$SCRIPTS_DIR/lib/betbra-events-radar.mjs" \
-  || die "lib sem marker v3"
+# Aceita v2/v3/... (evita falha quando o script cacheado pede v2 e a lib já é v3)
+grep -qE 'betbra-events-radar-v[0-9]+' "$SCRIPTS_DIR/lib/betbra-events-radar.mjs" \
+  || die "lib sem marker betbra-events-radar-v*"
+grep -q 'eventIdSportRadar' "$SCRIPTS_DIR/lib/betbra-events-radar.mjs" \
+  || die "lib sem suporte SportRadar (baixe de novo o hotfix)"
 
 tmp_pre="$(mktemp)"
 download_repo_file "scripts/arbishield-prelive-events.mjs" "$tmp_pre"
@@ -196,4 +200,4 @@ else
 fi
 
 log "OK. Abra /app-desafio.html (Ctrl+Shift+R) e toque em «Radar do jogo» num card ao vivo."
-log "Marker: desafio-mradar-v2 / betbra-events-radar-v3"
+log "Marker: desafio-live-pack-v1 (ou mradar-v2) / betbra-events-radar-v3+"

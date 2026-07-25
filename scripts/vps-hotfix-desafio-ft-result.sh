@@ -79,7 +79,8 @@ rm -f "$tmp_pre"
 log "3/3 UI app-desafio.html"
 tmp_html="$(mktemp)"
 download_repo_file "deploy/vps-supabase/static/v2/app-desafio.html" "$tmp_html"
-grep -q 'desafio-ft-result-v1' "$tmp_html" || die "UI sem marker desafio-ft-result-v1"
+grep -qE 'desafio-ft-result-v1|desafio-live-pack-v1' "$tmp_html" \
+  || die "UI sem marker FT/live-pack"
 grep -q 'ageMin >= 105' "$tmp_html" || die "UI sem heurística FT"
 cp -f "$tmp_html" "$WEB/app-desafio.html"
 cp -f "$tmp_html" "$WEB_ROOT/app-desafio.html" 2>/dev/null || true
