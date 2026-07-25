@@ -1751,6 +1751,53 @@ function decodeJwtPayload(token) {
   }
 }
 
+/** Valida o JWT no Auth (assinatura/expiração). Não confiar só no payload base64. */
+async function requireUserIdFromToken(userToken) {
+  const token = String(userToken || "").trim();
+  if (!token) {
+    const err = new Error("Não autorizado");
+    err.status = 401;
+    throw err;
+  }
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      method: "GET",
+      headers: {
+        apikey: ANON_KEY || SERVICE_KEY,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = null;
+    }
+    if (!res.ok || !data?.id) {
+      const err = new Error("Sessão inválida ou expirada");
+      err.status = 401;
+      throw err;
+    }
+    return String(data.id);
+  } catch (e) {
+    if (e && e.status === 401) throw e;
+    // Fallback: payload sem verify só se Auth estiver fora — ainda exige sub
+    const payload = decodeJwtPayload(token);
+    const sub = payload?.sub ? String(payload.sub) : "";
+    if (!sub) {
+      const err = new Error("Não autorizado");
+      err.status = 401;
+      throw err;
+    }
+    console.warn(
+      "[auth] /auth/v1/user falhou — usando sub do JWT sem verify:",
+      e instanceof Error ? e.message : e
+    );
+    return sub;
+  }
+}
+
 function n(v) {
   const x = Number(v);
   return Number.isFinite(x) ? x : 0;
@@ -1760,13 +1807,7 @@ function n(v) {
 
 async function createProtection(body, userToken) {
   if (!SERVICE_KEY) throw new Error("SERVICE_ROLE_KEY ausente no .env da VPS");
-  const payload = decodeJwtPayload(userToken);
-  const userId = payload?.sub;
-  if (!userId) {
-    const err = new Error("Não autorizado");
-    err.status = 401;
-    throw err;
-  }
+  const userId = await requireUserIdFromToken(userToken);
 
   const matchId = String(body.matchId || "");
   const marketId = body.marketId ? String(body.marketId) : null;

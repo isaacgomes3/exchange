@@ -7,11 +7,11 @@
   <title>Gestão de Proteções — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="protecoes-filtro-userid-v2" />
-  <link rel="stylesheet" href="/v2.css?v=protecoes-filtro-userid-2" />
+  <meta name="arbishield-build" content="protecoes-ocultar-erro-v3" />
+  <link rel="stylesheet" href="/v2.css?v=protecoes-ocultar-erro-3" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=protecoes-filtro-userid-2"></script>
-  <script src="/v2-shell.js?v=protecoes-filtro-userid-2" defer></script>
+  <script src="/v2.js?v=protecoes-ocultar-erro-3"></script>
+  <script src="/v2-shell.js?v=protecoes-ocultar-erro-3" defer></script>
   <style>
     .prot-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 16px; align-items: start; }
     @media (max-width: 960px) {
@@ -455,6 +455,10 @@
       }
 
       function isVisibleProtection(row) {
+        var meta = metaOf(row);
+        if (meta.hidden_from_client === true || meta.admin_hide === true) {
+          return false;
+        }
         var st = String((row && row.status) || "")
           .toLowerCase()
           .trim();
@@ -524,8 +528,7 @@
         }
         items = merged
           .filter(function (r) {
-            // Se user_id veio no select, exige bater com a conta espelhada
-            if (r.user_id == null || r.user_id === "") return true;
+            if (r.user_id == null || r.user_id === "") return false;
             return String(r.user_id) === String(viewUserId);
           })
           .filter(isVisibleProtection)
@@ -565,6 +568,35 @@
         items.forEach(function (i) {
           i.matches = matchMap[i.match_id] || null;
         });
+
+        // Cruza cobranças reais (protection_fee) desta conta
+        var feeByRef = {};
+        try {
+          var feeRes = await supa
+            .from("wallet_transactions")
+            .select("id,ref,type,amount_cents,created_at")
+            .eq("user_id", viewUserId)
+            .in("type", ["protection_fee", "protection_settlement", "protection_refund", "protection_release"])
+            .order("created_at", { ascending: false })
+            .limit(500);
+          if (!feeRes.error) {
+            (feeRes.data || []).forEach(function (t) {
+              if (!t.ref) return;
+              if (!feeByRef[t.ref]) feeByRef[t.ref] = [];
+              feeByRef[t.ref].push(t);
+            });
+          }
+        } catch (feeErr) {
+          console.warn("[protecoes] wallet_transactions:", feeErr);
+        }
+        items.forEach(function (i) {
+          var txs = feeByRef[i.id] || [];
+          i._walletTxs = txs;
+          i._hasFeeCharge = txs.some(function (t) {
+            return String(t.type) === "protection_fee";
+          });
+        });
+
         renderList();
         renderDetail();
       }
@@ -670,6 +702,11 @@
             "<div><span>ID proteção</span><strong>" + esc(String(it.id || "").slice(0, 8)) + "…</strong></div>" +
             "<div><span>Conta (user)</span><strong>" + esc(String(it.user_id || viewUserId).slice(0, 8)) + "…</strong></div>" +
             "<div><span>Origem</span><strong>" + esc(meta.source || meta.billing_model || "—") + "</strong></div>" +
+            "<div><span>Cobrança na conta</span><strong>" +
+            (it._hasFeeCharge
+              ? "Sim (protection_fee)"
+              : "Não encontrada") +
+            "</strong></div>" +
           "</div>" +
           '<div class="prot-actions" style="display:flex;flex-direction:column;gap:10px">' +
             '<button type="button" class="btn btn-primary" id="btnContest"' +
@@ -678,6 +715,10 @@
             '<button type="button" class="btn btn-ghost" id="btnCancelProt"' +
             (gate.ok ? "" : " disabled") +
             ">Cancelar proteção</button>" +
+            (isMirror
+              ? '<button type="button" class="btn btn-ghost" id="btnHideErr" style="border-color:rgba(248,113,113,0.45);color:#fecaca">Ocultar da lista (erro de lançamento)</button>' +
+                '<p class="sub" style="margin:0">Espelho: oculta só na UI do cliente. Não estorna saldo. Use se a entrada não foi dele.</p>'
+              : "") +
             (gate.ok
               ? '<p class="sub" style="margin:0">Cancelar estorna a dedução ArbiShield na hora.</p>'
               : '<p class="sub" style="margin:0">' + gate.why + "</p>") +
@@ -693,6 +734,58 @@
           btnCancel.addEventListener("click", function () {
             openModal("cancellation");
           });
+        }
+        var btnHide = document.getElementById("btnHideErr");
+        if (btnHide) {
+          btnHide.addEventListener("click", function () {
+            hideProtectionEntry(it);
+          });
+        }
+      }
+
+      async function hideProtectionEntry(it) {
+        if (!it || !it.id) return;
+        if (
+          !confirm(
+            "Ocultar esta proteção da lista do cliente?\n\n" +
+              matchName(it) +
+              "\n" +
+              marketLabelOf(it) +
+              " · " +
+              money(it.responsibility_cents || it.amount_cents || 0) +
+              "\n\nNão estorna saldo. Só some da Gestão de Proteções."
+          )
+        ) {
+          return;
+        }
+        try {
+          showErr("");
+          var table =
+            String(it.market_category || "LAY").toUpperCase() === "BACK"
+              ? "back_protections"
+              : "protections";
+          var meta = Object.assign({}, metaOf(it), {
+            hidden_from_client: true,
+            admin_hide: true,
+            hidden_at: new Date().toISOString(),
+            hidden_by: user.id,
+            hidden_reason: "erro_lancamento_espelho",
+          });
+          var up = await supa
+            .from(table)
+            .update({ metadata: meta })
+            .eq("id", it.id)
+            .eq("user_id", viewUserId)
+            .select("id");
+          if (up.error) throw up.error;
+          if (!up.data || !up.data.length) {
+            throw new Error("Falha ao ocultar (permissão/RLS).");
+          }
+          showOk("Entrada ocultada da lista do cliente.");
+          selectedId = null;
+          await load();
+        } catch (e) {
+          showErr(e.message || "Falha ao ocultar");
         }
       }
 

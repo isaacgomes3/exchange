@@ -10,6 +10,12 @@ import path from "node:path";
 
 const NAME = String(process.env.NAME || "").trim();
 const USER_ID = String(process.env.USER_ID || process.env.ID || "").trim();
+const HIDE_IDS = String(process.env.HIDE_IDS || "")
+  .split(/[\s,]+/)
+  .map((s) => s.trim())
+  .filter(Boolean);
+const HIDE_NO_FEE =
+  process.env.HIDE_NO_FEE === "1" || process.env.HIDE_NO_FEE === "true";
 
 function loadEnvFile(file) {
   if (!fs.existsSync(file)) return;
@@ -223,6 +229,62 @@ async function main() {
     rows.length - withFeeTx,
     "(pode ser legado ou proteção fantasma)"
   );
+
+  const hideSet = new Set(HIDE_IDS);
+  const hideTargets = [];
+  for (const r of rows) {
+    const meta = metaOf(r);
+    if (meta.hidden_from_client === true) continue;
+    let hasFee = false;
+    try {
+      const feeTx = await sb(
+        `/rest/v1/wallet_transactions?user_id=eq.${encodeURIComponent(uid)}&ref=eq.${encodeURIComponent(r.id)}&type=eq.protection_fee&select=id&limit=1`
+      );
+      hasFee = Array.isArray(feeTx) && feeTx.length > 0;
+    } catch {
+      hasFee = false;
+    }
+    if (hideSet.has(r.id) || (HIDE_NO_FEE && !hasFee)) {
+      hideTargets.push({ row: r, side: r.side, hasFee });
+    }
+  }
+
+  if (!hideTargets.length) {
+    if (HIDE_IDS.length || HIDE_NO_FEE) {
+      console.log("\nNada para ocultar (já ocultas ou filtros sem match).");
+    } else {
+      console.log(
+        "\nPara ocultar entradas erradas (só some da lista, não estorna):"
+      );
+      console.log(
+        '  HIDE_IDS=id1,id2 NAME="DIEGO HENRIQUE" node scripts/vps-audit-user-protecoes.mjs'
+      );
+      console.log(
+        '  HIDE_NO_FEE=1 NAME="DIEGO HENRIQUE" node scripts/vps-audit-user-protecoes.mjs'
+      );
+    }
+    return;
+  }
+
+  console.log("\n=== Ocultar", hideTargets.length, "proteção(ões) ===");
+  for (const { row, side, hasFee } of hideTargets) {
+    const table = side === "BACK" ? "back_protections" : "protections";
+    const meta = {
+      ...metaOf(row),
+      hidden_from_client: true,
+      admin_hide: true,
+      hidden_at: new Date().toISOString(),
+      hidden_reason: hideSet.has(row.id)
+        ? "HIDE_IDS"
+        : "HIDE_NO_FEE",
+      had_protection_fee: hasFee,
+    };
+    await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(row.id)}`, {
+      method: "PATCH",
+      body: { metadata: meta },
+    });
+    console.log("OK ocultou", side, row.id, hasFee ? "(tinha fee)" : "(sem fee)");
+  }
 }
 
 main().catch((e) => {
