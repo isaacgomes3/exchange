@@ -109,12 +109,17 @@
         <button class="btn btn-primary" type="button" id="btnSaveCookies">
           Salvar sessão do navegador
         </button>
+        <button class="btn btn-secondary" type="button" id="btnTestMexchange">
+          Testar sessão
+        </button>
         <button class="btn btn-secondary" type="button" id="btnCopyCookie">
           Copiar Cookie
         </button>
       </div>
       <p id="cookieHint" class="notice" style="margin-top:12px">
         Cookies ficam criptografados. Expirem quando você sair da BetBra.
+        Depois de salvar, use <strong>Testar sessão</strong> — precisa ver accountId
+        antes do place. Cookie do Chrome costuma falhar no IP da VPS.
       </p>
       <details style="margin-top:12px">
         <summary style="cursor:pointer;color:var(--muted)">Script no PC (opcional)</summary>
@@ -533,7 +538,7 @@
           if (!res.ok) throw new Error(json.error || "Falha ao salvar cookies");
           ok.style.display = "block";
           ok.textContent =
-            "Sessão do navegador salva. Tente o place em Minhas ordens.";
+            "Sessão salva. Clique em Testar sessão antes do place.";
           hint.textContent =
             "Cookies salvos · authMode=" + (json.authMode || "browser_session");
           document.getElementById("cookieHeader").value = "";
@@ -542,6 +547,59 @@
           err.textContent = ex instanceof Error ? ex.message : String(ex);
           err.classList.add("show");
           hint.textContent = "Falha ao salvar cookies.";
+        }
+      });
+
+      document.getElementById("btnTestMexchange")?.addEventListener("click", async () => {
+        err.classList.remove("show");
+        ok.style.display = "none";
+        const hint = document.getElementById("cookieHint");
+        hint.textContent =
+          "Consultando /account/info na Mexchange a partir da VPS…";
+        try {
+          const res = await fetch(
+            "/api/arbishield/exchange-session/mexchange-account?provider=betbra",
+            {
+              headers: {
+                Accept: "application/json",
+                Authorization: "Bearer " + (await bearer()),
+              },
+            }
+          );
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok || json?.ok === false) {
+            const msg =
+              (json.error || json.hint || `HTTP ${res.status}`) +
+              (json.hint && json.error ? " — " + json.hint : "");
+            throw new Error(msg);
+          }
+          const id =
+            json.accountId != null && String(json.accountId) !== ""
+              ? String(json.accountId)
+              : "—";
+          const bal =
+            json.balance != null && Number.isFinite(Number(json.balance))
+              ? formatBrl(json.balance)
+              : "—";
+          const names = Array.isArray(json.cookieNames)
+            ? json.cookieNames.join(",")
+            : "—";
+          ok.style.display = "block";
+          ok.textContent =
+            "Sessão OK · accountId=" + id + " · saldo " + bal;
+          hint.textContent =
+            "accountId=" +
+            id +
+            " · cookiesUsados=" +
+            names +
+            " · HTTP " +
+            (json.httpStatus || res.status) +
+            ". Pode tentar LAY+BACK em Ordens.";
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+          hint.textContent =
+            "Falha no Testar sessão — Cookie do Chrome provavelmente não autentica no IP da VPS. Use login/senha + Atualizar saldo (aprovar device).";
         }
       });
 

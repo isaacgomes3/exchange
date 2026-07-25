@@ -340,8 +340,8 @@ export class BetbraOrdersAdapter {
       if (!acc.ok || !acc.accountId) {
         const err = new Error(
           "AccountId not found — cookies da sessão não autenticaram na Mexchange. " +
-            "Cole de novo o cURL (Copy as cURL) em Conta BetBra e salve. " +
-            "Não use Bearer; a API da exchange usa só Cookie."
+            "Em Conta BetBra clique em Testar sessão. Se falhar: Cookie do Chrome " +
+            "não vale no IP da VPS — use login/senha + aprovação do device (Atualizar saldo)."
         );
         err.status = 401;
         err.code = "MEXCHANGE_ACCOUNT_MISSING";
@@ -381,7 +381,8 @@ export class BetbraOrdersAdapter {
       if (/accountid not found/i.test(String(msg))) {
         msg =
           "AccountId not found — a Mexchange não reconheceu a sessão na VPS. " +
-          "Gere um cURL novo no Chrome e salve de novo em Conta BetBra (Cookie sb/BIAB_CUSTOMER).";
+          "Conta BetBra → Testar sessão. Se accountId vier vazio, aprove o device da VPS " +
+          "(login/senha + e-mail/SMS) em vez de reutilizar Cookie do Chrome.";
       }
       const err = new Error(String(msg));
       err.status = res.status;

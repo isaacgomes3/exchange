@@ -19,8 +19,11 @@ import {
   cookieHeaderFromJar,
 } from "./betbra-client-api.mjs";
 import {
+  fetchMexchangeAccountInfo,
   hasTradingSession,
   resolveExactScoreRunner,
+  sanitizeTradingCookieHeader,
+  sessionCookieHeader,
 } from "./mexchange-offers.mjs";
 
 void EXCHANGE_ORDERS_LOCK;
@@ -172,9 +175,9 @@ export function createExchangeOrdersService(deps) {
       err.status = 400;
       throw err;
     }
-    const cookieHeader = String(
-      body?.cookieHeader || body?.cookiesHeader || body?.cookie || ""
-    ).trim();
+    const cookieHeader = sanitizeTradingCookieHeader(
+      String(body?.cookieHeader || body?.cookiesHeader || body?.cookie || "").trim()
+    );
     const houseToken = String(
       body?.houseToken || body?.mexchangeToken || ""
     ).trim();
@@ -784,11 +787,81 @@ export function createExchangeOrdersService(deps) {
     }
   }
 
+  /**
+   * Diagnóstico: GET mexchange /account/info com cookies salvos.
+   */
+  async function sessionMexchangeAccount(token, query = {}) {
+    const userId = await requireUserId(token);
+    const provider = String(query?.provider || "betbra").toLowerCase();
+    const rows = await sb(
+      `/rest/v1/exchange_connections?user_id=eq.${encodeURIComponent(userId)}&status=eq.active&provider=eq.${encodeURIComponent(provider)}&select=*&order=connected_at.desc&limit=1`,
+      { token: serviceKey }
+    );
+    const conn = Array.isArray(rows) ? rows[0] : null;
+    if (!conn?.session_enc) {
+      const err = new Error("Nenhuma Conta BetBra salva");
+      err.status = 400;
+      err.code = "BETBRA_NO_CONNECTION";
+      throw err;
+    }
+    let session = decryptSessionPayload(conn.session_enc);
+    if (session.cookieHeader) {
+      session = {
+        ...session,
+        cookieHeader: sanitizeTradingCookieHeader(session.cookieHeader),
+      };
+    }
+    const cookieHeader = sessionCookieHeader(session);
+    const cookieNames = cookieHeader
+      ? cookieHeader
+          .split(";")
+          .map((p) => p.trim().split("=")[0])
+          .filter(Boolean)
+      : [];
+    if (!hasTradingSession(session)) {
+      return {
+        ok: false,
+        authenticated: false,
+        accountId: null,
+        cookieNames,
+        error:
+          "Sem cookies de sessão. Cole o cURL em Conta BetBra → Extrair → Salvar.",
+        hint: "Cookie do Chrome pode não valer na VPS (IP diferente).",
+      };
+    }
+    const acc = await fetchMexchangeAccountInfo(session);
+    const authenticated = !!(acc.ok && acc.accountId);
+    const balance =
+      acc.raw?.balance != null
+        ? Number(acc.raw.balance)
+        : acc.raw?.availableBalance != null
+          ? Number(acc.raw.availableBalance)
+          : null;
+    return {
+      ok: authenticated,
+      authenticated,
+      accountId: acc.accountId || null,
+      balance: Number.isFinite(balance) ? balance : null,
+      currency: acc.currency,
+      minBet: acc.minBet,
+      httpStatus: acc.status,
+      cookieAuthed: true,
+      cookieNames,
+      hint: authenticated
+        ? "Sessão OK na Mexchange — pode tentar o place."
+        : "AccountId vazio: sessão do Chrome não autentica na VPS (IP diferente). " +
+          "Aprove o login da VPS por e-mail/SMS (Atualizar saldo) — Cookie do Chrome costuma falhar fora do seu IP.",
+      rawKeys:
+        acc.raw && typeof acc.raw === "object" ? Object.keys(acc.raw) : [],
+    };
+  }
+
   return {
     connectSession,
     disconnectSession,
     sessionStatus,
     sessionBalance,
+    sessionMexchangeAccount,
     placeOrder,
     cancelOrder,
     orderStatus,

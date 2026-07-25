@@ -127,12 +127,49 @@ export function buildMexchangeOffersBody(payload = {}) {
   return body;
 }
 
-export function sessionCookieHeader(session = {}) {
-  if (session.cookieHeader) return String(session.cookieHeader);
-  if (session.cookies && typeof session.cookies === "object") {
-    return cookieHeaderFromJar(session.cookies);
+/**
+ * Mantém só cookies úteis à exchange (remove analytics / cf_clearance preso ao IP do Chrome).
+ */
+export function sanitizeTradingCookieHeader(cookieHeader = "") {
+  const raw = String(cookieHeader || "").trim();
+  if (!raw) return "";
+  const allow =
+    /^(BIAB_|sb$|SESSION$|C_U_I$|affid$|currency$)/i;
+  const parts = [];
+  for (const part of raw.split(";")) {
+    const p = part.trim();
+    if (!p) continue;
+    const name = p.split("=")[0].trim();
+    if (!name) continue;
+    // remove Cloudflare clearance do IP do usuário (quebra na VPS)
+    if (/^cf_clearance$/i.test(name)) continue;
+    if (/^(_ga|_gid|_fbp|_ttp|_cl|_sp|_gtm|ttcsid|FPID|FPLC)/i.test(name))
+      continue;
+    if (
+      allow.test(name) ||
+      /^BIAB_/i.test(name) ||
+      /^sb$/i.test(name) ||
+      /^SESSION$/i.test(name) ||
+      /^C_U_I$/i.test(name) ||
+      /^affid$/i.test(name)
+    ) {
+      parts.push(p);
+    }
   }
-  return "";
+  // garante idioma
+  if (!parts.some((p) => /^BIAB_LANGUAGE=/i.test(p))) {
+    parts.unshift("BIAB_LANGUAGE=PT_BR");
+  }
+  return parts.join("; ");
+}
+
+export function sessionCookieHeader(session = {}) {
+  const raw = session.cookieHeader
+    ? String(session.cookieHeader)
+    : session.cookies && typeof session.cookies === "object"
+      ? cookieHeaderFromJar(session.cookies)
+      : "";
+  return sanitizeTradingCookieHeader(raw);
 }
 
 /** Cookie de auth Soft2Bet/Mexchange (SESSION ou JWT sb / BIAB_CUSTOMER). */
