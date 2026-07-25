@@ -186,7 +186,17 @@
             }),
           });
           const json = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(json.error || "Falha ao salvar");
+          if (!res.ok) {
+            const raw = String(
+              json.error || json.message || json.code || "Falha ao salvar"
+            );
+            if (/not_found|schema|exchange_/i.test(raw) || json.code === "EXCHANGE_SCHEMA_MISSING") {
+              throw new Error(
+                "API/tabela ainda não criada. Na VPS rode vps-hotfix-botshield.sh e tente de novo."
+              );
+            }
+            throw new Error(raw);
+          }
           document.getElementById("password").value = "";
           document.getElementById("showPass").checked = false;
           document.getElementById("password").type = "password";

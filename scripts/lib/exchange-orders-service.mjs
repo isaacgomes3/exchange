@@ -59,9 +59,19 @@ export function createExchangeOrdersService(deps) {
 
   async function ensureTablesHint(err) {
     const msg = String(err?.message || err || "").toLowerCase();
-    if (msg.includes("exchange_connections") || msg.includes("exchange_orders")) {
+    const code = String(err?.code || err?.details?.code || "").toLowerCase();
+    if (
+      msg.includes("exchange_connections") ||
+      msg.includes("exchange_orders") ||
+      msg.includes("schema cache") ||
+      msg.includes("does not exist") ||
+      msg === "not_found" ||
+      code === "not_found" ||
+      code === "pgrst205" ||
+      code === "42p01"
+    ) {
       const e = new Error(
-        "Tabelas exchange_* ausentes. Rode o hotfix vps-hotfix-exchange-orders-api.sh"
+        "Tabelas exchange_* ausentes. Na VPS rode: vps-hotfix-botshield.sh (ou vps-hotfix-exchange-orders-api.sh)"
       );
       e.status = 503;
       e.code = "EXCHANGE_SCHEMA_MISSING";
