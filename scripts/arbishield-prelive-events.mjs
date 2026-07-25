@@ -660,10 +660,10 @@ async function createManualMatch(body, token) {
   );
   const allowedRelease = new Set([0, 15, 30, 60, 120]);
   let releaseMinutesBefore = Number(
-    body.release_minutes_before ?? body.releaseMinutesBefore ?? 0
+    body.release_minutes_before ?? body.releaseMinutesBefore ?? 60
   );
   if (!Number.isFinite(releaseMinutesBefore) || !allowedRelease.has(releaseMinutesBefore)) {
-    releaseMinutesBefore = 0;
+    releaseMinutesBefore = 60;
   }
   const dbToken = SERVICE_KEY || token;
 
