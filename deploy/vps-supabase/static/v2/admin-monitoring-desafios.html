@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Monitor de Desafios — ArbiShield</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css?v=monitor-desafios-1" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js?v=monitor-desafios-1"></script>
+  <script src="/v2-shell.js?v=monitor-desafios-1" defer></script>
+  <style>
+    .mdz-wrap { display: grid; gap: 16px; padding-bottom: 48px; }
+    .mdz-head h1 { margin: 0; font-size: clamp(1.4rem, 3vw, 1.9rem); font-weight: 900; letter-spacing: -0.03em; text-transform: uppercase; }
+    .mdz-head h1 span { color: #c6ff00; }
+    .mdz-head .sub { margin: 8px 0 0; color: #8b949e; font-size: 12px; }
+    .mdz-filters {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      border-radius: 16px; border: 1px solid rgba(198,255,0,0.14); background: #071413; padding: 12px;
+    }
+    .mdz-filters input, .mdz-filters select {
+      border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);
+      background: #010b0a; color: #fff; padding: 10px 12px; font-size: 12px; min-width: 140px;
+    }
+    .mdz-filters input[type="search"] { flex: 1; min-width: 200px; }
+    .mdz-tabs { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+    .mdz-tab {
+      border: 1px solid rgba(255,255,255,0.08); background: transparent; color: #8b949e;
+      border-radius: 999px; padding: 8px 12px; font-size: 10px; font-weight: 800;
+      letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer;
+    }
+    .mdz-tab.on { background: #c6ff00; color: #022c22; border-color: #c6ff00; }
+    .mdz-btn {
+      border: 0; border-radius: 12px; background: #c6ff00; color: #000;
+      padding: 10px 14px; font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
+      text-transform: uppercase; cursor: pointer;
+    }
+    .mdz-btn.ghost {
+      background: transparent; color: rgba(255,255,255,0.8);
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .mdz-kpis { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; }
+    .mdz-kpi {
+      border-radius: 16px; border: 1px solid rgba(198,255,0,0.12); background: #071413; padding: 14px;
+    }
+    .mdz-kpi .l { font-size: 10px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: #8b949e; }
+    .mdz-kpi strong { display: block; margin-top: 8px; font-size: 1.2rem; }
+    .mdz-table-wrap {
+      overflow: auto; border-radius: 16px; border: 1px solid rgba(198,255,0,0.12); background: #071413;
+    }
+    table.mdz {
+      width: 100%; border-collapse: collapse; min-width: 920px; font-size: 13px;
+    }
+    table.mdz th {
+      text-align: left; padding: 12px 14px; font-size: 10px; letter-spacing: 0.1em;
+      text-transform: uppercase; color: #8b949e; border-bottom: 1px solid rgba(255,255,255,0.06);
+      white-space: nowrap; font-weight: 800;
+    }
+    table.mdz td {
+      padding: 14px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: top;
+    }
+    table.mdz tr:last-child td { border-bottom: 0; }
+    .mdz-desafio { font-weight: 800; }
+    .mdz-desafio .num { color: #8b949e; font-size: 11px; font-weight: 700; margin-top: 4px; }
+    .mdz-client { font-weight: 700; color: #c6ff00; }
+    .mdz-client .id { display: block; margin-top: 4px; color: #8b949e; font-size: 11px; font-weight: 600; }
+    .mdz-match { color: #e7e7e7; font-weight: 700; }
+    .mdz-match .meta { margin-top: 4px; color: #8b949e; font-size: 11px; font-weight: 600; }
+    .mdz-amt { font-weight: 800; white-space: nowrap; }
+    .mdz-amt .sub { display: block; margin-top: 4px; color: #8b949e; font-size: 11px; font-weight: 600; }
+    .mdz-badge {
+      display: inline-flex; border-radius: 999px; padding: 4px 9px;
+      font-size: 9px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase;
+      border: 1px solid rgba(255,255,255,0.12); color: #8b949e;
+    }
+    .mdz-badge.pending { color: #fbbf24; border-color: rgba(251,191,36,0.35); background: rgba(251,191,36,0.08); }
+    .mdz-badge.won { color: #34d399; border-color: rgba(52,211,153,0.35); background: rgba(52,211,153,0.08); }
+    .mdz-badge.lost { color: #f87171; border-color: rgba(248,113,113,0.4); background: rgba(248,113,113,0.08); }
+    .mdz-badge.active { color: #c6ff00; border-color: rgba(198,255,0,0.35); background: rgba(198,255,0,0.08); }
+    .mdz-badge.done { color: #60a5fa; border-color: rgba(96,165,250,0.35); background: rgba(96,165,250,0.08); }
+    .mdz-empty { text-align: center; color: #8b949e; padding: 36px 12px; font-size: 13px; }
+    @media (max-width: 900px) {
+      .mdz-kpis { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 560px) {
+      .mdz-kpis { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body data-shell="admin" data-active="monitoring-desafios">
+  <div id="err" class="err"></div>
+  <div id="mdzRoot" class="mdz-wrap"><div class="mdz-empty">Carregando…</div></div>
+  <script>
+(function () {
+  var TABS = [
+    ["andamento", "Em andamento"],
+    ["pending", "Etapa pendente"],
+    ["won", "Etapa ganha"],
+    ["lost", "Etapa perdida"],
+    ["all", "Todos"],
+  ];
+
+  var state = {
+    tab: "andamento",
+    q: "",
+    rows: [],
+    err: "",
+  };
+
+  function money(c) { return ArbiV2.money(c); }
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+  }
+  function showErr(msg) {
+    var el = document.getElementById("err");
+    if (!el) return;
+    el.textContent = msg || "";
+    el.classList.toggle("show", !!msg);
+  }
+  function shortId(id) {
+    var s = String(id || "");
+    return s ? s.slice(0, 8).toUpperCase() + "…" : "—";
+  }
+  function resultLabel(r) {
+    r = String(r || "").toLowerCase();
+    if (r === "pending") return ["pending", "Pendente"];
+    if (r === "won" || r === "won_external") return ["won", "Ganha"];
+    if (r === "lost") return ["lost", "Perdida"];
+    return ["done", r || "—"];
+  }
+
+  /** Agrega participações por cliente + desafio → etapa atual. */
+  function buildRows(parts) {
+    var map = {};
+    (parts || []).forEach(function (p) {
+      if (!p || !p.user_id || !p.desafio_id) return;
+      if (String(p.side || "").toLowerCase() !== "arbishield") return;
+      var dz = p.desafios || {};
+      if (dz.deleted_at) return;
+      var key = p.user_id + "::" + p.desafio_id;
+      if (!map[key]) {
+        map[key] = {
+          userId: p.user_id,
+          userName: (p.profiles && p.profiles.full_name) || "—",
+          desafioId: p.desafio_id,
+          desafioTitle: dz.title || "Desafio",
+          desafioNumber: dz.number,
+          desafioActive: !!dz.is_active,
+          desafioStatus: dz.status || "",
+          totalSteps: Number(dz.total_steps) || 5,
+          targetPct: Number(dz.target_profit_pct) || 5,
+          totalAmount: 0,
+          totalProfit: 0,
+          parts: [],
+          latestAt: p.created_at || "",
+        };
+      }
+      var row = map[key];
+      row.totalAmount += Number(p.amount_cents) || 0;
+      row.totalProfit += Number(p.profit_cents) || 0;
+      row.parts.push(p);
+      if ((p.created_at || "") > (row.latestAt || "")) row.latestAt = p.created_at;
+    });
+
+    return Object.keys(map).map(function (key) {
+      var row = map[key];
+      row.parts.sort(function (a, b) {
+        var ia = Number((a.desafio_steps && a.desafio_steps.step_index) || 0);
+        var ib = Number((b.desafio_steps && b.desafio_steps.step_index) || 0);
+        if (ia !== ib) return ia - ib;
+        return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+      });
+
+      var current = null;
+      var pending = row.parts.filter(function (p) {
+        return String(p.result || "").toLowerCase() === "pending";
+      });
+      if (pending.length) {
+        current = pending[pending.length - 1];
+      } else {
+        current = row.parts[row.parts.length - 1] || null;
+      }
+
+      var step = (current && current.desafio_steps) || {};
+      var stepIndex = Number(step.step_index) || row.parts.length || 1;
+      var match =
+        step.match_label ||
+        [step.home_team, step.away_team].filter(Boolean).join(" × ") ||
+        "—";
+
+      row.stepIndex = stepIndex;
+      row.stepResult = (current && current.result) || "";
+      row.stepAmount = current ? Number(current.amount_cents) || 0 : 0;
+      row.matchLabel = match;
+      row.league = step.league_name || "";
+      row.startsAt = step.starts_at || "";
+      row.inProgress =
+        row.desafioActive &&
+        String(row.stepResult || "").toLowerCase() === "pending";
+      row.finishedCycle =
+        !row.inProgress &&
+        (String(row.stepResult || "").toLowerCase() === "lost" ||
+          stepIndex >= row.totalSteps);
+      return row;
+    }).sort(function (a, b) {
+      return String(b.latestAt || "").localeCompare(String(a.latestAt || ""));
+    });
+  }
+
+  function filtered() {
+    var q = String(state.q || "").trim().toLowerCase();
+    return (state.rows || []).filter(function (r) {
+      if (state.tab === "andamento") {
+        if (!r.inProgress) return false;
+      } else if (state.tab === "pending") {
+        if (String(r.stepResult || "").toLowerCase() !== "pending") return false;
+      } else if (state.tab === "won") {
+        if (!/^won/.test(String(r.stepResult || "").toLowerCase())) return false;
+      } else if (state.tab === "lost") {
+        if (String(r.stepResult || "").toLowerCase() !== "lost") return false;
+      }
+      if (q) {
+        var hay = [
+          r.userName, r.userId, r.desafioTitle, r.desafioNumber, r.matchLabel, r.desafioId,
+        ].join(" ").toLowerCase();
+        if (hay.indexOf(q) < 0) return false;
+      }
+      return true;
+    });
+  }
+
+  function tabCount(tabKey) {
+    var n = 0;
+    (state.rows || []).forEach(function (r) {
+      if (tabKey === "all") n += 1;
+      else if (tabKey === "andamento" && r.inProgress) n += 1;
+      else if (tabKey === "pending" && String(r.stepResult || "").toLowerCase() === "pending") n += 1;
+      else if (tabKey === "won" && /^won/.test(String(r.stepResult || "").toLowerCase())) n += 1;
+      else if (tabKey === "lost" && String(r.stepResult || "").toLowerCase() === "lost") n += 1;
+    });
+    return n;
+  }
+
+  function render() {
+    var root = document.getElementById("mdzRoot");
+    var rows = filtered();
+    var andamento = tabCount("andamento");
+    var capital = 0;
+    (state.rows || []).forEach(function (r) {
+      if (r.inProgress) capital += r.stepAmount || 0;
+    });
+
+    var tabsHtml = TABS.map(function (t) {
+      return (
+        '<button type="button" class="mdz-tab' +
+        (state.tab === t[0] ? " on" : "") +
+        '" data-tab="' +
+        t[0] +
+        '">' +
+        esc(t[1]) +
+        " (" +
+        tabCount(t[0]) +
+        ")</button>"
+      );
+    }).join("");
+
+    var bodyHtml;
+    if (!rows.length) {
+      bodyHtml = '<div class="mdz-empty">Nenhum desafio encontrado neste filtro.</div>';
+    } else {
+      bodyHtml =
+        '<div class="mdz-table-wrap"><table class="mdz"><thead><tr>' +
+        "<th>Desafio</th><th>Cliente</th><th>Etapa</th><th>Jogo / mercado</th><th>Valores</th><th>Status etapa</th>" +
+        "</tr></thead><tbody>" +
+        rows
+          .map(function (r) {
+            var badge = resultLabel(r.stepResult);
+            return (
+              "<tr>" +
+              '<td><div class="mdz-desafio">' +
+              esc(r.desafioTitle) +
+              '</div><div class="num">#' +
+              esc(r.desafioNumber != null ? r.desafioNumber : shortId(r.desafioId)) +
+              " · alvo +" +
+              esc(String(r.targetPct)) +
+              "%</div></td>" +
+              '<td><div class="mdz-client">' +
+              esc(r.userName) +
+              '</div><span class="id">' +
+              esc(shortId(r.userId)) +
+              "</span></td>" +
+              "<td><strong>Etapa " +
+              esc(String(r.stepIndex)) +
+              " / " +
+              esc(String(r.totalSteps)) +
+              "</strong></td>" +
+              '<td><div class="mdz-match">' +
+              esc(r.matchLabel) +
+              '</div><div class="meta">' +
+              esc(r.league || "—") +
+              (r.startsAt
+                ? " · " +
+                  esc(
+                    new Date(r.startsAt).toLocaleString("pt-BR", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  )
+                : "") +
+              "</div></td>" +
+              '<td><div class="mdz-amt">' +
+              money(r.stepAmount) +
+              '<span class="sub">entrada atual · total ciclo ' +
+              money(r.totalAmount) +
+              "</span></div></td>" +
+              '<td><span class="mdz-badge ' +
+              badge[0] +
+              '">' +
+              esc(badge[1]) +
+              "</span></td>" +
+              "</tr>"
+            );
+          })
+          .join("") +
+        "</tbody></table></div>";
+    }
+
+    root.innerHTML =
+      '<div class="mdz-head"><h1>Monitor de <span>Desafios</span></h1>' +
+      '<p class="sub">Clientes em operação no ciclo · etapa atual · valores da entrada</p></div>' +
+      '<div class="mdz-kpis">' +
+      '<article class="mdz-kpi"><div class="l">Em andamento</div><strong>' +
+      andamento +
+      "</strong></article>" +
+      '<article class="mdz-kpi"><div class="l">Operações listadas</div><strong>' +
+      rows.length +
+      "</strong></article>" +
+      '<article class="mdz-kpi"><div class="l">Capital em etapas pendentes</div><strong>' +
+      money(capital) +
+      "</strong></article>" +
+      '<article class="mdz-kpi"><div class="l">Clientes únicos (filtro)</div><strong>' +
+      new Set(rows.map(function (r) { return r.userId; })).size +
+      "</strong></article></div>" +
+      '<div class="mdz-filters">' +
+      '<div class="mdz-tabs">' +
+      tabsHtml +
+      "</div>" +
+      '<input type="search" id="mdzQ" placeholder="Buscar cliente, desafio ou jogo" value="' +
+      esc(state.q) +
+      '" />' +
+      '<button type="button" class="mdz-btn ghost" id="mdzRefresh">Atualizar</button>' +
+      "</div>" +
+      bodyHtml;
+
+    root.querySelectorAll("[data-tab]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        state.tab = btn.getAttribute("data-tab");
+        render();
+      });
+    });
+    var qEl = document.getElementById("mdzQ");
+    if (qEl) {
+      qEl.addEventListener("input", function () {
+        state.q = qEl.value || "";
+        render();
+      });
+    }
+    var ref = document.getElementById("mdzRefresh");
+    if (ref) ref.addEventListener("click", function () { load(true); });
+  }
+
+  async function load(manual) {
+    showErr("");
+    try {
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+      if (!(await ArbiV2.requireAdmin(supa, user))) {
+        document.getElementById("mdzRoot").innerHTML =
+          '<div class="mdz-empty">Acesso restrito a administradores.</div>';
+        return;
+      }
+
+      var res = await supa
+        .from("desafio_participations")
+        .select(
+          "id,user_id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at," +
+            "profiles(full_name)," +
+            "desafios(title,number,status,is_active,target_profit_pct,total_steps,deleted_at)," +
+            "desafio_steps(step_index,match_label,status,home_team,away_team,league_name,starts_at,result)"
+        )
+        .eq("side", "arbishield")
+        .order("created_at", { ascending: false })
+        .limit(2000);
+
+      if (res.error) throw res.error;
+      state.rows = buildRows(res.data || []);
+      render();
+      if (manual) showErr("");
+    } catch (ex) {
+      state.err = ex.message || "Erro ao carregar";
+      showErr(state.err);
+      document.getElementById("mdzRoot").innerHTML =
+        '<div class="mdz-empty">' + esc(state.err) + "</div>";
+    }
+  }
+
+  load(false);
+  setInterval(function () { load(false); }, 30000);
+})();
+  </script>
+</body>
+</html>
