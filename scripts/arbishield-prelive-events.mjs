@@ -2805,7 +2805,7 @@ async function launchTestEvent(query = {}) {
     away_team: match?.away_team,
     starts_at: match?.starts_at,
     odd,
-    open: "https://arbishield.app/sandbox/app-proteger.html",
+    open: "https://arbishield.app/app-proteger.html",
   };
 }
 
