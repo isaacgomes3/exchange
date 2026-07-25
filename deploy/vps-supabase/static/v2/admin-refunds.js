@@ -69,7 +69,7 @@
     var s = String(v || "").toLowerCase();
     if (/conclu|aprov|paid|ok|sucesso|liberado|enviado/.test(s)) return "ok";
     if (/pend|an[aá]lise|aguard|pending|processing/.test(s)) return "warn";
-    if (/rejeit|cancel|fail|denied|reject/.test(s)) return "bad";
+    if (/rejeit|cancel|fail|denied|reject|cancelled/.test(s)) return "bad";
     return "";
   }
 
