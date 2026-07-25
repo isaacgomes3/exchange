@@ -31,8 +31,10 @@ A  teste.arbishield.app  →  <IP da VPS>
 Na VPS (root):
 
 ```bash
-bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/ambiente-teste-3cf9/scripts/vps-enable-teste.sh?v=1")
+bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/ambiente-teste-3cf9/scripts/vps-enable-teste.sh?v=2")
 ```
+
+> Se falhar com `curl: (23)`, a VPS não tem `sites-available` — a v2 do script detecta `conf.d` automaticamente.
 
 ## 3) Publicar alterações só no teste
 
