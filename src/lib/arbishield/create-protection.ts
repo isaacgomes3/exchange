@@ -135,11 +135,35 @@ export async function createProtection(
   if (match.is_published === false) {
     throw Object.assign(new Error("Jogo não publicado"), { status: 400 });
   }
-  if (match.starts_at && new Date(match.starts_at).getTime() <= Date.now()) {
-    throw Object.assign(
-      new Error("Jogo já iniciado. Não é possível criar novas proteções."),
-      { status: 400 }
+  if (match.starts_at) {
+    const startMs = new Date(match.starts_at).getTime();
+    const now = Date.now();
+    if (Number.isFinite(startMs) && startMs <= now) {
+      throw Object.assign(
+        new Error("Jogo já iniciado. Não é possível criar novas proteções."),
+        { status: 400 }
+      );
+    }
+    const meta =
+      match.metadata && typeof match.metadata === "object"
+        ? (match.metadata as Record<string, unknown>)
+        : {};
+    const releaseMins = Number(
+      meta.release_minutes_before ??
+        (match as { release_minutes_before?: number }).release_minutes_before ??
+        0
     );
+    if (Number.isFinite(releaseMins) && releaseMins > 0 && Number.isFinite(startMs)) {
+      const unlockAt = startMs - releaseMins * 60_000;
+      if (now < unlockAt) {
+        throw Object.assign(
+          new Error(
+            `Entradas liberam ${releaseMins} min antes do jogo. Aguarde a liberação.`
+          ),
+          { status: 400 }
+        );
+      }
+    }
   }
 
   const markets = Array.isArray(match.markets) ? [...match.markets] : [];

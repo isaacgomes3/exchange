@@ -686,6 +686,20 @@
         <input id="manStarts" type="datetime-local" required />
         <p class="hint" style="margin:6px 0 0">Formato: DD/MM/AAAA HH:MM (seletor do navegador)</p>
       </div>
+      <div class="field">
+        <label for="manReleaseMinutes">Liberar entrada quantos minutos antes</label>
+        <select id="manReleaseMinutes">
+          <option value="0">No horário do jogo</option>
+          <option value="15">15 minutos antes</option>
+          <option value="30">30 minutos antes</option>
+          <option value="60" selected>60 minutos antes</option>
+          <option value="120">120 minutos antes</option>
+        </select>
+        <p class="hint" style="margin:6px 0 0">
+          Cliente só vê / pode proteger a partir desse horário (início − minutos).
+          “No horário do jogo” = disponível assim que publicar, até o kickoff.
+        </p>
+      </div>
       <div class="grid2">
         <div class="field">
           <label for="manSport">Esporte</label>
@@ -2016,6 +2030,7 @@
         $("manSport").value = "futebol";
         $("manStatus").value = "open";
         $("manStarts").value = "";
+        if ($("manReleaseMinutes")) $("manReleaseMinutes").value = "60";
         ["manLiberarProtecao", "manLiberarLive", "manEsconder"].forEach(function (id) {
           var el = $(id);
           if (!el) return;
@@ -2106,6 +2121,10 @@
         btn.disabled = true;
         btn.textContent = "Salvando…";
         try {
+          var releaseMinutes = Number(
+            ($("manReleaseMinutes") && $("manReleaseMinutes").value) || 60
+          );
+          if (![0, 15, 30, 60, 120].includes(releaseMinutes)) releaseMinutes = 60;
           var result = await apiPost("/api/arbishield/matches", {
             mode: "manual",
             home_team: home,
@@ -2121,6 +2140,7 @@
             score_sync_enabled: false,
             has_live_stream: $("manLiberarLive") && $("manLiberarLive").classList.contains("on"),
             hide_from_site: $("manEsconder") && $("manEsconder").classList.contains("on"),
+            release_minutes_before: releaseMinutes,
             external_bet_link: null,
             markets: markets,
           });

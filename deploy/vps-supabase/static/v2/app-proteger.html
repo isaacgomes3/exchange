@@ -226,6 +226,20 @@
       }
       /** Janela pós-kickoff do legado (9000s ≈ 2h30). */
       var LIVE_WINDOW_MS = 9000 * 1000;
+      function releaseMinutesOf(m) {
+        var meta = m && m.metadata && typeof m.metadata === "object" ? m.metadata : {};
+        var n = Number(meta.release_minutes_before ?? m.release_minutes_before ?? 0);
+        return Number.isFinite(n) && n > 0 ? n : 0;
+      }
+      /** Liberação de entrada: starts_at − N minutos (0 = sem trava antecipada). */
+      function isEntryReleased(m, now) {
+        if (!m || !m.starts_at) return false;
+        var start = new Date(m.starts_at).getTime();
+        if (!Number.isFinite(start)) return false;
+        var mins = releaseMinutesOf(m);
+        if (!(mins > 0)) return true;
+        return now >= start - mins * 60000;
+      }
       /**
        * Legado Je: jogo fica na grade só com liquidez restante e ainda na janela.
        * Quando a liquidez esgota (used >= max ou liqLeft <= 0), sai da grade.
@@ -235,6 +249,7 @@
         var now = Date.now();
         var start = new Date(m.starts_at).getTime();
         if (!Number.isFinite(start)) return false;
+        if (!isEntryReleased(m, now)) return false;
         var status = m.status_v2 || m.status || "open";
         if (
           status === "FINISHED" ||
@@ -639,7 +654,7 @@
           var matchesRes = await supa
             .from("matches")
             .select(
-              "id,home_team,away_team,home_logo,away_logo,league,starts_at,status,status_v2,sport_type,is_published,markets,max_protection_cents,used_protection_cents,protection_odds"
+              "id,home_team,away_team,home_logo,away_logo,league,starts_at,status,status_v2,sport_type,is_published,markets,max_protection_cents,used_protection_cents,protection_odds,metadata"
             )
             .is("deleted_at", null)
             .eq("is_published", true)

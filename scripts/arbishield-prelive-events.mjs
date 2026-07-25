@@ -155,6 +155,13 @@ async function createManualMatch(body, token) {
   const isPublished = Boolean(
     body.is_published ?? body.isPublished ?? false
   );
+  const allowedRelease = new Set([0, 15, 30, 60, 120]);
+  let releaseMinutesBefore = Number(
+    body.release_minutes_before ?? body.releaseMinutesBefore ?? 60
+  );
+  if (!Number.isFinite(releaseMinutesBefore) || !allowedRelease.has(releaseMinutesBefore)) {
+    releaseMinutesBefore = 60;
+  }
   const dbToken = SERVICE_KEY || token;
 
   const row = {
@@ -184,6 +191,7 @@ async function createManualMatch(body, token) {
       external_bet_logo: body.external_bet_logo || body.externalBetLogo || null,
       betting_house_id: body.betting_house_id || body.bettingHouseId || null,
       source: "admin_manual",
+      release_minutes_before: releaseMinutesBefore,
     },
     markets,
   };
@@ -1048,12 +1056,31 @@ async function createProtection(body, userToken) {
     err.status = 400;
     throw err;
   }
-  if (match.starts_at && new Date(match.starts_at).getTime() <= Date.now()) {
-    const err = new Error(
-      "Jogo já iniciado. Não é possível criar novas proteções."
+  if (match.starts_at) {
+    const startMs = new Date(match.starts_at).getTime();
+    const now = Date.now();
+    if (Number.isFinite(startMs) && startMs <= now) {
+      const err = new Error(
+        "Jogo já iniciado. Não é possível criar novas proteções."
+      );
+      err.status = 400;
+      throw err;
+    }
+    const meta =
+      match.metadata && typeof match.metadata === "object" ? match.metadata : {};
+    const releaseMins = Number(
+      meta.release_minutes_before ?? match.release_minutes_before ?? 0
     );
-    err.status = 400;
-    throw err;
+    if (Number.isFinite(releaseMins) && releaseMins > 0 && Number.isFinite(startMs)) {
+      const unlockAt = startMs - releaseMins * 60_000;
+      if (now < unlockAt) {
+        const err = new Error(
+          `Entradas liberam ${releaseMins} min antes do jogo. Aguarde a liberação.`
+        );
+        err.status = 400;
+        throw err;
+      }
+    }
   }
 
   const markets = Array.isArray(match.markets) ? [...match.markets] : [];
