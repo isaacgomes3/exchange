@@ -622,8 +622,8 @@
         <div id="settleOutcomeBox" style="display:grid;gap:10px;margin-top:8px">
           <button type="button" class="btn btn-ghost" id="btnOutcomeArbi" data-outcome="arbishield" style="justify-content:flex-start;text-align:left;padding:14px 16px;border-color:rgba(201,242,35,0.45)">
             <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU ARBISHIELD</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção válida · devolver só o stake/responsabilidade</span>
-            <span id="settleRefundHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">A reembolsar: —</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção válida · devolve stake/responsabilidade + dedução (Saldo Dedução)</span>
+            <span id="settleRefundHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">A creditar: —</span>
           </button>
           <button type="button" class="btn btn-ghost" id="btnOutcomeExch" data-outcome="exchange" style="justify-content:flex-start;text-align:left;padding:14px 16px">
             <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU CASA EXTERNA (EXCHANGE)</span>
@@ -1857,7 +1857,7 @@
               );
               openByMatch[p.match_id].count += 1;
               openByMatch[p.match_id].cents += amt;
-              // Reembolso ArbiShield = só stake/responsabilidade (sem lucro)
+              // ArbiShield credita stake + margem (Saldo Dedução)
               openByMatch[p.match_id].refund += amt;
               openByMatch[p.match_id].margin += Math.max(0, margin);
             });
@@ -2863,19 +2863,21 @@
           money(stake);
         if ($("settleRefundHint")) {
           $("settleRefundHint").textContent =
-            "A reembolsar: " + money(refund) + "  ·  só stake/responsabilidade";
+            "A creditar no Saldo Dedução: " +
+            money(refund + margin) +
+            "  ·  stake " +
+            money(refund) +
+            (margin > 0 ? " + dedução " + money(margin) : "");
         }
         if ($("settleDeductHint")) {
           $("settleDeductHint").textContent =
             margin > 0
-              ? "Dedução / margem ArbiShield: " + money(margin)
+              ? "Dedução / margem ArbiShield retida: " + money(margin)
               : "Dedução / margem ArbiShield: — (sem platform_deduction nesta proteção)";
         }
         if ($("settleStakeKeepHint")) {
           $("settleStakeKeepHint").textContent =
-            "Stake do usuário (" +
-            money(stake) +
-            ") já foi debitado na entrada e permanece na plataforma — não é a “dedução”.";
+            "No fee_upfront a dedução já foi cobrada na entrada; ao bater Exchange ela permanece na plataforma.";
         }
         $("settleHome").value = "";
         $("settleAway").value = "";

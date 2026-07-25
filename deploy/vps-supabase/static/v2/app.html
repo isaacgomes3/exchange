@@ -196,7 +196,7 @@
         var profileRes = await supa
           .from("profiles")
           .select(
-            "full_name,balance_cents,reusable_balance_cents,demo_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,cpf,pix_key,pix_priority_type,pix_bank,pix_account,pix_account_holder,phone"
+            "full_name,balance_cents,reusable_balance_cents,deduction_balance_cents,demo_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,cpf,pix_key,pix_priority_type,pix_bank,pix_account,pix_account_holder,phone"
           )
           .eq("id", user.id)
           .maybeSingle();
@@ -206,6 +206,7 @@
         var apostador =
           Number(p.balance_cents || 0) +
           Number(p.reusable_balance_cents || 0) +
+          Number(p.deduction_balance_cents || 0) +
           Number(p.demo_balance_cents || 0);
         var provedor =
           Number(p.investor_balance_cents || 0) +

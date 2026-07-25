@@ -581,7 +581,7 @@
             var balRes = await appSupa
               .from("profiles")
               .select(
-                "balance_cents,reusable_balance_cents,demo_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,locked_balance_cents,full_name,avatar_url"
+                "balance_cents,reusable_balance_cents,deduction_balance_cents,demo_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,locked_balance_cents,full_name,avatar_url"
               )
               .eq("id", viewUserId)
               .maybeSingle();
@@ -590,6 +590,7 @@
             var apostador =
               Number(p.balance_cents || 0) +
               Number(p.reusable_balance_cents || 0) +
+              Number(p.deduction_balance_cents || 0) +
               Number(p.demo_balance_cents || 0);
             var provedor =
               Number(p.investor_balance_cents || 0) +

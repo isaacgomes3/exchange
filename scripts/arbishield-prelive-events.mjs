@@ -1116,22 +1116,25 @@ function settlementDeductionCents(row) {
   return fee;
 }
 
-function settlementCreditCents(row, outcome) {
+/** Crédito no settle: { stake, fee, total }. ArbiShield devolve stake+dedução. */
+function settlementCreditParts(row, outcome) {
   const amount = nCents(row.responsibility_cents || row.amount_cents);
-  if (amount <= 0) return 0;
+  const fee = settlementDeductionCents(row);
   const wonArbi = String(outcome).toLowerCase() === "arbishield";
-  // fee_upfront_v1: taxa já cobrada na criação
-  // - ArbiShield: paga a cobertura (stake)
-  // - Exchange: não devolve nada (taxa ficou com a casa)
   if (isFeeUpfrontProtection(row)) {
-    return wonArbi ? amount : 0;
+    // fee_upfront: ArbiShield → stake + dedução; Exchange → 0
+    if (!wonArbi) return { stake: 0, fee: 0, total: 0 };
+    return { stake: amount, fee, total: amount + fee };
   }
-  // Legado:
-  // - ArbiShield: devolve stake inteiro (cobertura)
-  // - Exchange: devolve stake − taxa/dedução da plataforma
-  if (wonArbi) return amount;
-  const fee = Math.min(settlementDeductionCents(row), amount);
-  return Math.max(0, amount - fee);
+  // Legado: ArbiShield → stake; Exchange → stake − taxa
+  if (wonArbi) return { stake: amount, fee: 0, total: amount };
+  const keep = Math.min(fee, amount);
+  const net = Math.max(0, amount - keep);
+  return { stake: net, fee: 0, total: net };
+}
+
+function settlementCreditCents(row, outcome) {
+  return settlementCreditParts(row, outcome).total;
 }
 
 function settlementStatusForOutcome(outcome) {
@@ -1157,7 +1160,8 @@ async function protectionAlreadyCredited(protectionId) {
 
 async function creditWalletForSettlement(row, outcome, now) {
   const amount = nCents(row.responsibility_cents || row.amount_cents);
-  const credit = settlementCreditCents(row, outcome);
+  const parts = settlementCreditParts(row, outcome);
+  const credit = parts.total;
   const wonArbi = String(outcome).toLowerCase() === "arbishield";
   const feeUpfront = isFeeUpfrontProtection(row);
   const balanceType = String(
@@ -1167,7 +1171,7 @@ async function creditWalletForSettlement(row, outcome, now) {
         row.metadata.balanceType)) ||
       "REAL"
   ).toUpperCase();
-  if (!row.user_id || amount <= 0) {
+  if (!row.user_id || (amount <= 0 && credit <= 0)) {
     return { refunded: 0, credited: 0, skipped: true };
   }
   if (await protectionAlreadyCredited(row.id)) {
@@ -1203,10 +1207,18 @@ async function creditWalletForSettlement(row, outcome, now) {
   }
 
   const prof = await sb(
-    `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents,demo_balance_cents,investor_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+    `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents,demo_balance_cents,investor_balance_cents,deduction_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
     { token: SERVICE_KEY }
-  );
-  const p = Array.isArray(prof) ? prof[0] : null;
+  ).catch(() => null);
+  // Coluna nova pode faltar até o hotfix SQL — retry sem ela
+  let p = Array.isArray(prof) ? prof[0] : null;
+  if (!p) {
+    const prof2 = await sb(
+      `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents,demo_balance_cents,investor_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    p = Array.isArray(prof2) ? prof2[0] : null;
+  }
   if (!p) throw new Error(`Perfil ${row.user_id} não encontrado para crédito`);
 
   const patch = { updated_at: now };
@@ -1217,7 +1229,9 @@ async function creditWalletForSettlement(row, outcome, now) {
       nCents(p.locked_balance_cents) - amount
     );
   }
-  let bucket = "balance_cents";
+  // ArbiShield: stake + dedução → Saldo Dedução (usável + sacável).
+  // DEMO/INVESTOR mantêm o bucket de origem (crédito de teste / provedor).
+  let bucket = "deduction_balance_cents";
   if (balanceType === "DEMO") {
     patch.demo_balance_cents = nCents(p.demo_balance_cents) + credit;
     bucket = "demo_balance_cents";
@@ -1225,12 +1239,29 @@ async function creditWalletForSettlement(row, outcome, now) {
     patch.investor_balance_cents = nCents(p.investor_balance_cents) + credit;
     bucket = "investor_balance_cents";
   } else {
-    patch.balance_cents = nCents(p.balance_cents) + credit;
+    patch.deduction_balance_cents = nCents(p.deduction_balance_cents) + credit;
+    bucket = "deduction_balance_cents";
   }
 
   let creditedOk = false;
   let lastErr = null;
-  for (const body of [patch, (() => { const s = { ...patch }; delete s.updated_at; return s; })()]) {
+  const attempts = [
+    patch,
+    (() => {
+      const s = { ...patch };
+      delete s.updated_at;
+      return s;
+    })(),
+  ];
+  // Fallback se deduction_balance_cents ainda não existir no schema
+  if (bucket === "deduction_balance_cents") {
+    attempts.push({
+      updated_at: now,
+      balance_cents: nCents(p.balance_cents) + credit,
+    });
+    attempts.push({ balance_cents: nCents(p.balance_cents) + credit });
+  }
+  for (const body of attempts) {
     try {
       await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
         method: "PATCH",
@@ -1238,6 +1269,9 @@ async function creditWalletForSettlement(row, outcome, now) {
         body,
       });
       creditedOk = true;
+      if (body.balance_cents != null && body.deduction_balance_cents == null) {
+        bucket = "balance_cents";
+      }
       break;
     } catch (err) {
       lastErr = err;
@@ -1260,17 +1294,15 @@ async function creditWalletForSettlement(row, outcome, now) {
           protection_id: row.id,
           match_id: row.match_id || null,
           outcome: String(outcome).toLowerCase(),
-          stake_cents: amount,
-          fee_cents: feeUpfront
-            ? settlementDeductionCents(row)
-            : wonArbi
-              ? 0
-              : settlementDeductionCents(row),
+          stake_cents: parts.stake,
+          fee_cents: parts.fee,
+          fee_returned_cents: wonArbi ? parts.fee : 0,
           bucket,
           billing_model: feeUpfront ? "fee_upfront_v1" : "legacy_lock",
-          fix: feeUpfront
-            ? "protection-fee-upfront-v4"
-            : "settle-arbishield-saldo-real-v1",
+          fix: "settle-arbishield-stake-mais-deducao-v1",
+          note: wonArbi
+            ? "ArbiShield: stake + dedução creditados (saldo dedução / bucket origem)"
+            : undefined,
         },
       },
     });
@@ -1281,7 +1313,13 @@ async function creditWalletForSettlement(row, outcome, now) {
     );
   }
 
-  return { refunded: credit, credited: credit };
+  return {
+    refunded: credit,
+    credited: credit,
+    stakeCents: parts.stake,
+    feeCents: parts.fee,
+    bucket,
+  };
 }
 
 async function settleOneProtectionRow(row, outcome, now) {
@@ -1780,10 +1818,16 @@ async function createProtection(body, userToken) {
     throw err;
   }
 
-  const profileRows = await sb(
-    `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=id,balance_cents,reusable_balance_cents,demo_balance_cents,investor_balance_cents,account_status,locked_balance_cents&limit=1`,
+  let profileRows = await sb(
+    `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=id,balance_cents,reusable_balance_cents,deduction_balance_cents,demo_balance_cents,investor_balance_cents,account_status,locked_balance_cents&limit=1`,
     { token: SERVICE_KEY }
-  );
+  ).catch(() => null);
+  if (!Array.isArray(profileRows) || !profileRows[0]) {
+    profileRows = await sb(
+      `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=id,balance_cents,reusable_balance_cents,demo_balance_cents,investor_balance_cents,account_status,locked_balance_cents&limit=1`,
+      { token: SERVICE_KEY }
+    );
+  }
   const profile = Array.isArray(profileRows) ? profileRows[0] : null;
   if (!profile) {
     const err = new Error("Perfil não encontrado");
@@ -1805,7 +1849,10 @@ async function createProtection(body, userToken) {
   else if (balanceType === "INVESTOR")
     available = n(profile.investor_balance_cents);
   else
-    available = n(profile.balance_cents) + n(profile.reusable_balance_cents);
+    available =
+      n(profile.balance_cents) +
+      n(profile.reusable_balance_cents) +
+      n(profile.deduction_balance_cents);
 
   // fee_upfront: só precisa ter saldo para a DEDUÇÃO (não para o stake)
   // Se REAL estiver zerado mas DEMO cobrir (crédito de teste), usa DEMO.
@@ -1843,10 +1890,23 @@ async function createProtection(body, userToken) {
       n(profile.investor_balance_cents) - feeCents;
     balanceAfter = patch.investor_balance_cents;
   } else {
-    const bal = n(profile.balance_cents) + n(profile.reusable_balance_cents);
-    patch.balance_cents = bal - feeCents;
+    // Consome banca real + reusable primeiro; depois Saldo Dedução
+    let left = feeCents;
+    let bal = n(profile.balance_cents) + n(profile.reusable_balance_cents);
+    let ded = n(profile.deduction_balance_cents);
     patch.reusable_balance_cents = 0;
-    balanceAfter = bal - feeCents;
+    if (bal >= left) {
+      patch.balance_cents = bal - left;
+      patch.deduction_balance_cents = ded;
+      left = 0;
+    } else {
+      left -= bal;
+      patch.balance_cents = 0;
+      patch.deduction_balance_cents = Math.max(0, ded - left);
+      left = 0;
+    }
+    balanceAfter =
+      n(patch.balance_cents) + n(patch.deduction_balance_cents);
   }
 
   const patchedProfile = await sb(
@@ -1868,7 +1928,13 @@ async function createProtection(body, userToken) {
         : walletType === "INVESTOR"
           ? n(patchedRow.investor_balance_cents) ===
             n(profile.investor_balance_cents) - feeCents
-          : n(patchedRow.balance_cents) === balanceAfter;
+          : n(patchedRow.balance_cents) +
+              n(patchedRow.deduction_balance_cents) +
+              n(patchedRow.reusable_balance_cents) ===
+            n(profile.balance_cents) +
+              n(profile.reusable_balance_cents) +
+              n(profile.deduction_balance_cents) -
+              feeCents;
     if (!okDebit) {
       const err = new Error(
         `Falha ao debitar saldo ${walletType} (dedução ${feeCents} não aplicada no perfil).`
@@ -3054,7 +3120,7 @@ async function handleApi(req, res) {
     return sendJson(res, 200, {
       ok: true,
       service: "arbishield-matches",
-      fix: "protection-fee-upfront-v6",
+      fix: "protection-fee-upfront-v7-stake-mais-deducao",
       env: process.env.ARBISHIELD_ENV || "production",
       listen: LISTEN,
       testEvent: "/api/arbishield/test-event",

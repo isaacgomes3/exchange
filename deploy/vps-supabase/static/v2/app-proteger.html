@@ -230,7 +230,11 @@
         var p = state.profile || {};
         if (type === "DEMO") return Number(p.demo_balance_cents || 0);
         if (type === "INVESTOR") return Number(p.investor_balance_cents || 0);
-        return Number(p.balance_cents || 0) + Number(p.reusable_balance_cents || 0);
+        return (
+          Number(p.balance_cents || 0) +
+          Number(p.reusable_balance_cents || 0) +
+          Number(p.deduction_balance_cents || 0)
+        );
       }
       function liqLeft(m) {
         // Legado Ye: soma liquidez restante dos mercados; senão max−used da partida
@@ -468,6 +472,7 @@
         var apostador =
           Number(p.balance_cents || 0) +
           Number(p.reusable_balance_cents || 0) +
+          Number(p.deduction_balance_cents || 0) +
           Number(p.demo_balance_cents || 0);
         var set = function (id, cents) {
           var el = document.getElementById(id);
@@ -794,7 +799,7 @@
           var profileRes = await supa
             .from("profiles")
             .select(
-              "balance_cents,reusable_balance_cents,demo_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,locked_balance_cents"
+              "balance_cents,reusable_balance_cents,deduction_balance_cents,demo_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,locked_balance_cents"
             )
             .eq("id", user.id)
             .maybeSingle();

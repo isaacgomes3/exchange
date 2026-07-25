@@ -261,7 +261,7 @@
           je = "ArbiShield";
           pe = Ne;
           Ae = true;
-          Qe = "Coberto pela ArbiShield • capital devolvido";
+          Qe = "Coberto pela ArbiShield • stake + dedução no Saldo Dedução";
         } else if (Se === "exchange") {
           je = "Exchange";
           if (Ye > 0) {
@@ -680,10 +680,12 @@
     // Saldo Real (carteira) = balance (+ legado reusable consolidado) — sem demo
     var real =
       Number(p.balance_cents || 0) + Number(p.reusable_balance_cents || 0);
-    // Transferência Banca→Desafio: só saldo real livre (nunca reusable/locked).
+    var deduction = Number(p.deduction_balance_cents || 0);
+    // Transferência Banca→Desafio: só saldo real livre (nunca reusable/locked/dedução).
     var transferableReal = Number(p.balance_cents || 0);
-    // Chip do header "Apostador" = mesma fórmula do shell (inclui demo)
-    var apostadorHeader = real + Number(p.demo_balance_cents || 0);
+    // Chip do header "Apostador" = mesma fórmula do shell (inclui demo + saldo dedução)
+    var apostadorHeader =
+      real + deduction + Number(p.demo_balance_cents || 0);
     var provider =
       Number(p.investor_balance_cents || 0) +
       Number(p.demo_balance_provider_cents || 0);
@@ -698,6 +700,7 @@
     if (!locked) locked = activeLocked;
     var aff = affAvailable(state.commissions, state.withdrawals);
     state.realBalance = real;
+    state.deductionBalance = deduction;
     state.transferableReal = transferableReal;
     state.apostadorHeader = apostadorHeader;
     state.providerBalance = provider;
@@ -742,7 +745,7 @@
         return a + Number(r.amount_cents || 0);
       }, 0);
 
-    var total = real + provider + aff + locked;
+    var total = real + deduction + provider + aff + locked;
     state.metrics = {
       total: total,
       balance: real,
@@ -757,12 +760,23 @@
 
   function renderBalances() {
     setText("finBalReal", money(state.realBalance));
+    setText("finBalDeduction", money(state.deductionBalance || 0));
     setText("finBalProv", money(state.providerBalance));
     setText("finBalAff", money(state.affBalance));
     setText(
       "finBalTotal",
-      money(state.realBalance + state.providerBalance + state.affBalance + state.locked)
+      money(
+        state.realBalance +
+          (state.deductionBalance || 0) +
+          state.providerBalance +
+          state.affBalance +
+          state.locked
+      )
     );
+    var btnDed = document.getElementById("btnSaqueDeduction");
+    if (btnDed) {
+      btnDed.disabled = !(state.deductionBalance > 0);
+    }
     setText("finProtCount", String(state.activeCount));
     setText("finProtLocked", money(state.locked));
     setText("metTotal", money(state.metrics.total));
@@ -963,6 +977,7 @@
     if (balUl) {
       balUl.innerHTML = [
         ["Saldo Real (não sacável)", money(state.realBalance)],
+        ["Saldo Dedução (usável/sacável)", money(state.deductionBalance || 0)],
         ["Saldo Provedor", money(state.providerBalance)],
         ["Saldo Afiliado disponível", money(state.affBalance)],
         ["Capital em proteções", money(state.locked)],
@@ -1253,7 +1268,62 @@
     }
   }
 
+  async function requestDeductionWithdraw() {
+    var avail = Number(state.deductionBalance || 0);
+    if (!(avail > 0)) {
+      alert("Saldo Dedução zerado.");
+      return;
+    }
+    var pix =
+      (state.profile && (state.profile.pix_key || state.profile.pixKey)) || "";
+    if (!pix) {
+      alert("Cadastre sua chave Pix no Perfil antes de sacar o Saldo Dedução.");
+      return;
+    }
+    var def = (avail / 100).toFixed(2).replace(".", ",");
+    var raw = window.prompt(
+      "Valor do saque do Saldo Dedução (disponível R$ " + def + "):",
+      def
+    );
+    if (raw == null) return;
+    var normalized = String(raw).replace(/\./g, "").replace(",", ".");
+    var cents = Math.round((parseFloat(normalized) || 0) * 100);
+    if (!(cents > 0)) {
+      alert("Valor inválido.");
+      return;
+    }
+    if (cents > avail) {
+      alert("Valor acima do Saldo Dedução disponível.");
+      return;
+    }
+    try {
+      var supa = ArbiV2.client();
+      var sess = await supa.auth.getSession();
+      var token =
+        sess && sess.data && sess.data.session && sess.data.session.access_token;
+      if (!token) throw new Error("Sessão expirada");
+      var res = await fetch("/api/arbishield/deduction-withdraw", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+        },
+        body: JSON.stringify({ amountCents: cents, pix_key: pix }),
+      });
+      var data = await res.json().catch(function () {
+        return {};
+      });
+      if (!res.ok) throw new Error(data.error || "Falha ao solicitar saque");
+      alert("Saque do Saldo Dedução solicitado. Aguarde a análise.");
+      location.reload();
+    } catch (ex) {
+      alert(ex.message || "Erro ao solicitar saque");
+    }
+  }
+
   function bindUi() {
+    var btnDed = document.getElementById("btnSaqueDeduction");
+    if (btnDed) btnDed.addEventListener("click", requestDeductionWithdraw);
     document.getElementById("finPeriod").addEventListener("change", function (e) {
       state.period = e.target.value;
       state.page = 1;
@@ -1339,10 +1409,19 @@
     var profileRes = await supa
       .from("profiles")
       .select(
-        "balance_cents,reusable_balance_cents,demo_balance_cents,locked_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents"
+        "balance_cents,reusable_balance_cents,deduction_balance_cents,demo_balance_cents,locked_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,pix_key"
       )
       .eq("id", userId)
       .maybeSingle();
+    if (profileRes.error) {
+      profileRes = await supa
+        .from("profiles")
+        .select(
+          "balance_cents,reusable_balance_cents,demo_balance_cents,locked_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,pix_key"
+        )
+        .eq("id", userId)
+        .maybeSingle();
+    }
     if (profileRes.error) throw profileRes.error;
     state.profile = profileRes.data || {};
 

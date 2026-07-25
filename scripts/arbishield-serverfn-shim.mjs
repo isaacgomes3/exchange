@@ -1769,6 +1769,93 @@ async function requestAffiliateWithdrawal(token, body) {
   return { ok: true, withdrawal: row, amountCents };
 }
 
+/** Saque do Saldo Dedução (retornos ArbiShield: stake + dedução). */
+async function requestDeductionWithdrawal(token, body) {
+  const userId = requireUserId(token);
+  const amountCents = Math.round(
+    Number(body?.amountCents ?? body?.amount_cents ?? 0)
+  );
+  const pixKey = String(body?.pix_key ?? body?.pixKey ?? "").trim();
+  if (!Number.isFinite(amountCents) || amountCents <= 0) {
+    throw new Error("Valor inválido");
+  }
+  if (!pixKey) throw new Error("Informe a chave Pix");
+
+  const open = await sb(
+    `/rest/v1/withdrawals?select=id,status,metadata&user_id=eq.${userId}&status=in.(pending,approved,processing)&order=created_at.desc&limit=20`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  const hasOpen = (Array.isArray(open) ? open : []).some((w) => {
+    const meta = w?.metadata || {};
+    const origin = String(meta.origin || meta.request_type || meta.type || "").toUpperCase();
+    return origin === "DEDUCTION_WITHDRAWAL" || origin === "SALDO_DEDUCAO_WITHDRAWAL";
+  });
+  if (hasOpen) {
+    throw new Error("Você já possui um saque de Saldo Dedução em análise.");
+  }
+
+  const rows = await sb(
+    `/rest/v1/profiles?select=deduction_balance_cents,pix_key&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const p = Array.isArray(rows) ? rows[0] : null;
+  if (!p) throw new Error("Perfil não encontrado");
+  const available = n(p.deduction_balance_cents);
+  if (amountCents > available) {
+    throw new Error(
+      `Saldo Dedução insuficiente (disponível ${(available / 100).toFixed(2)})`
+    );
+  }
+
+  // Debita na hora (reserva) — admin libera/paga depois
+  await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: {
+      deduction_balance_cents: available - amountCents,
+      updated_at: new Date().toISOString(),
+    },
+  });
+
+  const created = await sb("/rest/v1/withdrawals", {
+    method: "POST",
+    token: SERVICE_KEY,
+    body: {
+      user_id: userId,
+      amount_cents: amountCents,
+      pix_key: pixKey,
+      status: "pending",
+      metadata: {
+        origin: "DEDUCTION_WITHDRAWAL",
+        bucket: "deduction_balance_cents",
+        note: "Saque Saldo Dedução (retorno ArbiShield)",
+      },
+    },
+  });
+  const row = Array.isArray(created) ? created[0] : created;
+
+  try {
+    await sb("/rest/v1/wallet_transactions", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        user_id: userId,
+        type: "withdrawal_request",
+        amount_cents: -amountCents,
+        ref: row?.id || null,
+        metadata: {
+          origin: "DEDUCTION_WITHDRAWAL",
+          bucket: "deduction_balance_cents",
+        },
+      },
+    });
+  } catch {
+    /* */
+  }
+
+  return { ok: true, withdrawal: row, amountCents, availableAfter: available - amountCents };
+}
+
 async function transferRealToDesafio(token, body) {
   const userId = requireUserId(token);
   const amountCents = Math.round(Number(body?.amountCents ?? body?.amount_cents ?? 0));
@@ -4729,20 +4816,46 @@ function isOpenProtectionStatus(st) {
 }
 
 function settlementDeductionCents(row) {
+  const meta =
+    row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
   const raw =
     row.platform_deduction_cents != null
       ? row.platform_deduction_cents
-      : row.locked_deduction_cents;
+      : row.platform_profit_cents != null
+        ? row.platform_profit_cents
+        : meta.fee_charged_cents != null
+          ? meta.fee_charged_cents
+          : row.locked_deduction_cents;
   return Math.max(0, n(raw));
 }
 
-function settlementCreditCents(row, outcome) {
+function isFeeUpfrontProtection(row) {
+  const meta =
+    row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  return (
+    meta.billing_model === "fee_upfront_v1" ||
+    meta.fee_upfront === true ||
+    String(meta.source || "").includes("fee_upfront")
+  );
+}
+
+/** ArbiShield: stake + dedução; Exchange fee_upfront: 0; legado Exchange: stake − fee */
+function settlementCreditParts(row, outcome) {
   const amount = n(row.responsibility_cents || row.amount_cents);
-  if (amount <= 0) return 0;
+  const fee = settlementDeductionCents(row);
   const wonArbi = String(outcome).toLowerCase() === "arbishield";
-  if (wonArbi) return amount;
-  const fee = Math.min(settlementDeductionCents(row), amount);
-  return Math.max(0, amount - fee);
+  if (isFeeUpfrontProtection(row)) {
+    if (!wonArbi) return { stake: 0, fee: 0, total: 0 };
+    return { stake: amount, fee, total: amount + fee };
+  }
+  if (wonArbi) return { stake: amount, fee: 0, total: amount };
+  const keep = Math.min(fee, amount);
+  const net = Math.max(0, amount - keep);
+  return { stake: net, fee: 0, total: net };
+}
+
+function settlementCreditCents(row, outcome) {
+  return settlementCreditParts(row, outcome).total;
 }
 
 function settlementStatusForOutcome(outcome) {
@@ -4814,33 +4927,95 @@ async function claimProtectionCancelled(table, protectionId, extraBody = {}) {
 
 async function creditWalletForSettlement(row, outcome, now) {
   const amount = n(row.responsibility_cents || row.amount_cents);
-  const credit = settlementCreditCents(row, outcome);
+  const parts = settlementCreditParts(row, outcome);
+  const credit = parts.total;
   const wonArbi = String(outcome).toLowerCase() === "arbishield";
-  if (!row.user_id || amount <= 0) {
+  const feeUpfront = isFeeUpfrontProtection(row);
+  const balanceType = String(
+    (row.metadata &&
+      (row.metadata.balance_type ||
+        row.metadata.balance_type_requested ||
+        row.metadata.balanceType)) ||
+      "REAL"
+  ).toUpperCase();
+  if (!row.user_id || (amount <= 0 && credit <= 0)) {
     return { refunded: 0, credited: 0, skipped: true };
   }
   if (await protectionAlreadyCredited(row.id)) {
     return { refunded: 0, credited: 0, alreadyCredited: true };
   }
 
-  const prof = await sb(
-    `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+  if (feeUpfront && !wonArbi) {
+    try {
+      await sb("/rest/v1/wallet_transactions", {
+        method: "POST",
+        token: SERVICE_KEY,
+        body: {
+          user_id: row.user_id,
+          type: "protection_settlement",
+          amount_cents: 0,
+          ref: row.id,
+          metadata: {
+            protection_id: row.id,
+            match_id: row.match_id || null,
+            outcome: "exchange",
+            stake_cents: amount,
+            fee_cents: parts.fee || settlementDeductionCents(row),
+            billing_model: "fee_upfront_v1",
+            note: "taxa cobrada na criação — sem crédito no settle",
+          },
+        },
+      });
+    } catch {
+      /* */
+    }
+    return { refunded: 0, credited: 0, feeUpfrontExchange: true };
+  }
+
+  let prof = await sb(
+    `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents,demo_balance_cents,investor_balance_cents,deduction_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
     { token: SERVICE_KEY }
-  );
+  ).catch(() => null);
+  if (!Array.isArray(prof) || !prof[0]) {
+    prof = await sb(
+      `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents,demo_balance_cents,investor_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+      { token: SERVICE_KEY }
+    );
+  }
   const p = Array.isArray(prof) ? prof[0] : null;
   if (!p) throw new Error(`Perfil ${row.user_id} não encontrado para crédito`);
 
-  const locked = Math.max(0, n(p.locked_balance_cents) - amount);
-  // ArbiShield e Exchange → saldo real (balance_cents). Antes ArbiShield
-  // creditava reusable_balance_cents e o cliente não via reembolso na hora.
-  const patch = {
-    locked_balance_cents: locked,
-    balance_cents: n(p.balance_cents) + credit,
-  };
+  const patch = { updated_at: now };
+  if (!feeUpfront) {
+    patch.locked_balance_cents = Math.max(0, n(p.locked_balance_cents) - amount);
+  }
+  let bucket = "deduction_balance_cents";
+  if (balanceType === "DEMO") {
+    patch.demo_balance_cents = n(p.demo_balance_cents) + credit;
+    bucket = "demo_balance_cents";
+  } else if (balanceType === "INVESTOR") {
+    patch.investor_balance_cents = n(p.investor_balance_cents) + credit;
+    bucket = "investor_balance_cents";
+  } else {
+    // Saldo Dedução: usável nas operações e sacável
+    patch.deduction_balance_cents = n(p.deduction_balance_cents) + credit;
+    bucket = "deduction_balance_cents";
+  }
 
   let creditedOk = false;
   let lastErr = null;
-  for (const body of [{ ...patch, updated_at: now }, patch]) {
+  const attempts = [patch, { ...patch }];
+  delete attempts[1].updated_at;
+  if (bucket === "deduction_balance_cents") {
+    attempts.push({
+      updated_at: now,
+      balance_cents: n(p.balance_cents) + credit,
+      ...(patch.locked_balance_cents != null
+        ? { locked_balance_cents: patch.locked_balance_cents }
+        : {}),
+    });
+  }
+  for (const body of attempts) {
     try {
       await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
         method: "PATCH",
@@ -4848,6 +5023,9 @@ async function creditWalletForSettlement(row, outcome, now) {
         body,
       });
       creditedOk = true;
+      if (body.balance_cents != null && body.deduction_balance_cents == null) {
+        bucket = "balance_cents";
+      }
       break;
     } catch (err) {
       lastErr = err;
@@ -4870,10 +5048,12 @@ async function creditWalletForSettlement(row, outcome, now) {
           protection_id: row.id,
           match_id: row.match_id || null,
           outcome: String(outcome).toLowerCase(),
-          stake_cents: amount,
-          fee_cents: wonArbi ? 0 : settlementDeductionCents(row),
-          bucket: "balance_cents",
-          fix: "settle-arbishield-saldo-real-v1",
+          stake_cents: parts.stake,
+          fee_cents: parts.fee,
+          fee_returned_cents: wonArbi ? parts.fee : 0,
+          bucket,
+          billing_model: feeUpfront ? "fee_upfront_v1" : "legacy_lock",
+          fix: "settle-arbishield-stake-mais-deducao-v1",
         },
       },
     });
@@ -4881,7 +5061,13 @@ async function creditWalletForSettlement(row, outcome, now) {
     /* */
   }
 
-  return { refunded: credit, credited: credit };
+  return {
+    refunded: credit,
+    credited: credit,
+    stakeCents: parts.stake,
+    feeCents: parts.fee,
+    bucket,
+  };
 }
 
 function platformCutCents(row) {
@@ -6205,6 +6391,25 @@ const server = createServer(async (req, res) => {
         body = {};
       }
       const data = await applyReferralCode(token, body.data || body);
+      return sendJson(res, 200, data);
+    } catch (err) {
+      return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/deduction-withdraw" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      const data = await requestDeductionWithdrawal(token, body.data || body);
       return sendJson(res, 200, data);
     } catch (err) {
       return sendJson(res, 400, {

@@ -120,8 +120,12 @@ function availableBalance(
 ): number {
   if (balanceType === "DEMO") return num(profile.demo_balance_cents);
   if (balanceType === "INVESTOR") return num(profile.investor_balance_cents);
-  // Política: não há mais carteira reutilizável — tudo conta como saldo real
-  return num(profile.balance_cents) + num(profile.reusable_balance_cents);
+  // Banca real + legado reusable + Saldo Dedução (retornos ArbiShield)
+  return (
+    num(profile.balance_cents) +
+    num(profile.reusable_balance_cents) +
+    num(profile.deduction_balance_cents)
+  );
 }
 
 export async function createProtection(
@@ -219,7 +223,7 @@ export async function createProtection(
   const { data: profile, error: profErr } = await admin
     .from("profiles")
     .select(
-      "id,balance_cents,reusable_balance_cents,demo_balance_cents,investor_balance_cents,account_status,locked_balance_cents"
+      "id,balance_cents,reusable_balance_cents,deduction_balance_cents,demo_balance_cents,investor_balance_cents,account_status,locked_balance_cents"
     )
     .eq("id", input.userId)
     .maybeSingle();
@@ -255,13 +259,26 @@ export async function createProtection(
   let balanceAfter = 0;
 
   if (balanceType === "REAL") {
-    const bal =
+    let left = feeCents;
+    let bal =
       num(profile.balance_cents) + num(profile.reusable_balance_cents);
-    patch = {
-      balance_cents: bal - feeCents,
-      reusable_balance_cents: 0,
-    };
-    balanceAfter = bal - feeCents;
+    let ded = num(profile.deduction_balance_cents);
+    if (bal >= left) {
+      patch = {
+        balance_cents: bal - left,
+        reusable_balance_cents: 0,
+        deduction_balance_cents: ded,
+      };
+    } else {
+      left -= bal;
+      patch = {
+        balance_cents: 0,
+        reusable_balance_cents: 0,
+        deduction_balance_cents: Math.max(0, ded - left),
+      };
+    }
+    balanceAfter =
+      num(patch.balance_cents) + num(patch.deduction_balance_cents);
   } else {
     const field = pickBalanceField(balanceType);
     const cur = num(profile[field]);
