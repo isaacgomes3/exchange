@@ -1722,14 +1722,23 @@
           var cur = snapshotFromItem(item);
           var prev = liveWatch[id];
           if (prev) {
-            var homeUp =
-              prev.home != null &&
+            var baseHome = prev.home;
+            var baseAway = prev.away;
+            // Se já acompanhávamos ao vivo sem placar, assume 0-0 como base
+            if (
+              baseHome == null &&
+              baseAway == null &&
+              (prev.live || cur.live) &&
               cur.home != null &&
-              cur.home > prev.home;
+              cur.away != null
+            ) {
+              baseHome = 0;
+              baseAway = 0;
+            }
+            var homeUp =
+              baseHome != null && cur.home != null && cur.home > baseHome;
             var awayUp =
-              prev.away != null &&
-              cur.away != null &&
-              cur.away > prev.away;
+              baseAway != null && cur.away != null && cur.away > baseAway;
             if (homeUp || awayUp) {
               var scorer = homeUp && !awayUp
                 ? cur.homeTeam
