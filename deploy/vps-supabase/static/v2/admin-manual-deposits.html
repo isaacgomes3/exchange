@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Depósitos manuais — ArbiShield</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/finance-admins.js?v=fin-acl-2"></script>
+  <script src="/v2.js?v=fin-acl-2"></script>
+  <script src="/v2-shell.js?v=fin-acl-2" defer></script>
+  <style>
+    .d-kpis { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-bottom: 16px; }
+    @media (max-width: 800px) { .d-kpis { grid-template-columns: 1fr; } }
+    .d-kpi { border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 14px; background: rgba(4,26,20,0.85); }
+    .d-kpi span { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+    .d-kpi strong { font-size: 22px; }
+    .d-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
+    .d-toolbar select, .d-toolbar input {
+      height: 38px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.12);
+      background: #06251d; color: #fff; padding: 0 12px; font: inherit;
+    }
+    .d-wrap { border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; overflow: auto; background: rgba(4,26,20,0.75); }
+    .d-table {
+      width: 100%;
+      min-width: 960px;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    .d-table col.c-cli { width: 22%; }
+    .d-table col.c-val { width: 10%; }
+    .d-table col.c-rede { width: 8%; }
+    .d-table col.c-tipo { width: 10%; }
+    .d-table col.c-st { width: 11%; }
+    .d-table col.c-comp { width: 12%; }
+    .d-table col.c-data { width: 13%; }
+    .d-table col.c-act { width: 14%; }
+    .d-table th, .d-table td {
+      text-align: left;
+      padding: 14px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      font-size: 13px;
+      vertical-align: middle;
+      word-break: break-word;
+    }
+    .d-table th {
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+    }
+    .d-table td.col-val,
+    .d-table th.col-val { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .d-table td.col-rede,
+    .d-table th.col-rede,
+    .d-table td.col-tipo,
+    .d-table th.col-tipo,
+    .d-table td.col-st,
+    .d-table th.col-st,
+    .d-table td.col-comp,
+    .d-table th.col-comp { text-align: center; }
+    .d-table td.col-data,
+    .d-table th.col-data { text-align: right; white-space: nowrap; }
+    .d-table td.col-act,
+    .d-table th.col-act { text-align: right; }
+    .d-cli-name {
+      display: block;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.35;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+    .tag { display: inline-flex; padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; border: 1px solid rgba(255,255,255,0.12); }
+    .tag.pending { color: #fbbf24; border-color: rgba(251,191,36,0.4); }
+    .tag.approved { color: #c9f223; border-color: rgba(201,242,35,0.4); }
+    .tag.rejected { color: #f87171; border-color: rgba(248,113,113,0.4); }
+    .tag.await { color: #94a3b8; }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: flex-end;
+      align-items: center;
+      width: 100%;
+    }
+    .actions .btn { height: 34px; padding: 0 10px; font-size: 11px; }
+    .actions .muted { margin: 0; text-align: right; width: 100%; }
+    .proof-link { color: #c9f223; font-weight: 700; text-decoration: none; cursor: pointer; }
+    .empty { padding: 28px; text-align: center; color: var(--muted); }
+    .muted { color: var(--muted); font-size: 11px; margin-top: 4px; }
+    .drawer-back {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 90;
+      display: none; align-items: stretch; justify-content: flex-end;
+    }
+    .drawer-back.show { display: flex; }
+    .drawer {
+      width: min(440px, 100%); background: #041a14; border-left: 1px solid rgba(201,242,35,0.2);
+      padding: 18px; overflow: auto;
+    }
+    .drawer img, .drawer embed { width: 100%; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); margin-top: 10px; min-height: 200px; }
+  </style>
+</head>
+<body data-shell="admin" data-active="manual-deposits">
+  <div class="page-head">
+    <div>
+      <h1>Depósitos <span>manuais</span></h1>
+      <p class="sub">PIX / crypto · comprovante · creditar saldo como no site antigo</p>
+    </div>
+    <button type="button" class="btn btn-ghost" id="btnRefresh">Atualizar</button>
+  </div>
+  <div id="err" class="err"></div>
+  <div id="ok" class="ok-msg" style="display:none"></div>
+
+  <div class="d-kpis">
+    <div class="d-kpi"><span>Pendentes</span><strong id="kpiPending">0</strong></div>
+    <div class="d-kpi"><span>Aprovados</span><strong id="kpiApproved">0</strong></div>
+    <div class="d-kpi"><span>Rejeitados</span><strong id="kpiRejected">0</strong></div>
+  </div>
+
+  <div class="d-toolbar">
+    <select id="fltStatus">
+      <option value="PENDING">Pendentes</option>
+      <option value="ALL">Todos</option>
+      <option value="APPROVED">Aprovados</option>
+      <option value="REJECTED">Rejeitados</option>
+      <option value="AWAITING_PROOF">Aguardando comprovante</option>
+    </select>
+    <select id="fltType">
+      <option value="ALL">Todos os tipos</option>
+      <option value="user">Saldo usuário</option>
+      <option value="investor">Provedor / investidor</option>
+    </select>
+    <input id="fltQ" type="search" placeholder="Buscar nome ou id…" style="min-width:200px" />
+  </div>
+
+  <div class="d-wrap">
+    <table class="d-table">
+      <colgroup>
+        <col class="c-cli" />
+        <col class="c-val" />
+        <col class="c-rede" />
+        <col class="c-tipo" />
+        <col class="c-st" />
+        <col class="c-comp" />
+        <col class="c-data" />
+        <col class="c-act" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Cliente</th>
+          <th class="col-val">Valor</th>
+          <th class="col-rede">Rede</th>
+          <th class="col-tipo">Tipo</th>
+          <th class="col-st">Status</th>
+          <th class="col-comp">Comprovante</th>
+          <th class="col-data">Data</th>
+          <th class="col-act">Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"><tr><td colspan="8" class="empty">Carregando…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="drawer-back" id="drawer" aria-hidden="true">
+    <div class="drawer">
+      <h2 style="margin:0 0 8px;font-size:15px;text-transform:uppercase;letter-spacing:.08em">Comprovante</h2>
+      <p id="drawerMeta" class="sub" style="color:var(--muted);font-size:12px"></p>
+      <div id="drawerMedia"></div>
+      <div style="margin-top:12px">
+        <button type="button" class="btn btn-ghost" id="drawerClose">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (async function () {
+      var money = ArbiV2.money;
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+      if (!(await ArbiV2.requireFinanceAdmin(supa, user))) {
+        location.replace("/admin.html");
+        return;
+      }
+
+      var FN = {
+        approve: "81753fec5a4788d0cecf17daf4605047d90238c386a240b54855a19f0fbc53d2",
+        credited: "1b3d8a890eea085aa1507094a9ce6e49ca532e35c3e17363c50b9dc1a253ddd5",
+        reject: "97fbb202a39627b7eeade54ac383dd1197c5a76c5f392f3046ee5875fef4da50",
+        proofUrl: "c1d2e3f4a5b697887766554433221100ffeeddccbbaa99887766554433221100",
+      };
+
+      var rows = [];
+      var errEl = document.getElementById("err");
+      var okEl = document.getElementById("ok");
+      var tbody = document.getElementById("tbody");
+      var drawer = document.getElementById("drawer");
+
+      function showErr(msg) {
+        errEl.textContent = msg || "";
+        errEl.classList.toggle("show", !!msg);
+      }
+      function showOk(msg) {
+        okEl.textContent = msg || "";
+        okEl.style.display = msg ? "block" : "none";
+        if (msg) setTimeout(function () { okEl.style.display = "none"; }, 3500);
+      }
+      async function token() {
+        var s = await supa.auth.getSession();
+        return s.data.session && s.data.session.access_token;
+      }
+
+      function isInvestor(r) {
+        var t = String(r.deposit_type || "").toLowerCase();
+        return t === "investor" || t === "provider" || t === "partner";
+      }
+      function isDesafio(r) {
+        var t = String(r.deposit_type || "").toLowerCase();
+        return t === "desafio" || t === "challenge";
+      }
+      function depositDestLabel(r) {
+        if (isDesafio(r)) return "Desafio";
+        if (isInvestor(r)) return "Provedor";
+        return "Usuário";
+      }
+      function statusClass(st) {
+        st = String(st || "").toUpperCase();
+        if (st === "PENDING" || st === "PROCESSING") return "pending";
+        if (st === "APPROVED") return "approved";
+        if (st === "REJECTED") return "rejected";
+        return "await";
+      }
+      function statusLabel(st) {
+        st = String(st || "").toUpperCase();
+        if (st === "PENDING" || st === "PROCESSING") return "Pendente";
+        if (st === "APPROVED") return "Aprovado";
+        if (st === "REJECTED") return "Rejeitado";
+        if (st === "AWAITING_PROOF") return "Aguardando comprovante";
+        return st || "—";
+      }
+
+      async function load() {
+        showErr("");
+        var q = await supa
+          .from("manual_deposits")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(300);
+        if (q.error) throw q.error;
+        rows = q.data || [];
+        var userIds = Array.from(new Set(rows.map(function (r) { return r.user_id; }).filter(Boolean)));
+        var profileMap = {};
+        if (userIds.length) {
+          var pr = await supa.from("profiles").select("id,full_name").in("id", userIds);
+          if (!pr.error) (pr.data || []).forEach(function (p) { profileMap[p.id] = p; });
+        }
+        rows.forEach(function (r) {
+          r.profiles = profileMap[r.user_id] || { full_name: "Usuário" };
+        });
+        render();
+      }
+
+      function filtered() {
+        var st = document.getElementById("fltStatus").value;
+        var ty = document.getElementById("fltType").value;
+        var qq = String(document.getElementById("fltQ").value || "").trim().toLowerCase();
+        return rows.filter(function (r) {
+          var rst = String(r.status || "").toUpperCase();
+          if (st === "PENDING") {
+            if (rst !== "PENDING" && rst !== "PROCESSING") return false;
+          } else if (st !== "ALL" && rst !== st) return false;
+          if (ty === "investor" && !isInvestor(r)) return false;
+          if (ty === "user" && isInvestor(r)) return false;
+          if (qq) {
+            var name = String((r.profiles && r.profiles.full_name) || "").toLowerCase();
+            if (name.indexOf(qq) < 0 && String(r.id).toLowerCase().indexOf(qq) < 0 && String(r.user_id).toLowerCase().indexOf(qq) < 0) {
+              return false;
+            }
+          }
+          return true;
+        });
+      }
+
+      function render() {
+        var pending = rows.filter(function (r) {
+          var s = String(r.status || "").toUpperCase();
+          return s === "PENDING" || s === "PROCESSING";
+        }).length;
+        var approved = rows.filter(function (r) { return String(r.status || "").toUpperCase() === "APPROVED"; }).length;
+        var rejected = rows.filter(function (r) { return String(r.status || "").toUpperCase() === "REJECTED"; }).length;
+        document.getElementById("kpiPending").textContent = String(pending);
+        document.getElementById("kpiApproved").textContent = String(approved);
+        document.getElementById("kpiRejected").textContent = String(rejected);
+
+        var list = filtered();
+        if (!list.length) {
+          tbody.innerHTML = '<tr><td colspan="8" class="empty">Sem depósitos para exibir</td></tr>';
+          return;
+        }
+        tbody.innerHTML = list.map(function (r, idx) {
+          var canAct = ["PENDING", "PROCESSING", "AWAITING_PROOF"].indexOf(String(r.status || "").toUpperCase()) >= 0;
+          return (
+            "<tr>" +
+              '<td class="col-cli"><span class="d-cli-name">' +
+                ((r.profiles && r.profiles.full_name) || "Usuário") +
+                '</span><div class="muted">' + String(r.user_id || "").slice(0, 8) + "…</div></td>" +
+              '<td class="col-val">' + money(r.amount_cents) + "</td>" +
+              '<td class="col-rede">' + (r.network || "—") + "</td>" +
+              '<td class="col-tipo">' + depositDestLabel(r) + "</td>" +
+              '<td class="col-st"><span class="tag ' + statusClass(r.status) + '">' + statusLabel(r.status) + "</span></td>" +
+              '<td class="col-comp">' + (r.proof_url
+                ? '<a class="proof-link" href="#" data-proof="' + idx + '">Ver comprovante</a>'
+                : '<span class="muted">Sem comprovante</span>') + "</td>" +
+              '<td class="col-data">' + (r.created_at ? new Date(r.created_at).toLocaleString("pt-BR") : "—") + "</td>" +
+              '<td class="col-act"><div class="actions">' +
+                (canAct
+                  ? '<button type="button" class="btn btn-primary" data-approve="' + idx + '">Confirmar e Creditar</button>' +
+                    '<button type="button" class="btn btn-ghost" data-credited="' + idx + '">Já creditado</button>' +
+                    '<button type="button" class="btn btn-ghost" data-reject="' + idx + '">Rejeitar</button>'
+                  : '<span class="muted">' + (r.admin_notes || "—") + "</span>") +
+              "</div></td>" +
+            "</tr>"
+          );
+        }).join("");
+
+        // re-index for filtered list
+        tbody.querySelectorAll("[data-proof]").forEach(function (a) {
+          a.addEventListener("click", function (e) {
+            e.preventDefault();
+            openProof(list[Number(a.getAttribute("data-proof"))]);
+          });
+        });
+        tbody.querySelectorAll("[data-approve]").forEach(function (b) {
+          b.addEventListener("click", function () { act("approve", list[Number(b.getAttribute("data-approve"))]); });
+        });
+        tbody.querySelectorAll("[data-credited]").forEach(function (b) {
+          b.addEventListener("click", function () { act("credited", list[Number(b.getAttribute("data-credited"))]); });
+        });
+        tbody.querySelectorAll("[data-reject]").forEach(function (b) {
+          b.addEventListener("click", function () { act("reject", list[Number(b.getAttribute("data-reject"))]); });
+        });
+      }
+
+      async function openProof(r) {
+        if (!r || !r.proof_url) return;
+        document.getElementById("drawerMeta").textContent =
+          ((r.profiles && r.profiles.full_name) || "Usuário") + " · " + money(r.amount_cents);
+        var media = document.getElementById("drawerMedia");
+        media.innerHTML = "<p class=\"muted\">Carregando…</p>";
+        drawer.classList.add("show");
+        try {
+          var path = String(r.proof_url);
+          var url = null;
+          // 1) se já for URL absoluta / data
+          if (/^https?:\/\//i.test(path) || path.indexOf("data:") === 0) {
+            url = path;
+          }
+          // 2) admin_notes com proof_signed
+          if (!url && r.admin_notes && String(r.admin_notes).indexOf("proof_signed:") === 0) {
+            url = String(r.admin_notes).slice("proof_signed:".length);
+          }
+          // 3) serverFn service role
+          if (!url) {
+            var t = await token();
+            var res = await fetch("/_serverFn/" + FN.proofUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-arbishield-plain": "1",
+                Authorization: "Bearer " + t,
+              },
+              body: JSON.stringify({ data: { id: r.id, path: path } }),
+            });
+            var text = await res.text();
+            var data = {};
+            try { data = text ? JSON.parse(text) : {}; } catch (e) { data = {}; }
+            if (data && data.result != null) data = data.result;
+            if (data && data.url) url = data.url;
+          }
+          // 4) supabase client signed url
+          if (!url) {
+            var signed = await supa.storage.from("deposit-proofs").createSignedUrl(path.replace(/^deposit-proofs\//, ""), 3600);
+            if (signed.error || !signed.data || !signed.data.signedUrl) throw signed.error || new Error("Falha ao assinar URL");
+            url = signed.data.signedUrl;
+          }
+          if (/\.pdf($|\?)/i.test(path)) {
+            media.innerHTML = '<embed src="' + url + '" type="application/pdf" />';
+          } else {
+            media.innerHTML = '<img src="' + url + '" alt="Comprovante" />';
+          }
+        } catch (ex) {
+          media.innerHTML = '<p class="muted">Não foi possível carregar o comprovante. ' +
+            ((ex && ex.message) || "") +
+            "<br>Se o bucket deposit-proofs ainda não existe, rode vps-fix-deposito-agora.sh na VPS.</p>";
+        }
+      }
+
+      async function callFn(kind, payload) {
+        var t = await token();
+        if (!t) throw new Error("Sessão expirada");
+        var fnId = FN[kind];
+        if (!fnId) throw new Error("Ação inválida: " + kind);
+        var res = await fetch("/_serverFn/" + fnId, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-arbishield-plain": "1",
+            Authorization: "Bearer " + t,
+          },
+          body: JSON.stringify({ data: payload }),
+        });
+        var text = await res.text();
+        var data = {};
+        try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 180) }; }
+        // TSR wrap
+        if (data && data.result != null && data.error == null) data = data.result;
+        var errMsg =
+          (typeof data.error === "string" && data.error) ||
+          (data.error && data.error.message) ||
+          data.message ||
+          data.raw ||
+          null;
+        if (data && data.ok === true) return data;
+        if (errMsg) throw new Error(errMsg);
+        if (!res.ok) throw new Error("HTTP " + res.status + (text ? ": " + text.slice(0, 120) : ""));
+        return data;
+      }
+
+      async function rejectViaSupabase(r, reason) {
+        var patch = { status: "REJECTED", admin_notes: reason || "Rejeitado" };
+        var up = await supa.from("manual_deposits").update(patch).eq("id", r.id).select("id,status");
+        if (up.error) throw up.error;
+        if (!up.data || !up.data.length) {
+          throw new Error("Update sem efeito (RLS). Use o shim/service role.");
+        }
+        return { ok: true, id: r.id, status: "REJECTED", via: "supabase" };
+      }
+
+      async function act(kind, r) {
+        if (!r) return;
+        try {
+          if (kind === "approve") {
+            if (!window.confirm("Confirmar e creditar " + money(r.amount_cents) + " no saldo " + (isDesafio(r) ? "do Desafio" : isInvestor(r) ? "do provedor" : "do usuário") + "?")) return;
+            await callFn("approve", { id: r.id });
+            showOk("Depósito aprovado com sucesso!");
+          } else if (kind === "credited") {
+            if (!window.confirm("Marcar como já creditado SEM alterar o saldo?")) return;
+            await callFn("credited", { id: r.id });
+            showOk("Alerta resolvido. O saldo não foi alterado.");
+          } else {
+            var reason = window.prompt("Motivo da rejeição:", "Comprovante inválido");
+            if (reason === null) return;
+            reason = String(reason || "").trim() || "Comprovante inválido";
+            try {
+              await callFn("reject", { id: r.id, reason: reason });
+            } catch (e1) {
+              console.warn("[deposit reject] serverFn", e1);
+              try {
+                // fallback direto no Supabase (precisa policy admin UPDATE)
+                await rejectViaSupabase(r, reason);
+              } catch (e2) {
+                throw new Error(
+                  "Rejeitar falhou. serverFn: " +
+                    ((e1 && e1.message) || e1) +
+                    " | supabase: " +
+                    ((e2 && e2.message) || e2)
+                );
+              }
+            }
+            showOk("Depósito rejeitado.");
+          }
+          await load();
+        } catch (ex) {
+          showErr(ex.message || String(ex));
+        }
+      }
+
+      document.getElementById("btnRefresh").addEventListener("click", function () { load().catch(function (e) { showErr(e.message); }); });
+      document.getElementById("fltStatus").addEventListener("change", render);
+      document.getElementById("fltType").addEventListener("change", render);
+      document.getElementById("fltQ").addEventListener("input", render);
+      document.getElementById("drawerClose").addEventListener("click", function () { drawer.classList.remove("show"); });
+      drawer.addEventListener("click", function (e) { if (e.target === drawer) drawer.classList.remove("show"); });
+
+      try { await load(); } catch (ex) {
+        showErr(ex.message || String(ex));
+        tbody.innerHTML = '<tr><td colspan="8" class="empty">Falha ao carregar depósitos.</td></tr>';
+      }
+    })();
+  </script>
+</body>
+</html>

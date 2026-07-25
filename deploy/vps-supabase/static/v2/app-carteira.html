@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <meta name="arbishield-build" content="carteira-xfer-reembolso-desafio-v1" />
+  <title>Centro Financeiro — ArbiShield</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css?v=xfer-reembolso-desafio-1" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js?v=xfer-reembolso-desafio-1"></script>
+  <script src="/v2-shell.js?v=xfer-reembolso-desafio-1" defer></script>
+  <script src="/v2-financeiro.js?v=xfer-reembolso-desafio-1" defer></script>
+  <style>
+    .fin-action.is-disabled,
+    .fin-action:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      filter: grayscale(0.35);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body data-shell="app" data-active="carteira">
+  <div class="fin-page">
+    <header class="fin-head">
+      <div>
+        <h1>Centro <span>Financeiro</span></h1>
+        <p class="sub">Extrato consolidado da conta — proteções, reembolsos, contestações, depósitos, saques, comissões e distribuições.</p>
+      </div>
+      <div class="fin-head-actions">
+        <label class="fin-period">
+          <span class="sr-only">Período</span>
+          <select id="finPeriod" aria-label="Período">
+            <option value="today">Hoje</option>
+            <option value="7d">7 dias</option>
+            <option value="30d" selected>30 dias</option>
+            <option value="90d">90 dias</option>
+            <option value="month">Este mês</option>
+            <option value="lastMonth">Mês passado</option>
+            <option value="all">Tudo</option>
+          </select>
+        </label>
+        <button type="button" class="fin-btn ghost" id="finExportCsv">CSV</button>
+        <button type="button" class="fin-btn ghost" id="finExportPdf">PDF</button>
+      </div>
+    </header>
+
+    <div id="err" class="err"></div>
+
+    <section class="fin-balances" aria-label="Saldos">
+      <article class="fin-bal">
+        <div class="fin-bal-top">
+          <span class="l">Saldo Real</span>
+          <span class="fin-bal-ico" aria-hidden="true">◉</span>
+        </div>
+        <div class="v" id="finBalReal">—</div>
+        <p class="h">Não sacável · banca de operações</p>
+      </article>
+      <article class="fin-bal accent">
+        <div class="fin-bal-top">
+          <span class="l">Saldo Reembolso</span>
+          <span class="fin-bal-ico" aria-hidden="true">↺</span>
+        </div>
+        <div class="v lime" id="finBalDeduction">—</div>
+        <p class="h">Usável e sacável · stake + dedução (ArbiShield)</p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
+          <button type="button" class="fin-btn sm" id="btnSaqueDeduction">Solicitar saque</button>
+          <button type="button" class="fin-btn sm ghost" id="btnTransferDeductionDesafio">Transferir p/ Desafio</button>
+        </div>
+      </article>
+      <article class="fin-bal">
+        <div class="fin-bal-top">
+          <span class="l">Saldo Provedor</span>
+          <span class="fin-bal-ico" aria-hidden="true">▦</span>
+        </div>
+        <div class="v" id="finBalProv">—</div>
+        <p class="h">Disponível p/ saque</p>
+      </article>
+      <article class="fin-bal accent">
+        <div class="fin-bal-top">
+          <span class="l">Saldo Afiliado</span>
+          <span class="fin-bal-ico" aria-hidden="true">◎</span>
+        </div>
+        <div class="v" id="finBalAff">—</div>
+        <p class="h">Disponível p/ saque</p>
+      </article>
+      <article class="fin-bal highlight">
+        <div class="fin-bal-top">
+          <span class="l">Saldo Total</span>
+          <span class="fin-bal-ico" aria-hidden="true">⬡</span>
+        </div>
+        <div class="v lime" id="finBalTotal">—</div>
+        <p class="h">Consolidado</p>
+      </article>
+      <article class="fin-bal">
+        <div class="fin-bal-top">
+          <span class="l">Proteções Ativas</span>
+          <span class="fin-bal-ico" aria-hidden="true">⛨</span>
+        </div>
+        <div class="v" id="finProtCount">0</div>
+        <p class="h" id="finProtLocked">R$ 0,00</p>
+      </article>
+    </section>
+
+    <section class="fin-main" id="finExtratoAnchor">
+      <div class="fin-tabs" role="tablist">
+        <button type="button" class="fin-tab active" data-tab="extrato" role="tab" aria-selected="true">Extrato</button>
+        <button type="button" class="fin-tab" data-tab="comissoes" role="tab">Comissões</button>
+        <button type="button" class="fin-tab" data-tab="distribuicoes" role="tab">Distribuições</button>
+        <button type="button" class="fin-tab" data-tab="relatorios" role="tab">Relatórios</button>
+        <button type="button" class="fin-tab" data-tab="exportacoes" role="tab">Exportações</button>
+      </div>
+
+      <div class="fin-panel" data-panel="extrato">
+        <div class="fin-search-wrap">
+          <span class="fin-search-ico" aria-hidden="true">⌕</span>
+          <input id="finSearch" type="search" placeholder="Buscar por jogo, mercado, ação, status..." autocomplete="off" />
+        </div>
+        <div class="fin-chips" id="finChips" role="group" aria-label="Filtros">
+          <button type="button" class="fin-chip active" data-group="all">Todos</button>
+          <button type="button" class="fin-chip" data-group="protecao">Proteções</button>
+          <button type="button" class="fin-chip" data-group="reembolso">Reembolsos</button>
+          <button type="button" class="fin-chip" data-group="contestacao">Contestações</button>
+          <button type="button" class="fin-chip" data-group="deposito">Depósitos</button>
+          <button type="button" class="fin-chip" data-group="saque">Saques</button>
+          <button type="button" class="fin-chip" data-group="afiliado">Afiliado</button>
+          <button type="button" class="fin-chip" data-group="provedor">Provedor</button>
+        </div>
+        <div class="fin-table-wrap">
+          <table class="fin-table">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Grupo</th>
+                <th>Ação</th>
+                <th>Status</th>
+                <th>Detalhes</th>
+                <th class="num">Valor</th>
+              </tr>
+            </thead>
+            <tbody id="finLedgerBody">
+              <tr><td colspan="6" class="fin-empty">Carregando…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="fin-pager">
+          <label>
+            <select id="finPageSize">
+              <option value="5">5 / página</option>
+              <option value="10" selected>10 / página</option>
+              <option value="20">20 / página</option>
+              <option value="50">50 / página</option>
+            </select>
+          </label>
+          <div class="fin-pager-btns">
+            <button type="button" class="fin-btn ghost" id="finPrev">Anterior</button>
+            <span class="fin-page-info" id="finPageInfo">1 / 1</span>
+            <button type="button" class="fin-btn ghost" id="finNext">Próxima</button>
+          </div>
+        </div>
+        <div class="fin-period-summary">
+          <div class="fin-period-summary-head">
+            <h4>Resumo do período</h4>
+            <span id="finPeriodLabel">30 dias</span>
+          </div>
+          <div class="fin-period-grid">
+            <div class="fin-period-cell"><span class="l">Depósitos</span><strong class="pos" id="sumDep">—</strong></div>
+            <div class="fin-period-cell"><span class="l">Saques</span><strong class="neg" id="sumWd">—</strong></div>
+            <div class="fin-period-cell"><span class="l">Reembolsos pagos</span><strong id="sumRf">—</strong></div>
+            <div class="fin-period-cell"><span class="l">Comissões</span><strong id="sumCo">—</strong></div>
+            <div class="fin-period-cell"><span class="l">Distribuições</span><strong id="sumDi">—</strong></div>
+            <div class="fin-period-cell brand"><span class="l">Saldo do período</span><strong class="lime" id="sumFinal">—</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="fin-panel" data-panel="comissoes" hidden>
+        <div class="fin-table-wrap">
+          <table class="fin-table">
+            <thead>
+              <tr><th>Data</th><th>Status</th><th>Indicado</th><th>Proteção</th><th class="num">Valor</th></tr>
+            </thead>
+            <tbody id="finCommBody">
+              <tr><td colspan="5" class="fin-empty">Nenhuma comissão registrada.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="fin-note sky" id="finAffNote">Saldo afiliado disponível para saque: —</p>
+      </div>
+
+      <div class="fin-panel" data-panel="distribuicoes" hidden>
+        <div class="fin-table-wrap">
+          <table class="fin-table">
+            <thead>
+              <tr><th>Data</th><th>Descrição</th><th class="num">Aporte</th><th class="num">Valor distribuído</th></tr>
+            </thead>
+            <tbody id="finDistBody">
+              <tr><td colspan="4" class="fin-empty">Nenhuma distribuição de provedor.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="fin-panel" data-panel="relatorios" hidden>
+        <div class="fin-report-grid">
+          <article class="fin-report-card">
+            <h4>Movimentação do período</h4>
+            <ul id="finReportPeriod"></ul>
+          </article>
+          <article class="fin-report-card">
+            <h4>Saldos consolidados</h4>
+            <ul id="finReportBalances"></ul>
+          </article>
+        </div>
+        <p class="fin-note">Relatório gerado a partir do extrato consolidado e dos saldos atuais da conta.</p>
+      </div>
+
+      <div class="fin-panel" data-panel="exportacoes" hidden>
+        <div class="fin-export-cards">
+          <button type="button" class="fin-export-card" id="finExportCsv2">
+            <strong>Exportar CSV</strong>
+            <span>Baixa o extrato filtrado do período selecionado.</span>
+          </button>
+          <button type="button" class="fin-export-card" id="finExportPdf2">
+            <strong>Imprimir / PDF</strong>
+            <span>Abre a impressão do navegador para salvar em PDF.</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="fin-metrics">
+      <article class="fin-metric">
+        <div class="fin-metric-top"><span class="l">Patrimônio Total</span><span class="fin-bal-ico">↗</span></div>
+        <div class="v lime" id="metTotal">—</div>
+        <p class="h" id="metMonthVar">▲ +0,00% este mês</p>
+      </article>
+      <article class="fin-metric">
+        <div class="fin-metric-top"><span class="l">Capital Bloqueado</span><span class="fin-bal-ico">▣</span></div>
+        <div class="v" id="metBlocked">—</div>
+        <p class="h" id="metActiveSub">0 proteções ativas</p>
+      </article>
+      <article class="fin-metric">
+        <div class="fin-metric-top"><span class="l">Lucro Real Acumulado</span><span class="fin-bal-ico">⬡</span></div>
+        <div class="v lime" id="metProfit">—</div>
+        <p class="h">Últimos 30 dias</p>
+      </article>
+      <article class="fin-metric">
+        <div class="fin-metric-top"><span class="l">Reembolsos Processados</span><span class="fin-bal-ico">↺</span></div>
+        <div class="v" id="metRefunded">—</div>
+        <p class="h">Este mês</p>
+      </article>
+    </section>
+
+    <section class="fin-mini-metrics">
+      <article class="fin-mini">
+        <span class="l">P/L acumulado</span>
+        <strong id="metPL">—</strong>
+      </article>
+      <article class="fin-mini">
+        <span class="l">Taxa operacional média</span>
+        <strong id="metFee">1,50%</strong>
+      </article>
+      <article class="fin-mini">
+        <span class="l">Rendimento médio período</span>
+        <strong id="metYield">—</strong>
+      </article>
+    </section>
+
+    <section class="fin-mid">
+      <article class="fin-chart-card">
+        <div class="fin-chart-head">
+          <div>
+            <h3>Evolução Financeira</h3>
+            <p>Patrimônio estimado · últimos 30 dias</p>
+          </div>
+          <span class="fin-pill">Patrimônio Total</span>
+        </div>
+        <div class="fin-chart" id="finChart" aria-hidden="true"></div>
+      </article>
+      <aside class="fin-actions-card">
+        <h3>Ações Rápidas</h3>
+        <div class="fin-actions">
+          <button type="button" class="fin-action primary" data-open-deposit="1">Depositar</button>
+          <button type="button" class="fin-action" id="finFilterReembolso">Extrato Reembolso</button>
+          <button type="button" class="fin-action" id="finScrollExtrato">Extrato Completo</button>
+          <button type="button" class="fin-action" id="finFilterProofs">Comprovantes Pagos</button>
+          <button type="button" class="fin-action is-disabled" id="finOpenTransfer" disabled title="Transferência interna Banca → Desafio bloqueada. Use depósito PIX no Desafio." aria-disabled="true">Transferência Interna (bloqueada)</button>
+        </div>
+      </aside>
+    </section>
+
+    <section class="fin-widgets">
+      <article class="fin-widget">
+        <h3>Extrato de Movimentações</h3>
+        <ul class="fin-widget-list" id="finMovList">
+          <li class="fin-empty-li">Nenhuma movimentação no período.</li>
+        </ul>
+        <button type="button" class="fin-link-btn" id="finVerMov">Ver todas as movimentações</button>
+      </article>
+      <article class="fin-widget">
+        <h3>Proteções e Reembolsos</h3>
+        <ul class="fin-widget-list" id="finOpsList">
+          <li class="fin-empty-li">Nenhuma operação registrada.</li>
+        </ul>
+        <a class="fin-link-btn" href="/app-protecoes.html">Ver todas as operações</a>
+      </article>
+      <article class="fin-widget">
+        <h3>Distribuição do Capital</h3>
+        <div class="fin-donut-wrap">
+          <div class="fin-donut" id="finDonut" aria-hidden="true"></div>
+          <ul class="fin-legend" id="finLegend"></ul>
+        </div>
+      </article>
+    </section>
+
+    <footer class="fin-trust">
+      <div><span aria-hidden="true">◉</span> Auditoria Automática</div>
+      <div><span aria-hidden="true">⛨</span> Segurança Máxima</div>
+      <div><span aria-hidden="true">◈</span> Liquidez Inteligente</div>
+      <div><span aria-hidden="true">◇</span> Transparência Total</div>
+      <div><span aria-hidden="true">◎</span> Suporte Especializado</div>
+    </footer>
+  </div>
+
+  <div class="fin-modal" id="finTransferModal" aria-hidden="true">
+    <div class="fin-modal-backdrop" data-fin-close="1"></div>
+    <div class="fin-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="finTransferTitle">
+      <header class="fin-modal-head">
+        <div>
+          <p class="fin-kicker">Transferência interna</p>
+          <h2 id="finTransferTitle">Reembolso → Desafio</h2>
+        </div>
+        <button type="button" class="fin-modal-x" data-fin-close="1" aria-label="Fechar">×</button>
+      </header>
+      <div class="fin-modal-body">
+        <p class="fin-note" id="finTransferNote">Mova seu Saldo Reembolso para o saldo do Desafio ArbiShield. A transferência é imediata.</p>
+        <div class="fin-transfer-meta">
+          <div><span class="l" id="finTransferAvailLabel">Disponível (Reembolso)</span><strong id="finTransferAvail">—</strong></div>
+          <div><span class="l" id="finTransferMaxLabel">Máximo</span><strong id="finTransferMax">—</strong></div>
+        </div>
+        <label class="fin-field">
+          <span>Valor (R$)</span>
+          <input id="finTransferAmount" type="text" inputmode="decimal" placeholder="0,00" />
+        </label>
+        <p class="fin-modal-err" id="finTransferErr" hidden></p>
+        <div class="fin-modal-actions">
+          <button type="button" class="fin-btn ghost" data-fin-close="1">Cancelar</button>
+          <button type="button" class="fin-btn primary" id="finTransferSubmit">Confirmar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
