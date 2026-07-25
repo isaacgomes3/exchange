@@ -25,10 +25,10 @@
     <div class="panel" style="margin-bottom:20px">
       <h2 style="margin:0 0 8px;font-size:16px">Teste real (BetBra Exchange)</h2>
       <p class="notice" style="margin-top:0">
-        <strong>LAY</strong> = responsabilidade · <strong>BACK</strong> = stake.
-        A API recebe <code>stake</code> casado: no LAY converte
-        <code>resp&nbsp;/&nbsp;(odd&nbsp;-&nbsp;1)</code>. Requer Conta BetBra,
-        dispositivo aprovado e <code>EXCHANGE_ORDERS_LIVE=1</code>.
+        Igual ao bilhete BetBra: no LAY você digita <strong>Responsabilidade</strong>
+        ou <strong>Stake</strong> (eles se sincronizam:
+        <code>stake = resp ÷ (odd − 1)</code>). No BACK digita <strong>Stake</strong>.
+        Use a odd atual do mercado. Ordem real — confirme abaixo.
       </p>
       <form id="liveForm" class="form-grid" style="margin-top:12px">
         <label>
@@ -55,7 +55,19 @@
         </label>
         <label>
           Odd LAY
-          <input name="layOdd" type="number" step="0.01" min="1.01" required value="65" id="layOdd" />
+          <input name="layOdd" type="number" step="0.01" min="1.01" required value="70" id="layOdd" />
+        </label>
+        <label>
+          Stake LAY (R$)
+          <input
+            name="layStakeBrl"
+            type="number"
+            step="0.01"
+            min="0.01"
+            required
+            value="1.45"
+            id="layStakeBrl"
+          />
         </label>
         <label>
           Responsabilidade LAY (R$)
@@ -65,13 +77,13 @@
             step="0.01"
             min="0.01"
             required
-            value="64"
+            value="100"
             id="liabilityBrl"
           />
         </label>
         <label>
           Odd BACK (saída)
-          <input name="backOdd" type="number" step="0.01" min="1.01" required value="100" />
+          <input name="backOdd" type="number" step="0.01" min="1.01" required value="100" id="backOdd" />
         </label>
         <label>
           Stake BACK (R$)
@@ -79,15 +91,13 @@
             name="stakeBrl"
             type="number"
             step="0.01"
-            min="1"
+            min="0.01"
             required
-            value="1"
+            value="1.015"
             id="stakeBrl"
           />
         </label>
-        <p class="notice" id="layHint" style="grid-column:1/-1;margin:0">
-          LAY @ 70 com resp. R$&nbsp;100 → stake casado ≈ R$&nbsp;1,45
-        </p>
+        <p class="notice" id="layHint" style="grid-column:1/-1;margin:0"></p>
         <label class="check-row" style="grid-column:1/-1">
           <input type="checkbox" name="confirmLive" required />
           Confirmo ordem <strong>real</strong> na BetBra (confirmLive)
@@ -98,6 +108,9 @@
           </button>
           <button type="button" class="btn-ghost" id="btnLayOnly">
             Só LAY
+          </button>
+          <button type="button" class="btn-ghost" id="btnFillGreen" type="button">
+            Preencher stake BACK (green)
           </button>
         </div>
       </form>
@@ -158,35 +171,93 @@
         return json;
       }
 
-      function updateLayHint() {
-        const odd = Number(document.getElementById("layOdd")?.value || 0);
-        const liab = Number(document.getElementById("liabilityBrl")?.value || 0);
-        const hint = document.getElementById("layHint");
+      const elLayOdd = document.getElementById("layOdd");
+      const elLayStake = document.getElementById("layStakeBrl");
+      const elLiab = document.getElementById("liabilityBrl");
+      const elBackOdd = document.getElementById("backOdd");
+      const elBackStake = document.getElementById("stakeBrl");
+      const hint = document.getElementById("layHint");
+      let syncLock = false;
+
+      function money(n, digits) {
+        return Number(n).toLocaleString("pt-BR", {
+          minimumFractionDigits: digits,
+          maximumFractionDigits: digits,
+        });
+      }
+
+      function greenBackStake(layStake, layOdd, backOdd) {
+        // P/L igual nos dois lados: stakeBack = stakeLay * oddLay / oddBack
+        return (layStake * layOdd) / backOdd;
+      }
+
+      function refreshHint() {
+        const layOdd = Number(elLayOdd.value || 0);
+        const layStake = Number(elLayStake.value || 0);
+        const liab = Number(elLiab.value || 0);
+        const backOdd = Number(elBackOdd.value || 0);
         if (!hint) return;
-        if (!(odd > 1.01) || !(liab > 0)) {
-          hint.textContent = "Informe odd LAY e responsabilidade.";
+        if (!(layOdd > 1.01) || !(layStake > 0) || !(liab > 0)) {
+          hint.textContent = "Informe odd, stake e responsabilidade do LAY.";
           return;
         }
-        const matched = liab / (odd - 1);
+        const green =
+          backOdd > 1.01 ? greenBackStake(layStake, layOdd, backOdd) : null;
         hint.textContent =
-          "LAY @ " +
-          odd +
-          " com resp. R$ " +
-          liab.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) +
-          " → stake casado ≈ R$ " +
-          matched.toLocaleString("pt-BR", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 4,
-          }) +
-          (matched < 1
-            ? " (abaixo do minBet típico R$ 1 — aumente a responsabilidade)"
+          "Como na BetBra: Stake " +
+          money(layStake, 2) +
+          " · Resp. " +
+          money(liab, 2) +
+          " (stake = resp ÷ (odd − 1) = " +
+          money(liab / (layOdd - 1), 4) +
+          ")" +
+          (green != null
+            ? " · Saída green BACK ≈ R$ " + money(green, 3)
             : "");
       }
-      document.getElementById("layOdd")?.addEventListener("input", updateLayHint);
-      document
-        .getElementById("liabilityBrl")
-        ?.addEventListener("input", updateLayHint);
-      updateLayHint();
+
+      function fromLiability() {
+        if (syncLock) return;
+        syncLock = true;
+        const odd = Number(elLayOdd.value || 0);
+        const liab = Number(elLiab.value || 0);
+        if (odd > 1.01 && liab > 0) {
+          elLayStake.value = String(Number((liab / (odd - 1)).toFixed(4)));
+        }
+        syncLock = false;
+        refreshHint();
+      }
+
+      function fromLayStake() {
+        if (syncLock) return;
+        syncLock = true;
+        const odd = Number(elLayOdd.value || 0);
+        const stake = Number(elLayStake.value || 0);
+        if (odd > 1.01 && stake > 0) {
+          elLiab.value = String(Number((stake * (odd - 1)).toFixed(2)));
+        }
+        syncLock = false;
+        refreshHint();
+      }
+
+      function fillGreenBack() {
+        const layOdd = Number(elLayOdd.value || 0);
+        const layStake = Number(elLayStake.value || 0);
+        const backOdd = Number(elBackOdd.value || 0);
+        if (!(layOdd > 1.01) || !(layStake > 0) || !(backOdd > 1.01)) return;
+        elBackStake.value = String(
+          Number(greenBackStake(layStake, layOdd, backOdd).toFixed(3))
+        );
+        refreshHint();
+      }
+
+      elLayOdd.addEventListener("input", fromLiability);
+      elLiab.addEventListener("input", fromLiability);
+      elLayStake.addEventListener("input", fromLayStake);
+      elBackOdd.addEventListener("input", refreshHint);
+      document.getElementById("btnFillGreen")?.addEventListener("click", fillGreenBack);
+      fromLiability();
+      fillGreenBack();
 
       async function runTest({ both }) {
         const fd = new FormData(document.getElementById("liveForm"));
@@ -196,19 +267,28 @@
         const layOdd = Number(fd.get("layOdd"));
         const backOdd = Number(fd.get("backOdd"));
         const liabilityBrl = Number(fd.get("liabilityBrl"));
+        const layStakeBrl = Number(fd.get("layStakeBrl"));
         const stakeBrl = Number(fd.get("stakeBrl"));
         const liabilityCents = Math.round(liabilityBrl * 100);
         const stakeCents = Math.round(stakeBrl * 100);
         if (!fd.get("confirmLive")) {
           throw new Error("Marque a confirmação de ordem real");
         }
-        const layMatched = liabilityBrl / (layOdd - 1);
+        // Conferência: stake informado ≈ resp/(odd-1)
+        const expectedStake = liabilityBrl / (layOdd - 1);
+        if (Math.abs(expectedStake - layStakeBrl) > 0.05) {
+          throw new Error(
+            "Stake LAY e responsabilidade não batem. Ajuste um dos campos (BetBra: stake = resp/(odd-1))."
+          );
+        }
         logEl.textContent =
-          "Enviando LAY (responsabilidade R$ " +
-          liabilityBrl +
-          " → stake casado ≈ R$ " +
-          layMatched.toFixed(4) +
-          ")…";
+          "Enviando LAY — stake " +
+          layStakeBrl.toFixed(4) +
+          " / resp. R$ " +
+          liabilityBrl.toFixed(2) +
+          " @ " +
+          layOdd +
+          "…";
         const lay = await placeOne({
           side: "LAY",
           odd: layOdd,
@@ -222,25 +302,27 @@
             source: "botshield-ordens-test",
             step: "lay",
             amountKind: "liability",
-            matchedStakeBrl: layMatched,
+            layStakeBrl,
+            liabilityBrl,
           },
         });
         let text =
-          "LAY ok (responsabilidade)\n" +
+          "LAY ok\n" +
           JSON.stringify(
             {
               orderId: lay.orderId,
               status: lay.status,
               demo: lay.demo,
               selectionId: lay.selectionId,
+              layStakeBrl,
               liabilityBrl,
-              matchedStakeBrl: Number(layMatched.toFixed(4)),
             },
             null,
             2
           );
         if (both) {
-          logEl.textContent = text + "\n\nEnviando BACK (stake R$ " + stakeBrl + ")…";
+          logEl.textContent =
+            text + "\n\nEnviando BACK — stake R$ " + stakeBrl + " @ " + backOdd + "…";
           const back = await placeOne({
             side: "BACK",
             odd: backOdd,
@@ -257,7 +339,7 @@
             },
           });
           text +=
-            "\n\nBACK ok (stake)\n" +
+            "\n\nBACK ok\n" +
             JSON.stringify(
               {
                 orderId: back.orderId,
