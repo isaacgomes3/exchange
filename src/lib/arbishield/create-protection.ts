@@ -39,19 +39,24 @@ export function layToBackOdd(layOdd: number) {
   return o / (o - 1);
 }
 
-/** fee_upfront_v1 sobre odd BACK efetiva; não trava stake. */
+/**
+ * fee_upfront_v1 sobre odd BACK efetiva; não trava o capital da entrada.
+ * `amountCents` = cobertura informada pelo cliente:
+ *   BACK → stake
+ *   LAY  → responsabilidade (já convertida via odd back equiv. em calcLay)
+ */
 export function calcFeeUpfront(amountCents: number, odd: number) {
-  const stake =
+  const coverage =
     Number.isFinite(amountCents) && amountCents > 0 ? Math.floor(amountCents) : 0;
   const o = Number.isFinite(odd) && odd > 1.01 ? odd : 1.01;
-  const grossReturnCents = Math.round(stake * o);
-  const grossProfitCents = Math.max(0, grossReturnCents - stake);
-  const userProfitCents = Math.round(stake * 0.015);
+  const grossReturnCents = Math.round(coverage * o);
+  const grossProfitCents = Math.max(0, grossReturnCents - coverage);
+  const userProfitCents = Math.round(coverage * 0.015);
   const arbiShieldDeductionCents = Math.max(0, grossProfitCents - userProfitCents);
   return {
-    stakeCents: stake,
-    responsibilityCents: stake,
-    coverageCents: stake,
+    stakeCents: coverage,
+    responsibilityCents: coverage,
+    coverageCents: coverage,
     odd: o,
     effectiveBackOdd: o,
     grossReturnCents,
@@ -65,22 +70,37 @@ export function calcFeeUpfront(amountCents: number, odd: number) {
   };
 }
 
-/** LAY — converte odd lay → back equivalente antes do fee_upfront. */
+/**
+ * LAY — amountCents = responsabilidade da casa (não o stake).
+ * Converte odd lay → back equivalente antes do fee_upfront.
+ * Na casa: stake LAY ≈ responsabilidade / (odd − 1).
+ */
 export function calcLay(amountCents: number, odd: number, _lockRatio = 0.9073) {
   const marketOdd = Number.isFinite(odd) && odd > 1.01 ? odd : 1.01;
   const backOdd = layToBackOdd(marketOdd);
-  const c = calcFeeUpfront(amountCents, backOdd);
+  const liability =
+    Number.isFinite(amountCents) && amountCents > 0 ? Math.floor(amountCents) : 0;
+  const c = calcFeeUpfront(liability, backOdd);
+  const houseStakeCents =
+    marketOdd > 1.01 ? Math.round(liability / (marketOdd - 1)) : 0;
   return {
     ...c,
+    stakeCents: houseStakeCents,
+    responsibilityCents: liability,
+    coverageCents: liability,
     odd: marketOdd,
     marketOdd,
     effectiveBackOdd: backOdd,
+    input_mode: "responsabilidade" as const,
   };
 }
 
-/** BACK — fee_upfront direto na odd do mercado. */
+/** BACK — amountCents = stake da casa; fee_upfront direto na odd do mercado. */
 export function calcBack(amountCents: number, odd: number) {
-  return calcFeeUpfront(amountCents, odd);
+  return {
+    ...calcFeeUpfront(amountCents, odd),
+    input_mode: "stake" as const,
+  };
 }
 
 function num(v: unknown) {
@@ -267,7 +287,11 @@ export async function createProtection(
     billing_model: "fee_upfront_v1",
     fee_upfront: true,
     fee_charged_cents: feeCents,
-    stake_cents: amountCents,
+    // LAY = responsabilidade · BACK = stake
+    input_mode: marketType === "LAY" ? "responsabilidade" : "stake",
+    stake_cents: marketType === "BACK" ? amountCents : num(c.stakeCents),
+    responsibility_cents:
+      marketType === "LAY" ? amountCents : num(c.responsibilityCents),
     calculations: c,
     balance_type: balanceType,
   };

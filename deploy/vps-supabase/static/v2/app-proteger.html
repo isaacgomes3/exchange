@@ -92,8 +92,9 @@
       <h2 id="drawerTitle">Nova proteção</h2>
       <p class="hint" id="drawerHint">—</p>
       <div class="field">
-        <label for="amount">Valor (R$)</label>
+        <label for="amount" id="amountLabel">Valor (R$)</label>
         <input id="amount" type="number" min="1" step="0.01" inputmode="decimal" placeholder="0,00" />
+        <p class="hint" id="amountHint" style="margin:6px 0 0">LAY = responsabilidade · BACK = stake</p>
       </div>
       <div class="field">
         <label for="odd">Odd</label>
@@ -345,6 +346,32 @@
         });
       }
 
+      function syncAmountLabels(mt) {
+        var isLay = String(mt || "").toUpperCase() === "LAY";
+        var lab = document.getElementById("amountLabel");
+        var hint = document.getElementById("amountHint");
+        var inp = document.getElementById("amount");
+        if (lab) {
+          lab.textContent = isLay
+            ? "Responsabilidade (R$)"
+            : "Stake (R$)";
+        }
+        if (hint) {
+          hint.textContent = isLay
+            ? "LAY · informe a responsabilidade da casa (não o stake)"
+            : "BACK · informe o stake da casa";
+        }
+        if (inp) {
+          inp.placeholder = isLay ? "Responsabilidade 0,00" : "Stake 0,00";
+          inp.setAttribute(
+            "title",
+            isLay
+              ? "No LAY usamos responsabilidade (= stake × (odd − 1))"
+              : "No BACK usamos o stake da aposta a favor"
+          );
+        }
+      }
+
       function updatePreview() {
         if (!state.selected) return;
         var amountReais = Number(
@@ -356,7 +383,8 @@
           Number(String(document.getElementById("odd").value || "0").replace(",", "."));
         var amountCents = Math.round(amountReais * 100);
         var mt = state.selected.marketType;
-        // Cálculo 100% local — nunca usar calcLay legado (zerava retorno/dedução)
+        syncAmountLabels(mt);
+        // LAY: amount = responsabilidade · BACK: amount = stake
         var layOdd = Number(odd) > 1.01 ? Number(odd) : 1.01;
         var effOdd = mt === "LAY" ? layOdd / (layOdd - 1) : layOdd;
         var retorno = Math.round(amountCents * effOdd);
@@ -364,16 +392,26 @@
         var seuLucro = Math.round(amountCents * 0.015);
         var deducao = Math.max(0, lucroBruto - seuLucro);
         var avail = available(document.getElementById("balanceType").value);
-        var oddLine =
-          mt === "LAY"
-            ? "<div><span>Odd LAY → back equiv.</span><b>" +
-              Number(effOdd).toFixed(3).replace(".", ",") +
-              "</b></div>"
-            : "";
+        var valorLabel = mt === "LAY" ? "Responsabilidade" : "Stake";
+        var extraLine = "";
+        if (mt === "LAY" && amountCents > 0 && layOdd > 1.01) {
+          // Na casa: stake LAY = responsabilidade / (odd − 1)
+          var stakeLay = Math.round(amountCents / (layOdd - 1));
+          extraLine =
+            "<div><span>Stake equivalente (casa)</span><b>" +
+            money(stakeLay) +
+            "</b></div>" +
+            "<div><span>Odd LAY → back equiv.</span><b>" +
+            Number(effOdd).toFixed(3).replace(".", ",") +
+            "</b></div>";
+        } else if (mt === "BACK" && amountCents > 0) {
+          extraLine =
+            "<div><span>Lucro bruto (casa)</span><b>" + money(lucroBruto) + "</b></div>";
+        }
         document.getElementById("preview").innerHTML =
           "<div><span>Tipo</span><b>" + mt + "</b></div>" +
-          oddLine +
-          "<div><span>Valor (stake)</span><b>" + money(amountCents) + "</b></div>" +
+          "<div><span>" + valorLabel + "</span><b>" + money(amountCents) + "</b></div>" +
+          extraLine +
           "<div><span>Retorno casa externa</span><b>" + money(retorno) + "</b></div>" +
           "<div><span>Seu lucro (1,5%)</span><b>" + money(seuLucro) + "</b></div>" +
           "<div><span>Dedução ArbiShield</span><b>" + money(deducao) + "</b></div>" +
@@ -383,7 +421,8 @@
       function openDrawer(match, market) {
         var mt = String(market.market_type || "LAY").toUpperCase() === "BACK" ? "BACK" : "LAY";
         state.selected = { match: match, market: market, marketType: mt };
-        document.getElementById("drawerTitle").textContent = "Proteger · " + mt;
+        document.getElementById("drawerTitle").textContent =
+          mt === "LAY" ? "Proteger · LAY (responsabilidade)" : "Proteger · BACK (stake)";
         var hint = document.getElementById("drawerHint");
         hint.innerHTML =
           '<span class="term-match-teams term-drawer-teams">' +
@@ -399,6 +438,7 @@
         document.getElementById("odd").value = Number(market.odd || 0).toFixed(2);
         document.getElementById("odd").readOnly = true;
         document.getElementById("amount").value = "";
+        syncAmountLabels(mt);
         // Preferir DEMO quando há saldo demo (crédito de teste) e REAL está zerado
         var preferDemo =
           available("DEMO") > 0 && available("REAL") < available("DEMO");
@@ -470,10 +510,16 @@
           odd
         ).feeChargedCents;
         if (!(available(balType) >= feeNeed)) {
+          var modo =
+            state.selected.marketType === "LAY"
+              ? "responsabilidade"
+              : "stake";
           showErr(
             "Saldo insuficiente para a dedução de " +
               money(feeNeed) +
-              " (stake não é travado). Disponível: " +
+              " (" +
+              modo +
+              " não é travado). Disponível: " +
               money(available(balType)) +
               "."
           );
