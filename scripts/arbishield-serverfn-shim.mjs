@@ -6540,11 +6540,17 @@ const server = createServer(async (req, res) => {
   }
 
   if (url.pathname === "/health") {
+    const base = {
+      ok: true,
+      service: "serverfn-shim",
+      env: process.env.ARBISHIELD_ENV || "production",
+      listen: LISTEN,
+    };
     try {
       const buckets = await ensureStorageBuckets();
-      return sendJson(res, 200, { ok: true, service: "serverfn-shim", buckets });
+      return sendJson(res, 200, { ...base, buckets });
     } catch (e) {
-      return sendJson(res, 200, { ok: true, service: "serverfn-shim" });
+      return sendJson(res, 200, base);
     }
   }
 

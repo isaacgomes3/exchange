@@ -50,6 +50,39 @@
     return !!FINANCE_PAGE_IDS[String(id || "")];
   }
 
+  /** Host do ambiente de teste (isolado de arbishield.app). */
+  function isTesteEnv() {
+    var h = String(
+      (global.location && global.location.hostname) || ""
+    ).toLowerCase();
+    return h === "teste.arbishield.app" || h.indexOf("teste.") === 0;
+  }
+
+  function ensureTesteBanner() {
+    if (!isTesteEnv()) return;
+    if (typeof document === "undefined") return;
+    if (document.getElementById("arbishield-teste-banner")) return;
+    var b = document.createElement("div");
+    b.id = "arbishield-teste-banner";
+    b.setAttribute("role", "status");
+    b.style.cssText =
+      "position:sticky;top:0;z-index:99999;background:#7c2d12;color:#ffedd5;" +
+      "text-align:center;padding:8px 12px;font:700 12px/1.4 ui-sans-serif,system-ui,sans-serif;" +
+      "letter-spacing:0.04em";
+    b.textContent =
+      "AMBIENTE DE TESTE — código isolado de produção. Banco pode ser o mesmo: cuidado com settle/pagamentos.";
+    var mount = document.body || document.documentElement;
+    if (mount) mount.prepend(b);
+  }
+
+  if (typeof document !== "undefined") {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", ensureTesteBanner);
+    } else {
+      ensureTesteBanner();
+    }
+  }
+
   function client() {
     if (!global.supabase) throw new Error("supabase-js não carregou");
     return global.supabase.createClient(global.location.origin, ANON, {
@@ -57,7 +90,10 @@
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
-        storageKey: "sb-arbishield-auth-token",
+        // Sessão separada no teste para não misturar login com produção no mesmo browser
+        storageKey: isTesteEnv()
+          ? "sb-arbishield-teste-auth-token"
+          : "sb-arbishield-auth-token",
       },
     });
   }
@@ -279,6 +315,7 @@
     canAccessFinance: canAccessFinance,
     isFinancePageId: isFinancePageId,
     isBlockedEmail: isBlockedEmail,
+    isTesteEnv: isTesteEnv,
     searchFootballTeams: searchFootballTeams,
     resolveFootballTeamLogo: resolveFootballTeamLogo,
     getImpersonation: getImpersonation,

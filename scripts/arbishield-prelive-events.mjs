@@ -2539,6 +2539,8 @@ async function handleApi(req, res) {
       ok: true,
       service: "arbishield-matches",
       fix: "betbra-api-v3",
+      env: process.env.ARBISHIELD_ENV || "production",
+      listen: LISTEN,
     });
   }
 
