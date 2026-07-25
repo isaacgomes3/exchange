@@ -68,7 +68,24 @@
     user_id: "user id",
     amount_cents: "valor",
     created_at: "criado em",
+    origem: "origem",
   };
+
+  var SALDO_REEMBOLSO_ORIGINS = {
+    SALDO_REEMBOLSO_WITHDRAWAL: 1,
+    DEDUCTION_WITHDRAWAL: 1,
+    SALDO_DEDUCAO_WITHDRAWAL: 1,
+    REFUND_BALANCE_WITHDRAWAL: 1,
+  };
+
+  function withdrawalOrigin(row) {
+    var meta = (row && row.metadata) || {};
+    return String(meta.origin || meta.request_type || meta.type || "").toUpperCase();
+  }
+
+  function isSaldoReembolsoWithdrawal(row) {
+    return !!SALDO_REEMBOLSO_ORIGINS[withdrawalOrigin(row)];
+  }
 
   function colLabel(c) {
     return COL_LABELS[c] || c.replace(/_/g, " ");
@@ -163,6 +180,16 @@
           q = q.eq(k, opts.eq[k]);
         });
       }
+      if (opts.or) {
+        q = q.or(opts.or);
+      }
+      if (opts.filters && opts.filters.length) {
+        opts.filters.forEach(function (f) {
+          if (!f || !f.col) return;
+          var op = f.op || "eq";
+          if (typeof q[op] === "function") q = q[op](f.col, f.val);
+        });
+      }
       if (withOrder) {
         if (opts.order) {
           q = q.order(opts.order.col || "created_at", {
@@ -194,6 +221,39 @@
       }
     }
     throw lastErr || new Error("Nenhuma tabela disponível");
+  }
+
+  /** Carrega e mescla todas as sources que responderem OK */
+  async function mergeTables(supa, specs) {
+    var all = [];
+    var labels = [];
+    var lastErr = null;
+    for (var i = 0; i < specs.length; i++) {
+      var spec = specs[i];
+      try {
+        var rows = await loadTable(supa, spec.table, spec);
+        var tag = spec.tag || spec.table;
+        labels.push(tag);
+        rows.forEach(function (r) {
+          var copy = Object.assign({}, r);
+          copy.origem = tag;
+          copy._source_table = spec.table;
+          all.push(copy);
+        });
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    if (!all.length && lastErr) throw lastErr;
+    all.sort(function (a, b) {
+      var ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      var tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tb - ta;
+    });
+    return {
+      spec: { table: labels.join(" + ") || "merged" },
+      rows: all,
+    };
   }
 
   /** Anexa profiles.full_name em cada linha com user_id → campo user_name */
@@ -354,8 +414,16 @@
         searchPlaceholder: cfg.searchPlaceholder || "Buscar na lista…",
       });
       try {
-        var loaded = await tryTables(supa, cfg.sources);
-        var rows = loaded.rows;
+        var loaded = cfg.mergeSources
+          ? await mergeTables(supa, cfg.sources)
+          : await tryTables(supa, cfg.sources);
+        var rows = loaded.rows || [];
+        if (typeof cfg.rowFilter === "function") {
+          rows = rows.filter(cfg.rowFilter);
+        }
+        if (typeof cfg.rowMap === "function") {
+          rows = rows.map(cfg.rowMap);
+        }
         var wantName =
           cfg.enrichUserNames === true ||
           (cfg.cols || []).indexOf("user_name") >= 0;
@@ -449,5 +517,7 @@
     mountApp: mountApp,
     moneyMaybe: moneyMaybe,
     esc: esc,
+    isSaldoReembolsoWithdrawal: isSaldoReembolsoWithdrawal,
+    withdrawalOrigin: withdrawalOrigin,
   };
 })(window);

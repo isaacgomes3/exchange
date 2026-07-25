@@ -10,27 +10,39 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/finance-admins.js?v=fin-acl-2"></script>
   <script src="/v2.js?v=fin-acl-2"></script>
-  <script src="/v2-pages.js?v=saques-nome-1"></script>
+  <script src="/v2-pages.js?v=reembolso-saque-1"></script>
   <script src="/v2-shell.js?v=fin-acl-2" defer></script>
 </head>
 <body data-shell="admin" data-active="refunds">
   <div class="page-head">
     <div>
       <h1>Gestão de <span>Reembolsos</span></h1>
-      <p class="sub">Financeiro · layout Jogos · nativo v2 · sem SPA</p>
+      <p class="sub">Financeiro · pedidos de reembolso + saques do Saldo Reembolso</p>
     </div>
   </div>
   <div id="err" class="err"></div>
   <div id="pageBody"><div class="meta">Carregando…</div></div>
   <script>
     ArbiV2Page.mountAdmin({
+      mergeSources: true,
       sources: [
-        { table: "refund_requests", limit: 200 },
-        { table: "back_refund_requests", limit: 200 },
+        { table: "refund_requests", limit: 200, tag: "Pedido reembolso" },
+        { table: "back_refund_requests", limit: 200, tag: "Back reembolso" },
+        {
+          table: "withdrawals",
+          limit: 200,
+          tag: "Saldo Reembolso",
+          // PostgREST: filtra saques da carteira Saldo Reembolso
+          or:
+            "metadata->>origin.eq.SALDO_REEMBOLSO_WITHDRAWAL," +
+            "metadata->>origin.eq.DEDUCTION_WITHDRAWAL," +
+            "metadata->>origin.eq.SALDO_DEDUCAO_WITHDRAWAL," +
+            "metadata->>origin.eq.REFUND_BALANCE_WITHDRAWAL",
+        },
       ],
-      cols: ["id", "user_name", "amount_cents", "status", "created_at"],
+      cols: ["id", "user_name", "origem", "amount_cents", "status", "created_at"],
       enrichUserNames: true,
-      searchPlaceholder: "Buscar por nome, status, id…",
+      searchPlaceholder: "Buscar por nome, origem, status…",
     });
   </script>
 </body>

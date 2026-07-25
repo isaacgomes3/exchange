@@ -9,7 +9,7 @@ REF="${ARBISHIELD_REF:-cursor/fix-proteger-js-e85c}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 
-echo "==> hotfix admin — nome do cliente (saques + transações + reembolsos) ($(date -Is))"
+echo "==> hotfix admin — nome + Saldo Reembolso em Reembolsos ($(date -Is))"
 
 publish() {
   local rel="$1"
