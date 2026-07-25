@@ -1028,21 +1028,22 @@
           '<div class="team-suggest-loading">Buscando times…</div>'
         );
         try {
+          // Preferir busca no browser (TheSportsDB) — não depende do nginx/worker
           var teams = [];
-          try {
-            var data = await apiGet(
-              "/api/arbishield/football-teams?q=" + encodeURIComponent(q)
-            );
-            teams = Array.isArray(data.teams) ? data.teams : [];
-          } catch (apiErr) {
-            // API ausente (not_found) → fallback TheSportsDB no browser
-            if (
-              window.ArbiV2 &&
-              typeof ArbiV2.searchFootballTeams === "function"
-            ) {
-              teams = await ArbiV2.searchFootballTeams(q);
-            } else {
-              throw apiErr;
+          if (
+            window.ArbiV2 &&
+            typeof ArbiV2.searchFootballTeams === "function"
+          ) {
+            teams = await ArbiV2.searchFootballTeams(q);
+          }
+          if (!teams.length) {
+            try {
+              var data = await apiGet(
+                "/api/arbishield/football-teams?q=" + encodeURIComponent(q)
+              );
+              teams = Array.isArray(data.teams) ? data.teams : [];
+            } catch (apiErr) {
+              /* API opcional */
             }
           }
           if (seq !== teamSearchSeq[side]) return;
@@ -2249,10 +2250,21 @@
         var q = String(teamName || "").trim();
         if (q.length < 2) return;
         try {
-          var data = await apiGet(
-            "/api/arbishield/football-teams?q=" + encodeURIComponent(q)
-          );
-          var teams = Array.isArray(data.teams) ? data.teams : [];
+          var teams = [];
+          if (
+            window.ArbiV2 &&
+            typeof ArbiV2.searchFootballTeams === "function"
+          ) {
+            teams = await ArbiV2.searchFootballTeams(q);
+          }
+          if (!teams.length) {
+            try {
+              var data = await apiGet(
+                "/api/arbishield/football-teams?q=" + encodeURIComponent(q)
+              );
+              teams = Array.isArray(data.teams) ? data.teams : [];
+            } catch (apiErr) {}
+          }
           if (!teams.length) return;
           var qn = q.toLowerCase();
           var best =
