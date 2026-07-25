@@ -22,7 +22,7 @@ Arquivos cobertos (lista mínima):
 - `scripts/arbishield-prelive-events.mjs` (create/settle/cancel)
 - `scripts/arbishield-serverfn-shim.mjs` (settle/cancel/saque dedução)
 - `src/lib/arbishield/create-protection.ts`
-- UI: `app-proteger.html`, `app-protecoes.html`, `admin-jogos.html` (textos/settle), `v2-financeiro.js` (Saldo Dedução)
+- UI: `app-proteger.html`, `app-protecoes.html`, `admin-jogos.html` (textos/settle), `v2-financeiro.js` (Saldo Reembolso)
 
 Se um pedido tangenciar esses arquivos por outro motivo (hotfix de JS, Encerrado por, etc.), **preserve** as regras abaixo; não “aproveite” para mudar crédito/dedução.
 
@@ -31,7 +31,7 @@ Se um pedido tangenciar esses arquivos por outro motivo (hotfix de JS, Encerrado
 1. **Ativação:** cobra só a **dedução ArbiShield** (lucro bruto − 1,5% da cobertura). Não trava o stake/responsabilidade.
 2. **LAY** = responsabilidade; **BACK** = stake. Nunca lançar LAY+BACK no mesmo evento de teste.
 3. **Bateu ArbiShield:** credita **stake/responsabilidade + dedução** automaticamente.
-   - REAL → `deduction_balance_cents` (Saldo Dedução: usável + sacável)
+   - REAL → `deduction_balance_cents` (UI: **Saldo Reembolso** — usável + sacável; stake + dedução)
    - DEMO → `demo_balance_cents`
    - INVESTOR → `investor_balance_cents`
 4. **Bateu Exchange:** não devolve nada (dedução já cobrada na entrada).

@@ -124,7 +124,7 @@ function availableBalance(
 ): number {
   if (balanceType === "DEMO") return num(profile.demo_balance_cents);
   if (balanceType === "INVESTOR") return num(profile.investor_balance_cents);
-  // Banca real + legado reusable + Saldo Dedução (retornos ArbiShield)
+  // Banca real + legado reusable + Saldo Reembolso (retornos ArbiShield)
   return (
     num(profile.balance_cents) +
     num(profile.reusable_balance_cents) +

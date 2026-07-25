@@ -1196,7 +1196,7 @@ async function creditWalletForSettlement(row, outcome, now) {
       nCents(p.locked_balance_cents) - amount
     );
   }
-  // ArbiShield: stake + dedução → bucket do contrato (REAL=Saldo Dedução).
+  // ArbiShield: stake + dedução → bucket do contrato (REAL=Saldo Reembolso).
   const bucket = creditBucketForSettlement(balanceType);
   if (bucket === "demo_balance_cents") {
     patch.demo_balance_cents = nCents(p.demo_balance_cents) + credit;
@@ -1264,7 +1264,7 @@ async function creditWalletForSettlement(row, outcome, now) {
           billing_model: feeUpfront ? "fee_upfront_v1" : "legacy_lock",
           fix: "settle-arbishield-stake-mais-deducao-v1",
           note: wonArbi
-            ? "ArbiShield: stake + dedução creditados (saldo dedução / bucket origem)"
+            ? "ArbiShield: stake + dedução creditados (Saldo Reembolso / bucket origem)"
             : undefined,
         },
       },
@@ -1790,7 +1790,7 @@ async function createProtection(body, userToken) {
       n(profile.investor_balance_cents) - feeCents;
     balanceAfter = patch.investor_balance_cents;
   } else {
-    // Consome banca real + reusable primeiro; depois Saldo Dedução
+    // Consome banca real + reusable primeiro; depois Saldo Reembolso
     let left = feeCents;
     const bal = n(profile.balance_cents) + n(profile.reusable_balance_cents);
     const ded = n(profile.deduction_balance_cents);

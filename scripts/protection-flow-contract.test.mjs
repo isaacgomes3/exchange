@@ -36,6 +36,16 @@ describe("contrato travado — metadados", () => {
     const agents = readFileSync(resolve(root, "AGENTS.md"), "utf8");
     assert.match(agents, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
     assert.match(agents, /protection-flow-contract-v1/);
+    assert.match(agents, /Saldo Reembolso/);
+  });
+
+  it("carteira do cliente exibe Saldo Reembolso (não Saldo Dedução)", () => {
+    const html = readFileSync(
+      resolve(root, "deploy/vps-supabase/static/v2/app-carteira.html"),
+      "utf8"
+    );
+    assert.match(html, /Saldo Reembolso/);
+    assert.doesNotMatch(html, /Saldo Dedução/);
   });
 
   it("prelive e shim importam o contrato (não reimplementam settle credit)", () => {

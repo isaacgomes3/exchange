@@ -1784,7 +1784,7 @@ async function requestAffiliateWithdrawal(token, body) {
   return { ok: true, withdrawal: row, amountCents };
 }
 
-/** Saque do Saldo Dedução (retornos ArbiShield: stake + dedução). */
+/** Saque do Saldo Reembolso (retornos ArbiShield: stake + dedução). */
 async function requestDeductionWithdrawal(token, body) {
   const userId = requireUserId(token);
   const amountCents = Math.round(
@@ -1803,10 +1803,15 @@ async function requestDeductionWithdrawal(token, body) {
   const hasOpen = (Array.isArray(open) ? open : []).some((w) => {
     const meta = w?.metadata || {};
     const origin = String(meta.origin || meta.request_type || meta.type || "").toUpperCase();
-    return origin === "DEDUCTION_WITHDRAWAL" || origin === "SALDO_DEDUCAO_WITHDRAWAL";
+    return (
+      origin === "DEDUCTION_WITHDRAWAL" ||
+      origin === "SALDO_DEDUCAO_WITHDRAWAL" ||
+      origin === "REFUND_BALANCE_WITHDRAWAL" ||
+      origin === "SALDO_REEMBOLSO_WITHDRAWAL"
+    );
   });
   if (hasOpen) {
-    throw new Error("Você já possui um saque de Saldo Dedução em análise.");
+    throw new Error("Você já possui um saque de Saldo Reembolso em análise.");
   }
 
   const rows = await sb(
@@ -1818,7 +1823,7 @@ async function requestDeductionWithdrawal(token, body) {
   const available = n(p.deduction_balance_cents);
   if (amountCents > available) {
     throw new Error(
-      `Saldo Dedução insuficiente (disponível ${(available / 100).toFixed(2)})`
+      `Saldo Reembolso insuficiente (disponível ${(available / 100).toFixed(2)})`
     );
   }
 
@@ -1841,9 +1846,10 @@ async function requestDeductionWithdrawal(token, body) {
       pix_key: pixKey,
       status: "pending",
       metadata: {
-        origin: "DEDUCTION_WITHDRAWAL",
+        origin: "SALDO_REEMBOLSO_WITHDRAWAL",
         bucket: "deduction_balance_cents",
-        note: "Saque Saldo Dedução (retorno ArbiShield)",
+        label: "Saldo Reembolso",
+        note: "Saque Saldo Reembolso (stake + dedução ArbiShield)",
       },
     },
   });
@@ -1859,8 +1865,9 @@ async function requestDeductionWithdrawal(token, body) {
         amount_cents: -amountCents,
         ref: row?.id || null,
         metadata: {
-          origin: "DEDUCTION_WITHDRAWAL",
+          origin: "SALDO_REEMBOLSO_WITHDRAWAL",
           bucket: "deduction_balance_cents",
+          label: "Saldo Reembolso",
         },
       },
     });
@@ -4963,7 +4970,7 @@ async function creditWalletForSettlement(row, outcome, now) {
   } else if (bucket === "investor_balance_cents") {
     patch.investor_balance_cents = n(p.investor_balance_cents) + credit;
   } else {
-    // Saldo Dedução: usável nas operações e sacável
+    // Saldo Reembolso (deduction_balance_cents): usável e sacável
     patch.deduction_balance_cents = n(p.deduction_balance_cents) + credit;
   }
 

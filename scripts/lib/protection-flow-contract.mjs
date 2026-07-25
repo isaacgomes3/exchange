@@ -100,7 +100,7 @@ export function settlementCreditCents(row, outcome) {
  * Bucket de crédito após settle ArbiShield:
  *   DEMO     → demo_balance_cents
  *   INVESTOR → investor_balance_cents
- *   REAL     → deduction_balance_cents (Saldo Dedução: usável + sacável)
+ *   REAL     → deduction_balance_cents (UI: Saldo Reembolso — usável + sacável)
  */
 export function creditBucketForSettlement(balanceType) {
   const t = String(balanceType || "REAL").toUpperCase();

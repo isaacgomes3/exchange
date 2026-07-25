@@ -261,7 +261,7 @@
           je = "ArbiShield";
           pe = Ne;
           Ae = true;
-          Qe = "Coberto pela ArbiShield • stake + dedução no Saldo Dedução";
+          Qe = "Coberto pela ArbiShield • stake + dedução no Saldo Reembolso";
         } else if (Se === "exchange") {
           je = "Exchange";
           if (Ye > 0) {
@@ -977,7 +977,7 @@
     if (balUl) {
       balUl.innerHTML = [
         ["Saldo Real (não sacável)", money(state.realBalance)],
-        ["Saldo Dedução (usável/sacável)", money(state.deductionBalance || 0)],
+        ["Saldo Reembolso (usável/sacável)", money(state.deductionBalance || 0)],
         ["Saldo Provedor", money(state.providerBalance)],
         ["Saldo Afiliado disponível", money(state.affBalance)],
         ["Capital em proteções", money(state.locked)],
@@ -1271,18 +1271,18 @@
   async function requestDeductionWithdraw() {
     var avail = Number(state.deductionBalance || 0);
     if (!(avail > 0)) {
-      alert("Saldo Dedução zerado.");
+      alert("Saldo Reembolso zerado.");
       return;
     }
     var pix =
       (state.profile && (state.profile.pix_key || state.profile.pixKey)) || "";
     if (!pix) {
-      alert("Cadastre sua chave Pix no Perfil antes de sacar o Saldo Dedução.");
+      alert("Cadastre sua chave Pix no Perfil antes de sacar o Saldo Reembolso.");
       return;
     }
     var def = (avail / 100).toFixed(2).replace(".", ",");
     var raw = window.prompt(
-      "Valor do saque do Saldo Dedução (disponível R$ " + def + "):",
+      "Valor do saque do Saldo Reembolso (disponível R$ " + def + "):",
       def
     );
     if (raw == null) return;
@@ -1293,7 +1293,7 @@
       return;
     }
     if (cents > avail) {
-      alert("Valor acima do Saldo Dedução disponível.");
+      alert("Valor acima do Saldo Reembolso disponível.");
       return;
     }
     try {
@@ -1314,7 +1314,7 @@
         return {};
       });
       if (!res.ok) throw new Error(data.error || "Falha ao solicitar saque");
-      alert("Saque do Saldo Dedução solicitado. Aguarde a análise.");
+      alert("Saque do Saldo Reembolso solicitado. Aguarde a análise.");
       location.reload();
     } catch (ex) {
       alert(ex.message || "Erro ao solicitar saque");
