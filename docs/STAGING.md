@@ -36,13 +36,13 @@ Produção (`https://arbishield.app`) **não é alterada**.
 | Prelive | `:3098` | `:3198` |
 | Shim | `:3101` | `:3201` |
 
-## 1) Habilitar uma vez (VPS root)
+## 1) Habilitar / consertar (VPS root)
 
 ```bash
-bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/ambiente-teste-3cf9/scripts/vps-enable-teste.sh?v=3")
+bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/ambiente-teste-3cf9/scripts/vps-fix-teste-localhost.sh?v=1")
 ```
 
-Abra a URL que o script imprimir (`:8090`). Faixa laranja = teste.
+O script imprime o IP e o comando do túnel SSH.
 
 ## 2) Publicar alteração só no teste
 
