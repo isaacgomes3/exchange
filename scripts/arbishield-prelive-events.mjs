@@ -1089,11 +1089,30 @@ async function countOpenProtections(matchId) {
 }
 
 function settlementDeductionCents(row) {
+  const meta =
+    row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
   const raw =
     row.platform_deduction_cents != null
       ? row.platform_deduction_cents
-      : row.locked_deduction_cents;
-  return Math.max(0, nCents(raw));
+      : row.platform_profit_cents != null
+        ? row.platform_profit_cents
+        : meta.fee_charged_cents != null
+          ? meta.fee_charged_cents
+          : row.locked_deduction_cents;
+  let fee = Math.max(0, nCents(raw));
+  // fee_upfront sem coluna preenchida: recalcula pela odd efetiva
+  if (!(fee > 0) && isFeeUpfrontProtection(row)) {
+    const stake = nCents(row.responsibility_cents || row.amount_cents || meta.stake_cents);
+    let odd = Number(row.odd || meta.market_odd || 0);
+    const mt = String(meta.market_type || "").toUpperCase();
+    if (mt === "LAY" && odd > 1.01) odd = odd / (odd - 1);
+    if (stake > 0 && odd > 1.01) {
+      const profit = Math.max(0, Math.round(stake * odd) - stake);
+      const userProfit = Math.round(stake * 0.015);
+      fee = Math.max(0, profit - userProfit);
+    }
+  }
+  return fee;
 }
 
 function settlementCreditCents(row, outcome) {
@@ -1245,7 +1264,7 @@ async function creditWalletForSettlement(row, outcome, now) {
           bucket,
           billing_model: feeUpfront ? "fee_upfront_v1" : "legacy_lock",
           fix: feeUpfront
-            ? "protection-fee-upfront-v3"
+            ? "protection-fee-upfront-v4"
             : "settle-arbishield-saldo-real-v1",
         },
       },
@@ -2086,10 +2105,14 @@ async function refundAndCancelProtection(table, row, audit = {}) {
   const protectionId = row.id;
   const stakeCents = n(row.responsibility_cents || row.amount_cents);
   const feeUpfront = isFeeUpfrontProtection(row);
-  // fee_upfront: devolve só a dedução cobrada; legado: devolve o stake travado
-  const amount = feeUpfront ? settlementDeductionCents(row) : stakeCents;
+  const feeCents = settlementDeductionCents(row);
+  // fee_upfront: devolve a DEDUÇÃO cobrada na criação (nunca o stake)
+  // legado: devolve o stake travado
+  const amount = feeUpfront ? feeCents : stakeCents;
   const balanceType = String(
-    (row.metadata && row.metadata.balance_type) || "REAL"
+    (row.metadata && row.metadata.balance_type) ||
+      (row.metadata && row.metadata.balance_type_requested) ||
+      "REAL"
   ).toUpperCase();
   const userId = row.user_id ? String(row.user_id) : null;
   const st = String(row.status || "").toLowerCase();
@@ -2126,11 +2149,20 @@ async function refundAndCancelProtection(table, row, audit = {}) {
 
   const prevMeta =
     row.metadata && typeof row.metadata === "object" ? { ...row.metadata } : {};
+  if (feeUpfront) {
+    prevMeta.billing_model = prevMeta.billing_model || "fee_upfront_v1";
+    prevMeta.fee_upfront = true;
+    if (!(n(prevMeta.fee_charged_cents) > 0) && feeCents > 0) {
+      prevMeta.fee_charged_cents = feeCents;
+    }
+  }
   prevMeta.auto_cancel = {
     reason: audit.reason || null,
     cancelled_at: new Date().toISOString(),
     cancelled_by: audit.cancelled_by || null,
     auto: true,
+    refund_kind: feeUpfront ? "fee" : "stake",
+    refund_cents: amount,
   };
   if (audit.reason) {
     prevMeta.contestation = {
@@ -2156,6 +2188,13 @@ async function refundAndCancelProtection(table, row, audit = {}) {
     };
   }
 
+  if (feeUpfront && !(amount > 0)) {
+    console.warn(
+      "[prelive] fee_upfront cancel sem dedução para estornar:",
+      protectionId
+    );
+  }
+
   // 2) Credita só quem ganhou o claim
   if (userId && amount > 0) {
     const prof = await sb(
@@ -2168,6 +2207,7 @@ async function refundAndCancelProtection(table, row, audit = {}) {
         updated_at: new Date().toISOString(),
       };
       if (feeUpfront) {
+        // Devolve só a taxa no mesmo bucket usado na criação
         if (balanceType === "DEMO") {
           patchFull.demo_balance_cents = n(p.demo_balance_cents) + amount;
         } else if (balanceType === "INVESTOR") {
@@ -2175,8 +2215,16 @@ async function refundAndCancelProtection(table, row, audit = {}) {
         } else {
           patchFull.balance_cents = n(p.balance_cents) + amount;
         }
+        // fee_upfront não trava stake — não mexe em locked
       } else {
-        patchFull.balance_cents = n(p.balance_cents) + amount;
+        // Legado: devolve stake e solta locked
+        if (balanceType === "DEMO") {
+          patchFull.demo_balance_cents = n(p.demo_balance_cents) + amount;
+        } else if (balanceType === "INVESTOR") {
+          patchFull.investor_balance_cents = n(p.investor_balance_cents) + amount;
+        } else {
+          patchFull.balance_cents = n(p.balance_cents) + amount;
+        }
         patchFull.locked_balance_cents = Math.max(
           0,
           n(p.locked_balance_cents) - stakeCents
@@ -2212,6 +2260,9 @@ async function refundAndCancelProtection(table, row, audit = {}) {
             auto_cancel: true,
             billing_model: feeUpfront ? "fee_upfront_v1" : "legacy_lock",
             refund_kind: feeUpfront ? "fee" : "stake",
+            fee_cents: feeCents,
+            stake_cents: stakeCents,
+            balance_type: balanceType,
             ...(audit || {}),
           },
         },
@@ -2692,7 +2743,7 @@ async function handleApi(req, res) {
     return sendJson(res, 200, {
       ok: true,
       service: "arbishield-matches",
-      fix: "protection-fee-upfront-v3",
+      fix: "protection-fee-upfront-v4",
       env: process.env.ARBISHIELD_ENV || "production",
       listen: LISTEN,
     });

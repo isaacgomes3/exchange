@@ -220,7 +220,7 @@
         </div>
       </div>
       <div id="panelCancel" style="display:none">
-        <div class="warn">O saldo comprometido será estornado imediatamente. Não precisa de aprovação do administrador.</div>
+        <div class="warn">Cancelamento estorna na hora a dedução ArbiShield cobrada na ativação (e o stake travado, no modelo antigo). Não precisa de aprovação do administrador.</div>
         <div class="field">
           <label for="reason">Motivo do cancelamento</label>
           <textarea id="reason" placeholder="Descreva por que deseja cancelar a proteção"></textarea>
@@ -421,26 +421,50 @@
             "<div><span>Valor protegido</span><strong>" + money(amount) + "</strong></div>" +
             "<div><span>Início</span><strong>" + starts + "</strong></div>" +
           "</div>" +
-          '<div class="prot-actions">' +
-            '<button type="button" class="btn btn-primary" id="btnContest"' + (gate.ok ? "" : " disabled") + ">Contestar proteção</button>" +
-            (gate.ok ? "" : '<p class="sub" style="margin:0">' + gate.why + "</p>") +
+          '<div class="prot-actions" style="display:flex;flex-direction:column;gap:10px">' +
+            '<button type="button" class="btn btn-primary" id="btnContest"' +
+            (gate.ok ? "" : " disabled") +
+            ">Contestar proteção</button>" +
+            '<button type="button" class="btn btn-ghost" id="btnCancelProt"' +
+            (gate.ok ? "" : " disabled") +
+            ">Cancelar proteção</button>" +
+            (gate.ok
+              ? '<p class="sub" style="margin:0">Cancelar estorna a dedução ArbiShield na hora.</p>'
+              : '<p class="sub" style="margin:0">' + gate.why + "</p>") +
           "</div>";
         var btn = document.getElementById("btnContest");
-        if (btn && gate.ok) btn.addEventListener("click", openModal);
+        if (btn && gate.ok) {
+          btn.addEventListener("click", function () {
+            openModal("odd_adjustment");
+          });
+        }
+        var btnCancel = document.getElementById("btnCancelProt");
+        if (btnCancel && gate.ok) {
+          btnCancel.addEventListener("click", function () {
+            openModal("cancellation");
+          });
+        }
       }
 
-      function openModal() {
+      function openModal(initialType) {
         var it = selected();
         if (!it) return;
-        contestType = "odd_adjustment";
+        contestType =
+          initialType === "cancellation" ? "cancellation" : "odd_adjustment";
         document.querySelectorAll(".type-grid button").forEach(function (b) {
           b.classList.toggle("active", b.getAttribute("data-type") === contestType);
         });
-        document.getElementById("panelOdd").style.display = "";
-        document.getElementById("panelCancel").style.display = "none";
+        document.getElementById("panelOdd").style.display =
+          contestType === "odd_adjustment" ? "" : "none";
+        document.getElementById("panelCancel").style.display =
+          contestType === "cancellation" ? "" : "none";
         document.getElementById("newOdd").value = "";
         document.getElementById("proof").value = "";
         document.getElementById("reason").value = "";
+        document.getElementById("modalTitle").textContent =
+          contestType === "cancellation"
+            ? "Cancelar proteção"
+            : "Contestar proteção";
         modal.classList.add("show");
         modal.setAttribute("aria-hidden", "false");
       }
@@ -683,7 +707,11 @@
           if (contestType === "cancellation") {
             var reason = String(document.getElementById("reason").value || "").trim();
             if (reason.length < 5) throw new Error("Informe o motivo do cancelamento");
-            if (!window.confirm("Cancelar esta proteção agora? O saldo será estornado imediatamente.")) {
+            if (
+              !window.confirm(
+                "Cancelar esta proteção agora?\nA dedução ArbiShield cobrada na ativação será estornada imediatamente."
+              )
+            ) {
               return;
             }
             var cancelData = await cancelViaApi({
@@ -691,10 +719,16 @@
               category: it.market_category || "LAY",
               reason: reason,
             }, token);
+            var refunded =
+              cancelData && cancelData.refundedCents != null
+                ? cancelData.refundedCents
+                : null;
             showOk(
               cancelData.alreadyCancelled
                 ? "Proteção já estava cancelada."
-                : "Proteção cancelada. Saldo estornado."
+                : refunded != null
+                  ? "Proteção cancelada. Dedução estornada: " + money(refunded) + "."
+                  : "Proteção cancelada. Dedução ArbiShield estornada."
             );
             closeModal();
             await load();

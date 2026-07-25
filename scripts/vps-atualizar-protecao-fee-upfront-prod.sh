@@ -140,3 +140,5 @@ echo "  Novo: cobra dedução na criação (LAY→back equiv.)"
 echo
 echo "Opcional — reviver evento teste:"
 echo "  bash <(curl -fsSL \"$RAW/scripts/vps-sandbox-lancar-evento-teste.sh?v=$TS\")"
+echo "Opcional — hotfix cancel estorna dedução + UI botões:"
+echo "  bash <(curl -fsSL \"$RAW/scripts/vps-hotfix-cancel-estorna-deducao.sh?v=$TS\")"
