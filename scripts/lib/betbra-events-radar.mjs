@@ -217,18 +217,18 @@ export function buildMradarWidgetUrl(
 
 /**
  * Escolhe o melhor id para o widget mradar.
- * Soft2Bet: livestream usa StatsPerform; radar/LMT usa SportRadar (URN sr:match:N).
+ * Soft2Bet: radar/LMT usa SportRadar (URN sr:match:N); livestream usa StatsPerform.
  * Id numérico puro costuma cair em "widget não encontrado" no /widget/mradar.
  * @param {{ eventIdStatsPerform?: string|null, eventIdSportRadar?: string|null, eventIdMbook?: string|null }} hit
  */
 export function pickMradarWidgetId(hit) {
   if (!hit) return { id: null, source: null };
-  if (hit.eventIdStatsPerform) {
-    return { id: String(hit.eventIdStatsPerform), source: "statsPerform" };
-  }
   if (hit.eventIdSportRadar) {
     const urn = normalizeSportRadarMatchId(hit.eventIdSportRadar);
     return { id: urn || String(hit.eventIdSportRadar), source: "sportRadar" };
+  }
+  if (hit.eventIdStatsPerform) {
+    return { id: String(hit.eventIdStatsPerform), source: "statsPerform" };
   }
   if (hit.eventIdMbook) {
     return { id: String(hit.eventIdMbook), source: "mbook" };

@@ -57,13 +57,20 @@ describe("betbra-events-radar", () => {
     assert.equal(n.eventIdSportRadar, "sr:match:67817764");
   });
 
-  it("prefere StatsPerform, senão SportRadar URN", () => {
+  it("prefere SportRadar URN no mradar (StatsPerform é fallback)", () => {
     assert.equal(
       pickMradarWidgetId({
         eventIdStatsPerform: "99",
         eventIdSportRadar: "sr:match:1",
       }).source,
-      "statsPerform"
+      "sportRadar"
+    );
+    assert.equal(
+      pickMradarWidgetId({
+        eventIdStatsPerform: "99",
+        eventIdSportRadar: "sr:match:1",
+      }).id,
+      "sr:match:1"
     );
     const sr = pickMradarWidgetId({
       eventIdStatsPerform: null,
@@ -71,6 +78,13 @@ describe("betbra-events-radar", () => {
     });
     assert.equal(sr.source, "sportRadar");
     assert.equal(sr.id, "sr:match:72082946");
+    assert.equal(
+      pickMradarWidgetId({
+        eventIdStatsPerform: "99",
+        eventIdSportRadar: null,
+      }).source,
+      "statsPerform"
+    );
   });
 
   it("resolve mradar por SportRadar URN quando StatsPerform falta", () => {
