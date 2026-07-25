@@ -3,7 +3,7 @@
  * Lógica pura (testável) + helpers de normalização.
  */
 
-export const BETBRA_INPLAY_SYNC_VERSION = "betbra-inplay-sync-v4";
+export const BETBRA_INPLAY_SYNC_VERSION = "betbra-inplay-sync-v5";
 
 /**
  * Extrai eventId BetBra de um link de mercado/evento.
@@ -83,10 +83,55 @@ export function desafioStepEligibleForInplaySync(step, nowMs = Date.now()) {
 export function buildDesafioStepInplayPatch(step, inplayByEventId, nowIso) {
   const ext = desafioStepEventId(step);
   if (!ext) return null;
-  const info = inplayByEventId.get(ext);
+  const nowMs = nowIso ? Date.parse(nowIso) : Date.now();
+  const now = Number.isFinite(nowMs) ? nowMs : Date.now();
+
+  let info = inplayByEventId.get(ext) || null;
+  if (info) {
+    info = applyFinishedInference(info, step, now);
+  } else if (inferMatchFinished(step, null, now)) {
+    // Saiu do feed inplay — fecha com último placar conhecido
+    const prevMeta0 =
+      step.metadata && typeof step.metadata === "object" ? step.metadata : {};
+    const prev0 =
+      prevMeta0.live && typeof prevMeta0.live === "object" ? prevMeta0.live : {};
+    const home =
+      step.final_score_home != null
+        ? Number(step.final_score_home)
+        : prev0.home_score != null
+          ? Number(prev0.home_score)
+          : null;
+    const away =
+      step.final_score_away != null
+        ? Number(step.final_score_away)
+        : prev0.away_score != null
+          ? Number(prev0.away_score)
+          : null;
+    info = {
+      eventId: ext,
+      homeScore: Number.isFinite(home) ? home : null,
+      awayScore: Number.isFinite(away) ? away : null,
+      scoreLabel:
+        Number.isFinite(home) && Number.isFinite(away)
+          ? `${home}-${away}`
+          : prev0.score || null,
+      elapsed: String(prev0.elapsed || "90"),
+      elapsedLabel: String(prev0.elapsed_label || prev0.elapsed || "90'"),
+      status: "Finished",
+      inPlayMatchStatus: "Finished",
+      finished: true,
+      live: false,
+    };
+  }
   if (!info) return null;
+
   const live = buildLiveMetadata(info, nowIso);
   if (!live) return null;
+  if (info.finished) {
+    live.finished = true;
+    live.live = false;
+    live.inferred_finished = true;
+  }
 
   const prevMeta =
     step.metadata && typeof step.metadata === "object" ? { ...step.metadata } : {};
@@ -128,9 +173,78 @@ export function buildDesafioStepInplayPatch(step, inplayByEventId, nowIso) {
 }
 
 const FINISHED_RE =
-  /^(finished|ended|ft|full[\s_-]?time|complete[d]?|closed|final|resultado\s*final)$/i;
+  /finished|\bended\b|full[\s_-]?time|\bft\b|after[\s_-]?f\.?t\.?|match[\s_-]?finished|match[\s_-]?ended|game[\s_-]?finished|second[\s_-]?half[\s_-]?ended|\bcompleted?\b|\bclosed\b|finalizado|resultado\s*final|abandoned|walkover|\bawarded\b/i;
 const LIVE_RE =
-  /^(in[\s_-]?play|live|1st|2nd|first|second|half|ht|et|extra|pen|break|pause|kick)/i;
+  /in[\s_-]?play|live|1st|2nd|first|second|half|ht|et|extra|pen|break|pause|kick/i;
+
+/**
+ * Infere encerramento quando o feed atrasa (ex.: 90' + SecondHalfKickOff)
+ * ou o evento some do inplay-info após ter ido ao vivo.
+ * @param {any} stepOrMatch
+ * @param {ReturnType<typeof normalizeInplayItem>|null|undefined} info
+ * @param {number} [nowMs]
+ */
+export function inferMatchFinished(stepOrMatch, info, nowMs = Date.now()) {
+  if (info?.finished) return true;
+  const startRaw = stepOrMatch?.starts_at || stepOrMatch?.startsAt;
+  const start = startRaw ? new Date(startRaw).getTime() : NaN;
+  if (!Number.isFinite(start)) return false;
+  const ageMin = (nowMs - start) / 60000;
+  if (ageMin < 95) return false;
+
+  const meta =
+    stepOrMatch?.metadata && typeof stepOrMatch.metadata === "object"
+      ? stepOrMatch.metadata
+      : {};
+  const prev =
+    meta.live && typeof meta.live === "object" ? meta.live : null;
+
+  const elapsedRaw = info?.elapsed || prev?.elapsed || "";
+  const elapsedNum = Number(String(elapsedRaw).match(/\d+/)?.[0] || NaN);
+  const hasScore =
+    (info?.homeScore != null && info?.awayScore != null) ||
+    (prev &&
+      ((prev.home_score != null && prev.away_score != null) || prev.score));
+
+  // Fora do feed agregado, mas já esteve ao vivo com placar
+  if (!info) {
+    if (!hasScore) return false;
+    if (prev?.finished) return true;
+    if (prev?.live || String(stepOrMatch?.status || "").toLowerCase() === "live") {
+      return ageMin >= 100;
+    }
+    return false;
+  }
+
+  // Feed ainda "ao vivo" preso no 90'+ — fecha após janela regular
+  if (hasScore && Number.isFinite(elapsedNum) && elapsedNum >= 90 && ageMin >= 105) {
+    return true;
+  }
+  // Hard stop: 2h05 após o apito (tempo regulamentar + folga)
+  if (hasScore && ageMin >= 125) return true;
+  return false;
+}
+
+/**
+ * @param {ReturnType<typeof normalizeInplayItem>} info
+ * @param {any} stepOrMatch
+ * @param {number} [nowMs]
+ */
+export function applyFinishedInference(info, stepOrMatch, nowMs = Date.now()) {
+  if (!info) return null;
+  if (info.finished || !inferMatchFinished(stepOrMatch, info, nowMs)) {
+    return info;
+  }
+  return {
+    ...info,
+    finished: true,
+    live: false,
+    inPlayMatchStatus: info.inPlayMatchStatus || "Finished",
+    status: info.status && !/^in[\s_-]?play$/i.test(info.status)
+      ? info.status
+      : "Finished",
+  };
+}
 
 /**
  * @param {unknown} raw
@@ -379,11 +493,19 @@ export function matchEligibleForInplaySync(match, nowMs = Date.now(), opts = {})
 export function buildMatchInplayPatch(match, inplayByEventId, nowIso) {
   const ext = normalizeEventId(match?.external_id);
   if (!ext) return null;
-  const info = inplayByEventId.get(ext);
+  const nowMs = nowIso ? Date.parse(nowIso) : Date.now();
+  const now = Number.isFinite(nowMs) ? nowMs : Date.now();
+  let info = inplayByEventId.get(ext) || null;
+  if (info) info = applyFinishedInference(info, match, now);
   if (!info) return null;
 
   const live = buildLiveMetadata(info, nowIso);
   if (!live) return null;
+  if (info.finished) {
+    live.finished = true;
+    live.live = false;
+    live.inferred_finished = true;
+  }
 
   const prevMeta =
     match.metadata && typeof match.metadata === "object" ? match.metadata : {};

@@ -6,8 +6,8 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-mradar-v2" />
-  <link rel="stylesheet" href="/v2.css?v=dz-mradar-2" />
+  <meta name="arbishield-build" content="desafio-ft-result-v1" />
+  <link rel="stylesheet" href="/v2.css?v=dz-ft-result-1" />
   <style>
     /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
     .dz-sb-market {
@@ -269,9 +269,9 @@
     .dz-radar-foot a:hover { color: #c9f223; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=dz-mradar-2"></script>
-  <script src="/desafio-ciclo-math.js?v=dz-mradar-2"></script>
-  <script src="/v2-shell.js?v=dz-mradar-2" defer></script>
+  <script src="/v2.js?v=dz-ft-result-1"></script>
+  <script src="/desafio-ciclo-math.js?v=dz-ft-result-1"></script>
+  <script src="/v2-shell.js?v=dz-ft-result-1" defer></script>
   <style>
     .dz-access-history {
       appearance: none;
@@ -1246,6 +1246,17 @@
         );
         var startsMs = step.starts_at ? new Date(step.starts_at).getTime() : NaN;
         var kickedOff = Number.isFinite(startsMs) && now >= startsMs;
+        var ageMin = kickedOff ? (now - startsMs) / 60000 : 0;
+        var elapsedNum = Number(String(elapsed || "").match(/\d+/)?.[0] || NaN);
+        // Feed BetBra às vezes fica preso em 90'/SecondHalf após o apito final
+        if (
+          !finished &&
+          scoreLabel &&
+          ((ageMin >= 105 && Number.isFinite(elapsedNum) && elapsedNum >= 90) ||
+            ageMin >= 125)
+        ) {
+          finished = true;
+        }
         var withinMatchWindow =
           Number.isFinite(startsMs) && now <= startsMs + 3.5 * 60 * 60 * 1000;
         var statusLive = ["live", "in_play", "inplay", "ao_vivo"].includes(
@@ -1255,7 +1266,7 @@
           !finished &&
             ((live && live.live && !live.finished) ||
               statusLive ||
-              (kickedOff && withinMatchWindow))
+              (kickedOff && withinMatchWindow && ageMin < 105))
         );
 
         // Sem minuto da BetBra: estima pelo horário de início (ex.: 17')
@@ -1268,7 +1279,7 @@
           score: scoreLabel,
           home: Number.isFinite(home) ? home : null,
           away: Number.isFinite(away) ? away : null,
-          elapsed: elapsed,
+          elapsed: finished && !elapsed ? "FT" : elapsed,
           live: isLive,
           finished: finished,
         };
@@ -1440,10 +1451,13 @@
       }
 
       function phaseOf(item, now) {
-        if (item.isFinished) return "done";
+        if (item.isFinished || (item.liveInfo && item.liveInfo.finished)) {
+          return "done";
+        }
         var start = item.startsAtMs;
         if (start == null) return "ativo";
         var unlock = start - (item.releaseMinutesBefore || 0) * 6e4;
+        if (item.liveInfo && item.liveInfo.live) return "live";
         if (now >= start) return "live";
         if (now < unlock) return "soon";
         return "ativo";

@@ -12,11 +12,13 @@ import {
   desafioStepEventId,
   formatElapsedLabel,
   parseScoreSide,
+  inferMatchFinished,
+  applyFinishedInference,
 } from "./lib/betbra-inplay-sync.mjs";
 
 describe("betbra-inplay-sync", () => {
   it("mantém versão", () => {
-    assert.equal(BETBRA_INPLAY_SYNC_VERSION, "betbra-inplay-sync-v4");
+    assert.equal(BETBRA_INPLAY_SYNC_VERSION, "betbra-inplay-sync-v5");
   });
 
   it("extrai eventId de links BetBra", () => {
@@ -125,6 +127,56 @@ describe("betbra-inplay-sync", () => {
     assert.equal(n.finished, true);
     assert.equal(n.live, false);
     assert.equal(n.scoreLabel, "2-1");
+  });
+
+  it("infere FT quando feed fica preso no 90'", () => {
+    const now = Date.parse("2026-07-25T14:55:00.000Z");
+    const step = {
+      starts_at: "2026-07-25T13:00:00.000Z",
+      status: "live",
+      final_score_home: 0,
+      final_score_away: 1,
+      external_bet_link:
+        "https://betbra.bet.br/b/exchange/sport/soccer/event/33842537216900023/market/1",
+      metadata: {
+        live: {
+          score: "0-1",
+          elapsed: "90",
+          finished: false,
+          live: true,
+        },
+      },
+    };
+    const info = normalizeInplayItem({
+      eventId: "33842537216900023",
+      status: "IN_PLAY",
+      inPlayMatchStatus: "SecondHalfKickOff",
+      elapsedRegularTime: "90",
+      score: { home: { score: "0" }, away: { score: "1" } },
+    });
+    assert.equal(info.finished, false);
+    assert.equal(inferMatchFinished(step, info, now), true);
+    const inferred = applyFinishedInference(info, step, now);
+    assert.equal(inferred.finished, true);
+    assert.equal(inferred.live, false);
+
+    const feed = indexInplayFeed([
+      {
+        eventId: "33842537216900023",
+        status: "IN_PLAY",
+        inPlayMatchStatus: "SecondHalfKickOff",
+        elapsedRegularTime: "90",
+        score: { home: { score: "0" }, away: { score: "1" } },
+      },
+    ]);
+    const built = buildDesafioStepInplayPatch(
+      step,
+      feed,
+      "2026-07-25T14:55:00.000Z"
+    );
+    assert.ok(built);
+    assert.equal(built.live.finished, true);
+    assert.equal(built.live.live, false);
   });
 
   it("elegibilidade por source BetBra e janela", () => {
