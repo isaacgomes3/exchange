@@ -97,9 +97,13 @@ describe("public trading API adapter", () => {
     assert.equal(a.publicApi, EXCHANGE_PUBLIC_TRADING_API);
   });
 
-  it("monta Authorization Bearer por defeito", () => {
-    const h = buildExchangeAuthHeaders({ accessToken: "tok-abc" }, "bearer");
+  it("monta Cookie + Bearer (auto/mexchange)", () => {
+    const h = buildExchangeAuthHeaders(
+      { houseToken: "tok-abc", cookieHeader: "SESSION=abc" },
+      "auto"
+    );
     assert.equal(h.Authorization, "Bearer tok-abc");
+    assert.match(h.Cookie, /SESSION=abc/);
     assert.ok(h.Referer.includes("mexchange"));
   });
 
@@ -109,10 +113,31 @@ describe("public trading API adapter", () => {
       "x-auth-token"
     );
     assert.equal(h["X-Auth-Token"], "tok-xyz");
-    assert.equal(h.Authorization, undefined);
   });
 
-  it("body exchange inclui side LAY e price", () => {
+  it("body mexchange usa POST /offers shape", () => {
+    const b = buildExchangePlaceBody(
+      {
+        side: "LAY",
+        odd: 65,
+        stakeCents: 100,
+        eventId: "e1",
+        marketId: "m1",
+        selectionId: "s1",
+      },
+      "mexchange"
+    );
+    assert.equal(b["odds-type"], "DECIMAL");
+    assert.equal(b["exchange-type"], "back-lay");
+    assert.equal(b.offers.length, 1);
+    assert.equal(b.offers[0].side, "lay");
+    assert.equal(b.offers[0].odds, 65);
+    assert.equal(b.offers[0].stake, 1);
+    assert.equal(b.offers[0]["runner-id"], "s1");
+    assert.equal(b.offers[0]["market-id"], "m1");
+  });
+
+  it("body exchange legado inclui side LAY e price", () => {
     const b = buildExchangePlaceBody(
       {
         side: "LAY",

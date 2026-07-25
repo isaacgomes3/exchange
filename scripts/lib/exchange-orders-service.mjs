@@ -18,6 +18,10 @@ import {
   betbraLoginAndBalance,
   cookieHeaderFromJar,
 } from "./betbra-client-api.mjs";
+import {
+  hasTradingSession,
+  resolveExactScoreRunner,
+} from "./mexchange-offers.mjs";
 
 void EXCHANGE_ORDERS_LOCK;
 
@@ -400,14 +404,98 @@ export function createExchangeOrdersService(deps) {
     }
   }
 
+  async function refreshTradingSession(conn, session) {
+    const login = String(session?.login || "").trim();
+    const password = String(session?.password || "").trim();
+    if (!login || !password) return session;
+    const result = await betbraLoginAndBalance({ login, password });
+    const next = {
+      ...session,
+      accessToken: result.houseToken || session.accessToken,
+      houseToken: result.houseToken || null,
+      cookies: result.cookies || session.cookies || null,
+      cookieHeader:
+        cookieHeaderFromJar(result.cookies) || session.cookieHeader || null,
+      authMode: "credentials",
+      lastBalance: result.balance,
+      lastBalanceAt: new Date().toISOString(),
+      demo: false,
+    };
+    try {
+      const sessionEnc = encryptSessionPayload(next);
+      const meta = {
+        ...(conn.metadata && typeof conn.metadata === "object"
+          ? conn.metadata
+          : {}),
+        has_login: true,
+        auth_mode: "credentials",
+        last_balance: result.balance,
+        last_balance_at: next.lastBalanceAt,
+        has_house_token: !!result.houseToken,
+      };
+      await sb(
+        `/rest/v1/exchange_connections?id=eq.${encodeURIComponent(conn.id)}`,
+        {
+          method: "PATCH",
+          token: serviceKey,
+          body: {
+            session_enc: sessionEnc,
+            metadata: meta,
+            updated_at: new Date().toISOString(),
+          },
+        }
+      );
+    } catch {
+      /* best-effort */
+    }
+    return next;
+  }
+
   async function placeOrder(token, body) {
     const userId = await requireUserId(token);
     const place = validatePlaceOrderBody(body || {});
-    const { conn, session } = await loadActiveConnection(
+    let { conn, session } = await loadActiveConnection(
       userId,
       body?.connectionId
     );
+    const live =
+      process.env.EXCHANGE_ORDERS_LIVE === "1" ||
+      process.env.EXCHANGE_ORDERS_LIVE === "true";
+    if (live && !place.confirmLive) {
+      const err = new Error(
+        "Modo LIVE: envie confirmLive:true para confirmar ordem real na BetBra."
+      );
+      err.status = 400;
+      err.code = "CONFIRM_LIVE_REQUIRED";
+      throw err;
+    }
     try {
+      // Antes do place real: renovar cookies/JWT via login sportsbook
+      if (live) {
+        session = await refreshTradingSession(conn, session);
+        if (!hasTradingSession(session)) {
+          const err = new Error(
+            "Sem cookies/token de trading. Aprove o dispositivo na BetBra e clique Atualizar saldo."
+          );
+          err.status = 401;
+          err.code = "EXCHANGE_SESSION_REQUIRED";
+          throw err;
+        }
+        if (!place.selectionId && place.scoreline && place.eventId) {
+          const resolved = await resolveExactScoreRunner({
+            eventId: place.eventId,
+            marketId: place.marketId,
+            scoreline: place.scoreline,
+            session,
+          });
+          place.selectionId = resolved.selectionId;
+          place.metadata = {
+            ...place.metadata,
+            runnerName: resolved.runnerName,
+            scoreline: resolved.scoreline,
+          };
+        }
+      }
       const result = await adapter.placeOrder(session, place);
       const saved = await persistOrder(userId, conn.id, place, result, null);
       return {
@@ -417,6 +505,7 @@ export function createExchangeOrdersService(deps) {
         provider: adapter.provider,
         demo: !!result.demo,
         wired: !!result.wired,
+        selectionId: place.selectionId,
         recordId: saved?.id || null,
         contract: EXCHANGE_ORDERS_CONTRACT_VERSION,
         message: result.message || undefined,

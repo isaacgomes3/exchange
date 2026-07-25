@@ -1,28 +1,36 @@
 /**
  * Adapter de ordens na exchange (BetBra / Mexchange / Fulltbet).
  *
- * A API de trading autenticada da exchange pública existe
- * (mexchange-api.*.bet.br). Catálogo (events/odds) é anônimo;
- * place/cancel/status exigem sessão do cliente.
+ * Mexchange (frontend real):
+ *   POST   /offers  — place
+ *   DELETE /offers?offer-ids=… — cancel
+ *   GET    /offers — list/status
+ * Auth: cookies (withCredentials) + opcional Bearer houseToken.
  *
  * - demo (padrão seguro): simula place/cancel/status.
  * - stub: rejeita com EXCHANGE_ORDERS_NOT_WIRED.
- * - betbra: chama a API pública com a sessão do cliente quando
- *   EXCHANGE_ORDERS_LIVE=1; senão cai no demo.
+ * - betbra: chama a API quando EXCHANGE_ORDERS_LIVE=1; senão demo.
  *
- * Paths/auth configuráveis (a casa pode variar o path exato):
+ * Env:
  *   EXCHANGE_ORDERS_BASE_URL / MEXCHANGE_API_BASE_URL
- *   EXCHANGE_ORDERS_PLACE_PATH   (default /orders)
- *   EXCHANGE_ORDERS_CANCEL_PATH  (default /orders/{id}/cancel)
- *   EXCHANGE_ORDERS_STATUS_PATH  (default /orders/{id})
- *   EXCHANGE_ORDERS_AUTH_STYLE   bearer | x-auth-token | cookie
- *   EXCHANGE_ORDERS_PAYLOAD      exchange | snake
+ *   EXCHANGE_ORDERS_PLACE_PATH   (default /offers)
+ *   EXCHANGE_ORDERS_CANCEL_PATH  (default /offers)
+ *   EXCHANGE_ORDERS_STATUS_PATH  (default /offers)
+ *   EXCHANGE_ORDERS_PAYLOAD      mexchange | exchange | snake
  */
 import {
   EXCHANGE_ORDERS_CONTRACT_VERSION,
   EXCHANGE_ORDERS_LOCK,
   normalizeOrderStatus,
 } from "./exchange-orders-contract.mjs";
+import {
+  buildMexchangeAuthHeaders,
+  buildMexchangeOffersBody,
+  extractOfferId,
+  extractOfferStatus,
+  hasTradingSession,
+  resolveMexchangeApiBase,
+} from "./mexchange-offers.mjs";
 
 /** Marker: API pública autenticada da exchange existe (não só catálogo). */
 export const EXCHANGE_PUBLIC_TRADING_API = "mexchange-public-trading-api-v1";
@@ -63,66 +71,52 @@ export function resolveOrdersProviderName() {
 }
 
 export function resolveOrdersApiBase() {
-  return envStr(
-    "MEXCHANGE_ORDERS_API_BASE",
-    envStr(
-      "EXCHANGE_ORDERS_BASE_URL",
-      envStr("MEXCHANGE_API_BASE_URL", "https://mexchange-api.betbra.bet.br/api")
-    )
-  ).replace(/\/$/, "");
+  return resolveMexchangeApiBase();
 }
 
 /**
- * Monta headers de auth da sessão do cliente para a API pública.
+ * Headers para a API Mexchange (cookies + Bearer opcional).
  * @param {object} session
- * @param {string} [style]
+ * @param {string} [style] cookie | bearer | x-auth-token | auto
  */
 export function buildExchangeAuthHeaders(session = {}, style) {
   const mode = String(
-    style || envStr("EXCHANGE_ORDERS_AUTH_STYLE", "bearer")
+    style || envStr("EXCHANGE_ORDERS_AUTH_STYLE", "auto")
   )
     .toLowerCase()
     .trim();
-  const token = String(session.accessToken || session.sessionToken || "").trim();
-  const headers = {
-    Accept: "application/json",
-    "Content-Type": "application/json",
-    "Accept-Language": "pt-BR,pt;q=0.9",
-    Referer: envStr(
-      "MEXCHANGE_REFERER",
-      "https://mexchange.betbra.bet.br/"
-    ),
-    "User-Agent": envStr(
-      "MEXCHANGE_USER_AGENT",
-      "Mozilla/5.0 (compatible; ArbiShieldOrders/1.0)"
-    ),
-  };
-  if (!token) return { ...headers, ...(session.extraHeaders || {}) };
-
+  if (mode === "auto" || mode === "cookie" || mode === "mexchange") {
+    return buildMexchangeAuthHeaders(session);
+  }
+  const token = String(
+    session.houseToken || session.accessToken || session.sessionToken || ""
+  ).trim();
+  const headers = buildMexchangeAuthHeaders({ ...session, houseToken: null });
+  if (!token || token.startsWith("cred:")) {
+    return { ...headers, ...(session.extraHeaders || {}) };
+  }
   if (mode === "x-auth-token" || mode === "x_auth_token") {
+    delete headers.Authorization;
     headers["X-Auth-Token"] = token;
-  } else if (mode === "cookie") {
-    const lang = envStr("MEXCHANGE_BIAB_LANGUAGE", "PT_BR");
-    headers.Cookie = `BIAB_LANGUAGE=${lang}; ${
-      session.cookieName || "SESSION"
-    }=${token}${session.cookieExtra ? `; ${session.cookieExtra}` : ""}`;
   } else {
-    // bearer (padrão da API autenticada pública)
     headers.Authorization = `Bearer ${token}`;
   }
   return { ...headers, ...(session.extraHeaders || {}) };
 }
 
 /**
- * Body de place para a API pública da exchange.
+ * Body de place. Default = payload real Mexchange (`/offers`).
  * @param {object} payload validatePlaceOrderBody result
  */
 export function buildExchangePlaceBody(payload = {}, style) {
-  const mode = String(style || envStr("EXCHANGE_ORDERS_PAYLOAD", "exchange"))
+  const mode = String(style || envStr("EXCHANGE_ORDERS_PAYLOAD", "mexchange"))
     .toLowerCase()
     .trim();
   const stakeBrl = Number(payload.stakeCents || 0) / 100;
   const side = String(payload.side || "").toUpperCase();
+  if (mode === "mexchange" || mode === "offers" || mode === "auto") {
+    return buildMexchangeOffersBody(payload);
+  }
   if (mode === "snake") {
     return {
       side,
@@ -137,7 +131,7 @@ export function buildExchangePlaceBody(payload = {}, style) {
       client_order_id: payload.clientOrderId,
     };
   }
-  // exchange: shape típico BACK/LAY (API pública autenticada)
+  // legado "exchange"
   return {
     side,
     price: payload.odd,
@@ -173,6 +167,8 @@ async function parseJsonResponse(res) {
 }
 
 function extractOrderId(data, fallback = "") {
+  const fromOffer = extractOfferId(data, "");
+  if (fromOffer) return fromOffer;
   return String(
     data?.id ||
       data?.orderId ||
@@ -189,7 +185,8 @@ function extractOrderId(data, fallback = "") {
 
 function extractStatus(data, fallback = "pending") {
   return normalizeOrderStatus(
-    data?.status ||
+    extractOfferStatus(data, "") ||
+      data?.status ||
       data?.orderStatus ||
       data?.order_status ||
       data?.data?.status ||
@@ -300,12 +297,9 @@ export class BetbraOrdersAdapter {
     );
     this.live = Boolean(opts.live) || envLive();
     this.demo = new DemoOrdersAdapter();
-    this.placePath = envStr("EXCHANGE_ORDERS_PLACE_PATH", "/orders");
-    this.cancelPath = envStr(
-      "EXCHANGE_ORDERS_CANCEL_PATH",
-      "/orders/{id}/cancel"
-    );
-    this.statusPath = envStr("EXCHANGE_ORDERS_STATUS_PATH", "/orders/{id}");
+    this.placePath = envStr("EXCHANGE_ORDERS_PLACE_PATH", "/offers");
+    this.cancelPath = envStr("EXCHANGE_ORDERS_CANCEL_PATH", "/offers");
+    this.statusPath = envStr("EXCHANGE_ORDERS_STATUS_PATH", "/offers");
     this.publicApi = EXCHANGE_PUBLIC_TRADING_API;
   }
 
@@ -323,21 +317,43 @@ export class BetbraOrdersAdapter {
         provider: this.provider,
         publicApi: this.publicApi,
         message:
-          "Betbra em modo demo (EXCHANGE_ORDERS_LIVE≠1). Ordem simulada — nenhuma aposta real. A API pública autenticada existe; ligue LIVE com sessão do cliente.",
+          "Betbra em modo demo (EXCHANGE_ORDERS_LIVE≠1). Ordem simulada — nenhuma aposta real. Ligue LIVE + Conta BetBra com cookies/token.",
       };
     }
-    if (!session?.accessToken && !session?.sessionToken) {
+    if (!hasTradingSession(session)) {
       throw new ExchangeOrdersNotWiredError(
-        `${EXCHANGE_ORDERS_LOCK}: sessão do cliente obrigatória para place na API pública.`
+        `${EXCHANGE_ORDERS_LOCK}: sessão do cliente obrigatória (cookies/token da BetBra). Atualize saldo em Conta BetBra.`
       );
     }
+    if (!payload?.selectionId) {
+      const err = new Error(
+        "selectionId/runner-id obrigatório para place real (ex. placar 3-3)"
+      );
+      err.status = 400;
+      err.code = "SELECTION_REQUIRED";
+      throw err;
+    }
     const url = this.url(this.placePath, {});
+    const body = buildExchangePlaceBody(payload);
     const res = await fetch(url, {
       method: "POST",
       headers: buildExchangeAuthHeaders(session),
-      body: JSON.stringify(buildExchangePlaceBody(payload)),
+      body: JSON.stringify(body),
+      redirect: "manual",
     });
     const { data } = await parseJsonResponse(res);
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get("location") || "";
+      const err = new Error(
+        /countryblock/i.test(loc)
+          ? "Mexchange countryblock — place só na VPS com IP BR"
+          : `Redirect no place: ${loc.slice(0, 100)}`
+      );
+      err.status = 403;
+      err.code = "EXCHANGE_PLACE_REDIRECT";
+      err.url = url;
+      throw err;
+    }
     if (!res.ok) {
       const err = new Error(
         (data && (data.message || data.error || data.title)) ||
@@ -347,6 +363,7 @@ export class BetbraOrdersAdapter {
       err.code = "EXCHANGE_PLACE_FAILED";
       err.details = data;
       err.url = url;
+      err.requestBody = body;
       throw err;
     }
     const orderId = extractOrderId(data);
@@ -359,6 +376,7 @@ export class BetbraOrdersAdapter {
       wired: true,
       demo: false,
       url,
+      requestBody: body,
     };
   }
 
@@ -368,11 +386,15 @@ export class BetbraOrdersAdapter {
       return { ...r, provider: this.provider, publicApi: this.publicApi };
     }
     const id = String(orderId || "");
-    const url = this.url(this.cancelPath, { id, orderId: id });
+    // Mexchange: DELETE /offers?offer-ids=ID
+    const base = this.url(this.cancelPath, { id, orderId: id });
+    const url = /offer-ids=/.test(base)
+      ? base
+      : `${base}${base.includes("?") ? "&" : "?"}offer-ids=${encodeURIComponent(id)}`;
     const res = await fetch(url, {
-      method: "POST",
+      method: "DELETE",
       headers: buildExchangeAuthHeaders(session),
-      body: JSON.stringify({ orderId: id }),
+      redirect: "manual",
     });
     const { data } = await parseJsonResponse(res);
     if (!res.ok) {
@@ -404,10 +426,14 @@ export class BetbraOrdersAdapter {
       return { ...r, provider: this.provider, publicApi: this.publicApi };
     }
     const id = String(orderId || "");
-    const url = this.url(this.statusPath, { id, orderId: id });
+    const listUrl = this.url(this.statusPath, { id, orderId: id });
+    const url = /[?]/.test(listUrl)
+      ? listUrl
+      : `${listUrl}?offset=0&per-page=200`;
     const res = await fetch(url, {
       method: "GET",
       headers: buildExchangeAuthHeaders(session),
+      redirect: "manual",
     });
     const { data } = await parseJsonResponse(res);
     if (!res.ok) {
@@ -421,12 +447,16 @@ export class BetbraOrdersAdapter {
       err.url = url;
       throw err;
     }
+    const offers = Array.isArray(data?.offers) ? data.offers : [];
+    const hit = offers.find(
+      (o) => String(o.id || o.offerId || o["offer-id"]) === id
+    );
     return {
-      orderId: extractOrderId(data, id),
-      status: extractStatus(data, "unknown"),
+      orderId: id,
+      status: extractStatus(hit || data, hit ? hit.status : "unknown"),
       provider: this.provider,
       publicApi: this.publicApi,
-      raw: data,
+      raw: hit || data,
       wired: true,
       demo: false,
       url,

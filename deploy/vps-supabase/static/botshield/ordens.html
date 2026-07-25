@@ -15,9 +15,71 @@
     <div class="page-head">
       <div>
         <h1>Minhas ordens</h1>
-        <p class="sub">Histórico local + bridge para API de ordens ArbiShield quando live.</p>
+        <p class="sub">
+          Teste real LAY → BACK na Mexchange + histórico via
+          <code>/api/arbishield/exchange-orders</code>.
+        </p>
       </div>
     </div>
+
+    <div class="panel" style="margin-bottom:20px">
+      <h2 style="margin:0 0 8px;font-size:16px">Teste real (BetBra Exchange)</h2>
+      <p class="notice" style="margin-top:0">
+        Envia <strong>LAY</strong> e, em seguida, <strong>BACK</strong> no mesmo
+        runner. Requer Conta BetBra salva, dispositivo aprovado e
+        <code>EXCHANGE_ORDERS_LIVE=1</code> na VPS. Stake mínima típica: R$&nbsp;1.
+      </p>
+      <form id="liveForm" class="form-grid" style="margin-top:12px">
+        <label>
+          Link / eventId
+          <input
+            name="eventId"
+            required
+            value="33888713806600023"
+            placeholder="33888713806600023"
+          />
+        </label>
+        <label>
+          marketId
+          <input
+            name="marketId"
+            required
+            value="33888713816900023"
+            placeholder="33888713816900023"
+          />
+        </label>
+        <label>
+          Placar (scoreline)
+          <input name="scoreline" required value="3-3" placeholder="3-3" />
+        </label>
+        <label>
+          Odd LAY
+          <input name="layOdd" type="number" step="0.01" min="1.01" required value="65" />
+        </label>
+        <label>
+          Odd BACK (saída)
+          <input name="backOdd" type="number" step="0.01" min="1.01" required value="100" />
+        </label>
+        <label>
+          Stake (R$)
+          <input name="stakeBrl" type="number" step="0.01" min="1" required value="1" />
+        </label>
+        <label class="check-row" style="grid-column:1/-1">
+          <input type="checkbox" name="confirmLive" required />
+          Confirmo ordem <strong>real</strong> na BetBra (confirmLive)
+        </label>
+        <div style="grid-column:1/-1;display:flex;gap:10px;flex-wrap:wrap">
+          <button type="submit" class="btn" id="btnLive">
+            Enviar LAY + BACK
+          </button>
+          <button type="button" class="btn-ghost" id="btnLayOnly">
+            Só LAY
+          </button>
+        </div>
+      </form>
+      <pre id="liveLog" class="notice" style="margin-top:12px;white-space:pre-wrap"></pre>
+    </div>
+
     <div class="panel" style="max-width:none">
       <table class="table" id="tbl">
         <thead>
@@ -28,13 +90,13 @@
             <th>Odd</th>
             <th>Stake</th>
             <th>Status</th>
+            <th>OrderId</th>
           </tr>
         </thead>
         <tbody></tbody>
       </table>
       <p class="notice" id="hint">
-        Sem ordens ainda. Com integração + EXCHANGE_ORDERS_LIVE, as entradas dos bots
-        aparecem aqui via <code>/api/arbishield/exchange-orders</code>.
+        Sem ordens ainda. Após o teste live, as entradas aparecem aqui.
       </p>
     </div>
   </div>
@@ -42,62 +104,190 @@
     document.addEventListener("botshield:ready", async (ev) => {
       const { sb } = ev.detail;
       const tbody = document.querySelector("#tbl tbody");
-      let rows = [];
-      try {
-        const { data: session } = await sb.auth.getSession();
-        const token = session?.session?.access_token;
-        if (token) {
-          const res = await fetch("/api/arbishield/exchange-orders", {
-            headers: {
-              Accept: "application/json",
-              Authorization: "Bearer " + token,
-            },
-          });
-          if (res.ok) {
-            const json = await res.json();
-            rows = Array.isArray(json?.orders) ? json.orders : [];
-          }
-        }
-      } catch {
-        /* ignore */
+      const logEl = document.getElementById("liveLog");
+
+      async function bearer() {
+        const { data } = await sb.auth.getSession();
+        return data?.session?.access_token || "";
       }
 
-      if (!rows.length) {
-        tbody.innerHTML =
-          '<tr><td colspan="6" style="color:var(--muted)">Nenhuma ordem registrada.</td></tr>';
-        return;
+      function parseEventId(raw) {
+        const s = String(raw || "").trim();
+        const m = s.match(/\/event\/(\d+)/i);
+        return m ? m[1] : s;
       }
-      document.getElementById("hint").hidden = true;
-      tbody.innerHTML = rows
-        .slice(0, 50)
-        .map((o) => {
-          const when = o.created_at
-            ? new Date(o.created_at).toLocaleString("pt-BR")
-            : "—";
-          return (
-            "<tr>" +
-            "<td>" +
-            when +
-            "</td>" +
-            "<td>" +
-            (o.metadata?.bot_name || "—") +
-            "</td>" +
-            "<td>" +
-            (o.side || "—") +
-            "</td>" +
-            "<td>" +
-            (o.odd != null ? o.odd : "—") +
-            "</td>" +
-            "<td>" +
-            BotShield.money(o.stake_cents) +
-            "</td>" +
-            "<td>" +
-            (o.status || "—") +
-            "</td>" +
-            "</tr>"
+
+      async function placeOne(payload) {
+        const res = await fetch("/api/arbishield/exchange-orders/place", {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + (await bearer()),
+          },
+          body: JSON.stringify(payload),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(json.error || "Falha place HTTP " + res.status);
+        }
+        return json;
+      }
+
+      async function runTest({ both }) {
+        const fd = new FormData(document.getElementById("liveForm"));
+        const eventId = parseEventId(fd.get("eventId"));
+        const marketId = String(fd.get("marketId") || "").trim();
+        const scoreline = String(fd.get("scoreline") || "").trim();
+        const layOdd = Number(fd.get("layOdd"));
+        const backOdd = Number(fd.get("backOdd"));
+        const stakeBrl = Number(fd.get("stakeBrl"));
+        const stakeCents = Math.round(stakeBrl * 100);
+        if (!fd.get("confirmLive")) {
+          throw new Error("Marque a confirmação de ordem real");
+        }
+        logEl.textContent = "Enviando LAY…";
+        const lay = await placeOne({
+          side: "LAY",
+          odd: layOdd,
+          stakeCents,
+          eventId,
+          marketId,
+          scoreline,
+          confirmLive: true,
+          metadata: { source: "botshield-ordens-test", step: "lay" },
+        });
+        let text =
+          "LAY ok\n" +
+          JSON.stringify(
+            {
+              orderId: lay.orderId,
+              status: lay.status,
+              demo: lay.demo,
+              selectionId: lay.selectionId,
+            },
+            null,
+            2
           );
-        })
-        .join("");
+        if (both) {
+          logEl.textContent = text + "\n\nEnviando BACK…";
+          const back = await placeOne({
+            side: "BACK",
+            odd: backOdd,
+            stakeCents,
+            eventId,
+            marketId,
+            selectionId: lay.selectionId || undefined,
+            scoreline,
+            confirmLive: true,
+            metadata: { source: "botshield-ordens-test", step: "back" },
+          });
+          text +=
+            "\n\nBACK ok\n" +
+            JSON.stringify(
+              {
+                orderId: back.orderId,
+                status: back.status,
+                demo: back.demo,
+                selectionId: back.selectionId,
+              },
+              null,
+              2
+            );
+        }
+        logEl.textContent = text;
+        await loadOrders();
+      }
+
+      document.getElementById("liveForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById("btnLive");
+        btn.disabled = true;
+        try {
+          await runTest({ both: true });
+        } catch (ex) {
+          logEl.textContent =
+            "ERRO: " + (ex instanceof Error ? ex.message : String(ex));
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      document.getElementById("btnLayOnly").addEventListener("click", async () => {
+        const btn = document.getElementById("btnLayOnly");
+        btn.disabled = true;
+        try {
+          await runTest({ both: false });
+        } catch (ex) {
+          logEl.textContent =
+            "ERRO: " + (ex instanceof Error ? ex.message : String(ex));
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      async function loadOrders() {
+        let rows = [];
+        try {
+          const token = await bearer();
+          if (token) {
+            const res = await fetch("/api/arbishield/exchange-orders", {
+              headers: {
+                Accept: "application/json",
+                Authorization: "Bearer " + token,
+              },
+            });
+            if (res.ok) {
+              const json = await res.json();
+              rows = Array.isArray(json?.orders) ? json.orders : [];
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+
+        if (!rows.length) {
+          tbody.innerHTML =
+            '<tr><td colspan="7" style="color:var(--muted)">Nenhuma ordem registrada.</td></tr>';
+          return;
+        }
+        document.getElementById("hint").hidden = true;
+        tbody.innerHTML = rows
+          .slice(0, 50)
+          .map((o) => {
+            const when = o.created_at
+              ? new Date(o.created_at).toLocaleString("pt-BR")
+              : "—";
+            return (
+              "<tr>" +
+              "<td>" +
+              when +
+              "</td>" +
+              "<td>" +
+              (o.metadata?.bot_name || o.metadata?.source || "—") +
+              "</td>" +
+              "<td>" +
+              (o.side || "—") +
+              "</td>" +
+              "<td>" +
+              (o.odd != null ? o.odd : "—") +
+              "</td>" +
+              "<td>" +
+              BotShield.money(o.stake_cents) +
+              "</td>" +
+              "<td>" +
+              (o.status || "—") +
+              "</td>" +
+              "<td style=\"font-size:11px\">" +
+              (o.external_order_id || "—") +
+              "</td>" +
+              "</tr>"
+            );
+          })
+          .join("");
+      }
+
+      await loadOrders();
     });
   </script>
 </body>

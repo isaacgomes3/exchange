@@ -51,6 +51,9 @@ export function validatePlaceOrderBody(body) {
   const selectionId = String(
     body?.selectionId || body?.runnerId || body?.selection || ""
   ).trim();
+  const scoreline = String(
+    body?.scoreline || body?.placar || body?.exactScore || ""
+  ).trim();
   if (!side) {
     const err = new Error("side obrigatório (LAY ou BACK)");
     err.status = 400;
@@ -82,8 +85,10 @@ export function validatePlaceOrderBody(body) {
     eventId: eventId || null,
     marketId: marketId || null,
     selectionId: selectionId || null,
+    scoreline: scoreline || null,
     clientOrderId: body?.clientOrderId ? String(body.clientOrderId) : null,
     mirrorProtection: body?.mirrorProtection !== false,
+    confirmLive: body?.confirmLive === true || body?.confirmLive === "1",
     metadata:
       body?.metadata && typeof body.metadata === "object" ? body.metadata : {},
   };

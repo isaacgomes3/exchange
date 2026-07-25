@@ -44,9 +44,14 @@ for f in "${ENV_FILES[@]}"; do
   if [[ -f "$f" ]] || [[ "$f" == /opt/arbishield/deploy/vps-supabase/.env ]]; then
     upsert_env "$f" "EXCHANGE_ORDERS_LIVE" "$LIVE"
     upsert_env "$f" "EXCHANGE_ORDERS_PROVIDER" "$PROVIDER"
+    upsert_env "$f" "EXCHANGE_ORDERS_PLACE_PATH" "/offers"
+    upsert_env "$f" "EXCHANGE_ORDERS_CANCEL_PATH" "/offers"
+    upsert_env "$f" "EXCHANGE_ORDERS_STATUS_PATH" "/offers"
+    upsert_env "$f" "EXCHANGE_ORDERS_PAYLOAD" "mexchange"
+    upsert_env "$f" "EXCHANGE_ORDERS_AUTH_STYLE" "auto"
     echo "  OK $f"
     n=$((n + 1))
-    grep -E '^EXCHANGE_ORDERS_(LIVE|PROVIDER)=' "$f" || true
+    grep -E '^EXCHANGE_ORDERS_(LIVE|PROVIDER|PLACE_PATH|PAYLOAD)=' "$f" || true
   fi
 done
 [[ "$n" -gt 0 ]] || die "nenhum .env encontrado em /opt/arbishield"
