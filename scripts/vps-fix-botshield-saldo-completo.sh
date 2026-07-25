@@ -261,7 +261,7 @@ systemctl reload nginx
 systemctl is-active nginx || true
 
 echo '==> teste local da rota balance'
-# Sem auth → 401/400 do shim (JSON). Se vier HTML, nginx ainda bloqueia.
+# Sem auth → 401/400 do shim (JSON). NÃO testar :80 — redireciona 301 HTML.
 code=$(curl -sS -o /tmp/bs-bal.json -w '%{http_code}' \
   -H 'Accept: application/json' \
   --max-time 10 \
@@ -269,15 +269,15 @@ code=$(curl -sS -o /tmp/bs-bal.json -w '%{http_code}' \
 echo "shim direto :${SHIM_PORT} => HTTP $code"
 head -c 200 /tmp/bs-bal.json 2>/dev/null; echo
 
-code2=$(curl -sS -o /tmp/bs-bal2.json -w '%{http_code}' \
+code2=$(curl -skS -o /tmp/bs-bal2.json -w '%{http_code}' \
   -H 'Accept: application/json' \
   -H 'Host: botshield.arbishield.app' \
-  --max-time 10 \
-  "http://127.0.0.1/api/arbishield/exchange-session/balance?provider=betbra" || echo ERR)
-echo "nginx host botshield => HTTP $code2"
+  --max-time 15 \
+  "https://127.0.0.1/api/arbishield/exchange-session/balance?provider=betbra" || echo ERR)
+echo "nginx HTTPS host botshield => HTTP $code2"
 head -c 200 /tmp/bs-bal2.json 2>/dev/null; echo
-if grep -qi '<html\|DOCTYPE' /tmp/bs-bal2.json 2>/dev/null; then
-  echo 'ERRO: nginx ainda devolve HTML (rota não proxyada)' >&2
+if grep -qiE '<html|DOCTYPE' /tmp/bs-bal2.json 2>/dev/null; then
+  echo 'ERRO: nginx HTTPS ainda devolve HTML (rota não proxyada)' >&2
   exit 1
 fi
 echo
