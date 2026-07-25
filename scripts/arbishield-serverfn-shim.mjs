@@ -10,6 +10,21 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import {
+  PROTECTION_FLOW_LOCK,
+  PROTECTION_FLOW_CONTRACT_VERSION,
+  settlementCreditParts,
+  settlementCreditCents,
+  settlementDeductionCents,
+  settlementStatusForOutcome,
+  isFeeUpfrontProtection,
+  creditBucketForSettlement,
+} from "./lib/protection-flow-contract.mjs";
+
+// Trava de produto: fluxo de proteção — não alterar sem pedido explícito.
+void PROTECTION_FLOW_LOCK;
+void PROTECTION_FLOW_CONTRACT_VERSION;
+void settlementCreditCents;
 
 const require = createRequire(import.meta.url);
 let toJSON;
@@ -4815,54 +4830,7 @@ function isOpenProtectionStatus(st) {
   return openProtectionStatuses().includes(String(st || "").toLowerCase());
 }
 
-function settlementDeductionCents(row) {
-  const meta =
-    row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
-  const raw =
-    row.platform_deduction_cents != null
-      ? row.platform_deduction_cents
-      : row.platform_profit_cents != null
-        ? row.platform_profit_cents
-        : meta.fee_charged_cents != null
-          ? meta.fee_charged_cents
-          : row.locked_deduction_cents;
-  return Math.max(0, n(raw));
-}
-
-function isFeeUpfrontProtection(row) {
-  const meta =
-    row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
-  return (
-    meta.billing_model === "fee_upfront_v1" ||
-    meta.fee_upfront === true ||
-    String(meta.source || "").includes("fee_upfront")
-  );
-}
-
-/** ArbiShield: stake + dedução; Exchange fee_upfront: 0; legado Exchange: stake − fee */
-function settlementCreditParts(row, outcome) {
-  const amount = n(row.responsibility_cents || row.amount_cents);
-  const fee = settlementDeductionCents(row);
-  const wonArbi = String(outcome).toLowerCase() === "arbishield";
-  if (isFeeUpfrontProtection(row)) {
-    if (!wonArbi) return { stake: 0, fee: 0, total: 0 };
-    return { stake: amount, fee, total: amount + fee };
-  }
-  if (wonArbi) return { stake: amount, fee: 0, total: amount };
-  const keep = Math.min(fee, amount);
-  const net = Math.max(0, amount - keep);
-  return { stake: net, fee: 0, total: net };
-}
-
-function settlementCreditCents(row, outcome) {
-  return settlementCreditParts(row, outcome).total;
-}
-
-function settlementStatusForOutcome(outcome) {
-  return String(outcome).toLowerCase() === "arbishield"
-    ? "lost_exchange"
-    : "won_exchange";
-}
+// Regras de settle/fee: scripts/lib/protection-flow-contract.mjs (TRAVADO)
 
 async function protectionAlreadyCredited(protectionId) {
   if (!protectionId) return false;
@@ -4989,17 +4957,14 @@ async function creditWalletForSettlement(row, outcome, now) {
   if (!feeUpfront) {
     patch.locked_balance_cents = Math.max(0, n(p.locked_balance_cents) - amount);
   }
-  let bucket = "deduction_balance_cents";
-  if (balanceType === "DEMO") {
+  const bucket = creditBucketForSettlement(balanceType);
+  if (bucket === "demo_balance_cents") {
     patch.demo_balance_cents = n(p.demo_balance_cents) + credit;
-    bucket = "demo_balance_cents";
-  } else if (balanceType === "INVESTOR") {
+  } else if (bucket === "investor_balance_cents") {
     patch.investor_balance_cents = n(p.investor_balance_cents) + credit;
-    bucket = "investor_balance_cents";
   } else {
     // Saldo Dedução: usável nas operações e sacável
     patch.deduction_balance_cents = n(p.deduction_balance_cents) + credit;
-    bucket = "deduction_balance_cents";
   }
 
   let creditedOk = false;

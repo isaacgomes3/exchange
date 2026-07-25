@@ -45,16 +45,25 @@ for ctr in supabase-db db postgres; do
   fi
 done
 
-# 2) Backend
-log "2) prelive + shim"
+# 2) Backend + contrato travado do fluxo de proteção
+log "2) prelive + shim + protection-flow-contract"
+mkdir -p "$SCRIPTS_DIR/lib" /opt/arbishield/lib /opt/arbishield/scripts/lib
+curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
+  "$RAW/scripts/lib/protection-flow-contract.mjs" -o "$SCRIPTS_DIR/lib/protection-flow-contract.mjs"
+chmod 0644 "$SCRIPTS_DIR/lib/protection-flow-contract.mjs"
+cp -f "$SCRIPTS_DIR/lib/protection-flow-contract.mjs" /opt/arbishield/lib/protection-flow-contract.mjs 2>/dev/null || true
+cp -f "$SCRIPTS_DIR/lib/protection-flow-contract.mjs" /opt/arbishield/scripts/lib/protection-flow-contract.mjs 2>/dev/null || true
+grep -q 'DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST' \
+  "$SCRIPTS_DIR/lib/protection-flow-contract.mjs" || die "contrato sem LOCK"
+
 curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
   "$RAW/scripts/arbishield-prelive-events.mjs" -o "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
 chmod 0755 "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
 cp -f "$SCRIPTS_DIR/arbishield-prelive-events.mjs" /opt/arbishield/scripts/arbishield-prelive-events.mjs 2>/dev/null || true
 grep -q 'settle-arbishield-stake-mais-deducao-v1' "$SCRIPTS_DIR/arbishield-prelive-events.mjs" \
   || die "prelive sem marker stake-mais-deducao"
-grep -q 'settlementCreditParts' "$SCRIPTS_DIR/arbishield-prelive-events.mjs" \
-  || die "prelive sem settlementCreditParts"
+grep -q 'protection-flow-contract' "$SCRIPTS_DIR/arbishield-prelive-events.mjs" \
+  || die "prelive sem import do contrato"
 
 curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
   "$RAW/scripts/arbishield-serverfn-shim.mjs" -o "$SHIM_DIR/arbishield-serverfn-shim.mjs"
@@ -63,6 +72,8 @@ grep -q 'settle-arbishield-stake-mais-deducao-v1' "$SHIM_DIR/arbishield-serverfn
   || die "shim sem marker"
 grep -q 'deduction-withdraw' "$SHIM_DIR/arbishield-serverfn-shim.mjs" \
   || die "shim sem deduction-withdraw"
+grep -q 'protection-flow-contract' "$SHIM_DIR/arbishield-serverfn-shim.mjs" \
+  || die "shim sem import do contrato"
 
 systemctl restart arbishield-prelive-events.service 2>/dev/null || true
 systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true

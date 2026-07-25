@@ -10,6 +10,27 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import {
+  PROTECTION_FLOW_LOCK,
+  PROTECTION_FLOW_CONTRACT_VERSION,
+  settlementCreditParts,
+  settlementCreditCents,
+  settlementDeductionCents,
+  settlementStatusForOutcome,
+  isFeeUpfrontProtection,
+  creditBucketForSettlement,
+  calcFeeUpfront,
+  calcLay,
+  calcBack,
+  layToBackOdd,
+} from "./lib/protection-flow-contract.mjs";
+
+// Trava de produto: fluxo de proteção — não alterar sem pedido explícito.
+void PROTECTION_FLOW_LOCK;
+void PROTECTION_FLOW_CONTRACT_VERSION;
+void settlementCreditCents;
+void calcFeeUpfront;
+void layToBackOdd;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
@@ -1089,61 +1110,7 @@ async function countOpenProtections(matchId) {
   return { lay, back, total: open.length, rows: open };
 }
 
-function settlementDeductionCents(row) {
-  const meta =
-    row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
-  const raw =
-    row.platform_deduction_cents != null
-      ? row.platform_deduction_cents
-      : row.platform_profit_cents != null
-        ? row.platform_profit_cents
-        : meta.fee_charged_cents != null
-          ? meta.fee_charged_cents
-          : row.locked_deduction_cents;
-  let fee = Math.max(0, nCents(raw));
-  // fee_upfront sem coluna preenchida: recalcula pela odd efetiva
-  if (!(fee > 0) && isFeeUpfrontProtection(row)) {
-    const stake = nCents(row.responsibility_cents || row.amount_cents || meta.stake_cents);
-    let odd = Number(row.odd || meta.market_odd || 0);
-    const mt = String(meta.market_type || "").toUpperCase();
-    if (mt === "LAY" && odd > 1.01) odd = odd / (odd - 1);
-    if (stake > 0 && odd > 1.01) {
-      const profit = Math.max(0, Math.round(stake * odd) - stake);
-      const userProfit = Math.round(stake * 0.015);
-      fee = Math.max(0, profit - userProfit);
-    }
-  }
-  return fee;
-}
-
-/** Crédito no settle: { stake, fee, total }. ArbiShield devolve stake+dedução. */
-function settlementCreditParts(row, outcome) {
-  const amount = nCents(row.responsibility_cents || row.amount_cents);
-  const fee = settlementDeductionCents(row);
-  const wonArbi = String(outcome).toLowerCase() === "arbishield";
-  if (isFeeUpfrontProtection(row)) {
-    // fee_upfront: ArbiShield → stake + dedução; Exchange → 0
-    if (!wonArbi) return { stake: 0, fee: 0, total: 0 };
-    return { stake: amount, fee, total: amount + fee };
-  }
-  // Legado: ArbiShield → stake; Exchange → stake − taxa
-  if (wonArbi) return { stake: amount, fee: 0, total: amount };
-  const keep = Math.min(fee, amount);
-  const net = Math.max(0, amount - keep);
-  return { stake: net, fee: 0, total: net };
-}
-
-function settlementCreditCents(row, outcome) {
-  return settlementCreditParts(row, outcome).total;
-}
-
-function settlementStatusForOutcome(outcome) {
-  // lost_exchange = cobertura ArbiShield (UI: "ArbiShield", capital reutilizável)
-  // won_exchange = bateu na casa externa (UI: "Exchange")
-  return String(outcome).toLowerCase() === "arbishield"
-    ? "lost_exchange"
-    : "won_exchange";
-}
+// Regras de settle/fee: scripts/lib/protection-flow-contract.mjs (TRAVADO)
 
 async function protectionAlreadyCredited(protectionId) {
   if (!protectionId) return false;
@@ -1229,18 +1196,14 @@ async function creditWalletForSettlement(row, outcome, now) {
       nCents(p.locked_balance_cents) - amount
     );
   }
-  // ArbiShield: stake + dedução → Saldo Dedução (usável + sacável).
-  // DEMO/INVESTOR mantêm o bucket de origem (crédito de teste / provedor).
-  let bucket = "deduction_balance_cents";
-  if (balanceType === "DEMO") {
+  // ArbiShield: stake + dedução → bucket do contrato (REAL=Saldo Dedução).
+  const bucket = creditBucketForSettlement(balanceType);
+  if (bucket === "demo_balance_cents") {
     patch.demo_balance_cents = nCents(p.demo_balance_cents) + credit;
-    bucket = "demo_balance_cents";
-  } else if (balanceType === "INVESTOR") {
+  } else if (bucket === "investor_balance_cents") {
     patch.investor_balance_cents = nCents(p.investor_balance_cents) + credit;
-    bucket = "investor_balance_cents";
   } else {
     patch.deduction_balance_cents = nCents(p.deduction_balance_cents) + credit;
-    bucket = "deduction_balance_cents";
   }
 
   let creditedOk = false;
@@ -1636,70 +1599,7 @@ function n(v) {
   return Number.isFinite(x) ? x : 0;
 }
 
-/**
- * Nova proteção (fee_upfront_v1):
- * - Odd usada no cálculo é sempre a odd BACK efetiva
- * - LAY: converte L → L/(L−1)  (ex.: 14 → ≈1,077 ≈ “back 1,08”)
- * - Lucro bruto = stake × (oddEfetiva − 1)
- * - Cliente fica com 1,5% da stake; ArbiShield cobra o resto na hora
- * Ex. BACK 1,10 · R$ 1.000 → dedução R$ 85
- * Ex. LAY 14 · R$ 1.000 → back equiv. ≈1,077 → dedução ≈ R$ 62
- */
-function layToBackOdd(layOdd) {
-  const o = Number.isFinite(layOdd) && layOdd > 1.01 ? layOdd : 1.01;
-  return o / (o - 1);
-}
-
-function calcFeeUpfront(amountCents, odd) {
-  const stake =
-    Number.isFinite(amountCents) && amountCents > 0 ? Math.floor(amountCents) : 0;
-  const o = Number.isFinite(odd) && odd > 1.01 ? odd : 1.01;
-  const grossReturnCents = Math.round(stake * o);
-  const grossProfitCents = Math.max(0, grossReturnCents - stake);
-  const userProfitCents = Math.round(stake * 0.015);
-  const arbiShieldDeductionCents = Math.max(0, grossProfitCents - userProfitCents);
-  return {
-    stakeCents: stake,
-    responsibilityCents: stake,
-    coverageCents: stake,
-    odd: o,
-    effectiveBackOdd: o,
-    grossReturnCents,
-    grossProfitCents,
-    userProfitCents,
-    arbiShieldDeductionCents,
-    exchangeFeeCents: 0,
-    billing_model: "fee_upfront_v1",
-  };
-}
-
-/** LAY — converte odd lay → back equivalente antes do fee_upfront. */
-function calcLay(amountCents, odd) {
-  const marketOdd = Number.isFinite(odd) && odd > 1.01 ? odd : 1.01;
-  const backOdd = layToBackOdd(marketOdd);
-  const c = calcFeeUpfront(amountCents, backOdd);
-  return {
-    ...c,
-    odd: marketOdd,
-    marketOdd,
-    effectiveBackOdd: backOdd,
-  };
-}
-
-/** BACK — fee_upfront direto na odd do mercado. */
-function calcBack(amountCents, odd) {
-  return calcFeeUpfront(amountCents, odd);
-}
-
-function isFeeUpfrontProtection(row) {
-  const meta =
-    row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
-  return (
-    meta.billing_model === "fee_upfront_v1" ||
-    meta.fee_upfront === true ||
-    String(meta.source || "").includes("fee_upfront")
-  );
-}
+// Cálculo fee_upfront / LAY / BACK: scripts/lib/protection-flow-contract.mjs (TRAVADO)
 
 async function createProtection(body, userToken) {
   if (!SERVICE_KEY) throw new Error("SERVICE_ROLE_KEY ausente no .env da VPS");
@@ -1892,8 +1792,8 @@ async function createProtection(body, userToken) {
   } else {
     // Consome banca real + reusable primeiro; depois Saldo Dedução
     let left = feeCents;
-    let bal = n(profile.balance_cents) + n(profile.reusable_balance_cents);
-    let ded = n(profile.deduction_balance_cents);
+    const bal = n(profile.balance_cents) + n(profile.reusable_balance_cents);
+    const ded = n(profile.deduction_balance_cents);
     patch.reusable_balance_cents = 0;
     if (bal >= left) {
       patch.balance_cents = bal - left;
@@ -3120,7 +3020,8 @@ async function handleApi(req, res) {
     return sendJson(res, 200, {
       ok: true,
       service: "arbishield-matches",
-      fix: "protection-fee-upfront-v7-stake-mais-deducao",
+      fix: "protection-flow-contract-v1",
+      protectionFlowLock: PROTECTION_FLOW_LOCK,
       env: process.env.ARBISHIELD_ENV || "production",
       listen: LISTEN,
       testEvent: "/api/arbishield/test-event",
