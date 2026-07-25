@@ -562,13 +562,13 @@
 
     <div class="toolbar">
       <div class="tabs" id="viewTabs">
-        <button class="tab active" data-view="prelive" type="button">Próximos jogos (cadastrar)</button>
-        <button class="tab" data-view="platform" type="button">Encerrar / Eventos ArbiShield</button>
+        <button class="tab active" data-view="platform" type="button">Encerrar / Eventos ArbiShield</button>
+        <button class="tab" data-view="prelive" type="button">Próximos jogos (cadastrar)</button>
       </div>
       <input class="search" id="search" type="search" placeholder="Buscar time ou liga…" />
     </div>
 
-    <section class="panel platform-list" id="platformPanel" hidden>
+    <section class="panel platform-list" id="platformPanel">
       <div class="panel-head">
         <h2>Eventos cadastrados na plataforma</h2>
         <span class="hint" id="platformMeta">—</span>
@@ -589,7 +589,7 @@
       </div>
     </section>
 
-    <section class="panel" id="prelivePanel">
+    <section class="panel" id="prelivePanel" hidden>
       <div class="field prelive-liq" style="margin:0 16px 14px;max-width:420px">
         <label for="preliveLiquidityBrl">Liquidez real (R$) — usada ao lançar cada seleção BetBra</label>
         <div style="display:flex;gap:10px;align-items:stretch">
@@ -910,7 +910,7 @@
       });
 
       var auth = null;
-      var view = "prelive";
+      var view = "platform";
       var preliveEvents = [];
       var selectedEvent = null;
       var selectedMarket = null;
@@ -3729,11 +3729,12 @@
         var btnBack = $("btnBackManual");
         if (btnBack) btnBack.addEventListener("click", closeManualDrawer);
 
-        await loadPrelive();
         auth = await resolveAuth();
         showAuthBanner(!auth);
-        setView("prelive");
+        setView("platform");
         await loadPlatformMatches();
+        // Catálogo BetBra em background (aba secundária)
+        loadPrelive().catch(function () {});
         // Sync placar/minuto BetBra em background + refresh da lista
         async function triggerLiveSync() {
           try {
