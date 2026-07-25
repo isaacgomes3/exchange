@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta name="arbishield-vps-page" content="jogos" />
-  <meta name="arbishield-build" content="admin-jogos-sem-fila-default-v6" />
+  <meta name="arbishield-build" content="admin-jogos-editar-evento-v7" />
   <title>Gestão de Jogos — ArbiShield v2</title>
   <link rel="stylesheet" href="/v2.css" />
   <script src="/v2-shell.js" defer></script>
@@ -651,6 +651,74 @@
     </div>
   </div>
 
+  <div class="modal-backdrop" id="editMatchModal">
+    <div class="modal" style="width:min(560px,100%);max-height:90vh;overflow:auto">
+      <h3>Editar <span style="color:var(--lime)">evento</span></h3>
+      <p id="editMatchSummary" class="hint">Altere qualquer informação do jogo lançado.</p>
+      <div class="grid" style="margin-top:12px">
+        <div class="field"><label for="editHome">Time casa</label><input id="editHome" autocomplete="off" /></div>
+        <div class="field"><label for="editAway">Time fora</label><input id="editAway" autocomplete="off" /></div>
+      </div>
+      <div class="grid">
+        <div class="field"><label for="editLeague">Liga / competição</label><input id="editLeague" autocomplete="off" /></div>
+        <div class="field">
+          <label for="editSport">Esporte</label>
+          <select id="editSport">
+            <option value="futebol">Futebol</option>
+            <option value="basquete">Basquete</option>
+            <option value="volei">Vôlei</option>
+            <option value="tenis">Tênis</option>
+            <option value="mma">MMA</option>
+            <option value="outro">Outro</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="editStarts">Data e horário</label>
+        <input id="editStarts" type="datetime-local" />
+      </div>
+      <div class="grid">
+        <div class="field"><label for="editHomeLogo">Logo casa (URL)</label><input id="editHomeLogo" placeholder="https://…" autocomplete="off" /></div>
+        <div class="field"><label for="editAwayLogo">Logo fora (URL)</label><input id="editAwayLogo" placeholder="https://…" autocomplete="off" /></div>
+      </div>
+      <div class="field">
+        <label for="editBetLink">Link do mercado (BetBra / casa)</label>
+        <input id="editBetLink" placeholder="https://betbra.bet.br/…/market/…" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="editLiq">Liquidez total (R$)</label>
+        <input id="editLiq" type="text" inputmode="decimal" placeholder="Ex.: 2500" autocomplete="off" />
+        <p class="hint" id="editLiqHint" style="margin:6px 0 0">Não pode ser menor que o já utilizado.</p>
+      </div>
+      <div class="field">
+        <label for="editMarketName">Nome do mercado / seleção</label>
+        <input id="editMarketName" autocomplete="off" />
+      </div>
+      <div class="grid">
+        <div class="field">
+          <label for="editMarketType">Tipo</label>
+          <select id="editMarketType">
+            <option value="LAY">LAY</option>
+            <option value="BACK">BACK</option>
+          </select>
+        </div>
+        <div class="field"><label for="editOdd">Odd</label><input id="editOdd" inputmode="decimal" placeholder="Ex.: 2.10" /></div>
+      </div>
+      <label class="publish-opt" style="display:flex;gap:10px;align-items:flex-start;margin:0 0 10px;font-size:12px;line-height:1.4;cursor:pointer">
+        <input type="checkbox" id="editPublish" style="margin-top:2px;accent-color:var(--lime)" />
+        <span><strong>Publicado na fila</strong> — visível em Proteger Aposta</span>
+      </label>
+      <label class="publish-opt" style="display:flex;gap:10px;align-items:flex-start;margin:0 0 16px;font-size:12px;line-height:1.4;cursor:pointer">
+        <input type="checkbox" id="editHide" style="margin-top:2px;accent-color:var(--lime)" />
+        <span><strong>Esconder do site</strong> — não aparece para o cliente</span>
+      </label>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="btnCancelEditMatch" type="button">Fechar</button>
+        <button class="btn btn-primary btn-sm" id="btnConfirmEditMatch" type="button">Salvar alterações</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-backdrop" id="createModal">
     <div class="modal">
       <h3>Lançar evento na plataforma</h3>
@@ -847,6 +915,7 @@
       var platformLoaded = false;
       var platformLoading = false;
       var searchTerm = "";
+      var editMatchId = null;
 
       var gate = document.getElementById("gate");
       var app = document.getElementById("app");
@@ -1744,6 +1813,10 @@
                     m.id +
                     '" style="margin-top:8px">Encerrar partida</button>'
                   : "";
+              var editBtn =
+                '<button class="btn btn-ghost btn-sm" type="button" data-edit="' +
+                m.id +
+                '" style="margin-top:8px;margin-left:6px">Editar</button>';
               var used = Number(m.used_protection_cents || 0);
               var openN = Number(m._openProtections || 0);
               var homeLogo = m.home_logo
@@ -1823,6 +1896,7 @@
                 closedByHtml +
                 publishBtn +
                 settleBtn +
+                editBtn +
                 "</div>" +
                 '<div class="time">' +
                 originBadge +
@@ -1843,6 +1917,11 @@
         $("platformContent").querySelectorAll("button[data-settle]").forEach(function (btn) {
           btn.addEventListener("click", function () {
             openSettleModal(btn.getAttribute("data-settle"));
+          });
+        });
+        $("platformContent").querySelectorAll("button[data-edit]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            openEditMatchModal(btn.getAttribute("data-edit"));
           });
         });
       }
@@ -1922,7 +2001,7 @@
         }
         try {
           platformMatches = await rest(
-            "matches?deleted_at=is.null&select=id,home_team,away_team,home_logo,away_logo,league,starts_at,is_published,status,status_v2,final_score,settled_at,settled_by,updated_by,max_protection_cents,used_protection_cents,markets,metadata,external_id&order=starts_at.desc&limit=500",
+            "matches?deleted_at=is.null&select=id,home_team,away_team,home_logo,away_logo,league,sport_type,starts_at,is_published,status,status_v2,final_score,settled_at,settled_by,updated_by,max_protection_cents,used_protection_cents,markets,metadata,external_id&order=starts_at.desc&limit=500",
             auth.token
           );
           // Resolve nomes dos admins que encerraram
@@ -2135,6 +2214,321 @@
         }
         var n = Number(s);
         return Number.isFinite(n) ? n : null;
+      }
+
+      function liqStats(m) {
+        var markets = Array.isArray(m && m.markets) ? m.markets : [];
+        var max = 0;
+        var used = 0;
+        if (markets.length) {
+          markets.forEach(function (mk) {
+            if (!mk) return;
+            var liq = Number(
+              mk.liquidity != null
+                ? mk.liquidity
+                : mk.liquidity_cents != null
+                  ? mk.liquidity_cents
+                  : 0
+            );
+            var u = Number(
+              mk.used_liquidity != null
+                ? mk.used_liquidity
+                : mk.used_cents != null
+                  ? mk.used_cents
+                  : mk.used_protection_cents != null
+                    ? mk.used_protection_cents
+                    : 0
+            );
+            if (liq > 0) {
+              max += liq;
+              used += Math.max(0, u);
+            }
+          });
+        }
+        if (!(max > 0)) {
+          max = Number(m.max_protection_cents || 0);
+          used = Number(m.used_protection_cents || 0);
+        }
+        var openStake = Number(m._openStakeCents || 0);
+        if (openStake > used) used = openStake;
+        if (used > max && max > 0) used = max;
+        var left = Math.max(0, max - used);
+        return { max: max, used: used, left: left };
+      }
+
+      function applyLiquidityToMarkets(markets, newTotalCents, usedFloorCents) {
+        var list = Array.isArray(markets)
+          ? markets.map(function (mk) {
+              return Object.assign({}, mk);
+            })
+          : [];
+        var floor = Math.max(0, Number(usedFloorCents || 0));
+        if (!(newTotalCents >= floor)) {
+          throw new Error(
+            "Liquidez não pode ser menor que o já utilizado (" + money(floor) + ")."
+          );
+        }
+        if (!list.length) {
+          return { markets: list, max: newTotalCents };
+        }
+        var oldSum = list.reduce(function (s, mk) {
+          return s + Math.max(0, Number(mk.liquidity || mk.liquidity_cents || 0));
+        }, 0);
+        if (oldSum <= 0 || list.length === 1) {
+          list[0].liquidity = newTotalCents;
+        } else {
+          var assigned = 0;
+          for (var i = 0; i < list.length; i++) {
+            if (i === list.length - 1) {
+              list[i].liquidity = Math.max(0, newTotalCents - assigned);
+            } else {
+              var share = Math.floor(
+                (newTotalCents * Math.max(0, Number(list[i].liquidity || 0))) /
+                  oldSum
+              );
+              list[i].liquidity = share;
+              assigned += share;
+            }
+          }
+        }
+        list.forEach(function (mk) {
+          var u = Number(
+            mk.used_liquidity != null
+              ? mk.used_liquidity
+              : mk.used_cents != null
+                ? mk.used_cents
+                : 0
+          );
+          if (u > Number(mk.liquidity || 0)) mk.liquidity = u;
+        });
+        var max = list.reduce(function (s, mk) {
+          return s + Number(mk.liquidity || 0);
+        }, 0);
+        return { markets: list, max: max };
+      }
+
+      async function patchMatch(matchId, body) {
+        try {
+          await rest("matches?id=eq." + encodeURIComponent(matchId), auth.token, {
+            method: "PATCH",
+            body: Object.assign({ updated_at: new Date().toISOString() }, body),
+          });
+        } catch (err) {
+          await rest("matches?id=eq." + encodeURIComponent(matchId), auth.token, {
+            method: "PATCH",
+            body: body,
+          });
+        }
+      }
+
+      function openEditMatchModal(matchId) {
+        var m = platformMatches.find(function (x) {
+          return String(x.id) === String(matchId);
+        });
+        if (!m) return;
+        if (!auth) {
+          alert("Faça login admin.");
+          return;
+        }
+        editMatchId = matchId;
+        var liq = liqStats(m);
+        var meta = m.metadata && typeof m.metadata === "object" ? m.metadata : {};
+        var markets = Array.isArray(m.markets) ? m.markets : [];
+        var primary = markets[0] || {};
+        $("editMatchSummary").textContent =
+          (m.home_team || "?") +
+          " vs " +
+          (m.away_team || "?") +
+          " · usado " +
+          money(liq.used) +
+          " de " +
+          money(liq.max);
+        $("editHome").value = m.home_team || "";
+        $("editAway").value = m.away_team || "";
+        $("editLeague").value = m.league || "";
+        var sportVal = String(m.sport_type || "futebol").toLowerCase();
+        if (sportVal === "football") sportVal = "futebol";
+        if (sportVal === "basketball") sportVal = "basquete";
+        if (sportVal === "tennis") sportVal = "tenis";
+        if (sportVal === "volleyball" || sportVal === "voleibol") sportVal = "volei";
+        $("editSport").value = sportVal;
+        if ($("editSport").value !== sportVal) $("editSport").value = "outro";
+        $("editStarts").value = toDatetimeLocalValue(m.starts_at);
+        $("editHomeLogo").value = m.home_logo || "";
+        $("editAwayLogo").value = m.away_logo || "";
+        $("editBetLink").value =
+          meta.external_bet_link || meta.betbra_link || "";
+        $("editLiq").value = String(
+          (liq.max / 100).toLocaleString("pt-BR", {
+            minimumFractionDigits: liq.max % 100 ? 2 : 0,
+            maximumFractionDigits: 2,
+          })
+        );
+        $("editLiqHint").textContent =
+          "Utilizado: " + money(liq.used) + ". Mínimo ao salvar = utilizado.";
+        $("editMarketName").value = primary.name || "";
+        var side = String(primary.market_type || "LAY").toUpperCase();
+        $("editMarketType").value = side === "BACK" ? "BACK" : "LAY";
+        $("editOdd").value =
+          primary.odd != null && primary.odd !== ""
+            ? String(primary.odd)
+            : "";
+        if ($("editPublish")) $("editPublish").checked = !!m.is_published;
+        if ($("editHide")) {
+          $("editHide").checked = !!(
+            meta.hide_from_site ||
+            meta.hidden ||
+            m.hide_from_site
+          );
+        }
+        $("editMatchModal").classList.add("show");
+      }
+
+      async function confirmEditMatch() {
+        if (!editMatchId || !auth) {
+          alert("Faça login admin.");
+          return;
+        }
+        var m = platformMatches.find(function (x) {
+          return String(x.id) === String(editMatchId);
+        });
+        if (!m) {
+          alert("Jogo não encontrado.");
+          return;
+        }
+        var home = String($("editHome").value || "").trim();
+        var away = String($("editAway").value || "").trim();
+        if (!home || !away) {
+          alert("Informe time casa e time fora.");
+          return;
+        }
+        var local = String($("editStarts").value || "").trim();
+        if (!local) {
+          alert("Informe data e horário.");
+          return;
+        }
+        var startsAt = new Date(local);
+        if (isNaN(startsAt.getTime())) {
+          alert("Horário inválido.");
+          return;
+        }
+        var liqBrl = parseMoneyToNumber($("editLiq").value);
+        if (liqBrl == null || !(liqBrl > 0)) {
+          alert("Informe a liquidez (R$). Ex.: 2500");
+          return;
+        }
+        var liquidityCents = Math.round(liqBrl * 100);
+        if (!(liquidityCents >= 100)) {
+          alert("Liquidez mínima: R$ 1,00");
+          return;
+        }
+        var oddRaw = String($("editOdd").value || "").trim().replace(",", ".");
+        var odd = Number(oddRaw);
+        if (!(odd > 1)) {
+          alert("Odd inválida (deve ser > 1).");
+          return;
+        }
+        var marketName = String($("editMarketName").value || "").trim();
+        if (!marketName) {
+          alert("Informe o nome do mercado.");
+          return;
+        }
+        var marketType =
+          String($("editMarketType").value || "LAY").toUpperCase() === "BACK"
+            ? "BACK"
+            : "LAY";
+        var stats = liqStats(m);
+        var applied;
+        try {
+          applied = applyLiquidityToMarkets(
+            m.markets,
+            liquidityCents,
+            stats.used
+          );
+        } catch (eLiq) {
+          alert(eLiq.message || "Liquidez inválida");
+          return;
+        }
+        if (!applied.markets.length) {
+          applied.markets = [
+            {
+              id: cryptoRandomId(),
+              name: marketName,
+              odd: odd,
+              liquidity: liquidityCents,
+              used_liquidity: 0,
+              market_type: marketType,
+            },
+          ];
+          applied.max = liquidityCents;
+        } else {
+          applied.markets[0] = Object.assign({}, applied.markets[0], {
+            name: marketName,
+            odd: odd,
+            market_type: marketType,
+          });
+        }
+        var published = !!($("editPublish") && $("editPublish").checked);
+        var hide = !!($("editHide") && $("editHide").checked);
+        var prevMeta =
+          m.metadata && typeof m.metadata === "object" ? m.metadata : {};
+        var betLink = String($("editBetLink").value || "").trim();
+        var nextMeta = Object.assign({}, prevMeta, {
+          hide_from_site: hide,
+          hidden: hide,
+          external_bet_link: betLink || null,
+          betbra_link: betLink || prevMeta.betbra_link || null,
+          external_bet_name: betLink
+            ? prevMeta.external_bet_name || "BetBra"
+            : prevMeta.external_bet_name || null,
+        });
+        if (!betLink) {
+          nextMeta.external_bet_link = null;
+          nextMeta.betbra_link = null;
+        }
+        var body = {
+          home_team: home,
+          away_team: away,
+          league: String($("editLeague").value || "").trim() || null,
+          sport_type: String($("editSport").value || "futebol").toLowerCase(),
+          starts_at: startsAt.toISOString(),
+          home_logo: String($("editHomeLogo").value || "").trim() || null,
+          away_logo: String($("editAwayLogo").value || "").trim() || null,
+          is_published: published && !hide,
+          markets: applied.markets,
+          max_protection_cents: applied.max,
+          metadata: nextMeta,
+        };
+        $("btnConfirmEditMatch").disabled = true;
+        $("btnConfirmEditMatch").textContent = "Salvando…";
+        try {
+          await patchMatch(editMatchId, body);
+          Object.assign(m, body);
+          alert("Evento atualizado.");
+          $("editMatchModal").classList.remove("show");
+          editMatchId = null;
+          platformLoaded = false;
+          await loadPlatformMatches({ force: true });
+          renderPlatformList();
+          renderStats();
+        } catch (err) {
+          alert(err.message || "Erro ao editar evento");
+        } finally {
+          $("btnConfirmEditMatch").disabled = false;
+          $("btnConfirmEditMatch").textContent = "Salvar alterações";
+        }
+      }
+
+      function cryptoRandomId() {
+        try {
+          if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+        } catch (e) {}
+        return (
+          "m_" +
+          Date.now().toString(36) +
+          "_" +
+          Math.random().toString(36).slice(2, 10)
+        );
       }
 
       function marketCatalog() {
@@ -3202,6 +3596,23 @@
         if ($("settleModal")) {
           $("settleModal").addEventListener("click", function (e) {
             if (e.target === $("settleModal")) $("settleModal").classList.remove("show");
+          });
+        }
+        if ($("btnCancelEditMatch")) {
+          $("btnCancelEditMatch").addEventListener("click", function () {
+            $("editMatchModal").classList.remove("show");
+            editMatchId = null;
+          });
+        }
+        if ($("btnConfirmEditMatch")) {
+          $("btnConfirmEditMatch").addEventListener("click", confirmEditMatch);
+        }
+        if ($("editMatchModal")) {
+          $("editMatchModal").addEventListener("click", function (e) {
+            if (e.target === $("editMatchModal")) {
+              $("editMatchModal").classList.remove("show");
+              editMatchId = null;
+            }
           });
         }
         if ($("onlyWithOdds")) {
