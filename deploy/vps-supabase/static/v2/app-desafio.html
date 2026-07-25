@@ -6,8 +6,8 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-live-pack-v2" />
-  <meta name="arbishield-features" content="desafio-mradar-v2 desafio-ft-result-v2" />
+  <meta name="arbishield-build" content="desafio-mradar-urn-v1" />
+  <meta name="arbishield-features" content="desafio-mradar-urn-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1" />
   <link rel="stylesheet" href="/v2.css?v=dz-live-pack-2" />
   <style>
     /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
@@ -268,6 +268,24 @@
       letter-spacing: 0.04em;
     }
     .dz-radar-foot a:hover { color: #c9f223; }
+    .dz-radar-foot {
+      gap: 12px;
+      align-items: center;
+    }
+    .dz-radar-next {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.55);
+      font: inherit;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      margin-right: auto;
+      padding: 0;
+    }
+    .dz-radar-next:hover { color: #e8ff8a; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js?v=dz-live-pack-2"></script>
@@ -1779,10 +1797,27 @@
 
       function mountRadarIframe(wrap, mradarUrl, candidates) {
         var urls = [];
-        if (mradarUrl) urls.push(mradarUrl);
+        // Preferir ordem da API (URN sr:match primeiro); mradarUrl entra se faltar
         (candidates || []).forEach(function (u) {
           if (u && urls.indexOf(u) < 0) urls.push(u);
         });
+        if (mradarUrl && urls.indexOf(mradarUrl) < 0) urls.unshift(mradarUrl);
+        else if (mradarUrl && urls.indexOf(mradarUrl) > 0) {
+          urls.splice(urls.indexOf(mradarUrl), 1);
+          urls.unshift(mradarUrl);
+        }
+        // Prioriza URN sr:match se existir na lista
+        var urnIdx = -1;
+        for (var i = 0; i < urls.length; i++) {
+          if (/[?&]id=sr%3Amatch%3A|[?&]id=sr:match:/.test(urls[i])) {
+            urnIdx = i;
+            break;
+          }
+        }
+        if (urnIdx > 0) {
+          var urn = urls.splice(urnIdx, 1)[0];
+          urls.unshift(urn);
+        }
         if (!urls.length) return;
         var idx = 0;
         function paint(url) {
@@ -1790,22 +1825,23 @@
             '<iframe title="Radar do jogo" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen src="' +
             esc(url) +
             '"></iframe>' +
-            '<div class="dz-radar-foot"><a href="' +
+            '<div class="dz-radar-foot">' +
+            (urls.length > 1
+              ? '<button type="button" class="dz-radar-next" data-radar-next>Outro formato</button>'
+              : "") +
+            '<a href="' +
             esc(url) +
             '" target="_blank" rel="noopener">Abrir em nova aba</a></div>';
           wrap.hidden = false;
-          var iframe = wrap.querySelector("iframe");
-          if (!iframe) return;
-          // Se a casa bloquear um formato de id, tenta o próximo candidato
-          var tried = false;
-          iframe.addEventListener("load", function () {
-            tried = true;
-          });
-          setTimeout(function () {
-            if (tried) return;
-            idx += 1;
-            if (idx < urls.length) paint(urls[idx]);
-          }, 4500);
+          var nextBtn = wrap.querySelector("[data-radar-next]");
+          if (nextBtn) {
+            nextBtn.addEventListener("click", function (ev) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              idx = (idx + 1) % urls.length;
+              paint(urls[idx]);
+            });
+          }
         }
         paint(urls[0]);
       }
@@ -2008,7 +2044,7 @@
                 } else if (String(msg).indexOf("insufficient") >= 0) {
                   msg = "Saldo do Desafio insuficiente. Deposite via PIX na barra acima.";
                 } else if (String(msg).indexOf("Sem saldo retido") >= 0) {
-                  msg = "Sem saldo retido do ciclo para esta entrada.";
+                  msg = "Saldo do Desafio insuficiente. Deposite via PIX na barra acima.";
                 }
                 throw new Error(msg);
               }
