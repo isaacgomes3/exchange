@@ -6,8 +6,8 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-mradar-v1" />
-  <link rel="stylesheet" href="/v2.css?v=dz-mradar-1" />
+  <meta name="arbishield-build" content="desafio-mradar-v2" />
+  <link rel="stylesheet" href="/v2.css?v=dz-mradar-2" />
   <style>
     /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
     .dz-sb-market {
@@ -269,9 +269,9 @@
     .dz-radar-foot a:hover { color: #c9f223; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=dz-mradar-1"></script>
-  <script src="/desafio-ciclo-math.js?v=dz-mradar-1"></script>
-  <script src="/v2-shell.js?v=dz-mradar-1" defer></script>
+  <script src="/v2.js?v=dz-mradar-2"></script>
+  <script src="/desafio-ciclo-math.js?v=dz-mradar-2"></script>
+  <script src="/v2-shell.js?v=dz-mradar-2" defer></script>
   <style>
     .dz-access-history {
       appearance: none;
@@ -1759,15 +1759,37 @@
         return radarResolveCache[key];
       }
 
-      function mountRadarIframe(wrap, mradarUrl) {
-        wrap.innerHTML =
-          '<iframe title="Radar do jogo" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen src="' +
-          esc(mradarUrl) +
-          '"></iframe>' +
-          '<div class="dz-radar-foot"><a href="' +
-          esc(mradarUrl) +
-          '" target="_blank" rel="noopener">Abrir em nova aba</a></div>';
-        wrap.hidden = false;
+      function mountRadarIframe(wrap, mradarUrl, candidates) {
+        var urls = [];
+        if (mradarUrl) urls.push(mradarUrl);
+        (candidates || []).forEach(function (u) {
+          if (u && urls.indexOf(u) < 0) urls.push(u);
+        });
+        if (!urls.length) return;
+        var idx = 0;
+        function paint(url) {
+          wrap.innerHTML =
+            '<iframe title="Radar do jogo" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen src="' +
+            esc(url) +
+            '"></iframe>' +
+            '<div class="dz-radar-foot"><a href="' +
+            esc(url) +
+            '" target="_blank" rel="noopener">Abrir em nova aba</a></div>';
+          wrap.hidden = false;
+          var iframe = wrap.querySelector("iframe");
+          if (!iframe) return;
+          // Se a casa bloquear um formato de id, tenta o próximo candidato
+          var tried = false;
+          iframe.addEventListener("load", function () {
+            tried = true;
+          });
+          setTimeout(function () {
+            if (tried) return;
+            idx += 1;
+            if (idx < urls.length) paint(urls[idx]);
+          }, 4500);
+        }
+        paint(urls[0]);
       }
 
       async function openRadarBox(box) {
@@ -1786,9 +1808,19 @@
         btn.disabled = true;
         if (hint) hint.textContent = "Carregando…";
         try {
-          var data = await resolveMradarUrl(eventId, link);
+          // force=1 evita cache velho (v2) sem SportRadar
+          var qs =
+            "/api/arbishield/desafio-mradar?force=1&eventId=" +
+            encodeURIComponent(eventId || "");
+          if (link) qs += "&link=" + encodeURIComponent(link);
+          var res = await fetch(qs, { credentials: "same-origin" });
+          var data = await res.json().catch(function () {
+            return null;
+          });
+          var key = String(eventId || "") + "|" + String(link || "");
+          radarResolveCache[key] = data || { ok: false, found: false };
           if (data && data.ok && data.found && data.mradarUrl) {
-            mountRadarIframe(wrap, data.mradarUrl);
+            mountRadarIframe(wrap, data.mradarUrl, data.mradarUrlCandidates);
             if (hint) hint.textContent = "Recolher";
             radarOpenByEvent[eventId] = true;
             btn.disabled = false;

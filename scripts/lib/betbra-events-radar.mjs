@@ -5,7 +5,7 @@
  *   Widget: https://{brand}/widget/mradar?id={eventIdStatsPerform}
  */
 
-export const BETBRA_EVENTS_RADAR_VERSION = "betbra-events-radar-v2";
+export const BETBRA_EVENTS_RADAR_VERSION = "betbra-events-radar-v3";
 
 export const KNOWN_SOFT2BET_HOSTS = [
   "betbra.bet.br",
@@ -96,6 +96,21 @@ export function coerceEventsRadarFeed(feed) {
 }
 
 /**
+ * Normaliza URN Sportradar para matchId do LMT.
+ * Feed Soft2Bet usa `sr:sport_event:N`; widgets costumam `sr:match:N`.
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+export function normalizeSportRadarMatchId(value) {
+  const s = String(value || "").trim();
+  if (!s) return null;
+  const m = s.match(/sr:(?:sport_event|match):(\d+)/i);
+  if (m) return `sr:match:${m[1]}`;
+  if (/^\d+$/.test(s)) return `sr:match:${s}`;
+  return s;
+}
+
+/**
  * @param {any} item
  */
 export function normalizeEventsRadarItem(item) {
@@ -110,10 +125,20 @@ export function normalizeEventsRadarItem(item) {
       item.stats_perform_event_id ??
       ""
   ).trim();
-  if (!eventIdMbook && !eventIdStatsPerform) return null;
+  const eventIdSportRadarRaw = String(
+    item.eventIdSportRadar ??
+      item.event_id_sport_radar ??
+      item.sportRadarEventId ??
+      item.sport_radar_event_id ??
+      ""
+  ).trim();
+  const eventIdSportRadar = normalizeSportRadarMatchId(eventIdSportRadarRaw);
+  if (!eventIdMbook && !eventIdStatsPerform && !eventIdSportRadar) return null;
   return {
     eventIdMbook: eventIdMbook || null,
     eventIdStatsPerform: eventIdStatsPerform || null,
+    eventIdSportRadar: eventIdSportRadar || null,
+    eventIdSportRadarRaw: eventIdSportRadarRaw || null,
     rawKeys: Object.keys(item).sort(),
     raw: item,
   };
@@ -151,6 +176,7 @@ export function summarizeEventsRadarFeed(feed) {
   const sample = items.slice(0, 5).map((it) => ({
     eventIdMbook: it.eventIdMbook,
     eventIdStatsPerform: it.eventIdStatsPerform,
+    eventIdSportRadar: it.eventIdSportRadar,
     keys: it.rawKeys,
     raw: it.raw,
   }));
@@ -161,25 +187,54 @@ export function summarizeEventsRadarFeed(feed) {
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .map(([key, count]) => ({ key, count })),
     withStatsPerform: items.filter((i) => i.eventIdStatsPerform).length,
+    withSportRadar: items.filter((i) => i.eventIdSportRadar).length,
     sample,
   };
 }
 
 /**
- * @param {string|null|undefined} statsPerformEventId
+ * @param {string|null|undefined} widgetId
  * @param {string} [widgetBase]
+ * @param {Record<string, string>} [extraParams]
  */
 export function buildMradarWidgetUrl(
-  statsPerformEventId,
-  widgetBase = DEFAULT_MRADAR_WIDGET_URL
+  widgetId,
+  widgetBase = DEFAULT_MRADAR_WIDGET_URL,
+  extraParams = {}
 ) {
-  const id = String(statsPerformEventId || "").trim();
+  const id = String(widgetId || "").trim();
   if (!id) return null;
   const base = String(widgetBase || DEFAULT_MRADAR_WIDGET_URL).replace(
     /\/$/,
     ""
   );
-  return `${base}?id=${encodeURIComponent(id)}`;
+  const params = new URLSearchParams({ id });
+  for (const [k, v] of Object.entries(extraParams || {})) {
+    if (v != null && String(v).trim() !== "") params.set(k, String(v));
+  }
+  return `${base}?${params.toString()}`;
+}
+
+/**
+ * Escolhe o melhor id para o widget mradar.
+ * Soft2Bet: livestream usa StatsPerform; radar/LMT usa SportRadar na maioria dos jogos.
+ * @param {{ eventIdStatsPerform?: string|null, eventIdSportRadar?: string|null, eventIdMbook?: string|null }} hit
+ */
+export function pickMradarWidgetId(hit) {
+  if (!hit) return { id: null, source: null };
+  if (hit.eventIdStatsPerform) {
+    return { id: String(hit.eventIdStatsPerform), source: "statsPerform" };
+  }
+  if (hit.eventIdSportRadar) {
+    // Soft2Bet /widget/mradar costuma receber id numérico (igual livestream StatsPerform)
+    const num = String(hit.eventIdSportRadar).match(/(\d+)$/);
+    if (num) return { id: num[1], source: "sportRadar" };
+    return { id: String(hit.eventIdSportRadar), source: "sportRadar" };
+  }
+  if (hit.eventIdMbook) {
+    return { id: String(hit.eventIdMbook), source: "mbook" };
+  }
+  return { id: null, source: null };
 }
 
 /**
@@ -189,24 +244,59 @@ export function buildMradarWidgetUrl(
  */
 export function resolveMradarForEventId(eventIdMbook, feed, siteOrUrl) {
   const id = String(eventIdMbook || "").trim();
+  const host = resolveSoft2BetHost(siteOrUrl);
+  const base = mradarWidgetBaseForSite(host);
   if (!id) {
     return {
       found: false,
       eventIdMbook: null,
       eventIdStatsPerform: null,
+      eventIdSportRadar: null,
+      widgetId: null,
+      widgetIdSource: null,
       mradarUrl: null,
-      host: resolveSoft2BetHost(siteOrUrl),
+      mradarUrlCandidates: [],
+      host,
     };
   }
   const hit = indexEventsRadarByMbook(feed).get(id) || null;
   const sp = hit?.eventIdStatsPerform || null;
-  const base = mradarWidgetBaseForSite(siteOrUrl);
+  const sr = hit?.eventIdSportRadar || null;
+  const picked = pickMradarWidgetId(
+    hit || { eventIdMbook: id, eventIdStatsPerform: null, eventIdSportRadar: null }
+  );
+
+  /** @type {string[]} */
+  const candidates = [];
+  const push = (url) => {
+    if (url && !candidates.includes(url)) candidates.push(url);
+  };
+  // Ordem: StatsPerform → SportRadar URN → numérico SR → sport_event raw → mbook
+  push(buildMradarWidgetUrl(sp, base));
+  push(buildMradarWidgetUrl(sr, base));
+  const srNum = sr && String(sr).match(/(\d+)$/);
+  if (srNum) push(buildMradarWidgetUrl(srNum[1], base));
+  if (hit?.eventIdSportRadarRaw && hit.eventIdSportRadarRaw !== sr) {
+    push(buildMradarWidgetUrl(hit.eventIdSportRadarRaw, base));
+  }
+  if (sr) push(`${base}?matchId=${encodeURIComponent(sr)}`);
+  push(buildMradarWidgetUrl(id, base));
+  push(`${base}?eventId=${encodeURIComponent(id)}`);
+
+  const mradarUrl = picked.id
+    ? buildMradarWidgetUrl(picked.id, base)
+    : candidates[0] || null;
+
   return {
-    found: Boolean(sp),
+    found: Boolean(hit && (sp || sr)),
     eventIdMbook: id,
     eventIdStatsPerform: sp,
-    mradarUrl: buildMradarWidgetUrl(sp, base),
-    host: resolveSoft2BetHost(siteOrUrl),
+    eventIdSportRadar: sr,
+    widgetId: picked.id,
+    widgetIdSource: picked.source,
+    mradarUrl,
+    mradarUrlCandidates: candidates.filter(Boolean),
+    host,
     keys: hit?.rawKeys || [],
   };
 }

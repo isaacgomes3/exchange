@@ -62,7 +62,7 @@ publish_web() {
   local tmp
   tmp="$(mktemp)"
   download_repo_file "$rel" "$tmp" || die "download falhou: $rel"
-  grep -q 'desafio-mradar-v1' "$tmp" || die "UI sem marker desafio-mradar-v1"
+  grep -q 'desafio-mradar-v2' "$tmp" || die "UI sem marker desafio-mradar-v2"
   grep -q 'data-radar' "$tmp" || die "UI sem bloco data-radar"
   cp -f "$tmp" "$WEB/$name"
   cp -f "$tmp" "$WEB_ROOT/$name" 2>/dev/null || true
@@ -77,8 +77,8 @@ publish_web() {
 
 log "1/4 lib + prelive (eventsRadar v2)"
 install_lib "scripts/lib/betbra-events-radar.mjs"
-grep -q 'betbra-events-radar-v2' "$SCRIPTS_DIR/lib/betbra-events-radar.mjs" \
-  || die "lib sem marker v2"
+grep -q 'betbra-events-radar-v3' "$SCRIPTS_DIR/lib/betbra-events-radar.mjs" \
+  || die "lib sem marker v3"
 
 tmp_pre="$(mktemp)"
 download_repo_file "scripts/arbishield-prelive-events.mjs" "$tmp_pre"
@@ -184,5 +184,16 @@ curl -sS -o /tmp/dz-mradar-pub.json -w "public desafio-mradar HTTP %{http_code}\
   "https://arbishield.app/api/arbishield/desafio-mradar" || true
 head -c 200 /tmp/dz-mradar-pub.json 2>/dev/null; echo
 
+# smoke lookup (Degerfors ou qualquer eventId do feed)
+curl -sS -o /tmp/dz-mradar-lookup.json -w "lookup HTTP %{http_code}\n" --max-time 25 \
+  "http://127.0.0.1:3098/api/arbishield/desafio-mradar?force=1&eventId=33842537216900023&link=https://betbra.bet.br/b/exchange/sport/soccer/event/33842537216900023" \
+  || true
+head -c 400 /tmp/dz-mradar-lookup.json 2>/dev/null; echo
+if grep -q '"found":true' /tmp/dz-mradar-lookup.json 2>/dev/null; then
+  log "lookup OK (found=true)"
+else
+  log "aviso: lookup found!=true — confira feed eventsRadar"
+fi
+
 log "OK. Abra /app-desafio.html (Ctrl+Shift+R) e toque em «Radar do jogo» num card ao vivo."
-log "Marker: desafio-mradar-v1"
+log "Marker: desafio-mradar-v2 / betbra-events-radar-v3"

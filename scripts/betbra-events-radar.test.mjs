@@ -9,11 +9,24 @@ import {
   resolveSoft2BetHost,
   eventsRadarUrlForSite,
   resolveMradarForEventId,
+  normalizeSportRadarMatchId,
+  pickMradarWidgetId,
 } from "./lib/betbra-events-radar.mjs";
 
 describe("betbra-events-radar", () => {
   it("mantém versão", () => {
-    assert.equal(BETBRA_EVENTS_RADAR_VERSION, "betbra-events-radar-v2");
+    assert.equal(BETBRA_EVENTS_RADAR_VERSION, "betbra-events-radar-v3");
+  });
+
+  it("normaliza URN SportRadar", () => {
+    assert.equal(
+      normalizeSportRadarMatchId("sr:sport_event:71770176"),
+      "sr:match:71770176"
+    );
+    assert.equal(
+      normalizeSportRadarMatchId("sr:match:71770176"),
+      "sr:match:71770176"
+    );
   });
 
   it("resolve host Soft2Bet a partir do link", () => {
@@ -34,45 +47,67 @@ describe("betbra-events-radar", () => {
     );
   });
 
-  it("normaliza item com eventIdMbook + StatsPerform", () => {
+  it("normaliza item com SportRadar sem StatsPerform", () => {
     const n = normalizeEventsRadarItem({
-      eventIdMbook: "33874869253600023",
-      eventIdStatsPerform: "1234567",
-      extra: true,
+      eventIdMbook: "33842537216900023",
+      eventIdSportRadar: "sr:sport_event:67817764",
     });
-    assert.equal(n.eventIdMbook, "33874869253600023");
-    assert.equal(n.eventIdStatsPerform, "1234567");
-    assert.ok(n.rawKeys.includes("eventIdStatsPerform"));
+    assert.equal(n.eventIdMbook, "33842537216900023");
+    assert.equal(n.eventIdStatsPerform, null);
+    assert.equal(n.eventIdSportRadar, "sr:match:67817764");
+  });
+
+  it("prefere StatsPerform, senão SportRadar", () => {
+    assert.equal(
+      pickMradarWidgetId({
+        eventIdStatsPerform: "99",
+        eventIdSportRadar: "sr:match:1",
+      }).source,
+      "statsPerform"
+    );
+    assert.equal(
+      pickMradarWidgetId({
+        eventIdStatsPerform: null,
+        eventIdSportRadar: "sr:match:1",
+      }).source,
+      "sportRadar"
+    );
+  });
+
+  it("resolve mradar por SportRadar quando StatsPerform falta", () => {
+    const r = resolveMradarForEventId(
+      "33842537216900023",
+      [
+        {
+          eventIdMbook: "33842537216900023",
+          eventIdSportRadar: "sr:sport_event:67817764",
+        },
+      ],
+      "https://betbra.bet.br/event/33842537216900023"
+    );
+    assert.equal(r.found, true);
+    assert.equal(r.widgetIdSource, "sportRadar");
+    assert.equal(
+      r.mradarUrl,
+      "https://betbra.bet.br/widget/mradar?id=67817764"
+    );
   });
 
   it("resume feed array", () => {
     const s = summarizeEventsRadarFeed([
       { eventIdMbook: "1", eventIdStatsPerform: "a" },
-      { eventIdMbook: "2", eventIdStatsPerform: "b" },
+      { eventIdMbook: "2", eventIdSportRadar: "sr:sport_event:9" },
       { eventIdMbook: "3" },
     ]);
     assert.equal(s.count, 3);
-    assert.equal(s.withStatsPerform, 2);
-    assert.equal(s.sample.length, 3);
+    assert.equal(s.withStatsPerform, 1);
+    assert.equal(s.withSportRadar, 1);
   });
 
   it("coerce envelope", () => {
     assert.equal(
       coerceEventsRadarFeed({ data: [{ eventIdMbook: "9" }] }).length,
       1
-    );
-  });
-
-  it("resolve mradar por eventId", () => {
-    const r = resolveMradarForEventId(
-      "111",
-      [{ eventIdMbook: "111", eventIdStatsPerform: "999" }],
-      "https://bolsadeaposta.bet.br/event/111"
-    );
-    assert.equal(r.found, true);
-    assert.equal(
-      r.mradarUrl,
-      "https://bolsadeaposta.bet.br/widget/mradar?id=999"
     );
   });
 
