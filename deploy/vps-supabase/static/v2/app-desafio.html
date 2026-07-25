@@ -1385,7 +1385,14 @@
         }
         if (step.settled_at) return true;
         var res = String(step.result || "").toLowerCase();
-        return res === "win" || res === "zebra_protected" || res === "lost" || res === "bateu";
+        return (
+          res === "win" ||
+          res === "zebra_protected" ||
+          res === "lost" ||
+          res === "bateu" ||
+          res === "void" ||
+          res === "empate_anula"
+        );
       }
 
       function phaseOf(item, now) {

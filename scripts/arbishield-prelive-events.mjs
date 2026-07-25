@@ -18,6 +18,8 @@ import {
   settlementDeductionCents,
   settlementStatusForOutcome,
   isFeeUpfrontProtection,
+  isVoidSettleOutcome,
+  normalizeSettleOutcome,
   creditBucketForSettlement,
   calcFeeUpfront,
   calcLay,
@@ -1297,7 +1299,9 @@ async function creditWalletForSettlement(row, outcome, now) {
   const amount = nCents(row.responsibility_cents || row.amount_cents);
   const parts = settlementCreditParts(row, outcome);
   const credit = parts.total;
-  const wonArbi = String(outcome).toLowerCase() === "arbishield";
+  const outcomeNorm = normalizeSettleOutcome(outcome);
+  const wonArbi = outcomeNorm === "arbishield";
+  const isVoid = outcomeNorm === "void" || isVoidSettleOutcome(outcome);
   const feeUpfront = isFeeUpfrontProtection(row);
   const balanceType = String(
     (row.metadata &&
@@ -1314,7 +1318,8 @@ async function creditWalletForSettlement(row, outcome, now) {
   }
 
   // fee_upfront + Exchange: nada a creditar (taxa já cobrada na criação)
-  if (feeUpfront && !wonArbi) {
+  // Empate Anula / void: devolve a dedução (segue fluxo de crédito abaixo)
+  if (feeUpfront && !wonArbi && !isVoid) {
     try {
       await sb("/rest/v1/wallet_transactions", {
         method: "POST",
@@ -1427,13 +1432,17 @@ async function creditWalletForSettlement(row, outcome, now) {
           outcome: String(outcome).toLowerCase(),
           stake_cents: parts.stake,
           fee_cents: parts.fee,
-          fee_returned_cents: wonArbi ? parts.fee : 0,
+          fee_returned_cents: wonArbi || isVoid ? parts.fee : 0,
           bucket,
           billing_model: feeUpfront ? "fee_upfront_v1" : "legacy_lock",
-          fix: "settle-arbishield-stake-mais-deducao-v1",
-          note: wonArbi
-            ? "ArbiShield: stake + dedução creditados (Saldo Reembolso / bucket origem)"
-            : undefined,
+          fix: isVoid
+            ? "settle-empate-anula-deducao-v1"
+            : "settle-arbishield-stake-mais-deducao-v1",
+          note: isVoid
+            ? "Empate Anula: devolve só a dedução (Saldo Reembolso)"
+            : wonArbi
+              ? "ArbiShield: stake + dedução creditados (Saldo Reembolso / bucket origem)"
+              : undefined,
         },
       },
     });
@@ -1450,23 +1459,32 @@ async function creditWalletForSettlement(row, outcome, now) {
     stakeCents: parts.stake,
     feeCents: parts.fee,
     bucket,
+    void: isVoid,
   };
 }
 
 async function settleOneProtectionRow(row, outcome, now) {
-  const wonArbi = String(outcome).toLowerCase() === "arbishield";
-  const status = settlementStatusForOutcome(outcome);
+  const outcomeNorm = normalizeSettleOutcome(outcome);
+  const wonArbi = outcomeNorm === "arbishield";
+  const isVoid = outcomeNorm === "void";
+  const status = settlementStatusForOutcome(outcomeNorm);
   const amount = nCents(row.responsibility_cents || row.amount_cents);
 
   // Crédito OBRIGATÓRIO antes de marcar a proteção (não engolir erro de saldo)
-  const creditResult = await creditWalletForSettlement(row, outcome, now);
+  const creditResult = await creditWalletForSettlement(row, outcomeNorm, now);
   const refunded = creditResult.refunded || 0;
 
   // Schema VPS: protections NÃO tem updated_at — nunca incluir no PATCH.
   // NÃO usar fallback status:"settled" (UI cliente mostra como EXCHANGE).
+  const settledOutcome = isVoid ? "void" : outcomeNorm;
   const attempts = [
-    { status, settled_at: now, settled_outcome: outcome, result: status },
-    { status, settled_at: now, settled_outcome: outcome },
+    {
+      status,
+      settled_at: now,
+      settled_outcome: settledOutcome,
+      result: status,
+    },
+    { status, settled_at: now, settled_outcome: settledOutcome },
     { status, settled_at: now, result: status },
     { status, settled_at: now },
   ];
@@ -1476,10 +1494,25 @@ async function settleOneProtectionRow(row, outcome, now) {
       {
         status: "won_platform",
         settled_at: now,
-        settled_outcome: outcome,
+        settled_outcome: settledOutcome,
         result: "lost_exchange",
       },
-      { status: "won_platform", settled_at: now, settled_outcome: outcome }
+      {
+        status: "won_platform",
+        settled_at: now,
+        settled_outcome: settledOutcome,
+      }
+    );
+  }
+  if (isVoid) {
+    attempts.push(
+      {
+        status: "cancelled",
+        settled_at: now,
+        settled_outcome: "void",
+        result: "void",
+      },
+      { status: "cancelled", settled_at: now, settled_outcome: "void" }
     );
   }
   let lastErr = null;
@@ -1541,9 +1574,11 @@ async function settleMatchFromBody(body, token) {
   const adminId = await requireAdminToken(token);
   const matchId = String(body?.matchId || body?.id || "").trim();
   if (!matchId) throw new Error("matchId obrigatório");
-  let outcome = String(body?.outcome || "").toLowerCase();
-  if (outcome !== "arbishield" && outcome !== "exchange") {
-    throw new Error("outcome inválido (use arbishield ou exchange)");
+  let outcome = normalizeSettleOutcome(body?.outcome || "");
+  if (outcome !== "arbishield" && outcome !== "exchange" && outcome !== "void") {
+    throw new Error(
+      "outcome inválido (use arbishield, exchange ou empate_anula/void)"
+    );
   }
   let finalScore = body?.finalScore || body?.final_score || null;
   if (

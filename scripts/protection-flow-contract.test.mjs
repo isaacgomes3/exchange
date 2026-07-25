@@ -18,6 +18,8 @@ import {
   creditBucketForSettlement,
   settlementStatusForOutcome,
   isFeeUpfrontProtection,
+  isVoidSettleOutcome,
+  normalizeSettleOutcome,
 } from "./lib/protection-flow-contract.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -25,7 +27,7 @@ const root = resolve(__dirname, "..");
 
 describe("contrato travado — metadados", () => {
   it("mantém versão e lock", () => {
-    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v1");
+    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v2");
     assert.equal(
       PROTECTION_FLOW_LOCK,
       "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST"
@@ -35,8 +37,9 @@ describe("contrato travado — metadados", () => {
   it("AGENTS.md cita o lock do fluxo", () => {
     const agents = readFileSync(resolve(root, "AGENTS.md"), "utf8");
     assert.match(agents, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
-    assert.match(agents, /protection-flow-contract-v1/);
+    assert.match(agents, /protection-flow-contract-v2/);
     assert.match(agents, /Saldo Reembolso/);
+    assert.match(agents, /Empate Anula/);
   });
 
   it("carteira do cliente exibe Saldo Reembolso (não Saldo Dedução)", () => {
@@ -119,9 +122,25 @@ describe("settle — fee_upfront", () => {
     });
   });
 
+  it("Empate Anula devolve só a dedução", () => {
+    assert.equal(isVoidSettleOutcome("empate_anula"), true);
+    assert.equal(normalizeSettleOutcome("Empate Anula"), "void");
+    assert.deepEqual(settlementCreditParts(row, "empate_anula"), {
+      stake: 0,
+      fee: 3763,
+      total: 3763,
+    });
+    assert.deepEqual(settlementCreditParts(row, "void"), {
+      stake: 0,
+      fee: 3763,
+      total: 3763,
+    });
+  });
+
   it("status e bucket corretos", () => {
     assert.equal(settlementStatusForOutcome("arbishield"), "lost_exchange");
     assert.equal(settlementStatusForOutcome("exchange"), "won_exchange");
+    assert.equal(settlementStatusForOutcome("empate_anula"), "void");
     assert.equal(creditBucketForSettlement("REAL"), "deduction_balance_cents");
     assert.equal(creditBucketForSettlement("DEMO"), "deduction_balance_cents");
     assert.equal(creditBucketForSettlement("INVESTOR"), "deduction_balance_cents");
@@ -148,6 +167,14 @@ describe("settle — legado", () => {
       stake: 8500,
       fee: 0,
       total: 8500,
+    });
+  });
+
+  it("Empate Anula libera stake inteiro (legado)", () => {
+    assert.deepEqual(settlementCreditParts(row, "void"), {
+      stake: 10_000,
+      fee: 0,
+      total: 10_000,
     });
   });
 });

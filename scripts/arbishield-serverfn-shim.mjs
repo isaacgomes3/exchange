@@ -14,12 +14,14 @@ import { createRequire } from "node:module";
 // Contrato travado — import opcional (se lib faltar na VPS, usa fallback inline
 // para o shim não cair e a rota de saque continuar disponível).
 let PROTECTION_FLOW_LOCK = "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST";
-let PROTECTION_FLOW_CONTRACT_VERSION = "protection-flow-contract-v1";
+let PROTECTION_FLOW_CONTRACT_VERSION = "protection-flow-contract-v2";
 let settlementCreditParts;
 let settlementCreditCents;
 let settlementDeductionCents;
 let settlementStatusForOutcome;
 let isFeeUpfrontProtection;
+let isVoidSettleOutcome;
+let normalizeSettleOutcome;
 let creditBucketForSettlement = () => "deduction_balance_cents";
 
 try {
@@ -35,12 +37,38 @@ try {
   settlementDeductionCents = mod.settlementDeductionCents;
   settlementStatusForOutcome = mod.settlementStatusForOutcome;
   isFeeUpfrontProtection = mod.isFeeUpfrontProtection;
+  isVoidSettleOutcome = mod.isVoidSettleOutcome;
+  normalizeSettleOutcome = mod.normalizeSettleOutcome;
   creditBucketForSettlement = mod.creditBucketForSettlement;
 } catch (err) {
   console.warn(
     "[serverfn-shim] protection-flow-contract ausente — fallback inline:",
     err instanceof Error ? err.message : err
   );
+  isVoidSettleOutcome = (outcome) => {
+    const o = String(outcome || "")
+      .toLowerCase()
+      .trim()
+      .replace(/[\s-]+/g, "_");
+    return (
+      o === "void" ||
+      o === "empate_anula" ||
+      o === "anula" ||
+      o === "draw" ||
+      o === "push" ||
+      o === "dnb" ||
+      o === "draw_no_bet"
+    );
+  };
+  normalizeSettleOutcome = (outcome) => {
+    const o = String(outcome || "")
+      .toLowerCase()
+      .trim()
+      .replace(/[\s-]+/g, "_");
+    if (o === "arbishield" || o === "exchange") return o;
+    if (isVoidSettleOutcome(o)) return "void";
+    return o;
+  };
   isFeeUpfrontProtection = (row) => {
     const meta = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
     return (
@@ -64,20 +92,25 @@ try {
       Math.trunc(Number(row?.responsibility_cents || row?.amount_cents) || 0)
     );
     const fee = settlementDeductionCents(row);
-    const wonArbi = String(outcome || "").toLowerCase() === "arbishield";
+    const o = normalizeSettleOutcome(outcome);
+    const wonArbi = o === "arbishield";
+    const isVoid = o === "void";
     if (isFeeUpfrontProtection(row)) {
+      if (isVoid) return { stake: 0, fee, total: fee };
       if (!wonArbi) return { stake: 0, fee: 0, total: 0 };
       return { stake: amount, fee, total: amount + fee };
     }
-    if (wonArbi) return { stake: amount, fee: 0, total: amount };
+    if (isVoid || wonArbi) return { stake: amount, fee: 0, total: amount };
     const net = Math.max(0, amount - Math.min(fee, amount));
     return { stake: net, fee: 0, total: net };
   };
   settlementCreditCents = (row, outcome) => settlementCreditParts(row, outcome).total;
-  settlementStatusForOutcome = (outcome) =>
-    String(outcome || "").toLowerCase() === "arbishield"
-      ? "lost_exchange"
-      : "won_exchange";
+  settlementStatusForOutcome = (outcome) => {
+    const o = normalizeSettleOutcome(outcome);
+    if (o === "arbishield") return "lost_exchange";
+    if (o === "void") return "void";
+    return "won_exchange";
+  };
 }
 
 void PROTECTION_FLOW_LOCK;
@@ -2873,12 +2906,26 @@ async function activateNextDesafioStep(desafioId, currentStepIndex) {
 async function settleDesafioStep(token, body) {
   if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
   const stepId = String(body?.stepId || body?.step_id || "").trim();
-  const winningSide = String(body?.winningSide || body?.winning_side || "")
+  let winningSide = String(
+    body?.winningSide || body?.winning_side || body?.outcome || ""
+  )
     .toLowerCase()
-    .trim();
+    .trim()
+    .replace(/[\s-]+/g, "_");
   if (!stepId) throw new Error("stepId obrigatório");
-  if (winningSide !== "arbishield" && winningSide !== "casa") {
-    throw new Error("winningSide deve ser arbishield ou casa");
+  const isVoid =
+    winningSide === "void" ||
+    winningSide === "empate_anula" ||
+    winningSide === "anula" ||
+    winningSide === "draw" ||
+    winningSide === "push" ||
+    winningSide === "dnb" ||
+    winningSide === "draw_no_bet";
+  if (isVoid) winningSide = "void";
+  if (winningSide !== "arbishield" && winningSide !== "casa" && winningSide !== "void") {
+    throw new Error(
+      "winningSide deve ser arbishield, casa ou empate_anula/void"
+    );
   }
 
   const stepRows = await sb(
@@ -2907,8 +2954,80 @@ async function settleDesafioStep(token, body) {
   const advances = [];
   let zebraKeptCents = 0;
   let casaPaidCents = 0;
+  let voidRefundedCents = 0;
   for (const p of list) {
     const side = String(p.side || "").toLowerCase();
+    const partResult = String(p.result || "").toLowerCase();
+    // Já liquidada / cancelada — não recredita
+    if (
+      partResult &&
+      partResult !== "pending" &&
+      partResult !== "null" &&
+      partResult !== "open"
+    ) {
+      continue;
+    }
+
+    // Empate Anula: devolve o valor apostado à carteira Desafio (sem lucro).
+    if (winningSide === "void") {
+      const stake = Math.max(0, n(p.amount_cents));
+      await sb(
+        `/rest/v1/desafio_participations?id=eq.${encodeURIComponent(p.id)}`,
+        {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: {
+            result: "void",
+            profit_cents: 0,
+            updated_at: new Date().toISOString(),
+          },
+        }
+      );
+      if (stake > 0 && p.user_id) {
+        try {
+          const pr = await sb(
+            `/rest/v1/profiles?select=desafio_balance_cents&id=eq.${encodeURIComponent(p.user_id)}&limit=1`,
+            { token: SERVICE_KEY }
+          );
+          const cur = Array.isArray(pr) ? pr[0] : null;
+          if (cur) {
+            await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(p.user_id)}`, {
+              method: "PATCH",
+              token: SERVICE_KEY,
+              body: {
+                desafio_balance_cents: n(cur.desafio_balance_cents) + stake,
+                updated_at: new Date().toISOString(),
+              },
+            });
+            voidRefundedCents += stake;
+            try {
+              await sb("/rest/v1/wallet_transactions", {
+                method: "POST",
+                token: SERVICE_KEY,
+                body: {
+                  user_id: p.user_id,
+                  type: "desafio_void_refund",
+                  amount_cents: stake,
+                  metadata: {
+                    desafio_id: step.desafio_id || null,
+                    step_id: stepId,
+                    participation_id: p.id,
+                    reason: "empate_anula",
+                    side,
+                  },
+                },
+              });
+            } catch {
+              /* */
+            }
+          }
+        } catch {
+          /* */
+        }
+      }
+      continue;
+    }
+
     const won = side === winningSide;
     let profit = 0;
     let credit = 0;
@@ -3011,7 +3130,11 @@ async function settleDesafioStep(token, body) {
   }
 
   const result =
-    winningSide === "arbishield" ? "zebra_protected" : "win";
+    winningSide === "void"
+      ? "void"
+      : winningSide === "arbishield"
+        ? "zebra_protected"
+        : "win";
   await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`, {
     method: "PATCH",
     token: SERVICE_KEY,
@@ -3044,7 +3167,15 @@ async function settleDesafioStep(token, body) {
         }
         if (s.settled_at) return false;
         const res = String(s.result || "").toLowerCase();
-        if (res === "win" || res === "zebra_protected" || res === "lost") return false;
+        if (
+          res === "win" ||
+          res === "zebra_protected" ||
+          res === "lost" ||
+          res === "void" ||
+          res === "empate_anula"
+        ) {
+          return false;
+        }
         return true;
       });
       if (!open.length) {
@@ -3074,9 +3205,12 @@ async function settleDesafioStep(token, body) {
     }
   }
 
-  const retained = list
-    .filter((p) => String(p.side || "").toLowerCase() !== winningSide)
-    .reduce((a, p) => a + n(p.amount_cents), 0);
+  const retained =
+    winningSide === "void"
+      ? 0
+      : list
+          .filter((p) => String(p.side || "").toLowerCase() !== winningSide)
+          .reduce((a, p) => a + n(p.amount_cents), 0);
 
   // Casa venceu → stake zebra fica com a plataforma (= lucro operacional).
   // Credita tesouraria (antes: só saía do desafio_balance, caixa empresa não andava).
@@ -3109,12 +3243,16 @@ async function settleDesafioStep(token, body) {
     result,
     participants: list.length,
     retainedCents: retained,
+    voidRefundedCents,
     advances,
     forfeits,
     desafioDeactivated,
     treasury,
     ciclo: "desafio-ciclo-sinais-v1",
-    fix: "desafio-saldo-reutilizavel-v1",
+    fix:
+      winningSide === "void"
+        ? "desafio-empate-anula-v1"
+        : "desafio-saldo-reutilizavel-v1",
   };
 }
 
@@ -5441,7 +5579,11 @@ async function creditWalletForSettlement(row, outcome, now) {
   const amount = n(row.responsibility_cents || row.amount_cents);
   const parts = settlementCreditParts(row, outcome);
   const credit = parts.total;
-  const wonArbi = String(outcome).toLowerCase() === "arbishield";
+  const outcomeNorm = normalizeSettleOutcome
+    ? normalizeSettleOutcome(outcome)
+    : String(outcome || "").toLowerCase();
+  const wonArbi = outcomeNorm === "arbishield";
+  const isVoid = outcomeNorm === "void" || (isVoidSettleOutcome && isVoidSettleOutcome(outcome));
   const feeUpfront = isFeeUpfrontProtection(row);
   const balanceType = String(
     (row.metadata &&
@@ -5457,7 +5599,7 @@ async function creditWalletForSettlement(row, outcome, now) {
     return { refunded: 0, credited: 0, alreadyCredited: true };
   }
 
-  if (feeUpfront && !wonArbi) {
+  if (feeUpfront && !wonArbi && !isVoid) {
     try {
       await sb("/rest/v1/wallet_transactions", {
         method: "POST",
@@ -5559,10 +5701,17 @@ async function creditWalletForSettlement(row, outcome, now) {
           outcome: String(outcome).toLowerCase(),
           stake_cents: parts.stake,
           fee_cents: parts.fee,
-          fee_returned_cents: wonArbi ? parts.fee : 0,
+          fee_returned_cents: wonArbi || isVoid ? parts.fee : 0,
           bucket,
           billing_model: feeUpfront ? "fee_upfront_v1" : "legacy_lock",
-          fix: "settle-arbishield-stake-mais-deducao-v1",
+          fix: isVoid
+            ? "settle-empate-anula-deducao-v1"
+            : "settle-arbishield-stake-mais-deducao-v1",
+          note: isVoid
+            ? "Empate Anula: devolve só a dedução (Saldo Reembolso)"
+            : wonArbi
+              ? "ArbiShield: stake + dedução creditados (Saldo Reembolso)"
+              : undefined,
         },
       },
     });
@@ -5576,6 +5725,7 @@ async function creditWalletForSettlement(row, outcome, now) {
     stakeCents: parts.stake,
     feeCents: parts.fee,
     bucket,
+    void: isVoid,
   };
 }
 
@@ -5590,7 +5740,11 @@ function platformCutCents(row) {
 
 async function applyProtectionSettlement(row, table, outcome) {
   const amount = n(row.responsibility_cents || row.amount_cents);
-  const wonArbi = String(outcome).toLowerCase() === "arbishield";
+  const outcomeNorm = normalizeSettleOutcome
+    ? normalizeSettleOutcome(outcome)
+    : String(outcome || "").toLowerCase();
+  const wonArbi = outcomeNorm === "arbishield";
+  const isVoid = outcomeNorm === "void";
   const status = settlementStatusForOutcome(outcome);
   const now = new Date().toISOString();
 
@@ -5598,8 +5752,14 @@ async function applyProtectionSettlement(row, table, outcome) {
   const refunded = creditResult.refunded || 0;
 
   // Exchange ganhou → plataforma fica com a dedução/fee (lucro).
+  // Empate Anula devolve a dedução — não credita tesouraria.
   let treasury = null;
-  if (!wonArbi && !creditResult.alreadyCredited && !creditResult.skipped) {
+  if (
+    !wonArbi &&
+    !isVoid &&
+    !creditResult.alreadyCredited &&
+    !creditResult.skipped
+  ) {
     const cut = platformCutCents(row);
     if (cut > 0) {
       treasury = await adjustPlatformTreasury(cut, {
@@ -5619,17 +5779,18 @@ async function applyProtectionSettlement(row, table, outcome) {
     }
   }
 
+  const settledOutcome = isVoid ? "void" : String(outcome).toLowerCase();
   const attempts = [
     {
       status,
       settled_at: now,
-      settled_outcome: String(outcome).toLowerCase(),
+      settled_outcome: settledOutcome,
       result: status,
     },
     {
       status,
       settled_at: now,
-      settled_outcome: String(outcome).toLowerCase(),
+      settled_outcome: settledOutcome,
     },
     { status, settled_at: now, result: status },
     { status, settled_at: now },
@@ -5639,14 +5800,26 @@ async function applyProtectionSettlement(row, table, outcome) {
       {
         status: "won_platform",
         settled_at: now,
-        settled_outcome: String(outcome).toLowerCase(),
+        settled_outcome: settledOutcome,
         result: "lost_exchange",
       },
       {
         status: "won_platform",
         settled_at: now,
-        settled_outcome: String(outcome).toLowerCase(),
+        settled_outcome: settledOutcome,
       }
+    );
+  }
+  if (isVoid) {
+    // fallback se status "void" não existir no enum do banco
+    attempts.push(
+      {
+        status: "cancelled",
+        settled_at: now,
+        settled_outcome: "void",
+        result: "void",
+      },
+      { status: "cancelled", settled_at: now, settled_outcome: "void" }
     );
   }
   let lastErr = null;
@@ -5692,8 +5865,16 @@ async function settleMatch(token, body) {
     const vals = Object.values(outcomesMap).map((v) => String(v).toLowerCase());
     outcome = vals[0] || "";
   }
-  if (outcome && outcome !== "arbishield" && outcome !== "exchange") {
-    throw new Error("outcome inválido (use arbishield ou exchange)");
+  if (outcome) {
+    const o = normalizeSettleOutcome
+      ? normalizeSettleOutcome(outcome)
+      : String(outcome).toLowerCase();
+    if (o !== "arbishield" && o !== "exchange" && o !== "void") {
+      throw new Error(
+        "outcome inválido (use arbishield, exchange ou empate_anula/void)"
+      );
+    }
+    outcome = o === "void" ? "void" : o;
   }
 
   let finalScore = body?.finalScore || body?.final_score || null;
@@ -5738,7 +5919,7 @@ async function settleMatch(token, body) {
   }
 
   if (!outcome && !marketId && !outcomesMap) {
-    throw new Error("Informe outcome (arbishield/exchange)");
+    throw new Error("Informe outcome (arbishield/exchange/empate_anula)");
   }
 
   const now = new Date().toISOString();

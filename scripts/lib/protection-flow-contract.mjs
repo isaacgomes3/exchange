@@ -8,12 +8,13 @@
  * de crédito no settle; os testes em protection-flow-contract.test.mjs
  * travam o comportamento no CI.
  *
- * Versão: protection-flow-contract-v1 (2026-07-25)
+ * Versão: protection-flow-contract-v2 (2026-07-25)
+ *   + Empate Anula / void → devolve só a dedução (fee_upfront)
  * ============================================================================
  */
 
 export const PROTECTION_FLOW_CONTRACT_VERSION =
-  "protection-flow-contract-v1";
+  "protection-flow-contract-v2";
 
 /** Marcador exigido pelos testes / hotfixes — não renomear. */
 export const PROTECTION_FLOW_LOCK =
@@ -22,6 +23,36 @@ export const PROTECTION_FLOW_LOCK =
 function n(v) {
   const x = Number(v);
   return Number.isFinite(x) ? Math.trunc(x) : 0;
+}
+
+/**
+ * Empate Anula / Draw No Bet / void / push — não bateu Arbi nem casa.
+ * @param {unknown} outcome
+ */
+export function isVoidSettleOutcome(outcome) {
+  const o = String(outcome || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[\s-]+/g, "_");
+  return (
+    o === "void" ||
+    o === "empate_anula" ||
+    o === "anula" ||
+    o === "draw" ||
+    o === "push" ||
+    o === "dnb" ||
+    o === "draw_no_bet"
+  );
+}
+
+export function normalizeSettleOutcome(outcome) {
+  const o = String(outcome || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[\s-]+/g, "_");
+  if (o === "arbishield" || o === "exchange") return o;
+  if (isVoidSettleOutcome(o)) return "void";
+  return o;
 }
 
 export function isFeeUpfrontProtection(row) {
@@ -71,22 +102,27 @@ export function settlementDeductionCents(row) {
  * fee_upfront_v1:
  *   - ArbiShield → stake/responsabilidade + dedução (total)
  *   - Exchange   → 0 (dedução permanece na plataforma)
+ *   - Empate Anula / void → só a dedução (aposta anulada)
  *
  * legado (lock):
  *   - ArbiShield → stake inteiro
  *   - Exchange   → stake − taxa
+ *   - Empate Anula / void → stake inteiro (libera lock)
  *
  * Cancelamento (fora daqui): estorna só a dedução no fee_upfront.
  */
 export function settlementCreditParts(row, outcome) {
   const amount = n(row?.responsibility_cents || row?.amount_cents);
   const fee = settlementDeductionCents(row);
-  const wonArbi = String(outcome || "").toLowerCase() === "arbishield";
+  const o = normalizeSettleOutcome(outcome);
+  const wonArbi = o === "arbishield";
+  const isVoid = o === "void";
   if (isFeeUpfrontProtection(row)) {
+    if (isVoid) return { stake: 0, fee, total: fee };
     if (!wonArbi) return { stake: 0, fee: 0, total: 0 };
     return { stake: amount, fee, total: amount + fee };
   }
-  if (wonArbi) return { stake: amount, fee: 0, total: amount };
+  if (isVoid || wonArbi) return { stake: amount, fee: 0, total: amount };
   const keep = Math.min(fee, amount);
   const net = Math.max(0, amount - keep);
   return { stake: net, fee: 0, total: net };
@@ -97,10 +133,8 @@ export function settlementCreditCents(row, outcome) {
 }
 
 /**
- * Bucket de crédito após settle ArbiShield:
+ * Bucket de crédito após settle ArbiShield / Empate Anula:
  * Sempre `deduction_balance_cents` (UI: **Saldo Reembolso** — usável + sacável).
- * Stake + dedução aparecem nesse card, independente da carteira usada na ativação
- * (REAL/DEMO só define de onde a dedução foi cobrada na entrada).
  */
 export function creditBucketForSettlement(_balanceType) {
   return "deduction_balance_cents";
@@ -108,9 +142,10 @@ export function creditBucketForSettlement(_balanceType) {
 
 /** Status persistido na proteção conforme outcome. */
 export function settlementStatusForOutcome(outcome) {
-  return String(outcome || "").toLowerCase() === "arbishield"
-    ? "lost_exchange"
-    : "won_exchange";
+  const o = normalizeSettleOutcome(outcome);
+  if (o === "arbishield") return "lost_exchange";
+  if (o === "void") return "void";
+  return "won_exchange";
 }
 
 /**

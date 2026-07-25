@@ -641,6 +641,11 @@
             <span id="settleDeductHint" style="display:block;margin-top:8px;color:var(--amber);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Dedução / margem ArbiShield: —</span>
             <span id="settleStakeKeepHint" style="display:block;margin-top:4px;color:var(--muted);font-size:11px;font-weight:600;text-transform:none;letter-spacing:0"></span>
           </button>
+          <button type="button" class="btn btn-ghost" id="btnOutcomeVoid" data-outcome="empate_anula" style="justify-content:flex-start;text-align:left;padding:14px 16px">
+            <span style="display:block;font-size:11px;letter-spacing:0.08em">EMPATE ANULA</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Aposta anulada · devolve só a dedução (Saldo Reembolso)</span>
+            <span id="settleVoidHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Dedução a devolver: —</span>
+          </button>
         </div>
         <input type="hidden" id="settleOutcome" value="arbishield" />
       </div>
@@ -3357,6 +3362,7 @@
         $("settleOutcome").value = outcome;
         var arbi = $("btnOutcomeArbi");
         var exch = $("btnOutcomeExch");
+        var voidBtn = $("btnOutcomeVoid");
         if (arbi) {
           arbi.style.borderColor =
             outcome === "arbishield" ? "rgba(201,242,35,0.8)" : "var(--border)";
@@ -3368,6 +3374,18 @@
             outcome === "exchange" ? "rgba(245,158,11,0.8)" : "var(--border)";
           exch.style.background =
             outcome === "exchange" ? "rgba(245,158,11,0.1)" : "transparent";
+        }
+        if (voidBtn) {
+          var isVoid =
+            outcome === "void" ||
+            outcome === "empate_anula" ||
+            outcome === "anula";
+          voidBtn.style.borderColor = isVoid
+            ? "rgba(96,165,250,0.8)"
+            : "var(--border)";
+          voidBtn.style.background = isVoid
+            ? "rgba(96,165,250,0.1)"
+            : "transparent";
         }
       }
 
@@ -3404,6 +3422,12 @@
         if ($("settleStakeKeepHint")) {
           $("settleStakeKeepHint").textContent =
             "No fee_upfront a dedução já foi cobrada na entrada; ao bater Exchange ela permanece na plataforma.";
+        }
+        if ($("settleVoidHint")) {
+          $("settleVoidHint").textContent =
+            margin > 0
+              ? "Dedução a devolver no Saldo Reembolso: " + money(margin)
+              : "Dedução a devolver: — (sem platform_deduction nesta proteção)";
         }
         var liveInfo = matchLiveInfo(m);
         if (
@@ -3476,8 +3500,16 @@
         var home = String($("settleHome").value || "0").trim() || "0";
         var away = String($("settleAway").value || "0").trim() || "0";
         var outcome = $("settleOutcome").value;
-        if (outcome !== "arbishield" && outcome !== "exchange") {
-          alert("Selecione onde bateu: ArbiShield ou Casa externa.");
+        if (
+          outcome !== "arbishield" &&
+          outcome !== "exchange" &&
+          outcome !== "void" &&
+          outcome !== "empate_anula" &&
+          outcome !== "anula"
+        ) {
+          alert(
+            "Selecione: ArbiShield, Casa externa ou Empate Anula."
+          );
           return;
         }
         $("btnConfirmSettle").disabled = true;
@@ -3518,7 +3550,12 @@
               " proteção(ões) · " +
               (outcome === "arbishield"
                 ? "reembolso " + money(data.refundedCents || 0)
-                : "sem reembolso (casa externa)")
+                : outcome === "void" ||
+                    outcome === "empate_anula" ||
+                    outcome === "anula"
+                  ? "Empate Anula · dedução devolvida " +
+                    money(data.refundedCents || 0)
+                  : "sem reembolso (casa externa)")
           );
           $("settleModal").classList.remove("show");
           platformLoaded = false;
@@ -3591,6 +3628,11 @@
         if ($("btnOutcomeExch")) {
           $("btnOutcomeExch").addEventListener("click", function () {
             setSettleOutcome("exchange");
+          });
+        }
+        if ($("btnOutcomeVoid")) {
+          $("btnOutcomeVoid").addEventListener("click", function () {
+            setSettleOutcome("empate_anula");
           });
         }
         if ($("settleModal")) {

@@ -642,7 +642,13 @@
       }
       if (e.settled_at) return true;
       const res = String(e.result || "").toLowerCase();
-      return res === "win" || res === "zebra_protected" || res === "lost";
+      return (
+        res === "win" ||
+        res === "zebra_protected" ||
+        res === "lost" ||
+        res === "void" ||
+        res === "empate_anula"
+      );
     }
 
     function isDesafioCancelled(d) {
@@ -1537,6 +1543,8 @@
                 ? `<div class="tags"><span class="tag-arbi">Encerrada · ${
                     s.result === "zebra_protected"
                       ? "Bateu ArbiShield"
+                      : s.result === "void" || s.result === "empate_anula"
+                        ? "Empate Anula"
                       : s.result === "win"
                         ? "Bateu Casa"
                         : esc(s.result || "done")
@@ -1544,6 +1552,7 @@
                 : `<div class="card-actions" style="margin-top:8px">
                     <button class="btn btn-primary" type="button" data-settle="${esc(s.id)}" data-side="arbishield">Bateu ArbiShield</button>
                     <button class="btn btn-ghost" type="button" data-settle="${esc(s.id)}" data-side="casa">Bateu Casa</button>
+                    <button class="btn btn-ghost" type="button" data-settle="${esc(s.id)}" data-side="empate_anula">Empate Anula</button>
                   </div>
                   <p style="margin:6px 0 0;font-size:10px;color:var(--muted)">Circuito: vitórias só na ArbiShield até o fim → ganhos vão aos provedores de liquidez.</p>`;
               return `<div class="step-box">
@@ -1663,7 +1672,9 @@
             !confirm(
               winningSide === "arbishield"
                 ? "Encerrar etapa: Bateu ArbiShield (zebra / falha na casa)?"
-                : "Encerrar etapa: Bateu na Casa (objetivo do circuito)?"
+                : winningSide === "empate_anula" || winningSide === "void"
+                  ? "Encerrar etapa: Empate Anula — devolve o valor apostado à carteira Desafio (sem lucro)?"
+                  : "Encerrar etapa: Bateu na Casa (objetivo do circuito)?"
             )
           ) {
             return;
