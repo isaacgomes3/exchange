@@ -12,7 +12,7 @@
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/reconectar-betbra-api-3cf9}"
-REF="${ARBISHIELD_REF:-eeb9af823cf9969913c2f89739dfdf4bfe2dd4f0"
+REF="${ARBISHIELD_REF:-eeb9af823cf9969913c2f89739dfdf4bfe2dd4f0}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
 PRELIVE_DIR="${ARBISHIELD_PRELIVE_DIR:-/opt/arbishield}"
