@@ -209,23 +209,27 @@ export function buildMexchangeAuthHeaders(session = {}) {
   } else {
     headers.Cookie = `BIAB_LANGUAGE=${lang}`;
   }
-  // Frontend Mexchange: só cookies (withCredentials). Bearer com JWT sb
-  // costuma gerar "AccountId not found" — só envia Bearer se explicitamente pedido.
+  // Frontend Mexchange: cookies (withCredentials). JWT sb do Chrome como Bearer
+  // costuma gerar AccountId not found. Token de Aplicativo Externo (LAYBACK/bot)
+  // precisa de Bearer mesmo com EXCHANGE_ORDERS_AUTH_STYLE=cookie.
   const authStyle = envStr("EXCHANGE_ORDERS_AUTH_STYLE", "auto").toLowerCase();
-  const forceBearer =
-    authStyle === "bearer" ||
+  const isExternalApp =
+    session.authMode === "external_app" ||
     session.forceBearer === true ||
     process.env.EXCHANGE_ORDERS_FORCE_BEARER === "1";
+  const forceBearer = authStyle === "bearer" || isExternalApp;
   if (forceBearer || (!browserish && authStyle !== "cookie")) {
     let token = String(
       session.houseToken ||
+        session.appToken ||
         session.accessToken ||
         session.sessionToken ||
         ""
     ).trim();
     if (
       (!token || token.startsWith("cred:") || token === "browser-session") &&
-      jarHeader
+      jarHeader &&
+      !isExternalApp
     ) {
       const m = jarHeader.match(
         /(?:^|;\s*)(?:sb|BIAB_CUSTOMER)=([^;]+)/i
@@ -239,7 +243,19 @@ export function buildMexchangeAuthHeaders(session = {}) {
       token !== "demo"
     ) {
       headers.Authorization = `Bearer ${token}`;
+      // Soft2Bet vendor / apps externos às vezes usam estes headers
+      if (isExternalApp) {
+        headers["X-Authentication"] = token;
+        headers["X-Auth-Token"] = token;
+      }
     }
+  }
+  // UA de bot ajuda em alguns gates de aplicativo externo
+  if (isExternalApp) {
+    headers["User-Agent"] = envStr(
+      "MEXCHANGE_BOT_USER_AGENT",
+      "BOT/SOFTWARE;ArbiShield;1.0"
+    );
   }
   return { ...headers, ...(session.extraHeaders || {}) };
 }
@@ -294,7 +310,11 @@ export function hasTradingSession(session = {}) {
   const cookie = sessionCookieHeader(session);
   if (cookieLooksAuthed(cookie)) return true;
   const token = String(
-    session.houseToken || session.accessToken || session.sessionToken || ""
+    session.houseToken ||
+      session.appToken ||
+      session.accessToken ||
+      session.sessionToken ||
+      ""
   ).trim();
   if (!token) return false;
   if (token.startsWith("cred:")) return false;

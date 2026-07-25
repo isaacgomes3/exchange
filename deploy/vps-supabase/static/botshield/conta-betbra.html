@@ -82,6 +82,51 @@
     </div>
 
     <div class="panel" style="margin-bottom:16px">
+      <h2>Token de Aplicativo Externo (recomendado)</h2>
+      <p>
+        Na BetBra: conta → <strong>Aplicativos Externos</strong>. Apps como
+        <code>BOT/SOFTWARE;LAYBACK</code> já têm permissão de apostar offline.
+        Se a BetBra mostrar <strong>token / session / API key</strong> ao criar
+        ou reautorizar o app, cole abaixo — é o caminho mais estável na VPS.
+      </p>
+      <ol class="notice" style="margin:10px 0;padding-left:1.2em">
+        <li>Abra Aplicativos Externos na BetBra (não clique no X — isso revoga)</li>
+        <li>Crie/reautorize um app de bot, ou use o token do LAYBACK se tiver</li>
+        <li>Cole o token aqui → Salvar → <strong>Testar sessão</strong></li>
+      </ol>
+      <label style="display:block;margin-top:10px">
+        Nome do app (opcional)
+        <input
+          id="appLabel"
+          type="text"
+          placeholder="Ex.: LAYBACK / ArbiShield Bot"
+          style="width:100%;margin-top:6px"
+        />
+      </label>
+      <label style="display:block;margin-top:12px">
+        Token / session do aplicativo
+        <textarea
+          id="appToken"
+          rows="3"
+          placeholder="Cole o token do aplicativo externo (não o Cookie do Chrome)"
+          style="width:100%;margin-top:6px;font-family:ui-monospace,monospace"
+        ></textarea>
+      </label>
+      <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" type="button" id="btnSaveAppToken">
+          Salvar token do app
+        </button>
+        <button class="btn btn-secondary" type="button" id="btnTestMexchangeApp">
+          Testar sessão
+        </button>
+      </div>
+      <p id="appTokenHint" class="notice" style="margin-top:12px">
+        O X na lista de apps é só “revogar”. Mantenha o LAYBACK ACTIVE.
+        Se não aparecer token na tela, use o código do e-mail ou o Cookie abaixo.
+      </p>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px">
       <h2>Sessão do navegador (quando a VPS pede device)</h2>
       <p>
         O Cookie da exchange costuma ser <strong>HttpOnly</strong> (não aparece no
@@ -332,17 +377,25 @@
           }
           statusLine.textContent =
             "Conta conectada" +
+            (json.authMode === "external_app" || json.hasExternalAppToken
+              ? " · app externo"
+              : json.authMode
+                ? " · " + json.authMode
+                : "") +
             (json.connectedAt
               ? " · desde " + new Date(json.connectedAt).toLocaleString("pt-BR")
               : "");
           statusBox.style.display = "grid";
           document.getElementById("stLogin").textContent =
-            json.loginMasked || "(login salvo)";
+            json.loginMasked ||
+            (json.hasExternalAppToken ? "(token do app)" : "(login salvo)");
           document.getElementById("stPass").textContent = json.hasPassword
             ? "•••••••• (salva)"
-            : "não salva";
+            : json.hasExternalAppToken
+              ? "token app (salvo)"
+              : "não salva";
           document.getElementById("stLabel").textContent =
-            json.accountLabel || "—";
+            json.appLabel || json.accountLabel || "—";
           document.getElementById("stBalance").textContent =
             json.lastBalance != null
               ? formatBrl(json.lastBalance)
@@ -645,12 +698,17 @@
         }
       });
 
-      document.getElementById("btnTestMexchange")?.addEventListener("click", async () => {
+      async function testMexchangeSession(hintEl) {
         err.classList.remove("show");
         ok.style.display = "none";
-        const hint = document.getElementById("cookieHint");
-        hint.textContent =
-          "Consultando /account/info na Mexchange a partir da VPS…";
+        const hint =
+          hintEl ||
+          document.getElementById("appTokenHint") ||
+          document.getElementById("cookieHint");
+        if (hint) {
+          hint.textContent =
+            "Consultando /account/info na Mexchange a partir da VPS…";
+        }
         try {
           const res = await fetch(
             "/api/arbishield/exchange-session/mexchange-account?provider=betbra",
@@ -682,20 +740,86 @@
           ok.style.display = "block";
           ok.textContent =
             "Sessão OK · accountId=" + id + " · saldo " + bal;
-          hint.textContent =
-            "accountId=" +
-            id +
-            " · cookiesUsados=" +
-            names +
-            " · HTTP " +
-            (json.httpStatus || res.status) +
-            ". Pode tentar LAY+BACK em Ordens.";
+          if (hint) {
+            hint.textContent =
+              "accountId=" +
+              id +
+              " · cookiesUsados=" +
+              names +
+              " · HTTP " +
+              (json.httpStatus || res.status) +
+              ". Pode tentar LAY+BACK em Ordens.";
+          }
+          return json;
         } catch (ex) {
           err.textContent = ex instanceof Error ? ex.message : String(ex);
           err.classList.add("show");
-          hint.textContent =
-            "Falha no Testar sessão — Cookie do Chrome provavelmente não autentica no IP da VPS. Use login/senha + Atualizar saldo (aprovar device).";
+          if (hint) {
+            hint.textContent =
+              "Falha no Testar sessão — token do app inválido, Cookie do Chrome sem IP VPS, ou device não aprovado. Tente código do e-mail ou outro token.";
+          }
+          throw ex;
         }
+      }
+
+      document.getElementById("btnSaveAppToken")?.addEventListener("click", async () => {
+        err.classList.remove("show");
+        ok.style.display = "none";
+        const hint = document.getElementById("appTokenHint");
+        const appToken = String(
+          document.getElementById("appToken")?.value || ""
+        ).trim();
+        const appLabel = String(
+          document.getElementById("appLabel")?.value || ""
+        ).trim();
+        if (!appToken || appToken.length < 8) {
+          err.textContent =
+            "Cole o token do Aplicativo Externo (mín. 8 caracteres).";
+          err.classList.add("show");
+          return;
+        }
+        if (hint) hint.textContent = "Salvando token do aplicativo…";
+        try {
+          const res = await fetch("/api/arbishield/exchange-session/connect", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + (await bearer()),
+            },
+            body: JSON.stringify({
+              provider: "betbra",
+              authMode: "external_app",
+              appToken,
+              houseToken: appToken,
+              appLabel: appLabel || "Aplicativo externo",
+              accountLabel: appLabel || "Aplicativo externo",
+            }),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || "Falha ao salvar token");
+          ok.style.display = "block";
+          ok.textContent =
+            "Token do app salvo · authMode=" +
+            (json.authMode || "external_app") +
+            ". Clique em Testar sessão.";
+          if (hint) {
+            hint.textContent =
+              "Token salvo. Use Testar sessão — precisa ver accountId.";
+          }
+          document.getElementById("appToken").value = "";
+          await refreshStatus();
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+          if (hint) hint.textContent = "Falha ao salvar token do app.";
+        }
+      });
+
+      document.getElementById("btnTestMexchange")?.addEventListener("click", () => {
+        void testMexchangeSession(document.getElementById("cookieHint"));
+      });
+      document.getElementById("btnTestMexchangeApp")?.addEventListener("click", () => {
+        void testMexchangeSession(document.getElementById("appTokenHint"));
       });
 
       document.getElementById("btnDisconnect").addEventListener("click", async () => {

@@ -159,18 +159,41 @@ export function createExchangeOrdersService(deps) {
           process.env.EXCHANGE_ORDERS_LIVE === "true",
       };
     }
+    const wantExternalApp =
+      String(body?.authMode || "").toLowerCase() === "external_app" ||
+      body?.externalApp === true ||
+      !!String(body?.appToken || body?.vendorToken || "").trim();
+    const appToken = String(
+      body?.appToken ||
+        body?.vendorToken ||
+        body?.houseToken ||
+        body?.mexchangeToken ||
+        ""
+    ).trim();
     const hasBrowserSession = !!(
       String(body?.cookieHeader || body?.cookiesHeader || body?.cookie || "").trim() ||
-      String(body?.houseToken || body?.mexchangeToken || "").trim()
+      (!wantExternalApp && appToken)
     );
-    if (!accessToken && !(login && password) && !hasBrowserSession) {
+    const hasExternalAppToken = !!(wantExternalApp && appToken);
+    if (
+      !accessToken &&
+      !(login && password) &&
+      !hasBrowserSession &&
+      !hasExternalAppToken
+    ) {
       const err = new Error(
-        "Informe login+senha da BetBra, cookies do navegador, ou accessToken"
+        "Informe login+senha da BetBra, cookies do navegador, token de aplicativo externo, ou accessToken"
       );
       err.status = 400;
       throw err;
     }
-    if (login && !password && provider !== "demo" && !hasBrowserSession) {
+    if (
+      login &&
+      !password &&
+      provider !== "demo" &&
+      !hasBrowserSession &&
+      !hasExternalAppToken
+    ) {
       const err = new Error("Senha da BetBra obrigatória junto com o login");
       err.status = 400;
       throw err;
@@ -178,25 +201,41 @@ export function createExchangeOrdersService(deps) {
     const cookieHeader = sanitizeTradingCookieHeader(
       String(body?.cookieHeader || body?.cookiesHeader || body?.cookie || "").trim()
     );
-    const houseToken = String(
-      body?.houseToken || body?.mexchangeToken || ""
-    ).trim();
+    const houseToken = wantExternalApp
+      ? appToken
+      : String(body?.houseToken || body?.mexchangeToken || appToken || "").trim();
 
     // Atualiza só cookies/token sem apagar login/senha já salvos
     if ((cookieHeader || houseToken) && !(login && password)) {
       try {
         const { conn, session } = await loadActiveConnection(userId, null);
         if (conn?.provider === provider || !body?.provider) {
+          const authMode = wantExternalApp
+            ? "external_app"
+            : cookieHeader
+              ? "browser_session"
+              : "external_app";
           const next = {
             ...session,
-            cookieHeader: cookieHeader || session.cookieHeader || null,
+            cookieHeader: wantExternalApp
+              ? session.cookieHeader || null
+              : cookieHeader || session.cookieHeader || null,
             houseToken: houseToken || session.houseToken || null,
+            appToken: wantExternalApp
+              ? houseToken || session.appToken || null
+              : session.appToken || null,
             accessToken:
               houseToken ||
               session.houseToken ||
               session.accessToken ||
               "browser-session",
-            authMode: "browser_session",
+            authMode,
+            forceBearer: authMode === "external_app",
+            appLabel:
+              body?.appLabel ||
+              body?.accountLabel ||
+              session.appLabel ||
+              null,
           };
           const sessionEnc = encryptSessionPayload(next);
           const now = new Date().toISOString();
@@ -211,9 +250,11 @@ export function createExchangeOrdersService(deps) {
                   ...(conn.metadata && typeof conn.metadata === "object"
                     ? conn.metadata
                     : {}),
-                  auth_mode: "browser_session",
+                  auth_mode: authMode,
                   has_browser_cookies: !!next.cookieHeader,
                   has_house_token: !!next.houseToken,
+                  has_external_app_token: authMode === "external_app",
+                  app_label: next.appLabel || null,
                 },
                 updated_at: now,
               },
@@ -225,10 +266,11 @@ export function createExchangeOrdersService(deps) {
             provider: conn.provider,
             status: "active",
             demo: false,
-            authMode: "browser_session",
+            authMode,
             hasBrowserCookies: !!next.cookieHeader,
+            hasExternalAppToken: authMode === "external_app",
             reused: true,
-            mergedCookies: true,
+            mergedCookies: !wantExternalApp && !!cookieHeader,
             contract: EXCHANGE_ORDERS_CONTRACT_VERSION,
             adapter: adapter.provider,
             live:
@@ -242,33 +284,49 @@ export function createExchangeOrdersService(deps) {
     }
 
     // Só cookies/token do navegador (sem login+senha) — útil quando a VPS pede device validation
-    if (!accessToken && !(login && password) && (cookieHeader || houseToken)) {
+    if (
+      !accessToken &&
+      !(login && password) &&
+      (cookieHeader || houseToken)
+    ) {
       accessToken = houseToken || "browser-session";
     }
-    const payload = {
-      accessToken: accessToken || `cred:${login}`,
-      houseToken: houseToken || null,
-      refreshToken: body?.refreshToken || null,
-      expiresAt: body?.expiresAt || null,
-      accountLabel:
-        body?.accountLabel ||
-        body?.label ||
-        (login ? login : provider === "demo" ? "Conta demo" : null),
-      extraHeaders: body?.extraHeaders || null,
-      cookieHeader: cookieHeader || null,
-      cookies: body?.cookies && typeof body.cookies === "object" ? body.cookies : null,
-      connectedAt: new Date().toISOString(),
-      demo: provider === "demo" || accessToken === "demo",
-      login: login || null,
-      // senha só no blob AES-GCM — nunca em metadata / response
-      password: password || null,
-      authMode: cookieHeader || houseToken
+    const authMode = wantExternalApp
+      ? "external_app"
+      : cookieHeader || houseToken
         ? "browser_session"
         : password
           ? "credentials"
           : accessToken?.startsWith("cred:")
             ? "credentials"
-            : "token",
+            : "token";
+    const payload = {
+      accessToken: accessToken || `cred:${login}`,
+      houseToken: houseToken || null,
+      appToken: wantExternalApp ? houseToken || null : null,
+      refreshToken: body?.refreshToken || null,
+      expiresAt: body?.expiresAt || null,
+      accountLabel:
+        body?.accountLabel ||
+        body?.label ||
+        body?.appLabel ||
+        (login ? login : provider === "demo" ? "Conta demo" : null),
+      appLabel: body?.appLabel || body?.accountLabel || null,
+      extraHeaders: body?.extraHeaders || null,
+      cookieHeader: wantExternalApp ? null : cookieHeader || null,
+      cookies:
+        wantExternalApp
+          ? null
+          : body?.cookies && typeof body.cookies === "object"
+            ? body.cookies
+            : null,
+      connectedAt: new Date().toISOString(),
+      demo: provider === "demo" || accessToken === "demo",
+      login: login || null,
+      // senha só no blob AES-GCM — nunca em metadata / response
+      password: password || null,
+      authMode,
+      forceBearer: authMode === "external_app",
     };
     const sessionEnc = encryptSessionPayload(payload);
     const now = new Date().toISOString();
@@ -284,6 +342,9 @@ export function createExchangeOrdersService(deps) {
         has_login: !!login,
         login_masked: maskLogin(login),
         auth_mode: payload.authMode,
+        has_external_app_token: payload.authMode === "external_app",
+        has_house_token: !!payload.houseToken,
+        app_label: payload.appLabel || null,
         contract: EXCHANGE_ORDERS_CONTRACT_VERSION,
       },
       updated_at: now,
@@ -314,6 +375,7 @@ export function createExchangeOrdersService(deps) {
         hasLogin: !!login,
         loginMasked: maskLogin(login),
         authMode: payload.authMode,
+        hasExternalAppToken: payload.authMode === "external_app",
         contract: EXCHANGE_ORDERS_CONTRACT_VERSION,
         adapter: adapter.provider,
         live:
@@ -378,6 +440,10 @@ export function createExchangeOrdersService(deps) {
         hasPassword,
         loginMasked,
         authMode,
+        hasExternalAppToken:
+          authMode === "external_app" ||
+          !!conn.metadata?.has_external_app_token,
+        appLabel: conn.metadata?.app_label || null,
         connectedAt: conn.connected_at,
         demo: conn.provider === "demo",
         live,

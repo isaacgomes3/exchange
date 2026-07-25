@@ -41,6 +41,7 @@ echo "==> vps-hotfix-botshield-device-code.sh ($(date -Is)) ref=$REF"
 log "1/2 baixar libs + shim + Conta BetBra"
 for pair in \
   "scripts/lib/betbra-client-api.mjs:$SCRIPTS_DIR/lib/betbra-client-api.mjs" \
+  "scripts/lib/mexchange-offers.mjs:$SCRIPTS_DIR/lib/mexchange-offers.mjs" \
   "scripts/lib/exchange-orders-service.mjs:$SCRIPTS_DIR/lib/exchange-orders-service.mjs" \
   "scripts/arbishield-serverfn-shim.mjs:$SHIM_DIR/scripts/arbishield-serverfn-shim.mjs" \
   "deploy/vps-supabase/static/botshield/conta-betbra.html:$WEB/conta-betbra.html"
@@ -51,7 +52,7 @@ do
   echo "  OK $out"
 done
 
-for f in betbra-client-api.mjs exchange-orders-service.mjs; do
+for f in betbra-client-api.mjs mexchange-offers.mjs exchange-orders-service.mjs; do
   cp -f "$SCRIPTS_DIR/lib/$f" "$SHIM_DIR/scripts/lib/$f" 2>/dev/null || true
   cp -f "$SCRIPTS_DIR/lib/$f" "$SHIM_DIR/lib/$f" 2>/dev/null || true
 done
@@ -62,7 +63,10 @@ fi
 grep -q 'validationCode' "$SCRIPTS_DIR/lib/betbra-client-api.mjs" || die "betbra-client-api sem validationCode"
 grep -q 'BETBRA_DEVICE_VALIDATION' "$SCRIPTS_DIR/lib/betbra-client-api.mjs" || die "sem BETBRA_DEVICE_VALIDATION"
 grep -q 'validationCode' "$SCRIPTS_DIR/lib/exchange-orders-service.mjs" || die "service sem validationCode"
+grep -q 'external_app' "$SCRIPTS_DIR/lib/exchange-orders-service.mjs" || die "service sem external_app"
+grep -q 'external_app' "$SCRIPTS_DIR/lib/mexchange-offers.mjs" || die "mexchange-offers sem external_app"
 grep -q 'btnDeviceCode' "$WEB/conta-betbra.html" || die "UI sem btnDeviceCode"
+grep -q 'btnSaveAppToken' "$WEB/conta-betbra.html" || die "UI sem btnSaveAppToken"
 grep -q 'validationCode' "$SHIM_DIR/scripts/arbishield-serverfn-shim.mjs" || die "shim sem validationCode no balance"
 
 log "2/2 restart shim"
@@ -70,9 +74,9 @@ systemctl restart arbishield-serverfn-shim.service || die "restart shim falhou"
 sleep 1
 systemctl is-active --quiet arbishield-serverfn-shim.service || die "shim nao active"
 
-echo "OK — Conta BetBra aceita codigo do e-mail."
+echo "OK — Conta BetBra: codigo e-mail + token de Aplicativo Externo."
 echo "  1) https://botshield.arbishield.app/conta-betbra.html  (Ctrl+Shift+R)"
-echo "  2) Cole o codigo do e-mail BetBra"
-echo "  3) Enviar codigo e atualizar saldo"
-echo "  4) Testar sessao → accountId"
-echo "  Se o codigo expirou: clique Atualizar saldo para gerar outro e-mail"
+echo "  2a) Token do app (LAYBACK) → Salvar token do app → Testar sessao"
+echo "  2b) Ou codigo do e-mail → Enviar codigo e atualizar saldo"
+echo "  3) Testar sessao precisa mostrar accountId"
+echo "  X na lista de apps = revogar (nao clique)"
