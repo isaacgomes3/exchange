@@ -963,6 +963,44 @@
         $("authBanner").classList.toggle("show", !!show);
       }
 
+      function isJwtExpiredError(err) {
+        var msg = String((err && err.message) || err || "");
+        return (
+          /JWT expired/i.test(msg) ||
+          /PGRST303/i.test(msg) ||
+          /REST 401/i.test(msg)
+        );
+      }
+
+      function jwtExpiresSoon(token, skewSec) {
+        try {
+          var parts = String(token || "").split(".");
+          if (parts.length < 2) return true;
+          var json = atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"));
+          var payload = JSON.parse(json);
+          var exp = Number(payload && payload.exp);
+          if (!Number.isFinite(exp)) return true;
+          var skew = skewSec != null ? skewSec : 60;
+          return exp * 1000 <= Date.now() + skew * 1000;
+        } catch (e) {
+          return true;
+        }
+      }
+
+      async function ensureAuth(forceRefresh) {
+        var need =
+          !!forceRefresh ||
+          !auth ||
+          !auth.token ||
+          jwtExpiresSoon(auth.token, 90);
+        if (need) {
+          auth = await resolveAuth(true);
+          if (!auth) auth = await resolveAuth(false);
+        }
+        showAuthBanner(!auth);
+        return auth;
+      }
+
       async function rest(path, token, options) {
         options = options || {};
         var headers = {
@@ -982,10 +1020,28 @@
         });
         if (!res.ok) {
           var errText = await res.text().catch(function () { return ""; });
-          throw new Error("REST " + res.status + (errText ? ": " + errText.slice(0, 120) : ""));
+          throw new Error("REST " + res.status + (errText ? ": " + errText.slice(0, 180) : ""));
         }
         if (res.status === 204) return null;
         return res.json();
+      }
+
+      /** REST com refresh automático se o JWT estiver expirado. */
+      async function restAuth(path, options) {
+        var a = await ensureAuth(false);
+        if (!a || !a.token) {
+          throw new Error("Sessão expirada. Faça login admin de novo e publique.");
+        }
+        try {
+          return await rest(path, a.token, options);
+        } catch (err) {
+          if (!isJwtExpiredError(err)) throw err;
+          a = await ensureAuth(true);
+          if (!a || !a.token) {
+            throw new Error("Sessão expirada. Faça login admin de novo e publique.");
+          }
+          return await rest(path, a.token, options);
+        }
       }
 
       async function isAdmin(token, userId) {
@@ -1938,16 +1994,17 @@
       }
 
       async function publishMatch(matchId, btn) {
-        if (!auth) {
-          alert("Faça login admin para publicar.");
-          return;
-        }
         if (btn) {
           btn.disabled = true;
           btn.textContent = "Publicando…";
         }
         try {
-          await rest("matches?id=eq." + encodeURIComponent(matchId), auth.token, {
+          var a = await ensureAuth(true);
+          if (!a) {
+            alert("Sessão expirada. Faça login admin de novo e clique em Publicar.");
+            return;
+          }
+          await restAuth("matches?id=eq." + encodeURIComponent(matchId), {
             method: "PATCH",
             body: {
               is_published: true,
@@ -1960,7 +2017,12 @@
           renderPlatformList();
           renderStats();
         } catch (err) {
-          alert(err.message || "Falha ao publicar");
+          var msg = err.message || "Falha ao publicar";
+          if (isJwtExpiredError(err)) {
+            msg = "Sessão expirada. Faça login admin de novo e clique em Publicar.";
+          }
+          alert(msg);
+        } finally {
           if (btn) {
             btn.disabled = false;
             btn.textContent = "Publicar";
@@ -1993,11 +2055,12 @@
         options = options || {};
         var force = !!options.force;
         if (platformLoading) return;
-        if (!auth) {
+        var a = await ensureAuth(false);
+        if (!a) {
           platformLoaded = false;
           platformMatches = [];
           $("platformContent").innerHTML =
-            '<div class="empty">Login admin necessário para listar eventos da plataforma.</div>';
+            '<div class="empty">Login admin necessário para listar eventos da plataforma. Se o JWT expirou, entre de novo.</div>';
           renderStats();
           return;
         }
@@ -2011,9 +2074,8 @@
           $("platformContent").innerHTML = '<div class="loading">Carregando…</div>';
         }
         try {
-          platformMatches = await rest(
-            "matches?deleted_at=is.null&select=id,home_team,away_team,home_logo,away_logo,league,sport_type,starts_at,is_published,status,status_v2,final_score,settled_at,settled_by,created_by,updated_by,max_protection_cents,used_protection_cents,markets,metadata,external_id&order=starts_at.desc&limit=500",
-            auth.token
+          platformMatches = await restAuth(
+            "matches?deleted_at=is.null&select=id,home_team,away_team,home_logo,away_logo,league,sport_type,starts_at,is_published,status,status_v2,final_score,settled_at,settled_by,created_by,updated_by,max_protection_cents,used_protection_cents,markets,metadata,external_id&order=starts_at.desc&limit=500"
           );
           // Resolve nomes dos admins (lançou / encerrou)
           try {
@@ -2033,11 +2095,10 @@
             var ids = Object.keys(adminIds);
             var nameMap = {};
             if (ids.length) {
-              var profs = await rest(
+              var profs = await restAuth(
                 "profiles?select=id,full_name,email&id=in.(" +
                   ids.map(encodeURIComponent).join(",") +
-                  ")",
-                auth.token
+                  ")"
               );
               (profs || []).forEach(function (p) {
                 var label =
@@ -2072,9 +2133,8 @@
           // Marca jogos com proteção ainda aberta (LAY + BACK)
           var openByMatch = {};
           try {
-            var openProt = await rest(
-              "protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,responsibility_cents,platform_deduction_cents,locked_deduction_cents&limit=2000",
-              auth.token
+            var openProt = await restAuth(
+              "protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,responsibility_cents,platform_deduction_cents,locked_deduction_cents&limit=2000"
             );
             (openProt || []).forEach(function (p) {
               if (!p.match_id) return;
@@ -2100,9 +2160,8 @@
             });
           } catch (e1) {}
           try {
-            var openBack = await rest(
-              "back_protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,platform_deduction_cents,locked_deduction_cents&limit=1000",
-              auth.token
+            var openBack = await restAuth(
+              "back_protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,platform_deduction_cents,locked_deduction_cents&limit=1000"
             );
             (openBack || []).forEach(function (p) {
               if (!p.match_id) return;
@@ -2147,11 +2206,10 @@
             return !known[id];
           });
           if (missingIds.length) {
-            var extra = await rest(
+            var extra = await restAuth(
               "matches?id=in.(" +
                 missingIds.map(encodeURIComponent).join(",") +
-                ")&deleted_at=is.null&select=id,home_team,away_team,home_logo,away_logo,league,sport_type,starts_at,is_published,status,status_v2,final_score,settled_at,max_protection_cents,used_protection_cents,markets,metadata,external_id",
-              auth.token
+                ")&deleted_at=is.null&select=id,home_team,away_team,home_logo,away_logo,league,sport_type,starts_at,is_published,status,status_v2,final_score,settled_at,max_protection_cents,used_protection_cents,markets,metadata,external_id"
             );
             (extra || []).forEach(function (m) {
               var op = openByMatch[m.id];
@@ -2329,13 +2387,16 @@
       }
 
       async function patchMatch(matchId, body) {
+        var payload = Object.assign({ updated_at: new Date().toISOString() }, body);
         try {
-          await rest("matches?id=eq." + encodeURIComponent(matchId), auth.token, {
+          await restAuth("matches?id=eq." + encodeURIComponent(matchId), {
             method: "PATCH",
-            body: Object.assign({ updated_at: new Date().toISOString() }, body),
+            body: payload,
           });
         } catch (err) {
-          await rest("matches?id=eq." + encodeURIComponent(matchId), auth.token, {
+          if (isJwtExpiredError(err)) throw err;
+          // Retry sem updated_at se a coluna não existir em schema antigo
+          await restAuth("matches?id=eq." + encodeURIComponent(matchId), {
             method: "PATCH",
             body: body,
           });
@@ -3544,11 +3605,10 @@
           }
           // Confere se ainda há proteção ativa neste jogo
           try {
-            var still = await rest(
+            var still = await restAuth(
               "protections?match_id=eq." +
                 encodeURIComponent(settleMatchId) +
-                "&status=in.(active,pending,review_odd)&select=id&limit=5",
-              auth.token
+                "&status=in.(active,pending,review_odd)&select=id&limit=5"
             );
             if (still && still.length) {
               throw new Error(
@@ -3750,6 +3810,10 @@
         }
         setTimeout(triggerLiveSync, 4000);
         setInterval(triggerLiveSync, 20000);
+        // Mantém JWT fresco enquanto a aba está aberta (evita "JWT expired" no Publicar)
+        setInterval(function () {
+          ensureAuth(false).catch(function () {});
+        }, 4 * 60 * 1000);
       }
 
       boot().catch(function (err) {
