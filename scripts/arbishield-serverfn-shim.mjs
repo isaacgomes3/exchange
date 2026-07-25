@@ -1828,32 +1828,74 @@ async function requestDeductionWithdrawal(token, body) {
   }
 
   // Debita na hora (reserva) — admin libera/paga depois
+  const afterCents = available - amountCents;
   await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
     method: "PATCH",
     token: SERVICE_KEY,
     body: {
-      deduction_balance_cents: available - amountCents,
+      deduction_balance_cents: afterCents,
       updated_at: new Date().toISOString(),
     },
   });
 
-  const created = await sb("/rest/v1/withdrawals", {
-    method: "POST",
-    token: SERVICE_KEY,
-    body: {
+  const meta = {
+    origin: "SALDO_REEMBOLSO_WITHDRAWAL",
+    bucket: "deduction_balance_cents",
+    label: "Saldo Reembolso",
+    note: "Saque Saldo Reembolso (stake + dedução ArbiShield)",
+  };
+  const attempts = [
+    {
       user_id: userId,
       amount_cents: amountCents,
       pix_key: pixKey,
       status: "pending",
-      metadata: {
-        origin: "SALDO_REEMBOLSO_WITHDRAWAL",
-        bucket: "deduction_balance_cents",
-        label: "Saldo Reembolso",
-        note: "Saque Saldo Reembolso (stake + dedução ArbiShield)",
-      },
+      metadata: meta,
     },
-  });
-  const row = Array.isArray(created) ? created[0] : created;
+    {
+      user_id: userId,
+      amount_cents: amountCents,
+      status: "pending",
+      metadata: { ...meta, pix_key: pixKey },
+    },
+  ];
+
+  let row = null;
+  let lastErr = null;
+  for (const body of attempts) {
+    try {
+      const created = await sb("/rest/v1/withdrawals", {
+        method: "POST",
+        token: SERVICE_KEY,
+        body,
+      });
+      row = Array.isArray(created) ? created[0] : created;
+      if (row) break;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+
+  if (!row) {
+    // Estorna o débito se não conseguiu criar o pedido
+    try {
+      await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          deduction_balance_cents: available,
+          updated_at: new Date().toISOString(),
+        },
+      });
+    } catch {
+      /* */
+    }
+    throw new Error(
+      lastErr instanceof Error
+        ? `Falha ao registrar saque: ${lastErr.message}`
+        : "Falha ao registrar saque do Saldo Reembolso"
+    );
+  }
 
   try {
     await sb("/rest/v1/wallet_transactions", {
@@ -1875,7 +1917,7 @@ async function requestDeductionWithdrawal(token, body) {
     /* */
   }
 
-  return { ok: true, withdrawal: row, amountCents, availableAfter: available - amountCents };
+  return { ok: true, withdrawal: row, amountCents, availableAfter: afterCents };
 }
 
 async function transferRealToDesafio(token, body) {

@@ -1310,10 +1310,24 @@
         },
         body: JSON.stringify({ amountCents: cents, pix_key: pix }),
       });
-      var data = await res.json().catch(function () {
-        return {};
-      });
-      if (!res.ok) throw new Error(data.error || "Falha ao solicitar saque");
+      var rawText = await res.text();
+      var data = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch (_) {
+        data = {};
+      }
+      if (!res.ok) {
+        var msg =
+          data.error ||
+          data.message ||
+          (res.status === 405
+            ? "Rota de saque bloqueada no nginx (rode o hotfix Saldo Reembolso na VPS)."
+            : res.status === 404
+              ? "API de saque indisponível. Atualize o shim na VPS."
+              : "Falha ao solicitar saque (" + res.status + ")");
+        throw new Error(msg);
+      }
       alert("Saque do Saldo Reembolso solicitado. Aguarde a análise.");
       location.reload();
     } catch (ex) {
