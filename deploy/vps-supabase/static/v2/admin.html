@@ -187,6 +187,23 @@
           .order("created_at", { ascending: false })
           .limit(80);
         var list = tx.data || [];
+        var ids = {};
+        list.forEach(function (r) {
+          if (r.user_id) ids[String(r.user_id)] = 1;
+        });
+        var idList = Object.keys(ids);
+        var nameMap = {};
+        for (var i = 0; i < idList.length; i += 80) {
+          var chunk = idList.slice(i, i + 80);
+          var pr = await supa
+            .from("profiles")
+            .select("id,full_name")
+            .in("id", chunk);
+          (pr.data || []).forEach(function (p) {
+            nameMap[String(p.id)] =
+              (p.full_name && String(p.full_name).trim()) || "—";
+          });
+        }
         var inflowTypes = {
           deposit: 1, manual_credit: 1, asaas_deposit: 1, desafio_deposit: 1,
           provider_deposit: 1, protection_unlock: 1, protection_settlement: 1, bonus: 1
@@ -208,11 +225,18 @@
           body.innerHTML = '<tr><td colspan="6" class="tpl-empty">Nenhuma transação no período</td></tr>';
           return;
         }
+        function esc(s) {
+          return String(s == null ? "" : s)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/"/g, "&quot;");
+        }
         body.innerHTML = list.map(function (r) {
+          var nome = nameMap[String(r.user_id)] || "—";
           return "<tr>" +
             "<td>" + new Date(r.created_at).toLocaleString("pt-BR") + "</td>" +
-            "<td>" + (r.type || "—") + "</td>" +
-            "<td>" + String(r.user_id || "").slice(0, 8) + "…</td>" +
+            "<td><strong style=\"color:var(--text)\">" + esc(nome) + "</strong></td>" +
+            "<td>" + esc(r.type || "—") + "</td>" +
             "<td>" + money(r.amount_cents) + "</td>" +
             "<td>" + money(r.balance_after_cents) + "</td>" +
             "<td>ok</td>" +
