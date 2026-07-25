@@ -3,7 +3,7 @@
  * Lógica pura (testável) + helpers de normalização.
  */
 
-export const BETBRA_INPLAY_SYNC_VERSION = "betbra-inplay-sync-v5";
+export const BETBRA_INPLAY_SYNC_VERSION = "betbra-inplay-sync-v6";
 
 /**
  * Extrai eventId BetBra de um link de mercado/evento.
@@ -150,8 +150,17 @@ export function buildDesafioStepInplayPatch(step, inplayByEventId, nowIso) {
   const sameScores =
     prevHome === (info.homeScore != null ? Number(info.homeScore) : null) &&
     prevAway === (info.awayScore != null ? Number(info.awayScore) : null);
-  // VPS sem coluna metadata: só compara placar nas colunas finais
-  if (sameScores && (sameMeta || !step.metadata)) return null;
+  const finishedChanged = Boolean(prev.finished) !== Boolean(live.finished);
+  // Não engolir FT quando o SELECT da etapa não traz metadata
+  if (sameScores && sameMeta && !finishedChanged) return null;
+  if (
+    sameScores &&
+    !step.metadata &&
+    !finishedChanged &&
+    String(prev.elapsed || "") === String(live.elapsed || "")
+  ) {
+    return null;
+  }
 
   const slimPatch = {
     updated_at: nowIso,
@@ -190,7 +199,7 @@ export function inferMatchFinished(stepOrMatch, info, nowMs = Date.now()) {
   const start = startRaw ? new Date(startRaw).getTime() : NaN;
   if (!Number.isFinite(start)) return false;
   const ageMin = (nowMs - start) / 60000;
-  if (ageMin < 95) return false;
+  if (ageMin < 100) return false;
 
   const meta =
     stepOrMatch?.metadata && typeof stepOrMatch.metadata === "object"
@@ -201,14 +210,27 @@ export function inferMatchFinished(stepOrMatch, info, nowMs = Date.now()) {
 
   const elapsedRaw = info?.elapsed || prev?.elapsed || "";
   const elapsedNum = Number(String(elapsedRaw).match(/\d+/)?.[0] || NaN);
+  const finalHome =
+    stepOrMatch?.final_score_home != null
+      ? Number(stepOrMatch.final_score_home)
+      : null;
+  const finalAway =
+    stepOrMatch?.final_score_away != null
+      ? Number(stepOrMatch.final_score_away)
+      : null;
   const hasScore =
     (info?.homeScore != null && info?.awayScore != null) ||
+    (Number.isFinite(finalHome) && Number.isFinite(finalAway)) ||
     (prev &&
       ((prev.home_score != null && prev.away_score != null) || prev.score));
 
-  // Fora do feed agregado, mas já esteve ao vivo com placar
+  if (!hasScore) return false;
+
+  // Com placar + ≥105 min do início → FT (não depende do minuto do feed)
+  if (ageMin >= 105) return true;
+
+  // Fora do feed, já foi live
   if (!info) {
-    if (!hasScore) return false;
     if (prev?.finished) return true;
     if (prev?.live || String(stepOrMatch?.status || "").toLowerCase() === "live") {
       return ageMin >= 100;
@@ -216,12 +238,10 @@ export function inferMatchFinished(stepOrMatch, info, nowMs = Date.now()) {
     return false;
   }
 
-  // Feed ainda "ao vivo" preso no 90'+ — fecha após janela regular
-  if (hasScore && Number.isFinite(elapsedNum) && elapsedNum >= 90 && ageMin >= 105) {
+  // Feed preso no 90'+ um pouco antes dos 105'
+  if (Number.isFinite(elapsedNum) && elapsedNum >= 90 && ageMin >= 100) {
     return true;
   }
-  // Hard stop: 2h05 após o apito (tempo regulamentar + folga)
-  if (hasScore && ageMin >= 125) return true;
   return false;
 }
 

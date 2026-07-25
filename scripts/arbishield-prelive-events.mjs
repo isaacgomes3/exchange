@@ -3528,12 +3528,6 @@ async function syncBetbraInplayScores({ force = false } = {}) {
   }
 
   for (const step of stepCandidates) {
-    const ext = desafioStepEventId(step);
-    const info = ext ? byEvent.get(ext) : null;
-    // Cache em memória mesmo sem PATCH (alertas de gol/FT no cliente)
-    if (info) {
-      rememberDesafioStepLive(step.id, buildLiveMetadata(info, nowIso));
-    }
     const built = buildDesafioStepInplayPatch(step, byEvent, nowIso);
     if (!built) {
       skipped += 1;

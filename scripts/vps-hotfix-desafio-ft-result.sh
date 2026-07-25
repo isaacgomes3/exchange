@@ -57,8 +57,8 @@ install_lib() {
 
 log "1/3 lib inplay v5 (infer FT)"
 install_lib "scripts/lib/betbra-inplay-sync.mjs"
-grep -q 'betbra-inplay-sync-v5' "$SCRIPTS_DIR/lib/betbra-inplay-sync.mjs" \
-  || die "lib sem v5"
+grep -qE 'betbra-inplay-sync-v[56]' "$SCRIPTS_DIR/lib/betbra-inplay-sync.mjs" \
+  || die "lib sem v5/v6"
 grep -q 'inferMatchFinished' "$SCRIPTS_DIR/lib/betbra-inplay-sync.mjs" \
   || die "lib sem inferMatchFinished"
 
@@ -79,7 +79,7 @@ rm -f "$tmp_pre"
 log "3/3 UI app-desafio.html"
 tmp_html="$(mktemp)"
 download_repo_file "deploy/vps-supabase/static/v2/app-desafio.html" "$tmp_html"
-grep -qE 'desafio-ft-result-v1|desafio-live-pack-v1' "$tmp_html" \
+grep -qE 'desafio-ft-result-v[12]|desafio-live-pack-v[12]' "$tmp_html" \
   || die "UI sem marker FT/live-pack"
 grep -q 'ageMin >= 105' "$tmp_html" || die "UI sem heurística FT"
 cp -f "$tmp_html" "$WEB/app-desafio.html"
@@ -100,5 +100,5 @@ curl -sS -o /tmp/dz-ft-sync.json -w "match-live-sync HTTP %{http_code}\n" --max-
   "http://127.0.0.1:3098/api/arbishield/match-live-sync" || true
 head -c 350 /tmp/dz-ft-sync.json; echo
 
-log "OK. Ctrl+Shift+R em /app-desafio.html — marker desafio-ft-result-v1"
+log "OK. Ctrl+Shift+R em /app-desafio.html — marker desafio-live-pack-v2"
 log "BTTS 0-1 no FT: NÃO = V, SIM = ×"

@@ -62,7 +62,7 @@ publish_web() {
   local tmp
   tmp="$(mktemp)"
   download_repo_file "$rel" "$tmp" || die "download falhou: $rel"
-  grep -qE 'desafio-mradar-v2|desafio-live-pack-v1|desafio-ft-result-v1' "$tmp" \
+  grep -qE 'desafio-mradar-v2|desafio-live-pack-v[12]|desafio-ft-result-v[12]' "$tmp" \
     || die "UI sem marker de desafio/radar"
   grep -q 'data-radar' "$tmp" || die "UI sem bloco data-radar"
   cp -f "$tmp" "$WEB/$name"

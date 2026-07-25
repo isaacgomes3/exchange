@@ -18,7 +18,7 @@ import {
 
 describe("betbra-inplay-sync", () => {
   it("mantém versão", () => {
-    assert.equal(BETBRA_INPLAY_SYNC_VERSION, "betbra-inplay-sync-v5");
+    assert.equal(BETBRA_INPLAY_SYNC_VERSION, "betbra-inplay-sync-v6");
   });
 
   it("extrai eventId de links BetBra", () => {
@@ -177,6 +177,34 @@ describe("betbra-inplay-sync", () => {
     assert.ok(built);
     assert.equal(built.live.finished, true);
     assert.equal(built.live.live, false);
+  });
+
+  it("não engole FT quando etapa vem sem metadata no SELECT", () => {
+    const feed = indexInplayFeed([
+      {
+        eventId: "33842537216900023",
+        status: "IN_PLAY",
+        inPlayMatchStatus: "SecondHalfKickOff",
+        elapsedRegularTime: "90",
+        score: { home: { score: "0" }, away: { score: "1" } },
+      },
+    ]);
+    const step = {
+      starts_at: "2026-07-25T13:00:00.000Z",
+      status: "live",
+      final_score_home: 0,
+      final_score_away: 1,
+      external_bet_link:
+        "https://betbra.bet.br/b/exchange/sport/soccer/event/33842537216900023/market/1",
+      // sem metadata (como no SELECT da VPS)
+    };
+    const built = buildDesafioStepInplayPatch(
+      step,
+      feed,
+      "2026-07-25T14:55:00.000Z"
+    );
+    assert.ok(built, "deve gerar patch para popular cache FT");
+    assert.equal(built.live.finished, true);
   });
 
   it("elegibilidade por source BetBra e janela", () => {

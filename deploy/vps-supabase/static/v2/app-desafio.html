@@ -6,9 +6,9 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-live-pack-v1" />
-  <meta name="arbishield-features" content="desafio-mradar-v2 desafio-ft-result-v1" />
-  <link rel="stylesheet" href="/v2.css?v=dz-live-pack-1" />
+  <meta name="arbishield-build" content="desafio-live-pack-v2" />
+  <meta name="arbishield-features" content="desafio-mradar-v2 desafio-ft-result-v2" />
+  <link rel="stylesheet" href="/v2.css?v=dz-live-pack-2" />
   <style>
     /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
     .dz-sb-market {
@@ -270,9 +270,9 @@
     .dz-radar-foot a:hover { color: #c9f223; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=dz-live-pack-1"></script>
-  <script src="/desafio-ciclo-math.js?v=dz-live-pack-1"></script>
-  <script src="/v2-shell.js?v=dz-live-pack-1" defer></script>
+  <script src="/v2.js?v=dz-live-pack-2"></script>
+  <script src="/desafio-ciclo-math.js?v=dz-live-pack-2"></script>
+  <script src="/v2-shell.js?v=dz-live-pack-2" defer></script>
   <style>
     .dz-access-history {
       appearance: none;
@@ -1250,12 +1250,14 @@
         var ageMin = kickedOff ? (now - startsMs) / 60000 : 0;
         var elapsedMatch = String(elapsed || "").match(/\d+/);
         var elapsedNum = elapsedMatch ? Number(elapsedMatch[0]) : NaN;
-        // Feed BetBra às vezes fica preso em 90'/SecondHalf após o apito final
+        // Feed/metadata podem vir vazios na VPS — com placar + ≥105' do início = FT
         if (
           !finished &&
           scoreLabel &&
-          ((ageMin >= 105 && Number.isFinite(elapsedNum) && elapsedNum >= 90) ||
-            ageMin >= 125)
+          (ageMin >= 105 ||
+            (ageMin >= 100 &&
+              Number.isFinite(elapsedNum) &&
+              elapsedNum >= 90))
         ) {
           finished = true;
         }
