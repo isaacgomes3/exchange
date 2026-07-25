@@ -60,8 +60,9 @@ publish_web() {
 log "1/3 UI — admin-jogos (odds + BACK/LAY + link do mercado)"
 publish_web "deploy/vps-supabase/static/v2/admin-jogos.html"
 
-grep -q 'admin-jogos-back-lay-link-v2' "$WEB/admin-jogos.html" \
-  || die "admin-jogos sem marker admin-jogos-back-lay-link-v2 (ficheiro antigo/cache)"
+grep -qE 'admin-jogos-back-lay-link-v[0-9]+' "$WEB/admin-jogos.html" \
+  || die "admin-jogos sem marker admin-jogos-back-lay-link (ficheiro antigo/cache)"
+grep -q 'settleHint' "$WEB/admin-jogos.html" && die "banner settleHint ainda presente" || true
 grep -q 'btn-side lay' "$WEB/admin-jogos.html" || die "sem botão LAY"
 grep -q 'btn-side back' "$WEB/admin-jogos.html" || die "sem botão BACK"
 grep -q 'runnerSideOdd' "$WEB/admin-jogos.html" || die "sem runnerSideOdd"
