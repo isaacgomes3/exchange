@@ -10,7 +10,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/finance-admins.js?v=fin-acl-2"></script>
   <script src="/v2.js?v=fin-acl-2"></script>
-  <script src="/v2-pages.js?v=reembolso-acoes-1"></script>
+  <script src="/v2-pages.js?v=reembolso-acoes-2"></script>
   <script src="/v2-shell.js?v=fin-acl-2" defer></script>
   <style>
     .rf-actions { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -236,7 +236,7 @@
           " registro(s)</div>" +
           '<div class="ops-panel"><div class="ops-table-wrap"><table class="ops-table"><thead><tr>' +
           "<th>nome</th><th>origem</th><th>valor</th><th>status</th><th>criado em</th><th>ações</th>" +
-          "</tr></thead><tbody id="rfBody"></tbody></table></div></div>";
+          '</tr></thead><tbody id="rfBody"></tbody></table></div></div>';
 
         var tbody = document.getElementById("rfBody");
         if (!rows.length) {
