@@ -7,11 +7,11 @@
   <title>Gestão de Proteções — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="protecoes-resultado-reembolso-v1" />
-  <link rel="stylesheet" href="/v2.css?v=protecoes-resultado-1" />
+  <meta name="arbishield-build" content="protecoes-filtro-userid-v2" />
+  <link rel="stylesheet" href="/v2.css?v=protecoes-filtro-userid-2" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=protecoes-resultado-1"></script>
-  <script src="/v2-shell.js?v=protecoes-resultado-1" defer></script>
+  <script src="/v2.js?v=protecoes-filtro-userid-2"></script>
+  <script src="/v2-shell.js?v=protecoes-filtro-userid-2" defer></script>
   <style>
     .prot-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 16px; align-items: start; }
     @media (max-width: 960px) {
@@ -265,6 +265,15 @@
         ? ArbiV2.getEffectiveUserId(user)
         : user.id;
       if (!viewUserId) return;
+      var isMirror = String(viewUserId) !== String(user.id);
+      console.info(
+        "[protecoes] auth=",
+        String(user.id).slice(0, 8),
+        "view=",
+        String(viewUserId).slice(0, 8),
+        "mirror=",
+        isMirror
+      );
 
       var items = [];
       var selectedId = null;
@@ -307,16 +316,29 @@
         var x = Number(v);
         return Number.isFinite(x) ? Math.trunc(x) : 0;
       }
+      function metaOf(row) {
+        var m = row && row.metadata;
+        if (!m) return {};
+        if (typeof m === "string") {
+          try {
+            m = JSON.parse(m);
+          } catch (e) {
+            return {};
+          }
+        }
+        return typeof m === "object" && m ? m : {};
+      }
       function isFeeUpfront(row) {
-        var meta = row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+        var meta = metaOf(row);
         return (
           meta.billing_model === "fee_upfront_v1" ||
           meta.fee_upfront === true ||
-          String(meta.source || "").indexOf("fee_upfront") >= 0
+          String(meta.source || "").indexOf("fee_upfront") >= 0 ||
+          String(meta.source || "").indexOf("v2_create_protection") >= 0
         );
       }
       function deductionCentsOf(row) {
-        var meta = row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+        var meta = metaOf(row);
         var raw =
           row.platform_deduction_cents != null
             ? row.platform_deduction_cents
@@ -370,11 +392,27 @@
           .replace(/"/g, "&quot;");
       }
       function marketLabelOf(it) {
-        var meta = it.metadata && typeof it.metadata === "object" ? it.metadata : {};
+        var meta = metaOf(it);
         var name = meta.market_name || meta.marketName || meta.runner_name || "";
         if (name && String(name).trim()) return String(name).trim();
         var odd = Number(it.odd || 0);
         return odd > 0 ? odd.toFixed(2) : "—";
+      }
+      function teamsOf(it) {
+        var meta = metaOf(it);
+        var m = it.matches || {};
+        return {
+          home: meta.home_team || meta.homeTeam || m.home_team || "?",
+          away: meta.away_team || meta.awayTeam || m.away_team || "?",
+          competition:
+            String(
+              meta.league ||
+                meta.competition ||
+                m.league ||
+                m.competition ||
+                ""
+            ).trim() || "—",
+        };
       }
       function whenHtmlOf(it) {
         var starts = it.matches && it.matches.starts_at;
@@ -430,13 +468,13 @@
       async function load() {
         showErr("");
         var selectFull =
-          "id,status,amount_cents,responsibility_cents,odd,match_id,created_at,metadata,user_profit_cents,settled_at,settled_outcome,platform_deduction_cents,locked_deduction_cents,platform_profit_cents,refunded_at";
+          "id,user_id,status,amount_cents,responsibility_cents,odd,match_id,created_at,metadata,user_profit_cents,settled_at,settled_outcome,platform_deduction_cents,locked_deduction_cents,platform_profit_cents,refunded_at";
         var selectBasic =
-          "id,status,amount_cents,responsibility_cents,odd,match_id,created_at,metadata,user_profit_cents";
+          "id,user_id,status,amount_cents,responsibility_cents,odd,match_id,created_at,metadata,user_profit_cents";
         var selectBackFull =
-          "id,status,amount_cents,odd,match_id,created_at,metadata,user_profit_cents,settled_at,settled_outcome,platform_deduction_cents,locked_deduction_cents,platform_profit_cents,refunded_at";
+          "id,user_id,status,amount_cents,odd,match_id,created_at,metadata,user_profit_cents,settled_at,settled_outcome,platform_deduction_cents,locked_deduction_cents,platform_profit_cents,refunded_at";
         var selectBackBasic =
-          "id,status,amount_cents,odd,match_id,created_at,metadata,user_profit_cents";
+          "id,user_id,status,amount_cents,odd,match_id,created_at,metadata,user_profit_cents";
         async function fetchSide(table, full, basic) {
           var first = await supa
             .from(table)
@@ -460,7 +498,7 @@
         if (lay.error) throw lay.error;
         if (back.error) throw back.error;
         // Filtro no cliente (não depende de .neq no PostgREST / cache)
-        items = []
+        var merged = []
           .concat(
             (lay.data || []).map(function (r) {
               return Object.assign({}, r, { market_category: "LAY" });
@@ -470,11 +508,40 @@
             (back.data || []).map(function (r) {
               return Object.assign({}, r, { market_category: "BACK" });
             })
-          )
+          );
+        var foreign = merged.filter(function (r) {
+          return r.user_id != null && String(r.user_id) !== String(viewUserId);
+        });
+        if (foreign.length) {
+          console.error(
+            "[protecoes] ignorando",
+            foreign.length,
+            "linha(s) com user_id diferente do espelho/cliente",
+            foreign.map(function (r) {
+              return { id: r.id, user_id: r.user_id };
+            })
+          );
+        }
+        items = merged
+          .filter(function (r) {
+            // Se user_id veio no select, exige bater com a conta espelhada
+            if (r.user_id == null || r.user_id === "") return true;
+            return String(r.user_id) === String(viewUserId);
+          })
           .filter(isVisibleProtection)
           .sort(function (a, b) {
             return String(b.created_at).localeCompare(String(a.created_at));
           });
+        console.info(
+          "[protecoes] carregadas=",
+          items.length,
+          "lay=",
+          (lay.data || []).length,
+          "back=",
+          (back.data || []).length,
+          "descartadas_user=",
+          foreign.length
+        );
 
         if (selectedId && !items.some(function (i) { return i.id === selectedId; })) {
           selectedId = null;
@@ -503,8 +570,8 @@
       }
 
       function matchName(item) {
-        var m = item.matches;
-        if (m && m.home_team && m.away_team) return m.home_team + " × " + m.away_team;
+        var t = teamsOf(item);
+        if (t.home !== "?" && t.away !== "?") return t.home + " × " + t.away;
         return "Partida";
       }
 
@@ -516,10 +583,10 @@
         listEl.innerHTML = items.map(function (it) {
           var amount = it.responsibility_cents || it.amount_cents || 0;
           var side = String(it.market_category || "LAY").toUpperCase() === "BACK" ? "BACK" : "LAY";
-          var m = it.matches || {};
-          var competition = String(m.league || m.competition || "").trim() || "—";
-          var home = m.home_team || "?";
-          var away = m.away_team || "?";
+          var teams = teamsOf(it);
+          var competition = teams.competition;
+          var home = teams.home;
+          var away = teams.away;
           var res = resultInfo(it);
           var badgeCls = statusClass(it.status);
           if (res.kind === "won") badgeCls = "won";
@@ -581,6 +648,10 @@
           ? new Date(it.matches.starts_at).toLocaleString("pt-BR")
           : "—";
         var res = resultInfo(it);
+        var created = it.created_at
+          ? new Date(it.created_at).toLocaleString("pt-BR")
+          : "—";
+        var meta = metaOf(it);
         detailEl.innerHTML =
           "<h2>Protocolo de auditoria</h2>" +
           '<p class="sub">' + matchName(it) + "</p>" +
@@ -595,6 +666,10 @@
             "<div><span>Odd alvo</span><strong>" + Number(it.odd || 0).toFixed(2) + "</strong></div>" +
             "<div><span>Valor protegido</span><strong>" + money(amount) + "</strong></div>" +
             "<div><span>Início</span><strong>" + starts + "</strong></div>" +
+            "<div><span>Criada em</span><strong>" + esc(created) + "</strong></div>" +
+            "<div><span>ID proteção</span><strong>" + esc(String(it.id || "").slice(0, 8)) + "…</strong></div>" +
+            "<div><span>Conta (user)</span><strong>" + esc(String(it.user_id || viewUserId).slice(0, 8)) + "…</strong></div>" +
+            "<div><span>Origem</span><strong>" + esc(meta.source || meta.billing_model || "—") + "</strong></div>" +
           "</div>" +
           '<div class="prot-actions" style="display:flex;flex-direction:column;gap:10px">' +
             '<button type="button" class="btn btn-primary" id="btnContest"' +

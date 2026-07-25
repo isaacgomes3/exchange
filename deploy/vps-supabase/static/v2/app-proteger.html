@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <meta name="arbishield-build" content="proteger-espelho-userid-v12" />
+  <meta name="arbishield-build" content="proteger-espelho-readonly-v13" />
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=proteger-espelho-userid-v12" />
+  <link rel="stylesheet" href="/v2.css?v=proteger-espelho-readonly-13" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=proteger-espelho-userid-v12"></script>
-  <script src="/v2-shell.js?v=proteger-espelho-userid-v12" defer></script>
+  <script src="/v2.js?v=proteger-espelho-readonly-13"></script>
+  <script src="/v2-shell.js?v=proteger-espelho-readonly-13" defer></script>
 </head>
 <body data-shell="app" data-active="proteger">
   <div class="page-head term-head">
@@ -127,6 +127,7 @@
       var viewUserId = ArbiV2.getEffectiveUserId
         ? ArbiV2.getEffectiveUserId(user)
         : user.id;
+      var isMirror = String(viewUserId) !== String(user.id);
 
       /** Sandbox: cobrança fee_upfront via worker :3198. Produção: não misturar eventos de teste. */
       var IS_SANDBOX =
@@ -575,6 +576,11 @@
         btn.disabled = true;
         btn.textContent = "Processando…";
         try {
+          if (isMirror) {
+            throw new Error(
+              "Espelho é somente leitura para ativar proteção. Saia do espelho para operar na sua conta, ou peça ao cliente para ativar."
+            );
+          }
           var sess = await supa.auth.getSession();
           var token = sess.data.session && sess.data.session.access_token;
           if (!token) throw new Error("Sessão expirada. Faça login novamente.");
