@@ -290,6 +290,15 @@ textarea {
   color: var(--good);
 }
 
+.bal-chip .bal-hint {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--bad);
+  font-size: 11px;
+  opacity: 0.9;
+}
+
 .bal-chip .bal-refresh {
   padding: 2px 6px;
   font-size: 14px;

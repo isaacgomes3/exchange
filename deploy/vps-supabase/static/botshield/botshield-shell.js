@@ -134,7 +134,8 @@
         '<div class="crumbs">Dashboard · <strong></strong></div>' +
         '<div class="bal-chip" id="bsBalanceChip" title="Saldo BetBra">' +
         '<span class="bal-label">Saldo BetBra</span>' +
-        '<strong class="bal-value" id="bsBalanceValue">—</strong>' +
+        '<strong class="bal-value" id="bsBalanceValue">…</strong>' +
+        '<span class="bal-hint" id="bsBalanceHint" hidden></span>' +
         '<button type="button" class="btn-ghost bal-refresh" id="bsBalanceRefresh" title="Atualizar">↻</button>' +
         '<a class="bal-link" href="/conta-betbra.html">Conta</a>' +
         "</div>" +
@@ -176,29 +177,76 @@
       return data?.session?.access_token || "";
     }
 
-    async function loadBalanceChip(force) {
+    function setChipErr(shortLabel, detail) {
       const val = document.getElementById("bsBalanceValue");
+      const hint = document.getElementById("bsBalanceHint");
       const chip = document.getElementById("bsBalanceChip");
       if (!val || !chip) return;
-      val.textContent = force ? "…" : val.textContent || "…";
+      const msg = String(detail || shortLabel || "Falha saldo");
+      val.textContent = shortLabel || "—";
+      chip.classList.remove("is-ok");
+      chip.classList.add("is-err");
+      chip.title = msg + " · abra Conta BetBra";
+      if (hint) {
+        hint.hidden = false;
+        hint.textContent = msg.length > 42 ? msg.slice(0, 40) + "…" : msg;
+      }
+    }
+
+    function setChipOk(balance) {
+      const val = document.getElementById("bsBalanceValue");
+      const hint = document.getElementById("bsBalanceHint");
+      const chip = document.getElementById("bsBalanceChip");
+      if (!val || !chip) return;
+      val.textContent = formatBrl(balance);
+      chip.classList.remove("is-err");
+      chip.classList.add("is-ok");
+      chip.title = "Saldo BetBra";
+      if (hint) {
+        hint.hidden = true;
+        hint.textContent = "";
+      }
+    }
+
+    async function loadBalanceChip(force) {
+      const val = document.getElementById("bsBalanceValue");
+      const hint = document.getElementById("bsBalanceHint");
+      const chip = document.getElementById("bsBalanceChip");
+      if (!val || !chip) return;
+      val.textContent = "…";
       chip.classList.remove("is-err", "is-ok");
+      if (hint) {
+        hint.hidden = true;
+        hint.textContent = "";
+      }
       try {
-        if (!force) {
-          const st = await fetch(
-            "/api/arbishield/exchange-session/status?provider=betbra",
-            {
-              headers: {
-                Accept: "application/json",
-                Authorization: "Bearer " + (await bearer()),
-              },
-            }
-          );
-          const sj = await st.json().catch(() => ({}));
-          if (st.ok && sj.lastBalance != null) {
-            val.textContent = formatBrl(sj.lastBalance);
-            chip.classList.add("is-ok");
-            return;
+        const st = await fetch(
+          "/api/arbishield/exchange-session/status?provider=betbra",
+          {
+            headers: {
+              Accept: "application/json",
+              Authorization: "Bearer " + (await bearer()),
+            },
           }
+        );
+        const sj = await st.json().catch(() => ({}));
+        if (!st.ok) {
+          throw new Error(sj.error || "Status da conta indisponível");
+        }
+        if (!sj.connected) {
+          setChipErr("sem conta", "Nenhuma Conta BetBra salva");
+          return;
+        }
+        if (!sj.hasPassword) {
+          setChipErr(
+            "sem senha",
+            "Salve login/senha em Conta BetBra para ler o saldo"
+          );
+          return;
+        }
+        if (!force && sj.lastBalance != null) {
+          setChipOk(sj.lastBalance);
+          return;
         }
         const res = await fetch(
           "/api/arbishield/exchange-session/balance?provider=betbra",
@@ -211,14 +259,9 @@
         );
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(json.error || "Falha saldo");
-        val.textContent = formatBrl(json.balance);
-        chip.classList.add("is-ok");
+        setChipOk(json.balance);
       } catch (ex) {
-        val.textContent = "—";
-        chip.classList.add("is-err");
-        chip.title =
-          (ex instanceof Error ? ex.message : String(ex)) +
-          " · abra Conta BetBra";
+        setChipErr("—", ex instanceof Error ? ex.message : String(ex));
       }
     }
 
