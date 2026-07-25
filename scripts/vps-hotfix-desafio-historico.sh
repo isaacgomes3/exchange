@@ -2,7 +2,7 @@
 # Desafio: botao Historico ao lado de Depositar (ciclos, apostado, lucros).
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/fix-proteger-js-e85c}"
+REF="${ARBISHIELD_REF:-cursor/desafio-hist-odd-e85c}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"
@@ -37,10 +37,12 @@ download_repo_file() {
 log "1/3 UI app-desafio.html"
 tmp_html="$(mktemp)"
 download_repo_file "deploy/vps-supabase/static/v2/app-desafio.html" "$tmp_html"
-grep -q 'desafio-historico-v2' "$tmp_html" || die "sem marker desafio-historico-v2"
+grep -qE 'desafio-historico-v2|desafio-hist-odd-v1|btnDesafioHistorico' "$tmp_html" || die "sem marker historico"
 grep -q 'btnDesafioHistorico' "$tmp_html" || die "sem botao Historico"
 grep -q 'desafio-history' "$tmp_html" || die "sem fetch desafio-history"
 grep -q 'loadDesafioHistoryFallback' "$tmp_html" || die "sem fallback histórico"
+grep -q 'desafio-hist-odd-v1' "$tmp_html" || die "sem odd no historico (desafio-hist-odd-v1)"
+grep -q 'dz-hist-entries .odd' "$tmp_html" || die "sem CSS odd no historico"
 
 while IFS= read -r -d '' f; do
   cp -a "$f" "${f}.bak-dz-hist-$(date +%s)" 2>/dev/null || true
@@ -63,6 +65,8 @@ download_repo_file "scripts/arbishield-serverfn-shim.mjs" "$tmp_shim"
 grep -q 'listMyDesafioHistory' "$tmp_shim" || die "shim sem listMyDesafioHistory"
 grep -q 'normalizeDesafioPartResult' "$tmp_shim" || die "shim sem normalizeDesafioPartResult"
 grep -q 'desafio-history' "$tmp_shim" || die "shim sem rota desafio-history"
+grep -q 'arbi_odd,home_odd' "$tmp_shim" || die "shim historico sem arbi_odd/home_odd"
+grep -q 'odd,' "$tmp_shim" || grep -q 'odd:' "$tmp_shim" || die "shim historico sem campo odd na entry"
 for dest in \
   "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs" \
   "$SHIM_DIR/arbishield-serverfn-shim.mjs" \

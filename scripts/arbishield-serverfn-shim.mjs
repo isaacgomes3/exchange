@@ -2822,7 +2822,7 @@ async function listMyDesafioHistory(token) {
       const chunk = missingStepIds.slice(i, i + 40);
       const inList = chunk.map(encodeURIComponent).join(",");
       const srows = await sb(
-        `/rest/v1/desafio_steps?select=id,desafio_id,step_index,home_team,away_team,match_label,arbi_team_name,casa_team_name,starts_at,status&id=in.(${inList})&limit=200`,
+        `/rest/v1/desafio_steps?select=id,desafio_id,step_index,home_team,away_team,match_label,arbi_team_name,casa_team_name,arbi_odd,home_odd,casa_odd,away_odd,starts_at,status&id=in.(${inList})&limit=200`,
         { token: SERVICE_KEY }
       ).catch(() => []);
       for (const s of Array.isArray(srows) ? srows : []) {
@@ -2864,7 +2864,7 @@ async function listMyDesafioHistory(token) {
         desafioMap.set(String(d.id), d);
       }
       const srows = await sb(
-        `/rest/v1/desafio_steps?select=id,desafio_id,step_index,home_team,away_team,match_label,arbi_team_name,casa_team_name,starts_at,status&desafio_id=in.(${inList})&order=step_index.asc&limit=500`,
+        `/rest/v1/desafio_steps?select=id,desafio_id,step_index,home_team,away_team,match_label,arbi_team_name,casa_team_name,arbi_odd,home_odd,casa_odd,away_odd,starts_at,status&desafio_id=in.(${inList})&order=step_index.asc&limit=500`,
         { token: SERVICE_KEY }
       ).catch(() => []);
       for (const s of Array.isArray(srows) ? srows : []) {
@@ -2910,6 +2910,10 @@ async function listMyDesafioHistory(token) {
               .filter(Boolean)
               .join(" × "))) ||
         null;
+      const oddRaw = step
+        ? Number(step.arbi_odd != null ? step.arbi_odd : step.home_odd)
+        : NaN;
+      const odd = Number.isFinite(oddRaw) && oddRaw > 1 ? oddRaw : null;
       return {
         id: p.id,
         stepId: p.step_id || null,
@@ -2918,6 +2922,7 @@ async function listMyDesafioHistory(token) {
         side: String(p.side || "arbishield").toLowerCase(),
         result: res,
         amountCents: amt,
+        odd,
         profitCents: res === "won" ? pr : 0,
         createdAt: p.created_at || null,
         startsAt: step ? step.starts_at || null : null,

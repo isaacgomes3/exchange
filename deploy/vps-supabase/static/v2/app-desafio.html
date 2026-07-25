@@ -7,8 +7,9 @@
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <meta name="arbishield-build" content="desafio-sem-radar-v1" />
-  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1" />
-  <link rel="stylesheet" href="/v2.css?v=desafio-sem-radar-1" />
+  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-hist-odd-v1" />
+  <!-- desafio-hist-odd-v1: histórico mostra odd da entrada do cliente -->
+  <link rel="stylesheet" href="/v2.css?v=desafio-hist-odd-1" />
   <style>
     /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
     .dz-sb-market {
@@ -378,7 +379,7 @@
     }
     .dz-hist-entries li {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto auto;
+      grid-template-columns: minmax(0, 1fr) auto auto auto;
       gap: 8px;
       align-items: center;
       font-size: 11px;
@@ -392,6 +393,12 @@
       font-weight: 700;
       overflow: hidden;
       text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .dz-hist-entries .odd {
+      color: #ff9a3c;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
       white-space: nowrap;
     }
     .dz-hist-entries .amt { color: rgba(255, 220, 180, 0.85); font-weight: 700; }
@@ -717,6 +724,11 @@
                 e.result === "won" && Number(e.profitCents) > 0
                   ? " · +" + money(e.profitCents)
                   : "";
+              var oddN = Number(e.odd);
+              var oddBit =
+                Number.isFinite(oddN) && oddN > 1
+                  ? '@ <span class="odd">' + esc(fmtOdd(oddN)) + "</span>"
+                  : '<span class="odd">—</span>';
               return (
                 "<li>" +
                 '<span class="match">' +
@@ -725,6 +737,7 @@
                     (e.matchLabel || "Entrada")
                 ) +
                 "</span>" +
+                oddBit +
                 '<span class="amt">' +
                 esc(money(e.amountCents || 0)) +
                 esc(profitBit) +
@@ -847,6 +860,13 @@
               ? step.match_label ||
                 [step.home_team, step.away_team].filter(Boolean).join(" × ")
               : null;
+            var oddRaw = step
+              ? Number(
+                  step.arbi_odd != null ? step.arbi_odd : step.home_odd
+                )
+              : NaN;
+            var odd =
+              Number.isFinite(oddRaw) && oddRaw > 1 ? oddRaw : null;
             return {
               id: p.id,
               stepId: p.step_id || null,
@@ -854,6 +874,7 @@
               matchLabel: matchLabel,
               result: res,
               amountCents: amt,
+              odd: odd,
               profitCents: res === "won" ? pr : 0,
               createdAt: p.created_at || null,
               startsAt: step ? step.starts_at || null : null,
@@ -950,7 +971,7 @@
           var sr = await supa
             .from("desafio_steps")
             .select(
-              "id,desafio_id,step_index,home_team,away_team,match_label,starts_at,status"
+              "id,desafio_id,step_index,home_team,away_team,match_label,arbi_odd,home_odd,starts_at,status"
             )
             .in("id", stepIds.slice(0, 200));
           if (!sr.error) steps = sr.data || [];
