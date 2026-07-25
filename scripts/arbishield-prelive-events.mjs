@@ -1245,7 +1245,7 @@ async function creditWalletForSettlement(row, outcome, now) {
           bucket,
           billing_model: feeUpfront ? "fee_upfront_v1" : "legacy_lock",
           fix: feeUpfront
-            ? "protection-fee-upfront-v2"
+            ? "protection-fee-upfront-v3"
             : "settle-arbishield-saldo-real-v1",
         },
       },
@@ -1518,11 +1518,18 @@ function n(v) {
 
 /**
  * Nova proteção (fee_upfront_v1):
- * - Lucro bruto na casa = stake × (odd − 1)
- * - Cliente fica com 1,5% da stake
- * - ArbiShield cobra o restante imediatamente (não trava o stake)
- * Ex.: odd 1,10 · stake R$ 1.000 → lucro R$ 100 · cliente R$ 15 · dedução R$ 85
+ * - Odd usada no cálculo é sempre a odd BACK efetiva
+ * - LAY: converte L → L/(L−1)  (ex.: 14 → ≈1,077 ≈ “back 1,08”)
+ * - Lucro bruto = stake × (oddEfetiva − 1)
+ * - Cliente fica com 1,5% da stake; ArbiShield cobra o resto na hora
+ * Ex. BACK 1,10 · R$ 1.000 → dedução R$ 85
+ * Ex. LAY 14 · R$ 1.000 → back equiv. ≈1,077 → dedução ≈ R$ 62
  */
+function layToBackOdd(layOdd) {
+  const o = Number.isFinite(layOdd) && layOdd > 1.01 ? layOdd : 1.01;
+  return o / (o - 1);
+}
+
 function calcFeeUpfront(amountCents, odd) {
   const stake =
     Number.isFinite(amountCents) && amountCents > 0 ? Math.floor(amountCents) : 0;
@@ -1536,6 +1543,7 @@ function calcFeeUpfront(amountCents, odd) {
     responsibilityCents: stake,
     coverageCents: stake,
     odd: o,
+    effectiveBackOdd: o,
     grossReturnCents,
     grossProfitCents,
     userProfitCents,
@@ -1545,12 +1553,20 @@ function calcFeeUpfront(amountCents, odd) {
   };
 }
 
-/** LAY — mesma fórmula fee_upfront (stake = valor informado). */
+/** LAY — converte odd lay → back equivalente antes do fee_upfront. */
 function calcLay(amountCents, odd) {
-  return calcFeeUpfront(amountCents, odd);
+  const marketOdd = Number.isFinite(odd) && odd > 1.01 ? odd : 1.01;
+  const backOdd = layToBackOdd(marketOdd);
+  const c = calcFeeUpfront(amountCents, backOdd);
+  return {
+    ...c,
+    odd: marketOdd,
+    marketOdd,
+    effectiveBackOdd: backOdd,
+  };
 }
 
-/** BACK — mesma fórmula fee_upfront (stake = cobertura). */
+/** BACK — fee_upfront direto na odd do mercado. */
 function calcBack(amountCents, odd) {
   return calcFeeUpfront(amountCents, odd);
 }
@@ -2676,7 +2692,7 @@ async function handleApi(req, res) {
     return sendJson(res, 200, {
       ok: true,
       service: "arbishield-matches",
-      fix: "protection-fee-upfront-v2",
+      fix: "protection-fee-upfront-v3",
       env: process.env.ARBISHIELD_ENV || "production",
       listen: LISTEN,
     });

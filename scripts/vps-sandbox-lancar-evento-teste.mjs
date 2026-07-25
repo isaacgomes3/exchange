@@ -57,7 +57,8 @@ const LIQ_BRL = Number(process.env.TEST_LIQ_BRL || 5000);
 const HOURS = Number(process.env.TEST_HOURS_AHEAD || 2);
 const HOME = process.env.TEST_HOME || "ArbiShield Teste A";
 const AWAY = process.env.TEST_AWAY || "ArbiShield Teste B";
-const SIDE = String(process.env.TEST_SIDE || "LAY").toUpperCase() === "BACK" ? "BACK" : "LAY";
+// BACK @ 1,10: dedução R$ 85. LAY usa odd convertida L/(L−1).
+const SIDE = String(process.env.TEST_SIDE || "BACK").toUpperCase() === "LAY" ? "LAY" : "BACK";
 
 if (!SERVICE_KEY) {
   console.error("ERRO: SERVICE_ROLE_KEY ausente");

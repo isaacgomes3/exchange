@@ -29,7 +29,7 @@ curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
 chmod 0755 "$TESTE_SCRIPTS/arbishield-prelive-events.mjs"
 grep -q 'fee_upfront_v1' "$TESTE_SCRIPTS/arbishield-prelive-events.mjs" \
   || die "prelive teste sem fee_upfront_v1"
-grep -qE 'protection-fee-upfront-v[12]' "$TESTE_SCRIPTS/arbishield-prelive-events.mjs" \
+grep -qE 'protection-fee-upfront-v[0-9]+' "$TESTE_SCRIPTS/arbishield-prelive-events.mjs" \
   || die "prelive teste sem marker health"
 
 # Unit teste (sempre atualiza unit + marker SANDBOX)
@@ -40,13 +40,13 @@ systemctl enable arbishield-prelive-events-teste.service
 systemctl restart arbishield-prelive-events-teste.service
 sleep 1
 BODY="$(curl -fsS --max-time 5 http://127.0.0.1:3198/health || true)"
-echo "$BODY" | grep -qE 'protection-fee-upfront-v[12]' \
+echo "$BODY" | grep -qE 'protection-fee-upfront-v[0-9]+' \
   || die "health :3198 sem protection-fee-upfront: $BODY"
 log "health :3198 OK ($BODY)"
 
 # Produção ainda no marker antigo?
 PROD_H="$(curl -fsS --max-time 5 http://127.0.0.1:3098/health || true)"
-if echo "$PROD_H" | grep -qE 'protection-fee-upfront-v[12]'; then
+if echo "$PROD_H" | grep -qE 'protection-fee-upfront-v[0-9]+'; then
   die "ABORTADO: produção :3098 já tem fee_upfront — não era para alterar prod"
 fi
 log "produção :3098 intacta ($(echo "$PROD_H" | head -c 120))"

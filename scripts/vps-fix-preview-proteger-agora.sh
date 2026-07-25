@@ -34,9 +34,15 @@ ts = sys.argv[2]
 t = path.read_text(encoding="utf-8", errors="replace")
 
 NEW_FN = r'''
-      function calcPreviewFeeUpfront(amountCents, odd) {
+      function layToBackOddPreview(layOdd) {
+        var a = Number(layOdd) > 1.01 ? Number(layOdd) : 1.01;
+        return a / (a - 1);
+      }
+      function calcPreviewFeeUpfront(amountCents, odd, marketType) {
         var stake = Math.floor(Number(amountCents) || 0);
+        var mt = String(marketType || "LAY").toUpperCase();
         var a = Number(odd) > 1.01 ? Number(odd) : 1.01;
+        if (mt === "LAY") a = layToBackOddPreview(a);
         var grossReturn = Math.round(stake * a);
         var profit = Math.max(0, grossReturn - stake);
         var userProfit = Math.round(stake * 0.015);
@@ -45,6 +51,7 @@ NEW_FN = r'''
           grossReturnCents: grossReturn,
           userProfitCents: userProfit,
           feeChargedCents: feeNow,
+          effectiveBackOdd: a,
         };
       }
       function updatePreview() {
@@ -54,46 +61,34 @@ NEW_FN = r'''
         var amountCents = Math.round(amountReais * 100);
         var mt = state.selected.marketType;
         var __pv =
-          typeof calcFeeUpfront === "function"
-            ? calcFeeUpfront(amountCents, odd)
-            : calcPreviewFeeUpfront(amountCents, odd);
-        var __ret =
-          __pv.grossReturnCents != null
-            ? __pv.grossReturnCents
-            : Math.round(amountCents * (odd > 1.01 ? odd : 1.01));
-        var __user =
-          __pv.userProfitCents != null
-            ? __pv.userProfitCents
-            : Math.round(amountCents * 0.015);
-        var __fee =
-          __pv.feeChargedCents != null
-            ? __pv.feeChargedCents
-            : __pv.arbiShieldDeductionCents != null
-              ? __pv.arbiShieldDeductionCents
-              : Math.max(0, __ret - amountCents - __user);
+          typeof calcForMarket === "function"
+            ? calcForMarket(mt, amountCents, odd)
+            : typeof calcLay === "function" && mt === "LAY"
+              ? calcLay(amountCents, odd)
+              : typeof calcBack === "function" && mt === "BACK"
+                ? calcBack(amountCents, odd)
+                : calcPreviewFeeUpfront(amountCents, odd, mt);
+        var __ret = __pv.grossReturnCents != null ? __pv.grossReturnCents : 0;
+        var __user = __pv.userProfitCents != null ? __pv.userProfitCents : Math.round(amountCents * 0.015);
+        var __fee = __pv.feeChargedCents != null ? __pv.feeChargedCents : (__pv.arbiShieldDeductionCents || 0);
         var avail =
           typeof available === "function"
             ? available(document.getElementById("balanceType").value)
             : 0;
+        var oddLine =
+          mt === "LAY"
+            ? "<div><span>Odd LAY → back equiv.</span><b>" +
+              Number(__pv.effectiveBackOdd || layToBackOddPreview(odd)).toFixed(3).replace(".", ",") +
+              "</b></div>"
+            : "";
         document.getElementById("preview").innerHTML =
-          "<div><span>Tipo</span><b>" +
-          mt +
-          "</b></div>" +
-          "<div><span>Valor (stake)</span><b>" +
-          money(amountCents) +
-          "</b></div>" +
-          "<div><span>Retorno casa externa</span><b>" +
-          money(__ret) +
-          "</b></div>" +
-          "<div><span>Seu lucro (1,5%)</span><b>" +
-          money(__user) +
-          "</b></div>" +
-          "<div><span>Dedução ArbiShield</span><b>" +
-          money(__fee) +
-          "</b></div>" +
-          "<div><span>Saldo disponível</span><b>" +
-          money(avail) +
-          "</b></div>";
+          "<div><span>Tipo</span><b>" + mt + "</b></div>" +
+          oddLine +
+          "<div><span>Valor (stake)</span><b>" + money(amountCents) + "</b></div>" +
+          "<div><span>Retorno casa externa</span><b>" + money(__ret) + "</b></div>" +
+          "<div><span>Seu lucro (1,5%)</span><b>" + money(__user) + "</b></div>" +
+          "<div><span>Dedução ArbiShield</span><b>" + money(__fee) + "</b></div>" +
+          "<div><span>Saldo disponível</span><b>" + money(avail) + "</b></div>";
       }
 '''
 

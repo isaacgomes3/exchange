@@ -33,7 +33,13 @@ type Sb = {
   from: (table: string) => any;
 };
 
-/** fee_upfront_v1: cobra lucro−1,5% na criação; não trava stake. */
+/** LAY odd → odd back equivalente: L/(L−1). Ex.: 14 → ≈1,077. */
+export function layToBackOdd(layOdd: number) {
+  const o = Number.isFinite(layOdd) && layOdd > 1.01 ? layOdd : 1.01;
+  return o / (o - 1);
+}
+
+/** fee_upfront_v1 sobre odd BACK efetiva; não trava stake. */
 export function calcFeeUpfront(amountCents: number, odd: number) {
   const stake =
     Number.isFinite(amountCents) && amountCents > 0 ? Math.floor(amountCents) : 0;
@@ -47,6 +53,7 @@ export function calcFeeUpfront(amountCents: number, odd: number) {
     responsibilityCents: stake,
     coverageCents: stake,
     odd: o,
+    effectiveBackOdd: o,
     grossReturnCents,
     grossProfitCents,
     userProfitCents,
@@ -58,12 +65,20 @@ export function calcFeeUpfront(amountCents: number, odd: number) {
   };
 }
 
-/** LAY — fee_upfront */
+/** LAY — converte odd lay → back equivalente antes do fee_upfront. */
 export function calcLay(amountCents: number, odd: number, _lockRatio = 0.9073) {
-  return calcFeeUpfront(amountCents, odd);
+  const marketOdd = Number.isFinite(odd) && odd > 1.01 ? odd : 1.01;
+  const backOdd = layToBackOdd(marketOdd);
+  const c = calcFeeUpfront(amountCents, backOdd);
+  return {
+    ...c,
+    odd: marketOdd,
+    marketOdd,
+    effectiveBackOdd: backOdd,
+  };
 }
 
-/** BACK — fee_upfront */
+/** BACK — fee_upfront direto na odd do mercado. */
 export function calcBack(amountCents: number, odd: number) {
   return calcFeeUpfront(amountCents, odd);
 }

@@ -181,7 +181,12 @@
         );
       }
 
-      /** fee_upfront: cobra só (lucro na odd − 1,5% da stake). Não trava o stake. */
+      /** LAY odd → odd back equivalente: L/(L−1). Ex.: 14 → ≈1,077. */
+      function layToBackOdd(layOdd) {
+        var a = Number(layOdd) > 1.01 ? Number(layOdd) : 1.01;
+        return a / (a - 1);
+      }
+      /** fee_upfront sobre odd BACK efetiva. Não trava o stake. */
       function calcFeeUpfront(amountCents, odd) {
         var stake = Math.floor(amountCents);
         var a = odd > 1.01 ? odd : 1.01;
@@ -195,13 +200,23 @@
           grossProfitCents: profit,
           userProfitCents: userProfit,
           feeChargedCents: feeNow,
+          effectiveBackOdd: a,
         };
       }
       function calcLay(amountCents, odd) {
-        return calcFeeUpfront(amountCents, odd);
+        var backOdd = layToBackOdd(odd);
+        var c = calcFeeUpfront(amountCents, backOdd);
+        c.marketOdd = Number(odd) > 1.01 ? Number(odd) : 1.01;
+        c.effectiveBackOdd = backOdd;
+        return c;
       }
       function calcBack(amountCents, odd) {
         return calcFeeUpfront(amountCents, odd);
+      }
+      function calcForMarket(marketType, amountCents, odd) {
+        return String(marketType).toUpperCase() === "BACK"
+          ? calcBack(amountCents, odd)
+          : calcLay(amountCents, odd);
       }
       function available(type) {
         var p = state.profile || {};
@@ -337,10 +352,17 @@
         var odd = Number(state.selected.market && state.selected.market.odd) || Number(document.getElementById("odd").value || 0);
         var amountCents = Math.round(amountReais * 100);
         var mt = state.selected.marketType;
-        var c = calcFeeUpfront(amountCents, odd);
+        var c = calcForMarket(mt, amountCents, odd);
         var avail = available(document.getElementById("balanceType").value);
+        var oddLine =
+          mt === "LAY"
+            ? "<div><span>Odd LAY → back equiv.</span><b>" +
+              Number(c.effectiveBackOdd).toFixed(3).replace(".", ",") +
+              "</b></div>"
+            : "";
         document.getElementById("preview").innerHTML =
           "<div><span>Tipo</span><b>" + mt + "</b></div>" +
+          oddLine +
           "<div><span>Valor (stake)</span><b>" + money(amountCents) + "</b></div>" +
           "<div><span>Retorno casa externa</span><b>" + money(c.grossReturnCents) + "</b></div>" +
           "<div><span>Seu lucro (1,5%)</span><b>" + money(c.userProfitCents) + "</b></div>" +
@@ -432,7 +454,11 @@
           return;
         }
         var balType = document.getElementById("balanceType").value;
-        var feeNeed = calcFeeUpfront(amountCents, odd).feeChargedCents;
+        var feeNeed = calcForMarket(
+          state.selected.marketType,
+          amountCents,
+          odd
+        ).feeChargedCents;
         if (!(available(balType) >= feeNeed)) {
           showErr(
             "Saldo insuficiente para a dedução de " +
