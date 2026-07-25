@@ -6,8 +6,50 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-historico-v2" />
-  <link rel="stylesheet" href="/v2.css?v=dz-historico-1" />
+  <meta name="arbishield-build" content="desafio-placar-horario-v3" />
+  <link rel="stylesheet" href="/v2.css?v=dz-placar-1" />
+  <style>
+    .dz-v2-score {
+      font-size: clamp(1.8rem, 4vw, 2.6rem);
+      font-weight: 900;
+      font-style: italic;
+      letter-spacing: 0.06em;
+      color: #c9f223;
+      line-height: 1;
+      text-shadow: 0 0 24px rgba(201, 242, 35, 0.25);
+    }
+    .dz-v2-score.is-live {
+      color: #fff;
+    }
+    .dz-v2-elapsed {
+      margin-top: 2px;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #ff6b6b;
+    }
+    .dz-v2-elapsed .dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #ff3b3b;
+      margin-right: 6px;
+      box-shadow: 0 0 0 0 rgba(255, 59, 59, 0.55);
+      animation: dzPulse 1.4s ease-out infinite;
+    }
+    @keyframes dzPulse {
+      0% { box-shadow: 0 0 0 0 rgba(255, 59, 59, 0.55); }
+      70% { box-shadow: 0 0 0 8px rgba(255, 59, 59, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(255, 59, 59, 0); }
+    }
+    .dz-v2-when {
+      font-size: 15px !important;
+      letter-spacing: 0.08em !important;
+      opacity: 0.95;
+    }
+  </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
   <script src="/desafio-ciclo-math.js?v=dz-apostar-2"></script>
@@ -927,6 +969,44 @@
         );
       }
 
+      /** Placar da etapa: final_score_* ou metadata.live (sync BetBra). */
+      function stepLiveInfo(step) {
+        if (!step) return null;
+        var meta = step.metadata && typeof step.metadata === "object" ? step.metadata : {};
+        var live = meta.live && typeof meta.live === "object" ? meta.live : null;
+        var home =
+          step.final_score_home != null
+            ? Number(step.final_score_home)
+            : live && live.home_score != null
+              ? Number(live.home_score)
+              : null;
+        var away =
+          step.final_score_away != null
+            ? Number(step.final_score_away)
+            : live && live.away_score != null
+              ? Number(live.away_score)
+              : null;
+        var scoreLabel = null;
+        if (Number.isFinite(home) && Number.isFinite(away)) {
+          scoreLabel = home + " — " + away;
+        } else if (live && live.score) {
+          scoreLabel = String(live.score).replace(/-/g, " — ");
+        }
+        var elapsed =
+          (live && (live.elapsed_label || live.elapsed)) || "";
+        if (elapsed && !/['′]$/.test(String(elapsed))) elapsed = elapsed + "'";
+        return {
+          score: scoreLabel,
+          elapsed: elapsed,
+          live: Boolean(live && live.live && !live.finished),
+          finished: Boolean(
+            (live && live.finished) ||
+              stepIsFinished(step) ||
+              (step.final_score_home != null && step.final_score_away != null)
+          ),
+        };
+      }
+
       function fmtCountdown(ms) {
         if (ms <= 0) return "00:00:00";
         var s = Math.floor(ms / 1000);
@@ -1043,6 +1123,7 @@
           casaCommissionPct: Number(step.casa_commission_pct) || 0,
           externalBetLink: external,
           casaBrand: casaBrandFromLink(external),
+          liveInfo: stepLiveInfo(step),
         };
       }
 
@@ -1139,11 +1220,28 @@
           "</div></div>" +
           '<div class="dz-v2-match">' +
           teamBlock(item.homeTeam, item.homeLogo, "is-home") +
-          '<div class="dz-v2-center"><div class="dz-v2-x">×</div>' +
+          '<div class="dz-v2-center">' +
+          (item.liveInfo && item.liveInfo.score
+            ? '<div class="dz-v2-score' +
+              (item.liveInfo.live ? " is-live" : "") +
+              '">' +
+              esc(item.liveInfo.score) +
+              "</div>"
+            : '<div class="dz-v2-x">×</div>') +
           '<div class="dz-v2-when">' +
           clockSvg +
           esc(fmtKick(item.startsAt)) +
-          "</div></div>" +
+          "</div>" +
+          (item.liveInfo && item.liveInfo.live
+            ? '<div class="dz-v2-elapsed"><span class="dot"></span>Ao vivo' +
+              (item.liveInfo.elapsed
+                ? " · " + esc(item.liveInfo.elapsed)
+                : "") +
+              "</div>"
+            : item.liveInfo && item.liveInfo.finished && item.liveInfo.score
+              ? '<div class="dz-v2-elapsed" style="color:#c9f223">Encerrado</div>'
+              : "") +
+          "</div>" +
           teamBlock(item.awayTeam, item.awayLogo, "is-away") +
           "</div>" +
           '<div class="dz-v2-compare">' +
@@ -1376,6 +1474,47 @@
         });
       }
 
+      var liveSyncIn = 0;
+      async function refreshDesafioCardsLive() {
+        try {
+          // dispara sync BetBra (placar/minuto) no worker
+          fetch("/api/arbishield/match-live-sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: "{}",
+            cache: "no-store",
+          }).catch(function () {});
+          var res = await fetch("/api/arbishield/desafios", {
+            cache: "no-store",
+            headers: { accept: "application/json" },
+          });
+          var data = await res.json().catch(function () { return []; });
+          if (!res.ok) return;
+          var rows = Array.isArray(data) ? data : [];
+          var alive = rows.filter(function (d) {
+            return !d.deleted_at && String(d.status || "").toLowerCase() !== "deleted";
+          });
+          var active = alive.filter(function (d) { return !!d.is_active; });
+          var next = [];
+          active.forEach(function (d) {
+            var steps = (d.desafio_steps || [])
+              .slice()
+              .filter(function (s) { return !s.deleted_at && !stepIsFinished(s); })
+              .sort(function (a, b) { return (a.step_index || 0) - (b.step_index || 0); });
+            steps.forEach(function (s) { next.push(toCardItem(d, s)); });
+          });
+          next.sort(function (a, b) {
+            var na = a.startsAtMs || Number.MAX_SAFE_INTEGER;
+            var nb = b.startsAtMs || Number.MAX_SAFE_INTEGER;
+            return na - nb;
+          });
+          items = next;
+          render();
+        } catch (e) {
+          /* silencioso */
+        }
+      }
+
       document.querySelectorAll(".dz-filter").forEach(function (btn) {
         btn.addEventListener("click", function () {
           document.querySelectorAll(".dz-filter").forEach(function (b) {
@@ -1495,7 +1634,15 @@
 
         render();
         if (tickTimer) clearInterval(tickTimer);
-        tickTimer = setInterval(tickCountdowns, 1000);
+        tickTimer = setInterval(function () {
+          tickCountdowns();
+          liveSyncIn -= 1;
+          if (liveSyncIn <= 0) {
+            liveSyncIn = 30;
+            refreshDesafioCardsLive();
+          }
+        }, 1000);
+        liveSyncIn = 8;
       } catch (ex) {
         showErr(ex.message || "Erro");
         document.getElementById("list").innerHTML = "";

@@ -29,6 +29,8 @@ import {
   indexInplayFeed,
   matchEligibleForInplaySync,
   buildMatchInplayPatch,
+  desafioStepEligibleForInplaySync,
+  buildDesafioStepInplayPatch,
 } from "./lib/betbra-inplay-sync.mjs";
 
 // Trava de produto: fluxo de proteção — não alterar sem pedido explícito.
@@ -3077,7 +3079,8 @@ async function fetchBetbraInplayFeed() {
 }
 
 /**
- * Puxa inplay-info BetBra e atualiza placar/minuto nos matches elegíveis.
+ * Puxa inplay-info BetBra e atualiza placar/minuto nos matches elegíveis
+ * e nas etapas de Desafio com link BetBra.
  * Não liquida automaticamente — settle continua manual.
  */
 async function syncBetbraInplayScores({ force = false } = {}) {
@@ -3095,13 +3098,36 @@ async function syncBetbraInplayScores({ force = false } = {}) {
     matchEligibleForInplaySync(m, nowMs)
   );
 
-  if (!candidates.length) {
+  let stepRows = [];
+  try {
+    stepRows = await sb(
+      "/rest/v1/desafio_steps?select=id,starts_at,status,result,settled_at,final_score_home,final_score_away,external_bet_link,metadata&settled_at=is.null&order=starts_at.asc&limit=200",
+      { token: SERVICE_KEY }
+    );
+  } catch {
+    // fallback sem settled_at / metadata
+    try {
+      stepRows = await sb(
+        "/rest/v1/desafio_steps?select=id,starts_at,status,result,final_score_home,final_score_away,external_bet_link,metadata&order=starts_at.desc&limit=200",
+        { token: SERVICE_KEY }
+      );
+    } catch {
+      stepRows = [];
+    }
+  }
+  const stepCandidates = (Array.isArray(stepRows) ? stepRows : []).filter((s) =>
+    desafioStepEligibleForInplaySync(s, nowMs)
+  );
+
+  if (!candidates.length && !stepCandidates.length) {
     return {
       ok: true,
       version: BETBRA_INPLAY_SYNC_VERSION,
       feedSize: 0,
       candidates: 0,
+      stepCandidates: 0,
       updated: 0,
+      stepsUpdated: 0,
       skipped: 0,
       finishedSeen: 0,
     };
@@ -3116,12 +3142,15 @@ async function syncBetbraInplayScores({ force = false } = {}) {
       version: BETBRA_INPLAY_SYNC_VERSION,
       error: err instanceof Error ? err.message : String(err),
       candidates: candidates.length,
+      stepCandidates: stepCandidates.length,
       updated: 0,
+      stepsUpdated: 0,
     };
   }
 
   const byEvent = indexInplayFeed(feedRaw);
   let updated = 0;
+  let stepsUpdated = 0;
   let skipped = 0;
   let finishedSeen = 0;
   const samples = [];
@@ -3142,6 +3171,7 @@ async function syncBetbraInplayScores({ force = false } = {}) {
       updated += 1;
       if (samples.length < 8) {
         samples.push({
+          kind: "match",
           id: match.id,
           external_id: match.external_id,
           score: built.live.score,
@@ -3159,12 +3189,67 @@ async function syncBetbraInplayScores({ force = false } = {}) {
     }
   }
 
+  for (const step of stepCandidates) {
+    const built = buildDesafioStepInplayPatch(step, byEvent, nowIso);
+    if (!built) {
+      skipped += 1;
+      continue;
+    }
+    if (built.live.finished) finishedSeen += 1;
+    try {
+      await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(step.id)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: built.patch,
+      });
+      stepsUpdated += 1;
+      if (samples.length < 10) {
+        samples.push({
+          kind: "desafio_step",
+          id: step.id,
+          score: built.live.score,
+          elapsed: built.live.elapsed_label,
+          finished: built.live.finished,
+        });
+      }
+    } catch (err) {
+      // tenta sem metadata se a coluna não existir
+      try {
+        const slim = {
+          updated_at: nowIso,
+        };
+        if (built.patch.final_score_home != null) {
+          slim.final_score_home = built.patch.final_score_home;
+        }
+        if (built.patch.final_score_away != null) {
+          slim.final_score_away = built.patch.final_score_away;
+        }
+        if (built.patch.status) slim.status = built.patch.status;
+        await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(step.id)}`, {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: slim,
+        });
+        stepsUpdated += 1;
+      } catch (err2) {
+        skipped += 1;
+        console.warn(
+          "[betbra-inplay-sync] desafio_step patch falhou",
+          step.id,
+          err2 instanceof Error ? err2.message : err2
+        );
+      }
+    }
+  }
+
   return {
     ok: true,
     version: BETBRA_INPLAY_SYNC_VERSION,
     feedSize: byEvent.size,
     candidates: candidates.length,
+    stepCandidates: stepCandidates.length,
     updated,
+    stepsUpdated,
     skipped,
     finishedSeen,
     samples,

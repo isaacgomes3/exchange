@@ -3,7 +3,112 @@
  * Lógica pura (testável) + helpers de normalização.
  */
 
-export const BETBRA_INPLAY_SYNC_VERSION = "betbra-inplay-sync-v1";
+export const BETBRA_INPLAY_SYNC_VERSION = "betbra-inplay-sync-v2";
+
+/**
+ * Extrai eventId BetBra de um link de mercado/evento.
+ * @param {unknown} url
+ * @returns {string}
+ */
+export function extractBetbraEventIdFromUrl(url) {
+  const s = String(url || "").trim();
+  if (!s) return "";
+  let m = s.match(/[?&#](?:eventId|event_id|eventID|event)=([0-9]{6,})/i);
+  if (m) return normalizeEventId(m[1]);
+  m = s.match(/\/(?:event|evento|e)\/([0-9]{6,})(?:\/|$|\?|#)/i);
+  if (m) return normalizeEventId(m[1]);
+  // IDs longos no path (comum em deeplinks BetBra/Mexchange)
+  m = s.match(/(?:^|[^\d])([0-9]{12,})(?:[^\d]|$)/);
+  if (m) return normalizeEventId(m[1]);
+  return "";
+}
+
+/**
+ * @param {any} step
+ * @returns {string}
+ */
+export function desafioStepEventId(step) {
+  if (!step) return "";
+  const meta =
+    step.metadata && typeof step.metadata === "object" ? step.metadata : {};
+  const fromMeta = normalizeEventId(
+    meta.betbra_event_id ||
+      meta.external_id ||
+      meta.event_id ||
+      meta.eventId ||
+      step.external_id
+  );
+  if (fromMeta) return fromMeta;
+  return extractBetbraEventIdFromUrl(
+    step.external_bet_link || meta.external_bet_link || meta.betbra_link
+  );
+}
+
+/**
+ * @param {any} step
+ * @param {number} [nowMs]
+ */
+export function desafioStepEligibleForInplaySync(step, nowMs = Date.now()) {
+  if (!step) return false;
+  if (step.settled_at) return false;
+  const st = String(step.status || "").toLowerCase();
+  if (["done", "settled", "closed", "cancelled", "finalizado"].includes(st)) {
+    return false;
+  }
+  const res = String(step.result || "").toLowerCase();
+  if (res && res !== "pending" && res !== "null") return false;
+  if (!desafioStepEventId(step)) return false;
+
+  const start = step.starts_at ? new Date(step.starts_at).getTime() : NaN;
+  if (!Number.isFinite(start)) return true;
+  const before = 30 * 60 * 1000;
+  const after = 4 * 60 * 60 * 1000;
+  if (nowMs < start - before) return false;
+  if (nowMs > start + after) {
+    const meta =
+      step.metadata && typeof step.metadata === "object" ? step.metadata : {};
+    if (meta.live && !meta.live.finished) return true;
+    return false;
+  }
+  return true;
+}
+
+/**
+ * @returns {null|{ patch: Record<string, unknown>, live: Record<string, unknown> }}
+ */
+export function buildDesafioStepInplayPatch(step, inplayByEventId, nowIso) {
+  const ext = desafioStepEventId(step);
+  if (!ext) return null;
+  const info = inplayByEventId.get(ext);
+  if (!info) return null;
+  const live = buildLiveMetadata(info, nowIso);
+  if (!live) return null;
+
+  const prevMeta =
+    step.metadata && typeof step.metadata === "object" ? { ...step.metadata } : {};
+  const prev =
+    prevMeta.live && typeof prevMeta.live === "object" ? prevMeta.live : {};
+
+  const same =
+    String(prev.score || "") === String(live.score || "") &&
+    String(prev.elapsed || "") === String(live.elapsed || "") &&
+    Boolean(prev.finished) === Boolean(live.finished);
+  if (same) return null;
+
+  const patch = {
+    metadata: {
+      ...prevMeta,
+      betbra_event_id: ext,
+      score_sync_enabled: true,
+      live,
+    },
+    updated_at: nowIso,
+  };
+  if (info.homeScore != null) patch.final_score_home = info.homeScore;
+  if (info.awayScore != null) patch.final_score_away = info.awayScore;
+  if (info.live) patch.status = "live";
+  return { patch, live };
+}
 
 const FINISHED_RE =
   /^(finished|ended|ft|full[\s_-]?time|complete[d]?|closed|final|resultado\s*final)$/i;
@@ -147,6 +252,7 @@ export function indexInplayFeed(feed) {
 
 /**
  * Monta o bloco metadata.live a partir do item normalizado.
+ * (usado por matches e etapas de Desafio)
  * @param {ReturnType<typeof normalizeInplayItem>} info
  * @param {string} [nowIso]
  */

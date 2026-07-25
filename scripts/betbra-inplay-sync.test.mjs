@@ -6,13 +6,61 @@ import {
   indexInplayFeed,
   matchEligibleForInplaySync,
   buildMatchInplayPatch,
+  buildDesafioStepInplayPatch,
+  extractBetbraEventIdFromUrl,
+  desafioStepEventId,
   formatElapsedLabel,
   parseScoreSide,
 } from "./lib/betbra-inplay-sync.mjs";
 
 describe("betbra-inplay-sync", () => {
   it("mantém versão", () => {
-    assert.equal(BETBRA_INPLAY_SYNC_VERSION, "betbra-inplay-sync-v1");
+    assert.equal(BETBRA_INPLAY_SYNC_VERSION, "betbra-inplay-sync-v2");
+  });
+
+  it("extrai eventId de links BetBra", () => {
+    assert.equal(
+      extractBetbraEventIdFromUrl(
+        "https://betbra.bet.br/x?eventId=33874869253600023"
+      ),
+      "33874869253600023"
+    );
+    assert.equal(
+      extractBetbraEventIdFromUrl(
+        "https://betbra.bet.br/cliente/event/33874869253600023/market/1"
+      ),
+      "33874869253600023"
+    );
+    assert.equal(
+      desafioStepEventId({
+        external_bet_link: "https://x/event/123456789012",
+      }),
+      "123456789012"
+    );
+  });
+
+  it("gera patch de etapa desafio", () => {
+    const feed = indexInplayFeed([
+      {
+        eventId: "33874869253600023",
+        status: "InPlay",
+        elapsedRegularTime: "33",
+        score: { home: { score: "1" }, away: { score: "0" } },
+      },
+    ]);
+    const result = buildDesafioStepInplayPatch(
+      {
+        external_bet_link:
+          "https://betbra.bet.br/event/33874869253600023",
+        metadata: {},
+      },
+      feed,
+      "2026-07-25T20:00:00.000Z"
+    );
+    assert.ok(result);
+    assert.equal(result.live.score, "1-0");
+    assert.equal(result.patch.final_score_home, 1);
+    assert.equal(result.patch.final_score_away, 0);
   });
 
   it("parseia placar e minuto", () => {

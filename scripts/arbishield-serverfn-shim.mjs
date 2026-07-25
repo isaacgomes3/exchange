@@ -601,6 +601,35 @@ function buildStepRow(desafioId, stepIn, isActive) {
     status: stepIn.status || "pending",
     is_published:
       stepIn.is_published != null ? Boolean(stepIn.is_published) : isActive,
+    metadata: (() => {
+      const prev =
+        stepIn.metadata && typeof stepIn.metadata === "object"
+          ? { ...stepIn.metadata }
+          : {};
+      const link = stepIn.external_bet_link || prev.external_bet_link || "";
+      const fromLink = String(link).match(
+        /[?&#](?:eventId|event_id|eventID|event)=([0-9]{6,})/i
+      );
+      const fromPath = String(link).match(
+        /\/(?:event|evento|e)\/([0-9]{6,})(?:\/|$|\?|#)/i
+      );
+      const fromLong = String(link).match(/(?:^|[^\d])([0-9]{12,})(?:[^\d]|$)/);
+      const eventId =
+        prev.betbra_event_id ||
+        prev.external_id ||
+        prev.event_id ||
+        (fromLink && fromLink[1]) ||
+        (fromPath && fromPath[1]) ||
+        (fromLong && fromLong[1]) ||
+        null;
+      if (eventId) {
+        prev.betbra_event_id = String(eventId);
+        prev.score_sync_enabled = true;
+        prev.source = prev.source || "admin_manual_betbra";
+      }
+      if (link) prev.external_bet_link = link;
+      return Object.keys(prev).length ? prev : undefined;
+    })(),
   };
 }
 
@@ -623,11 +652,26 @@ async function createDesafio(token, body) {
   const stepsOut = [];
   for (const step of body.steps || [stepIn]) {
     const stepRow = buildStepRow(desafio.id, step, desafioRow.is_active);
-    const inserted = await sb("/rest/v1/desafio_steps", {
-      method: "POST",
-      token: auth,
-      body: stepRow,
-    });
+    let inserted;
+    try {
+      inserted = await sb("/rest/v1/desafio_steps", {
+        method: "POST",
+        token: auth,
+        body: stepRow,
+      });
+    } catch (err) {
+      // VPS antiga sem coluna metadata
+      if (stepRow.metadata) {
+        const { metadata: _m, ...slim } = stepRow;
+        inserted = await sb("/rest/v1/desafio_steps", {
+          method: "POST",
+          token: auth,
+          body: slim,
+        });
+      } else {
+        throw err;
+      }
+    }
     stepsOut.push(Array.isArray(inserted) ? inserted[0] : inserted);
   }
   return { ...desafio, desafio_steps: stepsOut.filter(Boolean) };
