@@ -305,6 +305,15 @@
       });
 
       await refreshStatus();
+      // Se já tem conta salva, tenta ler o saldo automaticamente
+      try {
+        const line = statusLine.textContent || "";
+        if (/Conta conectada/i.test(line)) {
+          await refreshBalance();
+        }
+      } catch {
+        /* erro já aparece no hint */
+      }
     });
   </script>
 </body>
