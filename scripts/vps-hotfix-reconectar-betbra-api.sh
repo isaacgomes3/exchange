@@ -3,7 +3,7 @@
 # v3: autocomplete manual com mercados/odd LAY|BACK + link BetBra
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/BRANCH_OR_SHA/scripts/vps-hotfix-reconectar-betbra-api.sh?v=3")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/623482b6da8ef7f76595e94d291b28499b2e0193/scripts/vps-hotfix-reconectar-betbra-api.sh?v=3")
 #
 # Se a VPS estiver fora do Brasil e a BetBra bloquear (Cloudflare),
 # configure proxy em /opt/arbishield/.arbishield-odds-sync.env:
@@ -12,7 +12,7 @@
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/reconectar-betbra-api-3cf9}"
-REF="${ARBISHIELD_REF:-cursor/reconectar-betbra-api-3cf9}"
+REF="${ARBISHIELD_REF:-623482b6da8ef7f76595e94d291b28499b2e0193}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
 PRELIVE_DIR="${ARBISHIELD_PRELIVE_DIR:-/opt/arbishield}"
