@@ -70,7 +70,8 @@ for pair in \
   "scripts/lib/exchange-orders-contract.mjs:$SCRIPTS_DIR/lib/exchange-orders-contract.mjs" \
   "scripts/lib/betbra-client-api.mjs:$SCRIPTS_DIR/lib/betbra-client-api.mjs" \
   "deploy/vps-supabase/static/botshield/ordens.html:$WEB/ordens.html" \
-  "deploy/vps-supabase/static/botshield/conta-betbra.html:$WEB/conta-betbra.html"
+  "deploy/vps-supabase/static/botshield/conta-betbra.html:$WEB/conta-betbra.html" \
+  "scripts/extract-mexchange-cookie-from-har.mjs:$SCRIPTS_DIR/extract-mexchange-cookie-from-har.mjs"
 do
   rel="${pair%%:*}"
   out="${pair#*:}"

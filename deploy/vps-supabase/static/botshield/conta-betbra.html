@@ -57,13 +57,33 @@
     <div class="panel" style="margin-bottom:16px">
       <h2>Sessão do navegador (quando a VPS pede device)</h2>
       <p>
-        No Chrome (logado na BetBra), abra DevTools → Network → qualquer pedido a
-        <code>mexchange-api.betbra.bet.br</code> → Request Headers → copie o valor de
-        <code>Cookie</code> e cole aqui. Assim o BotShield usa a sua sessão aprovada,
-        sem novo login na VPS.
+        O Cookie da exchange costuma ser <strong>HttpOnly</strong> (não aparece no
+        console). O jeito mais fácil é exportar um HAR e capturar aqui:
       </p>
-      <label style="display:block;margin-top:10px">
-        Cookie header
+      <ol class="notice" style="margin:10px 0;padding-left:1.2em">
+        <li>Chrome logado na exchange → <kbd>F12</kbd> → Network</li>
+        <li>Filtro: <code>mexchange-api</code> → recarregue a página</li>
+        <li>Botão direito na lista → <strong>Save all as HAR with content</strong></li>
+        <li>Arraste o arquivo <code>.har</code> para a caixa abaixo</li>
+      </ol>
+
+      <div
+        id="harDrop"
+        class="notice"
+        style="
+          margin-top:12px;
+          padding:22px;
+          text-align:center;
+          border-style:dashed;
+          cursor:pointer;
+        "
+      >
+        Arraste o arquivo <strong>.har</strong> aqui ou clique para escolher
+        <input id="harFile" type="file" accept=".har,application/json" hidden />
+      </div>
+
+      <label style="display:block;margin-top:14px">
+        Cookie header (preenchido automaticamente)
         <textarea
           id="cookieHeader"
           rows="3"
@@ -75,10 +95,17 @@
         <button class="btn btn-primary" type="button" id="btnSaveCookies">
           Salvar sessão do navegador
         </button>
+        <button class="btn btn-secondary" type="button" id="btnCopyCookie">
+          Copiar Cookie
+        </button>
       </div>
       <p id="cookieHint" class="notice" style="margin-top:12px">
-        Cookies ficam criptografados como a senha. Expirem quando você sair da BetBra.
+        Cookies ficam criptografados. Expirem quando você sair da BetBra.
       </p>
+      <details style="margin-top:12px">
+        <summary style="cursor:pointer;color:var(--muted)">Script no PC (opcional)</summary>
+        <pre class="notice" style="margin-top:8px;white-space:pre-wrap">node scripts/extract-mexchange-cookie-from-har.mjs ./betbra.har</pre>
+      </details>
     </div>
 
     <div class="panel">
@@ -308,6 +335,101 @@
         }
       });
 
+      function headerFromHar(headers, name) {
+        const want = String(name).toLowerCase();
+        for (const h of headers || []) {
+          if (String(h.name || "").toLowerCase() === want) {
+            return String(h.value || "").trim();
+          }
+        }
+        return "";
+      }
+
+      function extractCookieFromHar(har) {
+        const entries = har?.log?.entries || [];
+        const hits = [];
+        for (const entry of entries) {
+          const url = String(entry?.request?.url || "");
+          if (!/mexchange-api\.betbra\.bet\.br/i.test(url)) continue;
+          const cookie = headerFromHar(entry.request?.headers, "Cookie");
+          if (!cookie) continue;
+          hits.push({
+            url,
+            cookie,
+            started: entry.startedDateTime || "",
+            hasSession: /(?:^|;\s*)SESSION=/i.test(cookie),
+          });
+        }
+        hits.sort((a, b) => {
+          if (a.hasSession !== b.hasSession) return a.hasSession ? -1 : 1;
+          return String(b.started).localeCompare(String(a.started));
+        });
+        return hits[0] || null;
+      }
+
+      async function ingestHarFile(file) {
+        const hint = document.getElementById("cookieHint");
+        err.classList.remove("show");
+        if (!file) return;
+        hint.textContent = "Lendo HAR…";
+        try {
+          const text = await file.text();
+          const har = JSON.parse(text);
+          const hit = extractCookieFromHar(har);
+          if (!hit) {
+            throw new Error(
+              "Nenhum Cookie de mexchange-api no HAR. Exporte com a exchange aberta e logada."
+            );
+          }
+          document.getElementById("cookieHeader").value = hit.cookie;
+          hint.textContent =
+            "Cookie capturado" +
+            (hit.hasSession ? " (com SESSION)" : " (sem SESSION — pode falhar)") +
+            " · " +
+            hit.url.slice(0, 80);
+          ok.style.display = "block";
+          ok.textContent =
+            "Cookie preenchido. Clique em “Salvar sessão do navegador”.";
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+          hint.textContent = "Falha ao ler HAR.";
+        }
+      }
+
+      const harDrop = document.getElementById("harDrop");
+      const harFile = document.getElementById("harFile");
+      harDrop?.addEventListener("click", () => harFile?.click());
+      harFile?.addEventListener("change", () => {
+        const f = harFile.files && harFile.files[0];
+        ingestHarFile(f);
+      });
+      harDrop?.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        harDrop.style.borderColor = "var(--accent)";
+      });
+      harDrop?.addEventListener("dragleave", () => {
+        harDrop.style.borderColor = "";
+      });
+      harDrop?.addEventListener("drop", (e) => {
+        e.preventDefault();
+        harDrop.style.borderColor = "";
+        const f = e.dataTransfer?.files?.[0];
+        ingestHarFile(f);
+      });
+
+      document.getElementById("btnCopyCookie")?.addEventListener("click", async () => {
+        const v = String(document.getElementById("cookieHeader").value || "").trim();
+        if (!v) return;
+        try {
+          await navigator.clipboard.writeText(v);
+          document.getElementById("cookieHint").textContent = "Cookie copiado.";
+        } catch {
+          document.getElementById("cookieHint").textContent =
+            "Não foi possível copiar — selecione o texto manualmente.";
+        }
+      });
+
       document.getElementById("btnSaveCookies").addEventListener("click", async () => {
         err.classList.remove("show");
         ok.style.display = "none";
@@ -316,7 +438,8 @@
         ).trim();
         const hint = document.getElementById("cookieHint");
         if (!cookieHeader || cookieHeader.length < 10) {
-          err.textContent = "Cole o header Cookie completo da mexchange-api";
+          err.textContent =
+            "Exporte o HAR da mexchange-api ou cole o Cookie manualmente";
           err.classList.add("show");
           return;
         }
