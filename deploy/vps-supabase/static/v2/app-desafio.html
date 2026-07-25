@@ -6,11 +6,233 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=dz-retorno-pct-2" />
+  <meta name="arbishield-build" content="desafio-historico-v1" />
+  <link rel="stylesheet" href="/v2.css?v=dz-historico-1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
   <script src="/desafio-ciclo-math.js?v=dz-apostar-2"></script>
   <script src="/v2-shell.js" defer></script>
+  <style>
+    .dz-access-history {
+      appearance: none;
+      border: 1px solid rgba(255, 180, 100, 0.55);
+      cursor: pointer;
+      border-radius: 10px;
+      padding: 11px 16px;
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #ffd4a8;
+      background: rgba(255, 106, 0, 0.08);
+    }
+    .dz-access-history:hover {
+      filter: brightness(1.08);
+      border-color: rgba(255, 180, 100, 0.85);
+      background: rgba(255, 106, 0, 0.14);
+    }
+    @media (max-width: 720px) {
+      .dz-access-history { width: 100%; }
+    }
+    .dz-hist-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      background: rgba(0, 0, 0, 0.72);
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+    .dz-hist-backdrop.show { display: flex; }
+    .dz-hist-modal {
+      width: min(640px, 100%);
+      max-height: min(88vh, 820px);
+      overflow: auto;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 106, 0, 0.35);
+      background:
+        radial-gradient(500px 180px at 90% 0%, rgba(255, 106, 0, 0.16), transparent 60%),
+        linear-gradient(180deg, #14110e 0%, #0a0908 100%);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+      padding: 18px 18px 14px;
+    }
+    .dz-hist-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .dz-hist-head h3 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+    }
+    .dz-hist-head h3 span { color: #ff9a3c; }
+    .dz-hist-head p {
+      margin: 6px 0 0;
+      color: rgba(255, 220, 180, 0.72);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .dz-hist-close {
+      appearance: none;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.04);
+      color: #fff;
+      border-radius: 10px;
+      width: 36px;
+      height: 36px;
+      font-size: 18px;
+      cursor: pointer;
+      flex: 0 0 auto;
+    }
+    .dz-hist-totals {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .dz-hist-tot {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: rgba(0, 0, 0, 0.25);
+    }
+    .dz-hist-tot .k {
+      display: block;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(255, 220, 180, 0.55);
+      margin-bottom: 4px;
+    }
+    .dz-hist-tot .v {
+      font-size: 15px;
+      font-weight: 900;
+      color: #fff;
+    }
+    .dz-hist-tot .v.is-profit { color: #c6ff00; }
+    .dz-hist-list { display: grid; gap: 10px; }
+    .dz-hist-card {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 12px 14px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .dz-hist-card.is-live {
+      border-color: rgba(198, 255, 0, 0.35);
+      box-shadow: inset 0 0 0 1px rgba(198, 255, 0, 0.08);
+    }
+    .dz-hist-card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .dz-hist-card-top strong {
+      font-size: 14px;
+      font-weight: 900;
+    }
+    .dz-hist-badge {
+      flex: 0 0 auto;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: #fff;
+    }
+    .dz-hist-badge.live {
+      border-color: rgba(198, 255, 0, 0.55);
+      color: #c6ff00;
+      background: rgba(198, 255, 0, 0.08);
+    }
+    .dz-hist-badge.ok {
+      border-color: rgba(255, 154, 60, 0.55);
+      color: #ffb347;
+      background: rgba(255, 106, 0, 0.1);
+    }
+    .dz-hist-badge.done {
+      border-color: rgba(255, 255, 255, 0.2);
+      color: rgba(255, 255, 255, 0.75);
+    }
+    .dz-hist-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      margin-bottom: 8px;
+      font-size: 11px;
+      color: rgba(255, 220, 180, 0.7);
+    }
+    .dz-hist-metrics b { color: #fff; font-weight: 800; }
+    .dz-hist-metrics b.profit { color: #c6ff00; }
+    .dz-hist-entries {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 6px;
+    }
+    .dz-hist-entries li {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      gap: 8px;
+      align-items: center;
+      font-size: 11px;
+      padding: 7px 8px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.28);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .dz-hist-entries .match {
+      color: rgba(255, 255, 255, 0.88);
+      font-weight: 700;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .dz-hist-entries .amt { color: rgba(255, 220, 180, 0.85); font-weight: 700; }
+    .dz-hist-entries .res {
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 10px;
+    }
+    .dz-hist-entries .res.won { color: #c6ff00; }
+    .dz-hist-entries .res.lost { color: #ffb347; }
+    .dz-hist-entries .res.pending { color: #8ab4ff; }
+    .dz-hist-card-actions { margin-top: 10px; }
+    .dz-hist-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 800;
+      color: #ffb347;
+      text-decoration: none;
+    }
+    .dz-hist-link:hover { text-decoration: underline; }
+    .dz-hist-empty {
+      text-align: center;
+      padding: 28px 12px;
+      color: rgba(255, 220, 180, 0.65);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    @media (max-width: 560px) {
+      .dz-hist-totals,
+      .dz-hist-metrics { grid-template-columns: 1fr; }
+      .dz-hist-entries li { grid-template-columns: 1fr; gap: 4px; }
+    }
+  </style>
 </head>
 <body data-shell="app" data-active="desafio">
   <div class="page-head">
@@ -43,12 +265,28 @@
         </div>
       </div>
       <div class="dz-access-actions">
+        <button type="button" class="dz-access-history" id="btnDesafioHistorico">
+          Histórico
+        </button>
         <button type="button" class="dz-access-deposit" data-open-deposit="1" data-deposit-dest="desafio" data-deposit-network="PIX">
           Depositar
         </button>
       </div>
     </div>
   </section>
+
+  <div class="dz-hist-backdrop" id="dzHistModal" aria-hidden="true">
+    <div class="dz-hist-modal" role="dialog" aria-labelledby="dzHistTitle">
+      <div class="dz-hist-head">
+        <div>
+          <h3 id="dzHistTitle">Histórico de <span>desafios</span></h3>
+          <p>Ciclos em andamento e já realizados · valores apostados e lucros.</p>
+        </div>
+        <button type="button" class="dz-hist-close" id="btnDzHistClose" aria-label="Fechar">×</button>
+      </div>
+      <div id="dzHistBody"><div class="dz-hist-empty">Carregando…</div></div>
+    </div>
+  </div>
 
   <div class="dz-filters" id="filters" role="tablist">
     <button type="button" class="dz-filter is-on" data-f="Todos">Todos</button>
@@ -188,6 +426,200 @@
       document.addEventListener("visibilitychange", function () {
         if (!document.hidden) refreshAccessBar();
       });
+
+      function fmtHistDate(iso) {
+        if (!iso) return "—";
+        try {
+          return new Date(iso).toLocaleString("pt-BR", {
+            day: "2-digit",
+            month: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+        } catch (e) {
+          return "—";
+        }
+      }
+
+      function resultLabel(res) {
+        var r = String(res || "").toLowerCase();
+        if (r === "won") return "Vitória";
+        if (r === "lost") return "Casa";
+        if (r === "pending") return "Pendente";
+        return r || "—";
+      }
+
+      function closeHistModal() {
+        var m = document.getElementById("dzHistModal");
+        if (!m) return;
+        m.classList.remove("show");
+        m.setAttribute("aria-hidden", "true");
+      }
+
+      function renderHistBody(payload) {
+        var host = document.getElementById("dzHistBody");
+        if (!host) return;
+        var items = (payload && payload.items) || [];
+        var totals = (payload && payload.totals) || {};
+        if (!items.length) {
+          host.innerHTML =
+            '<div class="dz-hist-empty">Você ainda não entrou em nenhum desafio.<br/>Quando apostar, o ciclo aparece aqui com valores e lucros.</div>';
+          return;
+        }
+        var html =
+          '<div class="dz-hist-totals">' +
+          '<div class="dz-hist-tot"><span class="k">Em andamento</span><span class="v">' +
+          esc(String(totals.emAndamento || 0)) +
+          "</span></div>" +
+          '<div class="dz-hist-tot"><span class="k">Apostado</span><span class="v">' +
+          esc(money(totals.wageredCents || 0)) +
+          "</span></div>" +
+          '<div class="dz-hist-tot"><span class="k">Lucro obtido</span><span class="v is-profit">' +
+          esc(money(totals.profitCents || 0)) +
+          "</span></div>" +
+          "</div><div class=\"dz-hist-list\">";
+
+        items.forEach(function (it) {
+          var badgeCls =
+            it.status === "em_andamento"
+              ? "live"
+              : it.status === "sucesso_casa"
+                ? "ok"
+                : "done";
+          var entriesHtml = (it.entries || [])
+            .map(function (e) {
+              var resCls =
+                e.result === "won"
+                  ? "won"
+                  : e.result === "lost"
+                    ? "lost"
+                    : "pending";
+              var profitBit =
+                e.result === "won" && Number(e.profitCents) > 0
+                  ? " · +" + money(e.profitCents)
+                  : "";
+              return (
+                "<li>" +
+                '<span class="match">' +
+                esc(
+                  (e.stepIndex ? "E" + e.stepIndex + " · " : "") +
+                    (e.matchLabel || "Entrada")
+                ) +
+                "</span>" +
+                '<span class="amt">' +
+                esc(money(e.amountCents || 0)) +
+                esc(profitBit) +
+                "</span>" +
+                '<span class="res ' +
+                resCls +
+                '">' +
+                esc(resultLabel(e.result)) +
+                "</span>" +
+                "</li>"
+              );
+            })
+            .join("");
+          html +=
+            '<article class="dz-hist-card' +
+            (it.status === "em_andamento" ? " is-live" : "") +
+            '">' +
+            '<div class="dz-hist-card-top">' +
+            "<div><strong>" +
+            esc(it.title || "Desafio") +
+            "</strong>" +
+            '<div style="margin-top:4px;font-size:11px;color:rgba(255,220,180,.55)">' +
+            esc(fmtHistDate(it.firstAt)) +
+            (it.lastAt && it.lastAt !== it.firstAt
+              ? " → " + esc(fmtHistDate(it.lastAt))
+              : "") +
+            "</div></div>" +
+            '<span class="dz-hist-badge ' +
+            badgeCls +
+            '">' +
+            esc(it.statusLabel || it.status) +
+            "</span></div>" +
+            '<div class="dz-hist-metrics">' +
+            "<span>Entradas <b>" +
+            esc(String(it.entriesCount || 0)) +
+            "/" +
+            esc(String(it.maxEntries || 5)) +
+            "</b></span>" +
+            "<span>Apostado <b>" +
+            esc(money(it.wageredCents || 0)) +
+            "</b></span>" +
+            "<span>Lucro <b class=\"profit\">" +
+            esc(money(it.profitCents || 0)) +
+            "</b></span>" +
+            "</div>" +
+            (entriesHtml
+              ? '<ul class="dz-hist-entries">' + entriesHtml + "</ul>"
+              : "") +
+            (it.journeyUrl
+              ? '<div class="dz-hist-card-actions"><a class="dz-hist-link" href="' +
+                esc(it.journeyUrl) +
+                '">Ver jornada →</a></div>'
+              : "") +
+            "</article>";
+        });
+        html += "</div>";
+        host.innerHTML = html;
+      }
+
+      async function loadDesafioHistory() {
+        var session = await supa.auth.getSession();
+        var token =
+          session &&
+          session.data &&
+          session.data.session &&
+          session.data.session.access_token;
+        if (!token) throw new Error("Faça login para ver o histórico.");
+        var res = await fetch("/api/arbishield/desafio-history", {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            Authorization: "Bearer " + token,
+          },
+          cache: "no-store",
+        });
+        var data = await res.json().catch(function () {
+          return null;
+        });
+        if (!res.ok) {
+          throw new Error(
+            (data && data.error) || "Falha ao carregar histórico"
+          );
+        }
+        return data;
+      }
+
+      async function openHistModal() {
+        var m = document.getElementById("dzHistModal");
+        var body = document.getElementById("dzHistBody");
+        if (!m || !body) return;
+        m.classList.add("show");
+        m.setAttribute("aria-hidden", "false");
+        body.innerHTML = '<div class="dz-hist-empty">Carregando…</div>';
+        try {
+          var data = await loadDesafioHistory();
+          renderHistBody(data);
+        } catch (ex) {
+          body.innerHTML =
+            '<div class="dz-hist-empty">' +
+            esc(ex.message || "Erro ao carregar histórico") +
+            "</div>";
+        }
+      }
+
+      var btnHist = document.getElementById("btnDesafioHistorico");
+      if (btnHist) btnHist.addEventListener("click", openHistModal);
+      var btnHistClose = document.getElementById("btnDzHistClose");
+      if (btnHistClose) btnHistClose.addEventListener("click", closeHistModal);
+      var histModal = document.getElementById("dzHistModal");
+      if (histModal) {
+        histModal.addEventListener("click", function (e) {
+          if (e.target === histModal) closeHistModal();
+        });
+      }
 
       function showErr(msg) {
         var el = document.getElementById("err");

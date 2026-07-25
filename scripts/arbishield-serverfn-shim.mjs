@@ -2478,6 +2478,159 @@ async function getDesafioCircuitForUser(desafioId, userId) {
   };
 }
 
+/**
+ * Histórico do cliente: desafios em andamento + realizados,
+ * com valores apostados e lucros por ciclo.
+ */
+async function listMyDesafioHistory(token) {
+  const userId = requireUserId(token);
+  const parts = await sb(
+    `/rest/v1/desafio_participations?select=id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at,metadata&user_id=eq.${encodeURIComponent(userId)}&side=eq.arbishield&order=created_at.desc&limit=500`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  const list = Array.isArray(parts) ? parts : [];
+  const byDesafio = new Map();
+  for (const p of list) {
+    const did = String(p.desafio_id || "");
+    if (!did) continue;
+    if (!byDesafio.has(did)) byDesafio.set(did, []);
+    byDesafio.get(did).push(p);
+  }
+  const desafioIds = [...byDesafio.keys()];
+  const desafioMap = new Map();
+  const stepMap = new Map();
+  if (desafioIds.length) {
+    const chunkSize = 40;
+    for (let i = 0; i < desafioIds.length; i += chunkSize) {
+      const chunk = desafioIds.slice(i, i + chunkSize);
+      const inList = chunk.map(encodeURIComponent).join(",");
+      const drows = await sb(
+        `/rest/v1/desafios?select=id,number,title,subtitle,status,is_active,total_steps,target_profit_pct,initial_balance_cents,created_at,updated_at&id=in.(${inList})`,
+        { token: SERVICE_KEY }
+      ).catch(() => []);
+      for (const d of Array.isArray(drows) ? drows : []) {
+        desafioMap.set(String(d.id), d);
+      }
+      const srows = await sb(
+        `/rest/v1/desafio_steps?select=id,desafio_id,step_index,home_team,away_team,match_label,arbi_team_name,casa_team_name,starts_at,status&desafio_id=in.(${inList})&order=step_index.asc&limit=500`,
+        { token: SERVICE_KEY }
+      ).catch(() => []);
+      for (const s of Array.isArray(srows) ? srows : []) {
+        stepMap.set(String(s.id), s);
+      }
+    }
+  }
+
+  const items = [];
+  for (const [desafioId, partsOf] of byDesafio.entries()) {
+    const ordered = partsOf
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(a.created_at || 0).getTime() -
+          new Date(b.created_at || 0).getTime()
+      );
+    const d = desafioMap.get(desafioId) || {};
+    const maxEntries = Math.min(5, Math.max(1, n(d.total_steps) || 5));
+    let wagered = 0;
+    let profit = 0;
+    let wonN = 0;
+    let lostN = 0;
+    let pendingN = 0;
+    const entries = ordered.map((p) => {
+      const res = String(p.result || "").toLowerCase() || "pending";
+      const amt = n(p.amount_cents);
+      const pr = n(p.profit_cents);
+      wagered += amt;
+      if (res === "won") {
+        profit += pr;
+        wonN += 1;
+      } else if (res === "lost") {
+        lostN += 1;
+      } else if (res === "pending" || !p.result) {
+        pendingN += 1;
+      }
+      const step = stepMap.get(String(p.step_id || "")) || null;
+      const matchLabel =
+        (step &&
+          (step.match_label ||
+            [step.home_team, step.away_team].filter(Boolean).join(" × "))) ||
+        null;
+      return {
+        id: p.id,
+        stepId: p.step_id || null,
+        stepIndex: step ? Number(step.step_index) || null : null,
+        matchLabel,
+        result: res === "" ? "pending" : res,
+        amountCents: amt,
+        profitCents: res === "won" ? pr : 0,
+        createdAt: p.created_at || null,
+        startsAt: step ? step.starts_at || null : null,
+      };
+    });
+    const last = ordered[ordered.length - 1];
+    const lastResult = last
+      ? String(last.result || "").toLowerCase()
+      : "";
+    const cycleEndedSuccess = lastResult === "lost";
+    const cycleEndedMax = wonN >= maxEntries && pendingN === 0;
+    let status = "em_andamento";
+    let statusLabel = "Em andamento";
+    if (cycleEndedSuccess) {
+      status = "sucesso_casa";
+      statusLabel = "Sucesso na casa";
+    } else if (cycleEndedMax) {
+      status = "finalizado";
+      statusLabel = "Finalizado";
+    } else if (pendingN > 0 || wonN > 0) {
+      status = "em_andamento";
+      statusLabel = pendingN > 0 ? "Aguardando resultado" : "Em andamento";
+    } else if (ordered.length === 0) {
+      status = "vazio";
+      statusLabel = "Sem entradas";
+    }
+    const firstAt = ordered[0]?.created_at || null;
+    const lastAt = last?.created_at || null;
+    items.push({
+      desafioId,
+      number: d.number ?? null,
+      title: d.title || `Desafio ${String(desafioId).slice(0, 8)}`,
+      subtitle: d.subtitle || null,
+      targetProfitPct: Number(d.target_profit_pct) || 5,
+      maxEntries,
+      status,
+      statusLabel,
+      entriesCount: ordered.length,
+      wonCount: wonN,
+      lostCount: lostN,
+      pendingCount: pendingN,
+      wageredCents: wagered,
+      profitCents: profit,
+      firstAt,
+      lastAt,
+      entries,
+      journeyUrl: `/app-desafio-jornada.html?desafioId=${encodeURIComponent(desafioId)}`,
+    });
+  }
+
+  items.sort((a, b) => {
+    const rank = (s) =>
+      s === "em_andamento" ? 0 : s === "sucesso_casa" ? 1 : 2;
+    if (rank(a.status) !== rank(b.status)) return rank(a.status) - rank(b.status);
+    return new Date(b.lastAt || 0).getTime() - new Date(a.lastAt || 0).getTime();
+  });
+
+  const totals = {
+    desafios: items.length,
+    emAndamento: items.filter((x) => x.status === "em_andamento").length,
+    finalizados: items.filter((x) => x.status !== "em_andamento").length,
+    wageredCents: items.reduce((a, x) => a + x.wageredCents, 0),
+    profitCents: items.reduce((a, x) => a + x.profitCents, 0),
+  };
+
+  return { ok: true, items, totals };
+}
+
 async function resolveDesafioStepId(raw) {
   const stepId = String(raw || "").trim();
   if (!stepId) return null;
@@ -6710,6 +6863,24 @@ const server = createServer(async (req, res) => {
       );
     } catch (err) {
       return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (
+    url.pathname === "/api/arbishield/desafio-history" &&
+    (req.method === "GET" || req.method === "POST")
+  ) {
+    try {
+      const token = bearerFromReq(req);
+      if (!token) {
+        return sendJson(res, 401, { ok: false, error: "Não autorizado" });
+      }
+      return sendJson(res, 200, await listMyDesafioHistory(token));
+    } catch (err) {
+      return sendJson(res, 400, {
+        ok: false,
         error: err instanceof Error ? err.message : String(err),
       });
     }
