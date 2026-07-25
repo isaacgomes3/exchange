@@ -130,7 +130,15 @@
 
     const main = el('<main class="main" id="bsMain"></main>');
     const top = el(
-      '<div class="topbar"><div class="crumbs">Dashboard · <strong></strong></div></div>'
+      '<div class="topbar">' +
+        '<div class="crumbs">Dashboard · <strong></strong></div>' +
+        '<div class="bal-chip" id="bsBalanceChip" title="Saldo BetBra">' +
+        '<span class="bal-label">Saldo BetBra</span>' +
+        '<strong class="bal-value" id="bsBalanceValue">—</strong>' +
+        '<button type="button" class="btn-ghost bal-refresh" id="bsBalanceRefresh" title="Atualizar">↻</button>' +
+        '<a class="bal-link" href="/conta-betbra.html">Conta</a>' +
+        "</div>" +
+        "</div>"
     );
     const titles = {
       bots: "Meus bots",
@@ -156,6 +164,70 @@
       await sb.auth.signOut();
       location.href = "/auth.html";
     });
+
+    function formatBrl(n) {
+      const v = Number(n);
+      if (!Number.isFinite(v)) return "—";
+      return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    }
+
+    async function bearer() {
+      const { data } = await sb.auth.getSession();
+      return data?.session?.access_token || "";
+    }
+
+    async function loadBalanceChip(force) {
+      const val = document.getElementById("bsBalanceValue");
+      const chip = document.getElementById("bsBalanceChip");
+      if (!val || !chip) return;
+      val.textContent = force ? "…" : val.textContent || "…";
+      chip.classList.remove("is-err", "is-ok");
+      try {
+        if (!force) {
+          const st = await fetch(
+            "/api/arbishield/exchange-session/status?provider=betbra",
+            {
+              headers: {
+                Accept: "application/json",
+                Authorization: "Bearer " + (await bearer()),
+              },
+            }
+          );
+          const sj = await st.json().catch(() => ({}));
+          if (st.ok && sj.lastBalance != null) {
+            val.textContent = formatBrl(sj.lastBalance);
+            chip.classList.add("is-ok");
+            return;
+          }
+        }
+        const res = await fetch(
+          "/api/arbishield/exchange-session/balance?provider=betbra",
+          {
+            headers: {
+              Accept: "application/json",
+              Authorization: "Bearer " + (await bearer()),
+            },
+          }
+        );
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.error || "Falha saldo");
+        val.textContent = formatBrl(json.balance);
+        chip.classList.add("is-ok");
+      } catch (ex) {
+        val.textContent = "—";
+        chip.classList.add("is-err");
+        chip.title =
+          (ex instanceof Error ? ex.message : String(ex)) +
+          " · abra Conta BetBra";
+      }
+    }
+
+    document
+      .getElementById("bsBalanceRefresh")
+      ?.addEventListener("click", () => loadBalanceChip(true));
+
+    // carrega saldo em todas as páginas (inclui Meus bots)
+    loadBalanceChip(false);
 
     document.dispatchEvent(
       new CustomEvent("botshield:ready", { detail: { user, sb } })
