@@ -1,17 +1,7 @@
 #!/usr/bin/env node
 /**
- * Lança OU revive evento MANUAL de teste (publicado) — visível na grade.
- *
- * - Odd 1,10 em BACK e LAY (filtro "Todos" / LAY / BACK)
- * - Horário perto (+45 min por padrão) para aparecer no topo
- * - Revive até eventos unpublished/deleted com sandbox_test
- * - Imprime diagnóstico de por que aparece ou não
- *
- * Na VPS:
- *   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-fee-upfront-3cf9/scripts/vps-sandbox-lancar-evento-teste.sh?$(date +%s)")
- *
- * Forçar novo (não revive):
- *   FORCE_NEW=1 bash <(curl ...)
+ * Lança 1 evento MANUAL de teste (BACK+LAY @ 1.10), visível na grade.
+ * Robusto: campos mínimos, revive só o mais recente, fallback se coluna faltar.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -40,6 +30,7 @@ for (const f of [
   process.env.ENV_FILE,
   "/opt/arbishield/deploy/vps-supabase/.env",
   "/opt/arbishield/.env",
+  "/opt/arbishield-teste/.env",
   path.resolve("deploy/vps-supabase/.env"),
   path.resolve(".env"),
 ].filter(Boolean)) {
@@ -59,13 +50,7 @@ const SUPABASE_URL = (
 
 const ODD = Number(process.env.TEST_ODD || 1.1);
 const LIQ_BRL = Number(process.env.TEST_LIQ_BRL || 5000);
-/** Minutos até o kickoff (padrão 45 — aparece no topo da grade). */
-const MINUTES = Number(
-  process.env.TEST_MINUTES_AHEAD ||
-    (process.env.TEST_HOURS_AHEAD
-      ? Number(process.env.TEST_HOURS_AHEAD) * 60
-      : 45)
-);
+const MINUTES = Number(process.env.TEST_MINUTES_AHEAD || 45);
 const HOME = process.env.TEST_HOME || "ArbiShield Teste A";
 const AWAY = process.env.TEST_AWAY || "ArbiShield Teste B";
 const FORCE_NEW =
@@ -73,7 +58,7 @@ const FORCE_NEW =
 const LIVE_WINDOW_MS = 9000 * 1000;
 
 if (!SERVICE_KEY) {
-  console.error("ERRO: SERVICE_ROLE_KEY ausente");
+  console.error("ERRO: SERVICE_ROLE_KEY ausente (.env em /opt/arbishield)");
   process.exit(1);
 }
 
@@ -102,11 +87,15 @@ async function sb(p, { method = "GET", body } = {}) {
   } catch {
     data = text;
   }
-  if (!res.ok) throw new Error(`${res.status} ${p}: ${String(text).slice(0, 300)}`);
+  if (!res.ok) {
+    const err = new Error(`${res.status} ${method} ${p}: ${String(text).slice(0, 400)}`);
+    err.status = res.status;
+    err.body = text;
+    throw err;
+  }
   return data;
 }
 
-/** Sempre BACK + LAY — assim não some se o usuário filtrar um lado. */
 function buildMarkets(liqCents) {
   return [
     {
@@ -141,52 +130,24 @@ function isSandboxRow(m) {
   return false;
 }
 
-async function findExisting() {
-  // Inclui unpublished/deleted — senão o revive falha e o usuário acha que “não apareceu”
-  const rows = await sb(
-    `/rest/v1/matches?select=id,home_team,away_team,league,starts_at,status,status_v2,is_published,deleted_at,metadata,markets,max_protection_cents,used_protection_cents&order=updated_at.desc.nullslast&limit=200`
-  );
-  const list = Array.isArray(rows) ? rows : [];
-  return list.filter(isSandboxRow);
-}
-
-function visibilityWhy(m, now = Date.now()) {
-  const reasons = [];
-  if (m.is_published !== true) reasons.push("is_published≠true");
-  if (m.deleted_at) reasons.push("deleted_at preenchido");
-  const start = new Date(m.starts_at).getTime();
-  if (!Number.isFinite(start)) reasons.push("starts_at inválido");
-  else if (start + LIVE_WINDOW_MS <= now) reasons.push("fora da janela (+2h30 pós-kickoff)");
-  const status = m.status_v2 || m.status || "open";
-  if (
-    status === "FINISHED" ||
-    ["closed", "cancelled", "finished", "settled", "finalizado", "void"].includes(
-      String(status).toLowerCase()
-    )
-  ) {
-    reasons.push(`status=${status}`);
-  }
-  const max = Number(m.max_protection_cents || 0);
-  const used = Number(m.used_protection_cents || 0);
-  if (!(max > 0 && used < max)) reasons.push(`sem liquidez max=${max} used=${used}`);
-  const mks = Array.isArray(m.markets) ? m.markets : [];
-  const sides = [
-    ...new Set(
-      mks.map((mk) => String(mk.market_type || "LAY").toUpperCase())
-    ),
+async function findLatestSandbox() {
+  const queries = [
+    `/rest/v1/matches?select=id,home_team,away_team,league,starts_at,status,status_v2,is_published,deleted_at,metadata,markets,max_protection_cents,used_protection_cents&home_team=ilike.*ArbiShield%20Teste*&order=starts_at.desc&limit=30`,
+    `/rest/v1/matches?select=id,home_team,away_team,league,starts_at,status,status_v2,is_published,deleted_at,metadata,markets,max_protection_cents,used_protection_cents&order=starts_at.desc&limit=80`,
   ];
-  if (!mks.length) reasons.push("markets vazio");
-  return {
-    ok: reasons.length === 0,
-    reasons,
-    sides,
-    startsAt: m.starts_at,
-    max,
-    used,
-  };
+  for (const q of queries) {
+    try {
+      const rows = await sb(q);
+      const list = (Array.isArray(rows) ? rows : []).filter(isSandboxRow);
+      if (list.length) return list[0];
+    } catch (e) {
+      console.warn("  aviso find:", e.message || e);
+    }
+  }
+  return null;
 }
 
-function payload(liqCents, startsIso, prevMeta) {
+function coreBody(liqCents, startsIso, prevMeta) {
   return {
     home_team: HOME,
     away_team: AWAY,
@@ -195,13 +156,10 @@ function payload(liqCents, startsIso, prevMeta) {
     status: "open",
     status_v2: "open",
     is_published: true,
-    deleted_at: null,
     sport_type: "futebol",
     max_protection_cents: liqCents,
     used_protection_cents: 0,
     protection_odds: { home: ODD, away: ODD },
-    score_sync_enabled: false,
-    has_live_stream: false,
     markets: buildMarkets(liqCents),
     metadata: {
       ...(prevMeta && typeof prevMeta === "object" ? prevMeta : {}),
@@ -210,110 +168,183 @@ function payload(liqCents, startsIso, prevMeta) {
       billing_model_hint: "fee_upfront_v1",
       release_minutes_before: 0,
       revived_at: new Date().toISOString(),
-      note: "Evento de teste — BACK+LAY odd 1.10 — pode apagar depois",
+      note: "Evento de teste BACK+LAY odd 1.10",
     },
-    updated_at: new Date().toISOString(),
   };
+}
+
+async function patchMatch(id, body) {
+  // tenta com deleted_at/updated_at; se coluna faltar, remove e tenta de novo
+  const attempts = [
+    { ...body, deleted_at: null, updated_at: new Date().toISOString() },
+    { ...body, deleted_at: null },
+    { ...body },
+  ];
+  let lastErr;
+  for (const b of attempts) {
+    try {
+      const patched = await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: b,
+      });
+      return Array.isArray(patched) ? patched[0] : patched;
+    } catch (e) {
+      lastErr = e;
+      const msg = String(e.message || e);
+      if (!/column|PGRST|42703|schema cache/i.test(msg)) throw e;
+      console.warn("  aviso PATCH retry:", msg.slice(0, 160));
+    }
+  }
+  throw lastErr;
+}
+
+async function createMatch(body) {
+  const attempts = [
+    {
+      ...body,
+      external_id: `sandbox-test-${Date.now()}`,
+      score_sync_enabled: false,
+      has_live_stream: false,
+    },
+    {
+      ...body,
+      external_id: `sandbox-test-${Date.now()}`,
+    },
+    { ...body },
+  ];
+  let lastErr;
+  for (const b of attempts) {
+    try {
+      const created = await sb("/rest/v1/matches", { method: "POST", body: b });
+      const match = Array.isArray(created) ? created[0] : created;
+      if (!match?.id) throw new Error("POST ok mas sem id");
+      return match;
+    } catch (e) {
+      lastErr = e;
+      const msg = String(e.message || e);
+      console.warn("  aviso POST retry:", msg.slice(0, 200));
+      if (/duplicate|external_id/i.test(msg)) {
+        // colisão de external_id — tenta sem
+        continue;
+      }
+      if (!/column|PGRST|42703|schema cache/i.test(msg)) {
+        // erro real (auth, constraint) — ainda tenta próximo body mais enxuto
+        continue;
+      }
+    }
+  }
+  throw lastErr;
+}
+
+function visibilityWhy(m, now = Date.now()) {
+  const reasons = [];
+  if (m.is_published !== true) reasons.push("is_published≠true");
+  if (m.deleted_at) reasons.push("deleted_at preenchido");
+  const start = new Date(m.starts_at).getTime();
+  if (!Number.isFinite(start)) reasons.push("starts_at inválido");
+  else if (start + LIVE_WINDOW_MS <= now) reasons.push("fora da janela");
+  const status = m.status_v2 || m.status || "open";
+  if (
+    ["finished", "closed", "cancelled", "settled", "finalizado", "void"].includes(
+      String(status).toLowerCase()
+    ) ||
+    status === "FINISHED"
+  ) {
+    reasons.push(`status=${status}`);
+  }
+  const max = Number(m.max_protection_cents || 0);
+  const used = Number(m.used_protection_cents || 0);
+  if (!(max > 0 && used < max)) reasons.push(`sem liquidez max=${max} used=${used}`);
+  const mks = Array.isArray(m.markets) ? m.markets : [];
+  const sides = [
+    ...new Set(mks.map((mk) => String(mk.market_type || "LAY").toUpperCase())),
+  ];
+  if (!mks.length) reasons.push("markets vazio");
+  return { ok: reasons.length === 0, reasons, sides, max, used, startsAt: m.starts_at };
 }
 
 async function main() {
   const liqCents = Math.round(LIQ_BRL * 100);
   const mins = Math.max(10, Number.isFinite(MINUTES) ? MINUTES : 45);
-  const starts = new Date(Date.now() + mins * 60_000);
-  const startsIso = starts.toISOString();
+  const startsIso = new Date(Date.now() + mins * 60_000).toISOString();
 
-  console.log("==> Lançar evento teste (BACK + LAY @", ODD, ")");
-  console.log("    kickoff em", mins, "min →", starts.toLocaleString("pt-BR"));
-  console.log("    liq", money(liqCents), "· supabase", SUPABASE_URL);
+  console.log("==> Ping Supabase", SUPABASE_URL);
+  try {
+    await sb("/rest/v1/matches?select=id&limit=1");
+    console.log("  OK conexão REST");
+  } catch (e) {
+    console.error("ERRO conexão Supabase:", e.message || e);
+    process.exit(1);
+  }
 
-  const existing = FORCE_NEW ? [] : await findExisting();
-  const touched = [];
+  console.log("==> Lançar 1 evento teste BACK+LAY @", ODD);
+  console.log("    kickoff +", mins, "min · liq", money(liqCents));
 
-  if (existing.length) {
-    console.log("==> Reviver", existing.length, "evento(s) teste (incl. unpublished/deleted)");
-    for (const m of existing) {
-      const body = payload(liqCents, startsIso, m.metadata);
-      const patched = await sb(
-        `/rest/v1/matches?id=eq.${encodeURIComponent(m.id)}`,
-        { method: "PATCH", body }
-      );
-      const row = Array.isArray(patched) ? patched[0] : patched;
-      touched.push(row || { ...m, ...body });
-      console.log(
-        "  OK revive",
-        (row || m).id,
-        "pub=",
-        (row || m).is_published,
-        "del=",
-        (row || m).deleted_at
-      );
+  let match = null;
+  const existing = FORCE_NEW ? null : await findLatestSandbox();
+
+  if (existing?.id) {
+    console.log("==> Reviver", existing.id, existing.home_team, "×", existing.away_team);
+    try {
+      match = await patchMatch(existing.id, coreBody(liqCents, startsIso, existing.metadata));
+      if (!match?.id) match = { ...existing, id: existing.id };
+      console.log("  OK revive", match.id || existing.id);
+    } catch (e) {
+      console.warn("  revive falhou, criando novo:", e.message || e);
+      match = await createMatch(coreBody(liqCents, startsIso, null));
+      console.log("  OK create", match.id);
     }
   } else {
-    console.log("==> Criar evento TESTE novo");
-    const body = {
-      ...payload(liqCents, startsIso, null),
-      external_id: `sandbox-test-${Date.now()}`,
-    };
-    delete body.updated_at;
-    const created = await sb("/rest/v1/matches", { method: "POST", body });
-    const match = Array.isArray(created) ? created[0] : created;
-    if (!match?.id) throw new Error("match sem id");
-    touched.push(match);
-    console.log("  matchId:", match.id);
+    console.log("==> Criar evento novo");
+    match = await createMatch(coreBody(liqCents, startsIso, null));
+    console.log("  OK create", match.id);
   }
 
-  console.log("\n==> Diagnóstico de visibilidade (grade Proteger)");
-  let anyOk = false;
-  for (const m of touched) {
-    const fresh = await sb(
-      `/rest/v1/matches?select=id,home_team,away_team,league,starts_at,status,status_v2,is_published,deleted_at,metadata,markets,max_protection_cents,used_protection_cents&id=eq.${encodeURIComponent(m.id)}&limit=1`
-    );
-    const row = Array.isArray(fresh) ? fresh[0] : null;
-    if (!row) {
-      console.log("  ✗", m.id, "não encontrado após write");
-      continue;
-    }
-    const v = visibilityWhy(row);
-    anyOk = anyOk || v.ok;
-    console.log(
-      v.ok ? "  ✓ VISÍVEL" : "  ✗ OCULTO",
-      row.id,
-      "|",
-      row.home_team,
-      "×",
-      row.away_team
-    );
-    console.log(
-      "     lados:",
-      v.sides.join("+") || "(nenhum)",
-      "| liq",
-      money(v.max - v.used),
-      "| começa",
-      new Date(v.startsAt).toLocaleString("pt-BR")
-    );
-    if (!v.ok) console.log("     motivos:", v.reasons.join("; "));
+  const fresh = await sb(
+    `/rest/v1/matches?select=id,home_team,away_team,league,starts_at,status,status_v2,is_published,deleted_at,metadata,markets,max_protection_cents,used_protection_cents&id=eq.${encodeURIComponent(match.id)}&limit=1`
+  );
+  const row = Array.isArray(fresh) ? fresh[0] : null;
+  if (!row) {
+    console.error("ERRO: match não lido após write:", match.id);
+    process.exit(1);
   }
+
+  const v = visibilityWhy(row);
+  console.log("\n==> Diagnóstico");
+  console.log(
+    v.ok ? "  ✓ VISÍVEL na grade" : "  ✗ OCULTO",
+    row.id
+  );
+  console.log("   ", row.home_team, "×", row.away_team);
+  console.log(
+    "    lados:",
+    v.sides.join("+") || "(nenhum)",
+    "| liq",
+    money(Math.max(0, v.max - v.used)),
+    "|",
+    new Date(v.startsAt).toLocaleString("pt-BR")
+  );
+  if (!v.ok) console.log("    motivos:", v.reasons.join("; "));
 
   const stake = 100_000;
   const profit = Math.max(0, Math.round(stake * (ODD - 1)));
-  const user = Math.round(stake * 0.015);
-  const fee = Math.max(0, profit - user);
-
-  console.log("\nOK — evento teste", anyOk ? "deve aparecer na grade" : "AINDA OCULTO (ver motivos)");
+  const userKeep = Math.round(stake * 0.015);
+  const fee = Math.max(0, profit - userKeep);
   console.log(
-    "  Ex.: stake R$ 1.000 @",
+    "\n  Ex. R$ 1.000 @",
     ODD,
     "BACK → dedução",
-    money(fee),
-    `(seu lucro ${money(user)})`
+    money(fee)
   );
-  console.log("\nAbrir (janela anônima · filtro Todos · buscar “ArbiShield Teste”):");
+  console.log("\nAbrir (anônima · Todos · buscar ArbiShield Teste):");
   console.log("  https://arbishield.app/sandbox/app-proteger.html");
   console.log("  https://arbishield.app/app-proteger.html");
-  if (!anyOk) process.exit(2);
+
+  if (!v.ok) process.exit(2);
+  console.log("\nOK — lançou");
 }
 
 main().catch((e) => {
-  console.error("ERRO:", e.message || e);
+  console.error("ERRO FATAL:", e.message || e);
   process.exit(1);
 });
