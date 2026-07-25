@@ -380,11 +380,37 @@ async function createMatchFromMarket(body, token) {
     betbra_runner_id: body.runnerId ? String(body.runnerId) : null,
   };
 
+  // Nunca misturar com evento MANUAL: só reutiliza match BetBra puro.
   const existingRows = await sb(
-    `/rest/v1/matches?external_id=eq.${encodeURIComponent(eventExternalId)}&deleted_at=is.null&select=id,home_team,away_team,markets,max_protection_cents,used_protection_cents,is_published&limit=1`,
+    `/rest/v1/matches?external_id=eq.${encodeURIComponent(eventExternalId)}&deleted_at=is.null&select=id,home_team,away_team,markets,max_protection_cents,used_protection_cents,is_published,metadata&limit=10`,
     { token: dbToken }
   );
-  const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+  const rows = Array.isArray(existingRows) ? existingRows : [];
+  const sourceOf = (m) => String(m?.metadata?.source || "").toLowerCase();
+  const isManualSrc = (src) => src === "admin_manual" || src === "manual";
+  const manualHit = rows.find((r) => isManualSrc(sourceOf(r)));
+  if (manualHit) {
+    const err = new Error(
+      "Este ID da BetBra já está em um evento MANUAL. Não misture — edite o manual na aba Encerrar / Eventos ArbiShield ou escolha outro jogo na BetBra."
+    );
+    err.status = 409;
+    err.code = "MANUAL_EXTERNAL_ID_CONFLICT";
+    throw err;
+  }
+  const existing =
+    rows.find((r) => sourceOf(r) === "betbra_prelive_catalog") || null;
+  const foreign = rows.find(
+    (r) =>
+      sourceOf(r) !== "betbra_prelive_catalog" && !isManualSrc(sourceOf(r))
+  );
+  if (!existing && foreign) {
+    const err = new Error(
+      "Já existe um jogo com este ID externo e origem diferente de BetBra. Não misture."
+    );
+    err.status = 409;
+    err.code = "FOREIGN_EXTERNAL_ID_CONFLICT";
+    throw err;
+  }
 
   if (existing?.id) {
     const markets = Array.isArray(existing.markets) ? existing.markets : [];
@@ -426,11 +452,16 @@ async function createMatchFromMarket(body, token) {
       0
     );
 
+    const prevMeta =
+      existing.metadata && typeof existing.metadata === "object"
+        ? existing.metadata
+        : {};
     const patchBody = {
       markets: nextMarkets,
       max_protection_cents: nextMax,
       updated_by: adminId,
       metadata: {
+        ...prevMeta,
         external_bet_link: body.betbraLink,
         external_bet_name: "BetBra",
         external_bet_logo: "https://betbra.bet.br/favicon.ico",
@@ -652,9 +683,10 @@ async function createManualMatch(body, token) {
       String(err.message || "").toLowerCase().includes("duplicate key")
     ) {
       const err2 = new Error(
-        "Já existe um jogo com este ID externo. Altere o ID da partida ou deixe em branco."
+        "Já existe um jogo com este ID externo (BetBra ou outro). Eventos manuais não devem reutilizar ID da BetBra — deixe o ID em branco ou use um ID próprio."
       );
       err2.status = 409;
+      err2.code = "EXTERNAL_ID_CONFLICT";
       throw err2;
     }
     throw err;
@@ -2477,7 +2509,7 @@ async function handleApi(req, res) {
     return sendJson(res, 200, {
       ok: true,
       service: "arbishield-matches",
-      fix: "betbra-api-v1",
+      fix: "betbra-api-v2",
     });
   }
 

@@ -263,6 +263,9 @@
     .badge.draft { color: var(--amber); border-color: rgba(245,158,11,0.35); }
     .badge.done { color: #93c5fd; border-color: rgba(59,130,246,0.35); }
     .badge.live { color: #fca5a5; border-color: rgba(239,68,68,0.4); }
+    .badge.manual { color: #fbbf24; border-color: rgba(251,191,36,0.45); }
+    .badge.betbra { color: #a5b4fc; border-color: rgba(165,180,252,0.45); }
+    .time { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
     .platform-filters {
       display: flex; flex-wrap: wrap; gap: 8px;
       padding: 0 16px 12px;
@@ -518,8 +521,9 @@
 
     <div id="settleHint" class="auth-banner show" style="margin-bottom:14px;border-color:rgba(201,242,35,0.35);background:rgba(201,242,35,0.08)">
       <strong style="color:var(--lime)">Lançar jogo:</strong>
-      use <strong>Lançar evento manual</strong> (mesmo formulário do site antigo) ou
-      <strong>+ BetBra (cadastrar)</strong> para puxar da casa.
+      use <strong>Lançar evento manual</strong> ou
+      <strong>+ BetBra (cadastrar)</strong> — fluxos separados, <em>não misture</em>.
+      Evento manual nunca é sobrescrito pela BetBra.
       Isso <em>não</em> é Desafio — Desafios ficam em Gestão de Desafios.
       <span style="display:block;margin-top:6px">
         <strong>Encerrar:</strong> aba Encerrar / Eventos ArbiShield → filtro A liquidar → Encerrar partida.
@@ -1406,6 +1410,227 @@
         }
       }
 
+      function matchIsFinished(m) {
+        if (!m) return true;
+        if (m.final_score || m.settled_at) return true;
+        var st = String(m.status || m.status_v2 || "").toLowerCase();
+        return ["settled", "finished", "closed", "cancelled", "finalizado"].indexOf(st) >= 0;
+      }
+
+      /** Kickoff já passou e ainda dentro da janela de jogo (~3h). */
+      function matchIsLiveWindow(m) {
+        if (!m || matchIsFinished(m)) return false;
+        var start = m.starts_at ? new Date(m.starts_at).getTime() : NaN;
+        if (!Number.isFinite(start)) return false;
+        var now = Date.now();
+        return start <= now && start > now - 3 * 60 * 60 * 1000;
+      }
+
+      function matchNeedsSettle(m) {
+        if (!m) return false;
+        if (matchIsFinished(m)) return false;
+        return Number(m.used_protection_cents || 0) > 0 || Number(m._openProtections || 0) > 0;
+      }
+
+      function matchBucket(m) {
+        if (matchIsFinished(m)) return "done";
+        // Ao vivo tem prioridade de badge na janela do jogo (mesmo com proteção aberta)
+        if (matchIsLiveWindow(m)) return "live";
+        // Proteção aberta fora da janela ao vivo → liquidar
+        if (matchNeedsSettle(m)) return "settle";
+        var start = m.starts_at ? new Date(m.starts_at).getTime() : NaN;
+        if (Number.isFinite(start) && start <= Date.now() - 3 * 60 * 60 * 1000) {
+          return "done";
+        }
+        if (!m.is_published) return "draft";
+        if (Number.isFinite(start) && start <= Date.now()) return "live";
+        return "open";
+      }
+
+      /** Origem do evento: manual × BetBra — nunca misturar na UI. */
+      function matchOrigin(m) {
+        var src = String((m && m.metadata && m.metadata.source) || "").toLowerCase();
+        if (src === "admin_manual" || src === "manual") return "manual";
+        if (src === "betbra_prelive_catalog") return "betbra";
+        var markets = Array.isArray(m && m.markets) ? m.markets : [];
+        if (
+          markets.some(function (x) {
+            return x && (x.betbra_market_id || x.betbra_runner_id);
+          })
+        ) {
+          return "betbra";
+        }
+        return "manual";
+      }
+
+      function sortPlatform(rows) {
+        var rank = { settle: 0, live: 1, open: 2, draft: 3, done: 4 };
+        return rows.slice().sort(function (a, b) {
+          var ba = matchBucket(a);
+          var bb = matchBucket(b);
+          if (rank[ba] !== rank[bb]) return rank[ba] - rank[bb];
+          var ta = new Date(a.starts_at || 0).getTime();
+          var tb = new Date(b.starts_at || 0).getTime();
+          if (ba === "done" && bb === "done") return tb - ta;
+          return ta - tb;
+        });
+      }
+
+      function renderPlatformList() {
+        var filtered = sortPlatform(
+          platformMatches.filter(function (m) {
+            if (!filterText(m)) return false;
+            var bucket = matchBucket(m);
+            if (platformFilter === "fila") {
+              return (
+                bucket === "open" ||
+                bucket === "live" ||
+                matchNeedsSettle(m)
+              );
+            }
+            if (platformFilter === "live") return matchIsLiveWindow(m) || bucket === "live";
+            // A liquidar: qualquer proteção aberta (inclui ao vivo)
+            if (platformFilter === "settle") return matchNeedsSettle(m);
+            if (platformFilter === "draft") return bucket === "draft";
+            if (platformFilter === "done") return bucket === "done";
+            return true;
+          })
+        );
+        var counts = { fila: 0, live: 0, settle: 0, draft: 0, done: 0, all: platformMatches.length };
+        platformMatches.forEach(function (m) {
+          var b = matchBucket(m);
+          if (b === "open" || b === "live" || matchNeedsSettle(m)) counts.fila += 1;
+          if (matchIsLiveWindow(m) || b === "live") counts.live += 1;
+          if (matchNeedsSettle(m)) counts.settle += 1;
+          if (b === "draft") counts.draft += 1;
+          if (b === "done") counts.done += 1;
+        });
+        $("platformMeta").textContent =
+          filtered.length +
+          " na vista · ao vivo " +
+          counts.live +
+          " · a liquidar " +
+          counts.settle +
+          " · fila " +
+          counts.fila +
+          " · rascunhos " +
+          counts.draft +
+          " · finalizados " +
+          counts.done;
+
+        if (!filtered.length) {
+          $("platformContent").innerHTML =
+            '<div class="empty">' +
+            (platformFilter === "fila"
+              ? "Nenhum jogo atual/próximo na fila. Use a aba “A liquidar” para jogos com proteção ainda aberta."
+              : platformFilter === "live"
+                ? "Nenhum jogo ao vivo na janela de ~3h após o kickoff."
+              : platformFilter === "settle"
+                ? "Nenhum jogo pendente de liquidação (com proteção aberta)."
+                : "Nenhum jogo encontrado nesta categoria") +
+            "</div>";
+          return;
+        }
+        $("platformContent").innerHTML =
+          '<div class="list">' +
+          filtered
+            .map(function (m) {
+              var bucket = matchBucket(m);
+              var origin = matchOrigin(m);
+              var originBadge =
+                origin === "betbra"
+                  ? '<span class="badge betbra">BetBra</span>'
+                  : '<span class="badge manual">Manual</span>';
+              var badge =
+                bucket === "settle"
+                  ? '<span class="badge live">A liquidar</span>'
+                  : bucket === "live"
+                    ? '<span class="badge live">Ao vivo</span>'
+                    : bucket === "done"
+                      ? '<span class="badge done">Finalizado</span>'
+                      : m.is_published
+                        ? '<span class="badge pub">Na fila</span>'
+                        : '<span class="badge draft">Rascunho</span>';
+              var markets = Array.isArray(m.markets) ? m.markets : [];
+              var names = markets
+                .map(function (x) { return x && x.name; })
+                .filter(Boolean)
+                .slice(0, 3)
+                .join(" · ");
+              var extra =
+                markets.length > 3 ? " + " + (markets.length - 3) + " mais" : "";
+              var publishBtn =
+                bucket === "draft"
+                  ? '<button class="btn btn-primary btn-sm" type="button" data-publish="' +
+                    m.id +
+                    '" style="margin-top:8px">Publicar</button>'
+                  : "";
+              var settleBtn =
+                matchNeedsSettle(m) || bucket === "live" || bucket === "settle"
+                  ? '<button class="btn btn-primary btn-sm" type="button" data-settle="' +
+                    m.id +
+                    '" style="margin-top:8px">Encerrar partida</button>'
+                  : "";
+              var used = Number(m.used_protection_cents || 0);
+              var openN = Number(m._openProtections || 0);
+              var homeLogo = m.home_logo
+                ? '<img src="' +
+                  escHtml(m.home_logo) +
+                  '" alt="" onerror="this.style.display=\'none\'" />'
+                : "";
+              var awayLogo = m.away_logo
+                ? '<img src="' +
+                  escHtml(m.away_logo) +
+                  '" alt="" onerror="this.style.display=\'none\'" />'
+                : "";
+              return (
+                '<div class="row" style="cursor:default">' +
+                "<div><div class=\"teams row-teams-with-logos\">" +
+                homeLogo +
+                "<span>" +
+                escHtml(m.home_team) +
+                "</span><span>vs</span>" +
+                awayLogo +
+                "<span>" +
+                escHtml(m.away_team) +
+                "</span></div>" +
+                '<div class="meta">' +
+                escHtml(m.league || "—") +
+                (names ? " · " + escHtml(names) + extra : "") +
+                "</div>" +
+                '<div class="entries">' +
+                markets.length +
+                " entrada(s) · liquidez " +
+                money(m.max_protection_cents) +
+                (used > 0 ? " · protegido " + money(used) : "") +
+                (openN > 0 ? " · " + openN + " proteção(ões) aberta(s)" : "") +
+                "</div>" +
+                publishBtn +
+                settleBtn +
+                "</div>" +
+                '<div class="time">' +
+                originBadge +
+                badge +
+                '<div class="when">' +
+                fmtDate(m.starts_at) +
+                "</div></div></div>"
+              );
+            })
+            .join("") +
+          "</div>";
+
+        $("platformContent").querySelectorAll("button[data-publish]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            publishMatch(btn.getAttribute("data-publish"), btn);
+          });
+        });
+        $("platformContent").querySelectorAll("button[data-settle]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            openSettleModal(btn.getAttribute("data-settle"));
+          });
+        });
+      }
+
       async function publishMatch(matchId, btn) {
         if (!auth) {
           alert("Faça login admin para publicar.");
@@ -1481,7 +1706,7 @@
         }
         try {
           platformMatches = await rest(
-            "matches?deleted_at=is.null&select=id,home_team,away_team,home_logo,away_logo,league,starts_at,is_published,status,status_v2,final_score,settled_at,max_protection_cents,used_protection_cents,markets&order=starts_at.desc&limit=500",
+            "matches?deleted_at=is.null&select=id,home_team,away_team,home_logo,away_logo,league,starts_at,is_published,status,status_v2,final_score,settled_at,max_protection_cents,used_protection_cents,markets,metadata,external_id&order=starts_at.desc&limit=500",
             auth.token
           );
           // Marca jogos com proteção ainda aberta (LAY + BACK)
@@ -1565,7 +1790,7 @@
             var extra = await rest(
               "matches?id=in.(" +
                 missingIds.map(encodeURIComponent).join(",") +
-                ")&deleted_at=is.null&select=id,home_team,away_team,home_logo,away_logo,league,starts_at,is_published,status,status_v2,final_score,settled_at,max_protection_cents,used_protection_cents,markets",
+                ")&deleted_at=is.null&select=id,home_team,away_team,home_logo,away_logo,league,starts_at,is_published,status,status_v2,final_score,settled_at,max_protection_cents,used_protection_cents,markets,metadata,external_id",
               auth.token
             );
             (extra || []).forEach(function (m) {
