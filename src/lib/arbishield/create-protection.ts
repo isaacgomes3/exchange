@@ -260,9 +260,9 @@ export async function createProtection(
 
   if (balanceType === "REAL") {
     let left = feeCents;
-    let bal =
+    const bal =
       num(profile.balance_cents) + num(profile.reusable_balance_cents);
-    let ded = num(profile.deduction_balance_cents);
+    const ded = num(profile.deduction_balance_cents);
     if (bal >= left) {
       patch = {
         balance_cents: bal - left,
