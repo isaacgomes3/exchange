@@ -3172,6 +3172,76 @@ async function syncBetbraInplayScores({ force = false } = {}) {
   };
 }
 
+const CLIENT_LIVE_WINDOW_MS = 9000 * 1000;
+
+function matchHasClientLiquidity(m) {
+  const markets = Array.isArray(m?.markets) ? m.markets : [];
+  if (markets.length) {
+    const left = markets.reduce((acc, mk) => {
+      if (!mk) return acc;
+      const max = Number(
+        mk.liquidity ?? mk.max_cents ?? mk.max_protection_cents ?? 0
+      );
+      const used = Number(
+        mk.used_liquidity ?? mk.used_cents ?? mk.used_protection_cents ?? 0
+      );
+      return acc + Math.max(0, max - used);
+    }, 0);
+    if (left > 0) return true;
+  }
+  const max = Number(m?.max_protection_cents || 0);
+  const used = Number(m?.used_protection_cents || 0);
+  return max > 0 && used < max;
+}
+
+function isAvailableForClientGrid(m, now = Date.now()) {
+  if (!m || m.deleted_at || m.is_published !== true) return false;
+  const start = new Date(m.starts_at).getTime();
+  if (!Number.isFinite(start)) return false;
+  if (start + CLIENT_LIVE_WINDOW_MS <= now) return false;
+  const meta = m.metadata && typeof m.metadata === "object" ? m.metadata : {};
+  if (meta.hide_from_site || meta.hidden) return false;
+  const st = String(m.status_v2 || m.status || "open").toLowerCase();
+  if (
+    ["closed", "cancelled", "finished", "settled", "finalizado", "void"].includes(
+      st
+    )
+  ) {
+    return false;
+  }
+  const rel = Number(meta.release_minutes_before ?? 0) || 0;
+  if (rel > 0 && now < start - rel * 60_000) return false;
+  if (!matchHasClientLiquidity(m)) return false;
+  return true;
+}
+
+/**
+ * Lista jogos da grade Proteger via service_role (não depende de RLS do cliente).
+ */
+async function listAvailableMatchesForClient() {
+  if (!SERVICE_KEY) {
+    return { ok: false, error: "SERVICE_KEY ausente", matches: [], total: 0 };
+  }
+  const now = Date.now();
+  const windowStart = new Date(now - CLIENT_LIVE_WINDOW_MS).toISOString();
+  const select =
+    "id,home_team,away_team,home_logo,away_logo,league,starts_at,status,status_v2,sport_type,is_published,markets,max_protection_cents,used_protection_cents,protection_odds,metadata,deleted_at";
+  const rows = await sb(
+    `/rest/v1/matches?deleted_at=is.null&is_published=eq.true&starts_at=gte.${encodeURIComponent(windowStart)}&select=${select}&order=starts_at.asc&limit=300`,
+    { token: SERVICE_KEY }
+  );
+  const matches = (Array.isArray(rows) ? rows : []).filter((m) =>
+    isAvailableForClientGrid(m, now)
+  );
+  return {
+    ok: true,
+    matches,
+    total: matches.length,
+    windowStart,
+    at: new Date(now).toISOString(),
+  };
+}
+
 /**
  * Finalizados / fora da janela (~3h) não podem ficar is_published=true.
  * Limpa lixo histórico e evita que a grade do cliente leia dezenas de mortos.
@@ -3418,6 +3488,44 @@ async function handleApi(req, res) {
       return sendJson(res, 500, {
         ok: false,
         error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (
+    url.pathname === "/api/arbishield/matches" &&
+    req.method === "GET"
+  ) {
+    try {
+      // Limpa finalizados publicados antes de listar (barato / idempotente).
+      await unpublishExpiredPublishedMatches().catch(() => null);
+      const result = await listAvailableMatchesForClient();
+      return sendJson(res, result.ok ? 200 : 502, result);
+    } catch (err) {
+      return sendJson(res, 500, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+        matches: [],
+        total: 0,
+      });
+    }
+  }
+
+  if (
+    (url.pathname === "/api/arbishield/available-matches" ||
+      url.pathname === "/api/arbishield/matches/available") &&
+    (req.method === "GET" || req.method === "POST")
+  ) {
+    try {
+      await unpublishExpiredPublishedMatches().catch(() => null);
+      const result = await listAvailableMatchesForClient();
+      return sendJson(res, result.ok ? 200 : 502, result);
+    } catch (err) {
+      return sendJson(res, 500, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+        matches: [],
+        total: 0,
       });
     }
   }

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <meta name="arbishield-build" content="proteger-grade-janela-v8" />
+  <meta name="arbishield-build" content="proteger-grade-api-v9" />
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
@@ -875,28 +875,49 @@
             .eq("status", "active");
           document.getElementById("stAct").textContent = String(act.count || 0);
 
-          // Só busca na janela ativa (kickoff −∞ futuro até +2h30).
-          // Antes: order ASC + limit 150 pegava os 150 mais ANTIGOS publicados
-          // (centenas de finalizados ainda is_published) e omitia jogos atuais.
-          var windowStartIso = new Date(
-            Date.now() - LIVE_WINDOW_MS
-          ).toISOString();
-          var matchesRes = await supa
-            .from("matches")
-            .select(
-              "id,home_team,away_team,home_logo,away_logo,league,starts_at,status,status_v2,sport_type,is_published,markets,max_protection_cents,used_protection_cents,protection_odds,metadata"
-            )
-            .is("deleted_at", null)
-            .eq("is_published", true)
-            .gte("starts_at", windowStartIso)
-            .order("starts_at", { ascending: true })
-            .limit(300);
-          if (matchesRes.error) throw matchesRes.error;
+          // Grade via API (service_role) — RLS do PostgREST bloqueia anon/cliente
+          // em `matches`, então o fetch direto no Supabase vinha sempre vazio.
+          var apiMatches = null;
+          try {
+            var apiRes = await fetch(API_BASE + "/matches", {
+              method: "GET",
+              headers: { Accept: "application/json" },
+              cache: "no-store",
+            });
+            if (apiRes.ok) {
+              var apiJson = await apiRes.json();
+              if (apiJson && Array.isArray(apiJson.matches)) {
+                apiMatches = apiJson.matches;
+              }
+            }
+          } catch (eApi) {
+            apiMatches = null;
+          }
 
-          state.matches = (matchesRes.data || []).filter(function (m) {
-            // Eventos sandbox_test ficam visíveis (DB compartilhada); grade normal
-            return isOnAvailableGrid(m);
-          });
+          if (apiMatches) {
+            state.matches = apiMatches.filter(function (m) {
+              return isOnAvailableGrid(m);
+            });
+          } else {
+            // Fallback: Rest direto (só funciona se RLS liberar publicados)
+            var windowStartIso = new Date(
+              Date.now() - LIVE_WINDOW_MS
+            ).toISOString();
+            var matchesRes = await supa
+              .from("matches")
+              .select(
+                "id,home_team,away_team,home_logo,away_logo,league,starts_at,status,status_v2,sport_type,is_published,markets,max_protection_cents,used_protection_cents,protection_odds,metadata"
+              )
+              .is("deleted_at", null)
+              .eq("is_published", true)
+              .gte("starts_at", windowStartIso)
+              .order("starts_at", { ascending: true })
+              .limit(300);
+            if (matchesRes.error) throw matchesRes.error;
+            state.matches = (matchesRes.data || []).filter(function (m) {
+              return isOnAvailableGrid(m);
+            });
+          }
 
           state.syncIn = 30;
           renderSports();
