@@ -1028,11 +1028,24 @@
           '<div class="team-suggest-loading">Buscando times…</div>'
         );
         try {
-          var data = await apiGet(
-            "/api/arbishield/football-teams?q=" + encodeURIComponent(q)
-          );
+          var teams = [];
+          try {
+            var data = await apiGet(
+              "/api/arbishield/football-teams?q=" + encodeURIComponent(q)
+            );
+            teams = Array.isArray(data.teams) ? data.teams : [];
+          } catch (apiErr) {
+            // API ausente (not_found) → fallback TheSportsDB no browser
+            if (
+              window.ArbiV2 &&
+              typeof ArbiV2.searchFootballTeams === "function"
+            ) {
+              teams = await ArbiV2.searchFootballTeams(q);
+            } else {
+              throw apiErr;
+            }
+          }
           if (seq !== teamSearchSeq[side]) return;
-          var teams = Array.isArray(data.teams) ? data.teams : [];
           if (!teams.length) {
             showTeamSuggest(
               side,
