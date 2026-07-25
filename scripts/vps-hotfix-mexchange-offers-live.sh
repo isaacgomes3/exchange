@@ -69,7 +69,8 @@ for pair in \
   "scripts/lib/exchange-orders-service.mjs:$SCRIPTS_DIR/lib/exchange-orders-service.mjs" \
   "scripts/lib/exchange-orders-contract.mjs:$SCRIPTS_DIR/lib/exchange-orders-contract.mjs" \
   "scripts/lib/betbra-client-api.mjs:$SCRIPTS_DIR/lib/betbra-client-api.mjs" \
-  "deploy/vps-supabase/static/botshield/ordens.html:$WEB/ordens.html"
+  "deploy/vps-supabase/static/botshield/ordens.html:$WEB/ordens.html" \
+  "deploy/vps-supabase/static/botshield/conta-betbra.html:$WEB/conta-betbra.html"
 do
   rel="${pair%%:*}"
   out="${pair#*:}"

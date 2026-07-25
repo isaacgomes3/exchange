@@ -48,8 +48,36 @@
         </button>
       </div>
       <p id="balanceHint" class="notice" style="margin-top:12px">
-        O saldo usa login/senha salvos na API BetBra (IP da VPS). Pode pedir
-        validação de dispositivo na primeira vez.
+        O login da VPS é um dispositivo diferente das suas sessões Chrome.
+        Se aparecer “validação de dispositivo”, use a seção
+        <strong>Sessão do navegador</strong> abaixo.
+      </p>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px">
+      <h2>Sessão do navegador (quando a VPS pede device)</h2>
+      <p>
+        No Chrome (logado na BetBra), abra DevTools → Network → qualquer pedido a
+        <code>mexchange-api.betbra.bet.br</code> → Request Headers → copie o valor de
+        <code>Cookie</code> e cole aqui. Assim o BotShield usa a sua sessão aprovada,
+        sem novo login na VPS.
+      </p>
+      <label style="display:block;margin-top:10px">
+        Cookie header
+        <textarea
+          id="cookieHeader"
+          rows="3"
+          placeholder="BIAB_LANGUAGE=PT_BR; SESSION=...; ..."
+          style="width:100%;margin-top:6px"
+        ></textarea>
+      </label>
+      <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" type="button" id="btnSaveCookies">
+          Salvar sessão do navegador
+        </button>
+      </div>
+      <p id="cookieHint" class="notice" style="margin-top:12px">
+        Cookies ficam criptografados como a senha. Expirem quando você sair da BetBra.
       </p>
     </div>
 
@@ -277,6 +305,47 @@
         } catch (ex) {
           err.textContent = ex instanceof Error ? ex.message : String(ex);
           err.classList.add("show");
+        }
+      });
+
+      document.getElementById("btnSaveCookies").addEventListener("click", async () => {
+        err.classList.remove("show");
+        ok.style.display = "none";
+        const cookieHeader = String(
+          document.getElementById("cookieHeader").value || ""
+        ).trim();
+        const hint = document.getElementById("cookieHint");
+        if (!cookieHeader || cookieHeader.length < 10) {
+          err.textContent = "Cole o header Cookie completo da mexchange-api";
+          err.classList.add("show");
+          return;
+        }
+        hint.textContent = "Salvando sessão…";
+        try {
+          const res = await fetch("/api/arbishield/exchange-session/connect", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + (await bearer()),
+            },
+            body: JSON.stringify({
+              provider: "betbra",
+              cookieHeader,
+            }),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || "Falha ao salvar cookies");
+          ok.style.display = "block";
+          ok.textContent =
+            "Sessão do navegador salva. Tente o place em Minhas ordens.";
+          hint.textContent =
+            "Cookies salvos · authMode=" + (json.authMode || "browser_session");
+          document.getElementById("cookieHeader").value = "";
+          await refreshStatus();
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+          hint.textContent = "Falha ao salvar cookies.";
         }
       });
 

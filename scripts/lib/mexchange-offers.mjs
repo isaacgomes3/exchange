@@ -167,7 +167,10 @@ export function hasTradingSession(session = {}) {
   const token = String(
     session.houseToken || session.accessToken || session.sessionToken || ""
   ).trim();
-  return !!token && !token.startsWith("cred:");
+  if (!token) return false;
+  if (token.startsWith("cred:")) return false;
+  if (token === "browser-session" || token === "demo") return false;
+  return true;
 }
 
 export function extractOfferId(data, fallback = "") {

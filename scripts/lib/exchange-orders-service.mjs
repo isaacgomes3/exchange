@@ -156,20 +156,95 @@ export function createExchangeOrdersService(deps) {
           process.env.EXCHANGE_ORDERS_LIVE === "true",
       };
     }
-    if (!accessToken && !(login && password)) {
+    const hasBrowserSession = !!(
+      String(body?.cookieHeader || body?.cookiesHeader || body?.cookie || "").trim() ||
+      String(body?.houseToken || body?.mexchangeToken || "").trim()
+    );
+    if (!accessToken && !(login && password) && !hasBrowserSession) {
       const err = new Error(
-        "Informe login+senha da BetBra, ou accessToken / sessionToken"
+        "Informe login+senha da BetBra, cookies do navegador, ou accessToken"
       );
       err.status = 400;
       throw err;
     }
-    if (login && !password && provider !== "demo") {
+    if (login && !password && provider !== "demo" && !hasBrowserSession) {
       const err = new Error("Senha da BetBra obrigatória junto com o login");
       err.status = 400;
       throw err;
     }
+    const cookieHeader = String(
+      body?.cookieHeader || body?.cookiesHeader || body?.cookie || ""
+    ).trim();
+    const houseToken = String(
+      body?.houseToken || body?.mexchangeToken || ""
+    ).trim();
+
+    // Atualiza só cookies/token sem apagar login/senha já salvos
+    if ((cookieHeader || houseToken) && !(login && password)) {
+      try {
+        const { conn, session } = await loadActiveConnection(userId, null);
+        if (conn?.provider === provider || !body?.provider) {
+          const next = {
+            ...session,
+            cookieHeader: cookieHeader || session.cookieHeader || null,
+            houseToken: houseToken || session.houseToken || null,
+            accessToken:
+              houseToken ||
+              session.houseToken ||
+              session.accessToken ||
+              "browser-session",
+            authMode: "browser_session",
+          };
+          const sessionEnc = encryptSessionPayload(next);
+          const now = new Date().toISOString();
+          await sb(
+            `/rest/v1/exchange_connections?id=eq.${encodeURIComponent(conn.id)}`,
+            {
+              method: "PATCH",
+              token: serviceKey,
+              body: {
+                session_enc: sessionEnc,
+                metadata: {
+                  ...(conn.metadata && typeof conn.metadata === "object"
+                    ? conn.metadata
+                    : {}),
+                  auth_mode: "browser_session",
+                  has_browser_cookies: !!next.cookieHeader,
+                  has_house_token: !!next.houseToken,
+                },
+                updated_at: now,
+              },
+            }
+          );
+          return {
+            ok: true,
+            connectionId: conn.id,
+            provider: conn.provider,
+            status: "active",
+            demo: false,
+            authMode: "browser_session",
+            hasBrowserCookies: !!next.cookieHeader,
+            reused: true,
+            mergedCookies: true,
+            contract: EXCHANGE_ORDERS_CONTRACT_VERSION,
+            adapter: adapter.provider,
+            live:
+              process.env.EXCHANGE_ORDERS_LIVE === "1" ||
+              process.env.EXCHANGE_ORDERS_LIVE === "true",
+          };
+        }
+      } catch {
+        /* sem conexão prévia — cria abaixo */
+      }
+    }
+
+    // Só cookies/token do navegador (sem login+senha) — útil quando a VPS pede device validation
+    if (!accessToken && !(login && password) && (cookieHeader || houseToken)) {
+      accessToken = houseToken || "browser-session";
+    }
     const payload = {
       accessToken: accessToken || `cred:${login}`,
+      houseToken: houseToken || null,
       refreshToken: body?.refreshToken || null,
       expiresAt: body?.expiresAt || null,
       accountLabel:
@@ -177,14 +252,20 @@ export function createExchangeOrdersService(deps) {
         body?.label ||
         (login ? login : provider === "demo" ? "Conta demo" : null),
       extraHeaders: body?.extraHeaders || null,
+      cookieHeader: cookieHeader || null,
+      cookies: body?.cookies && typeof body.cookies === "object" ? body.cookies : null,
       connectedAt: new Date().toISOString(),
       demo: provider === "demo" || accessToken === "demo",
       login: login || null,
       // senha só no blob AES-GCM — nunca em metadata / response
       password: password || null,
-      authMode: password ? "credentials" : accessToken?.startsWith("cred:")
-        ? "credentials"
-        : "token",
+      authMode: cookieHeader || houseToken
+        ? "browser_session"
+        : password
+          ? "credentials"
+          : accessToken?.startsWith("cred:")
+            ? "credentials"
+            : "token",
     };
     const sessionEnc = encryptSessionPayload(payload);
     const now = new Date().toISOString();
@@ -404,51 +485,66 @@ export function createExchangeOrdersService(deps) {
     }
   }
 
-  async function refreshTradingSession(conn, session) {
+  async function refreshTradingSession(conn, session, { force = false } = {}) {
+    // Já tem cookies/token do navegador — não força login (evita device validation da VPS)
+    if (!force && hasTradingSession(session)) {
+      return session;
+    }
     const login = String(session?.login || "").trim();
     const password = String(session?.password || "").trim();
     if (!login || !password) return session;
-    const result = await betbraLoginAndBalance({ login, password });
-    const next = {
-      ...session,
-      accessToken: result.houseToken || session.accessToken,
-      houseToken: result.houseToken || null,
-      cookies: result.cookies || session.cookies || null,
-      cookieHeader:
-        cookieHeaderFromJar(result.cookies) || session.cookieHeader || null,
-      authMode: "credentials",
-      lastBalance: result.balance,
-      lastBalanceAt: new Date().toISOString(),
-      demo: false,
-    };
     try {
-      const sessionEnc = encryptSessionPayload(next);
-      const meta = {
-        ...(conn.metadata && typeof conn.metadata === "object"
-          ? conn.metadata
-          : {}),
-        has_login: true,
-        auth_mode: "credentials",
-        last_balance: result.balance,
-        last_balance_at: next.lastBalanceAt,
-        has_house_token: !!result.houseToken,
+      const result = await betbraLoginAndBalance({ login, password });
+      const next = {
+        ...session,
+        accessToken: result.houseToken || session.accessToken,
+        houseToken: result.houseToken || null,
+        cookies: result.cookies || session.cookies || null,
+        cookieHeader:
+          cookieHeaderFromJar(result.cookies) || session.cookieHeader || null,
+        authMode: "credentials",
+        lastBalance: result.balance,
+        lastBalanceAt: new Date().toISOString(),
+        demo: false,
       };
-      await sb(
-        `/rest/v1/exchange_connections?id=eq.${encodeURIComponent(conn.id)}`,
-        {
-          method: "PATCH",
-          token: serviceKey,
-          body: {
-            session_enc: sessionEnc,
-            metadata: meta,
-            updated_at: new Date().toISOString(),
-          },
-        }
-      );
-    } catch {
-      /* best-effort */
+      try {
+        const sessionEnc = encryptSessionPayload(next);
+        const meta = {
+          ...(conn.metadata && typeof conn.metadata === "object"
+            ? conn.metadata
+            : {}),
+          has_login: true,
+          auth_mode: "credentials",
+          last_balance: result.balance,
+          last_balance_at: next.lastBalanceAt,
+          has_house_token: !!result.houseToken,
+        };
+        await sb(
+          `/rest/v1/exchange_connections?id=eq.${encodeURIComponent(conn.id)}`,
+          {
+            method: "PATCH",
+            token: serviceKey,
+            body: {
+              session_enc: sessionEnc,
+              metadata: meta,
+              updated_at: new Date().toISOString(),
+            },
+          }
+        );
+      } catch {
+        /* best-effort */
+      }
+      return next;
+    } catch (err) {
+      // Se o login da VPS pediu device validation mas já há cookies salvos, mantém
+      if (
+        err?.code === "BETBRA_DEVICE_VALIDATION" &&
+        hasTradingSession(session)
+      ) {
+        return session;
+      }
+      throw err;
     }
-    return next;
   }
 
   async function placeOrder(token, body) {
@@ -470,12 +566,15 @@ export function createExchangeOrdersService(deps) {
       throw err;
     }
     try {
-      // Antes do place real: renovar cookies/JWT via login sportsbook
+      // Place real: usa cookies salvos; só tenta login VPS se ainda não houver sessão
       if (live) {
-        session = await refreshTradingSession(conn, session);
+        session = await refreshTradingSession(conn, session, {
+          force: !hasTradingSession(session),
+        });
         if (!hasTradingSession(session)) {
           const err = new Error(
-            "Sem cookies/token de trading. Aprove o dispositivo na BetBra e clique Atualizar saldo."
+            "Sem cookies/token de trading. O login da VPS é um dispositivo diferente do Chrome. " +
+              "Cole a sessão do navegador em Conta BetBra, ou aprove o device da VPS por e-mail/SMS."
           );
           err.status = 401;
           err.code = "EXCHANGE_SESSION_REQUIRED";

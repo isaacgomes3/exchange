@@ -155,7 +155,9 @@ export async function betbraClientLogin({ login, password, latitude, longitude }
   }
   if (data?.validationRequired) {
     const err = new Error(
-      "BetBra pediu validação de dispositivo. Faça login no site e aprove o dispositivo, depois tente de novo."
+      "BetBra pediu validação do login da VPS (IP do servidor ≠ suas sessões Chrome). " +
+        "Isso não aparece nas sessões do site. Aprove o novo dispositivo por e-mail/SMS, " +
+        "ou cole cookies da exchange em Conta BetBra → Sessão do navegador."
     );
     err.status = 403;
     err.code = "BETBRA_DEVICE_VALIDATION";
