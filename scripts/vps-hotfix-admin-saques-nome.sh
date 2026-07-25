@@ -36,6 +36,7 @@ publish() {
 publish deploy/vps-supabase/static/v2/v2-pages.js
 publish deploy/vps-supabase/static/v2/admin-saques.html
 publish deploy/vps-supabase/static/v2/admin-transactions.html
+publish deploy/vps-supabase/static/v2/admin-refunds.js
 publish deploy/vps-supabase/static/v2/admin-refunds.html
 publish deploy/vps-supabase/static/v2/admin-manual-deposits.html
 
