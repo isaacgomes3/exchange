@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Hotfix: religa catálogo/API BetBra no worker :3098
-# v2: restaura lista de eventos da plataforma + não mistura manual × BetBra
+# v3: autocomplete manual com mercados/odd LAY|BACK + link BetBra
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/2e3007329389253086ac3a10b81ea3de1aa5fbe1/scripts/vps-hotfix-reconectar-betbra-api.sh?v=2")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/BRANCH_OR_SHA/scripts/vps-hotfix-reconectar-betbra-api.sh?v=3")
 #
 # Se a VPS estiver fora do Brasil e a BetBra bloquear (Cloudflare),
 # configure proxy em /opt/arbishield/.arbishield-odds-sync.env:
@@ -12,14 +12,14 @@
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/reconectar-betbra-api-3cf9}"
-REF="${ARBISHIELD_REF:-eeb9af823cf9969913c2f89739dfdf4bfe2dd4f0}"
+REF="${ARBISHIELD_REF:-cursor/reconectar-betbra-api-3cf9}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
 PRELIVE_DIR="${ARBISHIELD_PRELIVE_DIR:-/opt/arbishield}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
 ENV_FILE="${ARBISHIELD_ODDS_ENV:-/opt/arbishield/.arbishield-odds-sync.env}"
-MARKER="betbra-api-v2"
+MARKER="betbra-api-v3"
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
@@ -46,6 +46,10 @@ grep -q 'async function createManualMatch' "$PRELIVE_DST" \
   || die "prelive sem createManualMatch (manual deve continuar)"
 grep -q 'MANUAL_EXTERNAL_ID_CONFLICT' "$PRELIVE_DST" \
   || die "prelive sem guarda anti-mistura manual×BetBra"
+grep -q 'function runnerOddsDetail' "$PRELIVE_DST" \
+  || die "prelive sem runnerOddsDetail (LAY/BACK no autocomplete manual)"
+grep -q 'layOdd' "$PRELIVE_DST" \
+  || die "prelive sem layOdd no payload de mercados"
 ! grep -q 'Catálogo BetBra removido' "$PRELIVE_DST" \
   || die "prelive ainda retorna 410 do catálogo"
 
@@ -91,6 +95,10 @@ grep -q 'badge manual' "$WEB/admin-jogos.html" \
   || die "admin-jogos sem badge Manual"
 grep -q 'não misture' "$WEB/admin-jogos.html" \
   || die "admin-jogos sem aviso de não misturar"
+grep -q 'manBetbraSearch' "$WEB/admin-jogos.html" \
+  || die "admin-jogos sem autocomplete BetBra no lançamento manual"
+grep -q 'manExternalBetLink' "$WEB/admin-jogos.html" \
+  || die "admin-jogos sem campo de link do mercado"
 
 log "health"
 BODY="$(curl -fsS --max-time 8 http://127.0.0.1:3098/health || true)"
@@ -116,6 +124,6 @@ if isinstance(items, list) and items:
 PY
 
 echo
-echo "OK — BetBra reconectada sem misturar manuais ($MARKER)"
-echo "  https://arbishield.app/v2/admin-jogos.html  → aba Encerrar / Eventos (Ctrl+F5)"
-echo "  Manuais e BetBra ficam separados."
+echo "OK — BetBra + autocomplete manual ($MARKER)"
+echo "  https://arbishield.app/v2/admin-jogos.html  → Lançar evento manual (Ctrl+F5)"
+echo "  Busque na BetBra, escolha LAY/BACK — salva como evento MANUAL."

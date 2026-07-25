@@ -164,8 +164,8 @@ function priceSide(p) {
     .toLowerCase();
 }
 
-/** Melhor odd disponível: back → lay → last-matched (exchange pode só ter um lado). */
-function runnerBestOdd(runner) {
+/** Odd por lado + preferência (LAY primeiro — alinhado à proteção ArbiShield). */
+function runnerOddsDetail(runner) {
   const prices = Array.isArray(runner?.prices)
     ? runner.prices
     : Array.isArray(runner?.Prices)
@@ -175,18 +175,37 @@ function runnerBestOdd(runner) {
     .filter((p) => priceSide(p) === "back")
     .map(priceDecimal)
     .filter((n) => n != null);
-  if (backs.length) {
-    return Number(Math.max(...backs).toFixed(3));
-  }
   const lays = prices
     .filter((p) => priceSide(p) === "lay")
     .map(priceDecimal)
     .filter((n) => n != null);
-  if (lays.length) {
-    return Number(Math.min(...lays).toFixed(3));
+  const backOdd = backs.length
+    ? Number(Math.max(...backs).toFixed(3))
+    : null;
+  const layOdd = lays.length ? Number(Math.min(...lays).toFixed(3)) : null;
+  const lastRaw = runner?.["last-matched-odds"] ?? runner?.lastMatchedOdds;
+  const lastMatched =
+    typeof lastRaw === "number" && lastRaw > 1
+      ? Number(lastRaw.toFixed(3))
+      : null;
+  let preferredSide = null;
+  let odd = null;
+  if (layOdd != null) {
+    preferredSide = "LAY";
+    odd = layOdd;
+  } else if (backOdd != null) {
+    preferredSide = "BACK";
+    odd = backOdd;
+  } else if (lastMatched != null) {
+    preferredSide = "LAY";
+    odd = lastMatched;
   }
-  const last = runner?.["last-matched-odds"] ?? runner?.lastMatchedOdds;
-  return typeof last === "number" && last > 1 ? Number(last.toFixed(3)) : null;
+  return { odd, layOdd, backOdd, preferredSide, lastMatched };
+}
+
+/** Melhor odd disponível: lay → back → last-matched. */
+function runnerBestOdd(runner) {
+  return runnerOddsDetail(runner).odd;
 }
 
 function eventLink(sportId, eventId) {
@@ -267,28 +286,35 @@ async function getPreliveEventMarkets(eventId, sportId = SOCCER_ID) {
   let withPrices = 0;
   let withOdd = 0;
 
+  const resolvedSportId = detail["sport-id"] || sportId || SOCCER_ID;
   const markets = (detail.markets || [])
     .map((market) => {
+      const marketId = String(market.id);
       const runners = (market.runners || [])
         .map((runner) => {
           runnersTotal += 1;
           const prices = runner.prices || runner.Prices || [];
           if (Array.isArray(prices) && prices.length) withPrices += 1;
-          const odd = runnerBestOdd(runner);
-          if (odd != null) withOdd += 1;
+          const detailOdds = runnerOddsDetail(runner);
+          if (detailOdds.odd != null) withOdd += 1;
           return {
             runnerId: String(runner.id),
             name: runner.name || "—",
-            odd,
+            odd: detailOdds.odd,
+            layOdd: detailOdds.layOdd,
+            backOdd: detailOdds.backOdd,
+            preferredSide: detailOdds.preferredSide,
+            lastMatched: detailOdds.lastMatched,
           };
         })
         .filter((r) => r.name !== "—");
       if (!runners.length) return null;
       return {
-        marketId: String(market.id),
+        marketId,
         name: market.name || "Mercado",
         marketType: market["market-type"] || market.type,
         status: market.status,
+        betbraLink: marketLink(resolvedSportId, eventId, marketId),
         runners,
         hasOdds: runners.some((r) => r.odd != null),
       };
@@ -301,7 +327,10 @@ async function getPreliveEventMarkets(eventId, sportId = SOCCER_ID) {
     });
 
   return {
-    event,
+    event: {
+      ...event,
+      betbraLink: eventLink(resolvedSportId, eventId),
+    },
     markets,
     oddsMeta: {
       runnersTotal,
@@ -2509,7 +2538,7 @@ async function handleApi(req, res) {
     return sendJson(res, 200, {
       ok: true,
       service: "arbishield-matches",
-      fix: "betbra-api-v2",
+      fix: "betbra-api-v3",
     });
   }
 

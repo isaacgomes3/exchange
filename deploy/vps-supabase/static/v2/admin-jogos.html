@@ -266,6 +266,29 @@
     .badge.manual { color: #fbbf24; border-color: rgba(251,191,36,0.45); }
     .badge.betbra { color: #a5b4fc; border-color: rgba(165,180,252,0.45); }
     .time { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+    .betbra-assist {
+      margin: 0 0 18px; padding: 14px 16px; border: 1px solid rgba(165,180,252,0.35);
+      border-radius: 14px; background: rgba(99,102,241,0.08);
+    }
+    .betbra-assist h4 {
+      margin: 0 0 6px; font-size: 12px; letter-spacing: 0.08em;
+      text-transform: uppercase; color: #c7d2fe;
+    }
+    .betbra-assist .assist-status { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+    .betbra-assist .assist-markets { margin-top: 12px; display: grid; gap: 10px; }
+    .betbra-assist .assist-market {
+      border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px;
+      background: rgba(0,0,0,0.2);
+    }
+    .betbra-assist .assist-market strong { display: block; margin-bottom: 8px; font-size: 13px; }
+    .betbra-assist .assist-runners { display: flex; flex-wrap: wrap; gap: 8px; }
+    .betbra-assist .assist-pick {
+      border: 1px solid var(--border); background: transparent; color: var(--text);
+      border-radius: 10px; padding: 8px 10px; cursor: pointer; text-align: left;
+      font-size: 12px; line-height: 1.35;
+    }
+    .betbra-assist .assist-pick:hover { border-color: rgba(165,180,252,0.7); color: #c7d2fe; }
+    .betbra-assist .assist-pick small { display: block; color: var(--muted); font-size: 10px; }
     .platform-filters {
       display: flex; flex-wrap: wrap; gap: 8px;
       padding: 0 16px 12px;
@@ -638,6 +661,21 @@
       <h3>Lançar evento <span>manual</span></h3>
       <p class="hint">Página completa · mesmo formulário do site antigo · Gestão de Jogos (não é Desafio)</p>
 
+      <div class="betbra-assist" id="manBetbraAssist">
+        <h4>Autocomplete BetBra (opcional)</h4>
+        <p class="hint" style="margin:0 0 10px">
+          Busca jogo na API, puxa mercado, odd LAY/BACK e o link direto.
+          Continua salvando como <strong>evento manual</strong> — não mistura com o cadastro BetBra.
+        </p>
+        <div class="field" style="margin:0;position:relative">
+          <label for="manBetbraSearch">Buscar jogo na BetBra</label>
+          <input id="manBetbraSearch" type="search" placeholder="Ex: Flamengo, Serie B…" autocomplete="off" />
+          <div class="team-suggest" id="manBetbraSuggest" role="listbox" hidden></div>
+        </div>
+        <p class="assist-status" id="manBetbraStatus">Digite para buscar jogos pré-live de hoje.</p>
+        <div class="assist-markets" id="manBetbraMarkets" hidden></div>
+      </div>
+
       <div class="toggle-row">
         <div>
           <div class="t">Liberar proteção</div>
@@ -737,15 +775,20 @@
         </div>
       </div>
       <div class="field">
-        <label for="manExternalId">ID do jogo</label>
-        <input id="manExternalId" placeholder="Ex: 10574843" />
+        <label for="manExternalId">ID do jogo (opcional — não use ID da BetBra)</label>
+        <input id="manExternalId" placeholder="Deixe em branco ou use ID próprio" />
+        <p class="hint" style="margin:6px 0 0">Para não misturar com o catálogo BetBra, evite colar o eventId da casa aqui.</p>
+      </div>
+      <div class="field">
+        <label for="manExternalBetLink">Link do mercado (BetBra / casa)</label>
+        <input id="manExternalBetLink" placeholder="https://betbra.bet.br/…/market/…" autocomplete="off" />
       </div>
 
       <div class="sec-label" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
         <span>Mercados de proteção</span>
         <button type="button" class="btn btn-primary btn-sm" id="btnAddMarket">+ Adicionar mercado</button>
       </div>
-      <p class="hint" style="margin:0 0 12px">Busque o mercado pelo nome (autocomplete). LAY/BACK é inferido pelo nome (ex.: Lay Casa / Back Casa). Se remover todos, ao salvar cria LAY HOME @ 2.00 com R$ 2.000.</p>
+      <p class="hint" style="margin:0 0 12px">Busque o mercado pelo nome ou use o autocomplete BetBra acima (odd + LAY/BACK + link). Se remover todos, ao salvar cria LAY HOME @ 2.00 com R$ 2.000.</p>
       <div id="manMarkets"></div>
 
       <div class="drawer-actions">
@@ -2067,6 +2110,8 @@
         }
         host.innerHTML = manualMarkets
           .map(function (m, idx) {
+            var side = String(m.market_type || inferMarketType(m.name) || "LAY").toUpperCase();
+            if (side !== "BACK") side = "LAY";
             return (
               '<div class="market-card" data-idx="' + idx + '">' +
               '<div class="mh"><strong>Mercado ' + (idx + 1) + "</strong>" +
@@ -2076,16 +2121,21 @@
               '" placeholder="Digite para sugerir… Ex: Lay Casa / Back Casa / Mais 2.5 gols" autocomplete="off" />' +
               '<div class="market-suggest" hidden></div></div>' +
               '<div class="grid2">' +
-              '<div class="field"><label>ID externo</label>' +
-              '<input data-f="external_id" value="' + String(m.external_id || "").replace(/"/g, "&quot;") + '" placeholder="Ex: 1.22456" /></div>' +
+              '<div class="field"><label>Lado</label>' +
+              '<select data-f="market_type">' +
+              '<option value="LAY"' + (side === "LAY" ? " selected" : "") + ">LAY</option>" +
+              '<option value="BACK"' + (side === "BACK" ? " selected" : "") + ">BACK</option>" +
+              "</select></div>" +
               '<div class="field"><label>Odd</label>' +
               '<input data-f="odd" inputmode="decimal" value="' + (m.odd != null && m.odd !== "" ? m.odd : "2.00") + '" placeholder="Ex: 2.00" /></div>' +
               '</div><div class="grid2">' +
+              '<div class="field"><label>ID externo</label>' +
+              '<input data-f="external_id" value="' + String(m.external_id || "").replace(/"/g, "&quot;") + '" placeholder="Ex: market:runner" /></div>' +
               '<div class="field"><label>Liquidez real (R$)</label>' +
               '<input data-f="liquidity_brl" inputmode="decimal" value="' + (m.liquidity_brl != null && m.liquidity_brl !== "" ? m.liquidity_brl : "2000") + '" placeholder="Ex: 2000" /></div>' +
-              '<div class="field"><label>Liquidez exibida (R$) — opcional</label>' +
+              '</div><div class="field"><label>Liquidez exibida (R$) — opcional</label>' +
               '<input data-f="display_brl" inputmode="decimal" value="' + (m.display_brl != null ? m.display_brl : "") + '" placeholder="O que o usuário vê" /></div>' +
-              "</div></div>"
+              "</div>"
             );
           })
           .join("");
@@ -2114,8 +2164,9 @@
             return el ? el.value : "";
           };
           var name = get("name");
+          var side = String(get("market_type") || inferMarketType(name) || "LAY").toUpperCase();
           return {
-            market_type: inferMarketType(name) || "LAY",
+            market_type: side === "BACK" ? "BACK" : "LAY",
             name: name,
             external_id: get("external_id"),
             odd: get("odd"),
@@ -2123,6 +2174,393 @@
             display_brl: get("display_brl"),
           };
         });
+      }
+
+      var manualBetbraEvents = [];
+      var manualBetbraEventsLoaded = false;
+      var manualBetbraSearchTimer = null;
+      var manualBetbraSearchSeq = 0;
+      var manualBetbraSelected = null;
+
+      function toDatetimeLocalValue(iso) {
+        var d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return "";
+        var pad = function (n) {
+          return String(n).padStart(2, "0");
+        };
+        return (
+          d.getFullYear() +
+          "-" +
+          pad(d.getMonth() + 1) +
+          "-" +
+          pad(d.getDate()) +
+          "T" +
+          pad(d.getHours()) +
+          ":" +
+          pad(d.getMinutes())
+        );
+      }
+
+      function setManBetbraStatus(msg) {
+        var el = $("manBetbraStatus");
+        if (el) el.textContent = msg || "";
+      }
+
+      function hideManBetbraSuggest() {
+        var box = $("manBetbraSuggest");
+        if (!box) return;
+        box.hidden = true;
+        box.classList.remove("show");
+        box.innerHTML = "";
+      }
+
+      function showManBetbraSuggest(html) {
+        var box = $("manBetbraSuggest");
+        if (!box) return;
+        box.innerHTML = html;
+        box.hidden = false;
+        box.classList.add("show");
+      }
+
+      async function ensureManualBetbraEvents() {
+        if (manualBetbraEventsLoaded && manualBetbraEvents.length) {
+          return manualBetbraEvents;
+        }
+        var data = await apiGet("/api/arbishield/prelive-events");
+        manualBetbraEvents = Array.isArray(data.events) ? data.events : [];
+        manualBetbraEventsLoaded = true;
+        return manualBetbraEvents;
+      }
+
+      async function tryAutofillTeamLogo(side, teamName) {
+        var q = String(teamName || "").trim();
+        if (q.length < 2) return;
+        try {
+          var data = await apiGet(
+            "/api/arbishield/football-teams?q=" + encodeURIComponent(q)
+          );
+          var teams = Array.isArray(data.teams) ? data.teams : [];
+          if (!teams.length) return;
+          var qn = q.toLowerCase();
+          var best =
+            teams.find(function (t) {
+              return String(t.name || "").toLowerCase() === qn;
+            }) || teams[0];
+          if (best) selectFootballTeam(side, best);
+        } catch (e) {}
+      }
+
+      function applyManualBetbraEventFields(ev) {
+        if (!ev) return;
+        $("manHome").value = ev.homeTeam || "";
+        $("manAway").value = ev.awayTeam || "";
+        $("manLeague").value = ev.league || "";
+        $("manStarts").value = toDatetimeLocalValue(ev.startsAt);
+        $("manSport").value = "futebol";
+        // Nunca cola eventId BetBra em ID do jogo (evita misturar com catálogo)
+        $("manExternalId").value = "";
+        if ($("manExternalBetLink") && ev.betbraLink) {
+          $("manExternalBetLink").value = ev.betbraLink;
+        }
+        tryAutofillTeamLogo("home", ev.homeTeam);
+        tryAutofillTeamLogo("away", ev.awayTeam);
+      }
+
+      function applyManualBetbraSelection(ev, market, runner, side) {
+        side = String(side || runner.preferredSide || "LAY").toUpperCase();
+        if (side !== "BACK") side = "LAY";
+        var odd =
+          side === "BACK"
+            ? runner.backOdd != null
+              ? runner.backOdd
+              : runner.odd
+            : runner.layOdd != null
+              ? runner.layOdd
+              : runner.odd;
+        if (odd == null || !(Number(odd) > 1)) {
+          alert("Esta seleção está sem odd " + side + " na BetBra.");
+          return;
+        }
+        applyManualBetbraEventFields(ev);
+        var link = market.betbraLink || (ev.betbraLink + "/market/" + market.marketId);
+        if ($("manExternalBetLink")) $("manExternalBetLink").value = link;
+        var labelSide = side === "BACK" ? "Back" : "Lay";
+        var mktName = market.name || "Mercado";
+        var runName = runner.name || "";
+        var name =
+          mktName.toLowerCase().indexOf(runName.toLowerCase()) >= 0
+            ? labelSide + " · " + mktName
+            : labelSide + " · " + mktName + " · " + runName;
+        syncManualMarketsFromDom();
+        var liq =
+          manualMarkets[0] && manualMarkets[0].liquidity_brl
+            ? manualMarkets[0].liquidity_brl
+            : "2000";
+        manualMarkets = [
+          {
+            market_type: side,
+            name: name,
+            external_id: market.marketId + ":" + runner.runnerId,
+            odd: String(odd),
+            liquidity_brl: liq,
+            display_brl: "",
+          },
+        ];
+        renderManualMarkets();
+        setManBetbraStatus(
+          "Preenchido: " +
+            (ev.homeTeam || "") +
+            " vs " +
+            (ev.awayTeam || "") +
+            " · " +
+            side +
+            " @" +
+            odd +
+            " · link do mercado aplicado. Salva como evento MANUAL."
+        );
+      }
+
+      function renderManualBetbraMarkets(data) {
+        var host = $("manBetbraMarkets");
+        if (!host) return;
+        var markets = (data.markets || []).filter(function (m) {
+          return (m.runners || []).some(function (r) {
+            return r.layOdd != null || r.backOdd != null || r.odd != null;
+          });
+        });
+        if (!markets.length) {
+          host.hidden = false;
+          host.innerHTML =
+            '<div class="empty" style="margin:0">Nenhum mercado com odd neste jogo.</div>';
+          return;
+        }
+        host.hidden = false;
+        host.innerHTML = markets
+          .map(function (market, mi) {
+            var runnersHtml = (market.runners || [])
+              .map(function (runner, ri) {
+                var bits = [];
+                if (runner.layOdd != null) {
+                  bits.push(
+                    '<button type="button" class="assist-pick" data-mi="' +
+                      mi +
+                      '" data-ri="' +
+                      ri +
+                      '" data-side="LAY">' +
+                      escHtml(runner.name) +
+                      " · LAY @" +
+                      runner.layOdd +
+                      "<small>Usar no lançamento manual</small></button>"
+                  );
+                }
+                if (runner.backOdd != null) {
+                  bits.push(
+                    '<button type="button" class="assist-pick" data-mi="' +
+                      mi +
+                      '" data-ri="' +
+                      ri +
+                      '" data-side="BACK">' +
+                      escHtml(runner.name) +
+                      " · BACK @" +
+                      runner.backOdd +
+                      "<small>Usar no lançamento manual</small></button>"
+                  );
+                }
+                if (!bits.length && runner.odd != null) {
+                  var side = runner.preferredSide || "LAY";
+                  bits.push(
+                    '<button type="button" class="assist-pick" data-mi="' +
+                      mi +
+                      '" data-ri="' +
+                      ri +
+                      '" data-side="' +
+                      side +
+                      '">' +
+                      escHtml(runner.name) +
+                      " · " +
+                      side +
+                      " @" +
+                      runner.odd +
+                      "<small>Usar no lançamento manual</small></button>"
+                  );
+                }
+                return bits.join("");
+              })
+              .join("");
+            if (!runnersHtml) return "";
+            return (
+              '<div class="assist-market"><strong>' +
+              escHtml(market.name || "Mercado") +
+              '</strong><div class="assist-runners">' +
+              runnersHtml +
+              "</div></div>"
+            );
+          })
+          .filter(Boolean)
+          .join("");
+
+        host.querySelectorAll(".assist-pick").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var mi = Number(btn.getAttribute("data-mi"));
+            var ri = Number(btn.getAttribute("data-ri"));
+            var side = btn.getAttribute("data-side") || "LAY";
+            var market = markets[mi];
+            var runner = market && market.runners && market.runners[ri];
+            if (!manualBetbraSelected || !market || !runner) return;
+            applyManualBetbraSelection(
+              manualBetbraSelected,
+              market,
+              runner,
+              side
+            );
+          });
+        });
+      }
+
+      async function pickManualBetbraEvent(ev) {
+        manualBetbraSelected = ev;
+        hideManBetbraSuggest();
+        if ($("manBetbraSearch")) {
+          $("manBetbraSearch").value =
+            (ev.homeTeam || "") + " vs " + (ev.awayTeam || "");
+        }
+        applyManualBetbraEventFields(ev);
+        setManBetbraStatus("Carregando mercados e odds da BetBra…");
+        var host = $("manBetbraMarkets");
+        if (host) {
+          host.hidden = false;
+          host.innerHTML = '<div class="loading" style="margin:0">Carregando mercados…</div>';
+        }
+        try {
+          var data = await apiGet(
+            "/api/arbishield/prelive-events?eventId=" +
+              encodeURIComponent(ev.eventId) +
+              "&sportId=" +
+              encodeURIComponent(ev.sportId || "15")
+          );
+          if (data.event) manualBetbraSelected = data.event;
+          renderManualBetbraMarkets(data);
+          var meta = data.oddsMeta || {};
+          setManBetbraStatus(
+            "Escolha LAY ou BACK abaixo — odd e link do mercado preenchem o formulário manual." +
+              (meta.withOdd != null
+                ? " · " + meta.withOdd + " seleções com odd"
+                : "")
+          );
+        } catch (err) {
+          if (host) {
+            host.innerHTML =
+              '<div class="error" style="margin:0">' +
+              escHtml(err.message || "Falha ao carregar mercados") +
+              "</div>";
+          }
+          setManBetbraStatus(err.message || "Falha ao carregar mercados");
+        }
+      }
+
+      async function searchManualBetbra(query) {
+        var q = String(query || "").trim().toLowerCase();
+        var seq = ++manualBetbraSearchSeq;
+        if (q.length < 2) {
+          hideManBetbraSuggest();
+          setManBetbraStatus("Digite ao menos 2 letras para buscar na BetBra.");
+          return;
+        }
+        showManBetbraSuggest(
+          '<div class="team-suggest-loading">Buscando na BetBra…</div>'
+        );
+        try {
+          var events = await ensureManualBetbraEvents();
+          if (seq !== manualBetbraSearchSeq) return;
+          var matches = events
+            .filter(function (ev) {
+              var blob = [
+                ev.homeTeam,
+                ev.awayTeam,
+                ev.league,
+                ev.eventName,
+              ]
+                .join(" ")
+                .toLowerCase();
+              return blob.indexOf(q) >= 0;
+            })
+            .slice(0, 20);
+          if (!matches.length) {
+            showManBetbraSuggest(
+              '<div class="team-suggest-empty">Nenhum jogo pré-live encontrado</div>'
+            );
+            setManBetbraStatus("Sem resultados para “" + query + "”.");
+            return;
+          }
+          showManBetbraSuggest(
+            matches
+              .map(function (ev, idx) {
+                return (
+                  '<button type="button" class="team-suggest-item" data-idx="' +
+                  idx +
+                  '" role="option"><span class="meta"><span class="name">' +
+                  escHtml((ev.homeTeam || "") + " vs " + (ev.awayTeam || "")) +
+                  '</span><span class="sub">' +
+                  escHtml(ev.league || "—") +
+                  " · " +
+                  escHtml(fmtDate(ev.startsAt)) +
+                  "</span></span></button>"
+                );
+              })
+              .join("")
+          );
+          var box = $("manBetbraSuggest");
+          box.querySelectorAll(".team-suggest-item").forEach(function (btn) {
+            btn.addEventListener("mousedown", function (evn) {
+              evn.preventDefault();
+              var i = Number(btn.getAttribute("data-idx"));
+              if (Number.isFinite(i) && matches[i]) pickManualBetbraEvent(matches[i]);
+            });
+          });
+          setManBetbraStatus(matches.length + " jogo(s) — clique para carregar mercados.");
+        } catch (err) {
+          if (seq !== manualBetbraSearchSeq) return;
+          showManBetbraSuggest(
+            '<div class="team-suggest-empty">' +
+              escHtml(err.message || "Falha na busca BetBra") +
+              "</div>"
+          );
+          setManBetbraStatus(err.message || "Falha na busca BetBra");
+        }
+      }
+
+      function bindManualBetbraAssist() {
+        var input = $("manBetbraSearch");
+        if (!input) return;
+        input.addEventListener("input", function () {
+          clearTimeout(manualBetbraSearchTimer);
+          manualBetbraSearchTimer = setTimeout(function () {
+            searchManualBetbra(input.value);
+          }, 220);
+        });
+        input.addEventListener("focus", function () {
+          if ((input.value || "").trim().length >= 2) {
+            searchManualBetbra(input.value);
+          }
+        });
+        input.addEventListener("blur", function () {
+          setTimeout(hideManBetbraSuggest, 180);
+        });
+        input.addEventListener("keydown", function (ev) {
+          if (ev.key === "Escape") hideManBetbraSuggest();
+        });
+      }
+
+      function resetManualBetbraAssist() {
+        manualBetbraSelected = null;
+        if ($("manBetbraSearch")) $("manBetbraSearch").value = "";
+        hideManBetbraSuggest();
+        var host = $("manBetbraMarkets");
+        if (host) {
+          host.hidden = true;
+          host.innerHTML = "";
+        }
+        setManBetbraStatus("Digite para buscar jogos pré-live de hoje.");
       }
 
       function openManualDrawer() {
@@ -2141,10 +2579,12 @@
         hideTeamSuggest("away");
         $("manLeague").value = "";
         $("manExternalId").value = "";
+        if ($("manExternalBetLink")) $("manExternalBetLink").value = "";
         $("manSport").value = "futebol";
         $("manStatus").value = "open";
         $("manStarts").value = "";
         if ($("manReleaseMinutes")) $("manReleaseMinutes").value = "60";
+        resetManualBetbraAssist();
         ["manLiberarProtecao", "manLiberarLive", "manEsconder"].forEach(function (id) {
           var el = $(id);
           if (!el) return;
@@ -2221,9 +2661,10 @@
           var odd = Number(String(m.odd).replace(",", "."));
           var liqBrl = parseMoneyToNumber(m.liquidity_brl);
           var dispBrl = parseMoneyToNumber(m.display_brl);
+          var side = String(m.market_type || inferMarketType(m.name) || "LAY").toUpperCase();
           return {
             name: m.name || "LAY HOME",
-            market_type: inferMarketType(m.name) || m.market_type || "LAY",
+            market_type: side === "BACK" ? "BACK" : "LAY",
             external_id: m.external_id || null,
             odd: odd,
             liquidity_brl: liqBrl != null ? liqBrl : 2000,
@@ -2239,6 +2680,9 @@
             ($("manReleaseMinutes") && $("manReleaseMinutes").value) || 60
           );
           if (![0, 15, 30, 60, 120].includes(releaseMinutes)) releaseMinutes = 60;
+          var betLink =
+            ($("manExternalBetLink") && $("manExternalBetLink").value.trim()) ||
+            null;
           var result = await apiPost("/api/arbishield/matches", {
             mode: "manual",
             home_team: home,
@@ -2255,7 +2699,11 @@
             has_live_stream: $("manLiberarLive") && $("manLiberarLive").classList.contains("on"),
             hide_from_site: $("manEsconder") && $("manEsconder").classList.contains("on"),
             release_minutes_before: releaseMinutes,
-            external_bet_link: null,
+            external_bet_link: betLink,
+            external_bet_name: betLink ? "BetBra" : null,
+            external_bet_logo: betLink
+              ? "https://betbra.bet.br/favicon.ico"
+              : null,
             markets: markets,
           });
           closeManualDrawer();
@@ -2525,6 +2973,7 @@
         bindSwitch("manLiberarProtecao");
         bindSwitch("manLiberarLive");
         bindSwitch("manEsconder");
+        bindManualBetbraAssist();
         $("btnAddMatch").addEventListener("click", openNormalLaunch);
         if ($("btnManualMatch")) {
           $("btnManualMatch").addEventListener("click", openManualDrawer);
