@@ -7,11 +7,11 @@
   <title>Gestão de Proteções — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="espelho-protecoes-v1" />
-  <link rel="stylesheet" href="/v2.css?v=espelho-protecoes-1" />
+  <meta name="arbishield-build" content="protecoes-resultado-reembolso-v1" />
+  <link rel="stylesheet" href="/v2.css?v=protecoes-resultado-1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=espelho-protecoes-1"></script>
-  <script src="/v2-shell.js?v=espelho-protecoes-1" defer></script>
+  <script src="/v2.js?v=protecoes-resultado-1"></script>
+  <script src="/v2-shell.js?v=protecoes-resultado-1" defer></script>
   <style>
     .prot-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 16px; align-items: start; }
     @media (max-width: 960px) {
@@ -23,14 +23,14 @@
     }
     /* Mesmo padrão visual de Proteger Aposta — Mercado priorizado */
     .prot-term-panel { background: transparent; border: 0; overflow: visible; }
-    .prot-term-panel .term-table-head {
+      .prot-term-panel .term-table-head {
       display: grid;
-      grid-template-columns: 72px minmax(120px, 0.9fr) minmax(88px, 0.5fr) 84px minmax(180px, 1.5fr) 108px 118px;
+      grid-template-columns: 72px minmax(120px, 0.9fr) minmax(88px, 0.5fr) 84px minmax(160px, 1.35fr) 100px minmax(140px, 1.1fr);
       gap: 10px;
     }
     .prot-list.term-list { gap: 12px; padding: 2px 2px 8px; min-height: 180px; }
     .prot-list .term-row {
-      grid-template-columns: 72px minmax(120px, 0.9fr) minmax(88px, 0.5fr) 84px minmax(180px, 1.5fr) 108px 118px;
+      grid-template-columns: 72px minmax(120px, 0.9fr) minmax(88px, 0.5fr) 84px minmax(160px, 1.35fr) 100px minmax(140px, 1.1fr);
       gap: 10px;
       cursor: pointer;
     }
@@ -86,8 +86,12 @@
     }
     .prot-list .term-col-status {
       display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
       justify-content: flex-end;
       align-items: center;
+      gap: 6px 10px;
+      text-align: right;
     }
     .prot-badge {
       display: inline-flex; align-items: center; justify-content: center;
@@ -103,6 +107,21 @@
       background: rgba(220, 50, 50, 0.88);
     }
     .prot-badge.settled { border-color: rgba(201,242,35,0.35); color: #c9f223; }
+    .prot-badge.won { border-color: rgba(201,242,35,0.55); color: #c9f223; background: rgba(201,242,35,0.1); }
+    .prot-badge.lost { border-color: rgba(248,113,113,0.4); color: #fca5a5; background: rgba(248,113,113,0.08); }
+    .prot-result-meta {
+      display: grid;
+      gap: 2px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.55);
+      line-height: 1.25;
+    }
+    .prot-result-meta .is-won { color: #c9f223; }
+    .prot-result-meta .is-lost { color: #fca5a5; }
+    .prot-result-meta .is-refund { color: #e8ff8a; }
     @media (max-width: 1100px) {
       .prot-term-panel .term-table-head { display: none; }
       .prot-list .term-row {
@@ -191,7 +210,7 @@
         <span class="c">LAY/BACK</span>
         <span class="c">Mercado</span>
         <span class="r">Valor</span>
-        <span class="r">Status</span>
+        <span class="r">Status / Resultado</span>
       </div>
       <div id="list" class="prot-list term-list"><div class="empty">Carregando…</div></div>
     </div>
@@ -284,6 +303,65 @@
         if (st === "settled" || st === "won_exchange" || st === "lost_exchange") return "settled";
         return "";
       }
+      function nCents(v) {
+        var x = Number(v);
+        return Number.isFinite(x) ? Math.trunc(x) : 0;
+      }
+      function isFeeUpfront(row) {
+        var meta = row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+        return (
+          meta.billing_model === "fee_upfront_v1" ||
+          meta.fee_upfront === true ||
+          String(meta.source || "").indexOf("fee_upfront") >= 0
+        );
+      }
+      function deductionCentsOf(row) {
+        var meta = row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+        var raw =
+          row.platform_deduction_cents != null
+            ? row.platform_deduction_cents
+            : row.platform_profit_cents != null
+              ? row.platform_profit_cents
+              : meta.fee_charged_cents != null
+                ? meta.fee_charged_cents
+                : row.locked_deduction_cents;
+        return Math.max(0, nCents(raw));
+      }
+      /** outcome do settle: arbishield = usuário ganhou a proteção; exchange = perdeu. */
+      function settleOutcomeOf(row) {
+        var o = String(row && row.settled_outcome || "").toLowerCase();
+        if (o === "arbishield" || o === "won" || o === "win" || o === "user_won") {
+          return "arbishield";
+        }
+        if (o === "exchange" || o === "lost" || o === "loss") return "exchange";
+        var st = String(row && row.status || "").toLowerCase();
+        // Contrato: arbishield → lost_exchange; exchange → won_exchange
+        if (st === "lost_exchange") return "arbishield";
+        if (st === "won_exchange") return "exchange";
+        return "";
+      }
+      function resultInfo(row) {
+        var outcome = settleOutcomeOf(row);
+        if (outcome !== "arbishield" && outcome !== "exchange") {
+          return { label: "", kind: "", refundCents: null };
+        }
+        var amount = nCents(row.responsibility_cents || row.amount_cents);
+        var fee = deductionCentsOf(row);
+        var won = outcome === "arbishield";
+        var refund = 0;
+        if (isFeeUpfront(row)) {
+          refund = won ? amount + fee : 0;
+        } else if (won) {
+          refund = amount;
+        } else {
+          refund = Math.max(0, amount - Math.min(fee, amount));
+        }
+        return {
+          label: won ? "Ganhou" : "Perdeu",
+          kind: won ? "won" : "lost",
+          refundCents: refund,
+        };
+      }
       function esc(s) {
         return String(s == null ? "" : s)
           .replace(/&/g, "&amp;")
@@ -351,21 +429,33 @@
 
       async function load() {
         showErr("");
+        var selectFull =
+          "id,status,amount_cents,responsibility_cents,odd,match_id,created_at,metadata,user_profit_cents,settled_at,settled_outcome,platform_deduction_cents,locked_deduction_cents,platform_profit_cents,refunded_at";
+        var selectBasic =
+          "id,status,amount_cents,responsibility_cents,odd,match_id,created_at,metadata,user_profit_cents";
+        var selectBackFull =
+          "id,status,amount_cents,odd,match_id,created_at,metadata,user_profit_cents,settled_at,settled_outcome,platform_deduction_cents,locked_deduction_cents,platform_profit_cents,refunded_at";
+        var selectBackBasic =
+          "id,status,amount_cents,odd,match_id,created_at,metadata,user_profit_cents";
+        async function fetchSide(table, full, basic) {
+          var first = await supa
+            .from(table)
+            .select(full)
+            .eq("user_id", viewUserId)
+            .order("created_at", { ascending: false })
+            .limit(200);
+          if (!first.error) return first;
+          console.warn("[protecoes] select completo falhou em " + table + ", tentando básico", first.error);
+          return supa
+            .from(table)
+            .select(basic)
+            .eq("user_id", viewUserId)
+            .order("created_at", { ascending: false })
+            .limit(200);
+        }
         var [lay, back] = await Promise.all([
-          supa
-            .from("protections")
-            .select(
-              "id,status,amount_cents,responsibility_cents,odd,match_id,created_at,metadata,user_profit_cents"
-            )
-            .eq("user_id", viewUserId)
-            .order("created_at", { ascending: false })
-            .limit(200),
-          supa
-            .from("back_protections")
-            .select("id,status,amount_cents,odd,match_id,created_at,metadata,user_profit_cents")
-            .eq("user_id", viewUserId)
-            .order("created_at", { ascending: false })
-            .limit(200),
+          fetchSide("protections", selectFull, selectBasic),
+          fetchSide("back_protections", selectBackFull, selectBackBasic),
         ]);
         if (lay.error) throw lay.error;
         if (back.error) throw back.error;
@@ -430,6 +520,28 @@
           var competition = String(m.league || m.competition || "").trim() || "—";
           var home = m.home_team || "?";
           var away = m.away_team || "?";
+          var res = resultInfo(it);
+          var badgeCls = statusClass(it.status);
+          if (res.kind === "won") badgeCls = "won";
+          if (res.kind === "lost") badgeCls = "lost";
+          var metaHtml = "";
+          if (res.label) {
+            metaHtml =
+              '<div class="prot-result-meta">' +
+              '<span class="' +
+              (res.kind === "won" ? "is-won" : res.kind === "lost" ? "is-lost" : "") +
+              '">Resultado: ' +
+              esc(res.label) +
+              "</span>" +
+              (res.refundCents != null
+                ? '<span class="' +
+                  (res.refundCents > 0 ? "is-refund" : "") +
+                  '">Reembolso: ' +
+                  money(res.refundCents) +
+                  "</span>"
+                : "") +
+              "</div>";
+          }
           return (
             '<article class="term-row' + (selectedId === it.id ? " prot-active" : "") + '" data-id="' + esc(it.id) + '">' +
               '<div class="term-col-time">' + whenHtmlOf(it) + "</div>" +
@@ -438,7 +550,9 @@
               '<div class="term-col-sides"><span class="term-side ' + side.toLowerCase() + '">' + side + "</span></div>" +
               '<div class="term-col-market"><span class="term-market">' + esc(marketLabelOf(it)) + "</span></div>" +
               '<div class="term-col-valor"><strong>' + money(amount) + '</strong><small>protegido</small></div>' +
-              '<div class="term-col-status"><span class="prot-badge ' + statusClass(it.status) + '">' + esc(statusLabel(it.status)) + "</span></div>" +
+              '<div class="term-col-status"><span class="prot-badge ' + badgeCls + '">' + esc(statusLabel(it.status)) + "</span>" +
+              metaHtml +
+              "</div>" +
             "</article>"
           );
         }).join("");
@@ -466,11 +580,18 @@
         var starts = it.matches && it.matches.starts_at
           ? new Date(it.matches.starts_at).toLocaleString("pt-BR")
           : "—";
+        var res = resultInfo(it);
         detailEl.innerHTML =
           "<h2>Protocolo de auditoria</h2>" +
           '<p class="sub">' + matchName(it) + "</p>" +
           '<div class="prot-kv">' +
             "<div><span>Status</span><strong>" + statusLabel(it.status) + "</strong></div>" +
+            "<div><span>Resultado</span><strong>" +
+            esc(res.label || "—") +
+            "</strong></div>" +
+            "<div><span>Reembolso</span><strong>" +
+            (res.refundCents != null ? money(res.refundCents) : "—") +
+            "</strong></div>" +
             "<div><span>Odd alvo</span><strong>" + Number(it.odd || 0).toFixed(2) + "</strong></div>" +
             "<div><span>Valor protegido</span><strong>" + money(amount) + "</strong></div>" +
             "<div><span>Início</span><strong>" + starts + "</strong></div>" +
