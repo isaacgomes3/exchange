@@ -507,6 +507,18 @@
     return n % 1 === 0 ? String(n) : n.toFixed(2);
   }
 
+  function marketTypeOf(r) {
+    var meta = r && r.metadata && typeof r.metadata === "object" ? r.metadata : {};
+    var raw =
+      meta.market_type ||
+      meta.marketType ||
+      r.market_category ||
+      r.side ||
+      r.marketType ||
+      "LAY";
+    return String(raw).toUpperCase() === "BACK" ? "BACK" : "LAY";
+  }
+
   /**
    * Odd do mercado lançado (LAY 36 → 36).
    * Nunca exibir a back-equivalente L/(L−1) como se fosse a odd LAY.
@@ -546,9 +558,7 @@
       return marketOdd;
     }
     // Sem market_odd: se LAY e odd “baixa”, tenta inverter back→lay: L = b/(b-1)
-    var mt = String(
-      (r && (r.market_category || r.side || r.marketType)) || "LAY"
-    ).toUpperCase();
+    var mt = marketTypeOf(r);
     if (mt !== "BACK" && stored > 1.01 && stored < 2) {
       var reversed = stored / (stored - 1);
       if (reversed >= 2) return Math.round(reversed * 100) / 100;
@@ -558,10 +568,7 @@
 
   function mapProtectionRow(r, names, matches) {
     var m = (matches && matches[r.match_id]) || {};
-    var marketType =
-      String(r.market_category || r.side || "LAY").toUpperCase() === "BACK"
-        ? "BACK"
-        : "LAY";
+    var marketType = marketTypeOf(r);
     var odd = displayOddOf(r, m);
     var marketName = marketNameFrom(r, m);
     if (!marketName && odd != null) marketName = "Odd " + formatOdd(odd);
@@ -576,7 +583,7 @@
       matchStatus: m.status || r.match_status,
       startsAt: m.starts_at || r.starts_at || null,
       status: r.status,
-      side: r.side || r.market_category || "LAY",
+      side: r.side || marketType,
       marketType: marketType,
       marketName: marketName || "—",
       odd: odd,
@@ -588,10 +595,11 @@
 
   async function loadProtections(supa) {
     // Sempre pelas tabelas: a view costuma omitir metadata e mostra odd convertida.
+    // Não selecionar market_category — coluna inexistente em várias VPS.
     var res = await supa
       .from("protections")
       .select(
-        "id,user_id,match_id,status,amount_cents,responsibility_cents,user_profit_cents,created_at,side,odd,market_category,metadata"
+        "id,user_id,match_id,status,amount_cents,responsibility_cents,user_profit_cents,created_at,side,odd,metadata"
       )
       .order("created_at", { ascending: false })
       .limit(400);
@@ -608,7 +616,11 @@
       rows.push(
         Object.assign({}, r, {
           side: "BACK",
-          market_category: "BACK",
+          metadata: Object.assign(
+            {},
+            r.metadata && typeof r.metadata === "object" ? r.metadata : {},
+            { market_type: "BACK" }
+          ),
           responsibility_cents: r.amount_cents,
         })
       );
