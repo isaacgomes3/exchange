@@ -160,13 +160,45 @@ async function main() {
         { key: ANON }
       );
       const pubs = Array.isArray(pub) ? pub : [];
-      console.log("  anon viu", pubs.length, "publicados");
+      console.log("  anon viu", pubs.length, "publicados (ASC limit 20 — legado perigoso)");
       for (const m of pubs.slice(0, 8)) {
         console.log("   -", m.home_team, "×", m.away_team, m.id);
       }
       if (!pubs.length) {
         console.log(
           "  ⚠ anon não lê matches — RLS pode estar bloqueando a grade do Proteger"
+        );
+      }
+      const windowStart = new Date(Date.now() - LIVE_MS).toISOString();
+      const win = await sb(
+        `/rest/v1/matches?select=id,home_team,away_team,is_published,starts_at,max_protection_cents,used_protection_cents&is_published=eq.true&deleted_at=is.null&starts_at=gte.${encodeURIComponent(windowStart)}&order=starts_at.asc&limit=50`,
+        { key: ANON }
+      );
+      const wins = Array.isArray(win) ? win : [];
+      console.log(
+        "  anon na JANELA (+2h30):",
+        wins.length,
+        "publicados com starts_at >=",
+        windowStart
+      );
+      for (const m of wins.slice(0, 10)) {
+        const v = reasonsOf(m);
+        console.log(
+          (v.ok ? "   ✓ " : "   ✗ ") +
+            (m.home_team || "?") +
+            " × " +
+            (m.away_team || "?") +
+            (v.ok ? "" : " · " + v.reasons.join(" · "))
+        );
+      }
+      const pubCount = await sb(
+        "/rest/v1/matches?select=id&is_published=eq.true&deleted_at=is.null",
+        { key: KEY }
+      );
+      const nPub = Array.isArray(pubCount) ? pubCount.length : 0;
+      if (nPub > 150) {
+        console.log(
+          `  ⚠ ${nPub} publicados no total — bug antigo ASC+limit(150) omitia jogos atuais`
         );
       }
     } catch (e) {

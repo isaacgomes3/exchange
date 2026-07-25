@@ -167,9 +167,13 @@ export async function createProtection(
   if (match.starts_at) {
     const startMs = new Date(match.starts_at).getTime();
     const now = Date.now();
-    if (Number.isFinite(startMs) && startMs <= now) {
+    // Alinha com a grade do cliente (LIVE_WINDOW ≈ 2h30 pós-kickoff).
+    const LIVE_WINDOW_MS = 9000 * 1000;
+    if (Number.isFinite(startMs) && startMs + LIVE_WINDOW_MS <= now) {
       throw Object.assign(
-        new Error("Jogo já iniciado. Não é possível criar novas proteções."),
+        new Error(
+          "Jogo fora da janela de proteção. Não é possível criar novas proteções."
+        ),
         { status: 400 }
       );
     }

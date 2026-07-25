@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
+  <meta name="arbishield-build" content="proteger-grade-janela-v8" />
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
@@ -874,6 +875,12 @@
             .eq("status", "active");
           document.getElementById("stAct").textContent = String(act.count || 0);
 
+          // Só busca na janela ativa (kickoff −∞ futuro até +2h30).
+          // Antes: order ASC + limit 150 pegava os 150 mais ANTIGOS publicados
+          // (centenas de finalizados ainda is_published) e omitia jogos atuais.
+          var windowStartIso = new Date(
+            Date.now() - LIVE_WINDOW_MS
+          ).toISOString();
           var matchesRes = await supa
             .from("matches")
             .select(
@@ -881,8 +888,9 @@
             )
             .is("deleted_at", null)
             .eq("is_published", true)
+            .gte("starts_at", windowStartIso)
             .order("starts_at", { ascending: true })
-            .limit(150);
+            .limit(300);
           if (matchesRes.error) throw matchesRes.error;
 
           state.matches = (matchesRes.data || []).filter(function (m) {
