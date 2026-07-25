@@ -1451,6 +1451,24 @@
       renderLedger();
       document.getElementById("finExtratoAnchor").scrollIntoView({ behavior: "smooth" });
     });
+    var btnExtratoReembolso = document.getElementById("finFilterReembolso");
+    if (btnExtratoReembolso) {
+      btnExtratoReembolso.addEventListener("click", function () {
+        switchTab("extrato");
+        state.group = "reembolso";
+        document.querySelectorAll(".fin-chip").forEach(function (c) {
+          c.classList.toggle(
+            "active",
+            c.getAttribute("data-group") === "reembolso"
+          );
+        });
+        state.page = 1;
+        renderLedger();
+        document
+          .getElementById("finExtratoAnchor")
+          .scrollIntoView({ behavior: "smooth" });
+      });
+    }
     document.getElementById("finOpenTransfer").addEventListener("click", openTransfer);
     document.getElementById("finTransferSubmit").addEventListener("click", submitTransfer);
     document.getElementById("finTransferModal").addEventListener("click", function (e) {
