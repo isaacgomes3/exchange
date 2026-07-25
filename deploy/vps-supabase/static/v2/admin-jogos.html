@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta name="arbishield-vps-page" content="jogos" />
-  <meta name="arbishield-build" content="admin-jogos-betbra-live-sync-v5" />
+  <meta name="arbishield-build" content="admin-jogos-sem-fila-default-v6" />
   <title>Gestão de Jogos — ArbiShield v2</title>
   <link rel="stylesheet" href="/v2.css" />
   <script src="/v2-shell.js" defer></script>
@@ -654,11 +654,11 @@
   <div class="modal-backdrop" id="createModal">
     <div class="modal">
       <h3>Lançar evento na plataforma</h3>
-      <p>O mercado selecionado da BetBra será incluído na ArbiShield. Marque publicar para o cliente ver em Proteger Aposta.</p>
+      <p>O mercado selecionado da BetBra será incluído na ArbiShield como <strong>rascunho</strong> (não vai para a fila). Marque publicar só se quiser liberar ao cliente.</p>
       <div class="grid" id="createSummary"></div>
       <label class="publish-opt" style="display:flex;gap:10px;align-items:flex-start;margin:0 0 16px;font-size:12px;line-height:1.4;cursor:pointer">
-        <input type="checkbox" id="publishNow" checked style="margin-top:2px;accent-color:var(--lime)" />
-        <span><strong>Publicar agora</strong> — aparece na conta do cliente (Proteger Aposta). Desmarque só se quiser deixar em rascunho.</span>
+        <input type="checkbox" id="publishNow" style="margin-top:2px;accent-color:var(--lime)" />
+        <span><strong>Publicar na fila</strong> — só marque se quiser aparecer em Proteger Aposta. Por defeito fica em rascunho.</span>
       </label>
       <div class="modal-actions">
         <button class="btn btn-ghost btn-sm" id="btnCancelCreate" type="button">Cancelar</button>
@@ -692,10 +692,10 @@
 
       <div class="toggle-row">
         <div>
-          <div class="t">Liberar proteção</div>
-          <div class="s">Cliente pode proteger neste jogo (publicar na fila)</div>
+          <div class="t">Liberar proteção / publicar na fila</div>
+          <div class="s">OFF por defeito — jogo fica em rascunho. Ligue só para o cliente ver em Proteger Aposta.</div>
         </div>
-        <button type="button" class="switch on" id="manLiberarProtecao" aria-pressed="true"></button>
+        <button type="button" class="switch" id="manLiberarProtecao" aria-pressed="false"></button>
       </div>
       <div class="toggle-row">
         <div>
@@ -1538,14 +1538,18 @@
                 : "Evento criado como rascunho. Publique na aba Rascunhos para o cliente ver.";
           alert(msg);
           platformLoaded = false;
-          await loadPlatformMatches({ force: true });
-          setView("platform");
-          if (!publishNow) {
+          // Por defeito não manda para a Fila: fica no catálogo BetBra
+          // (rascunho). Só vai à lista se publicou explicitamente.
+          if (publishNow) {
+            await loadPlatformMatches({ force: true });
+            setView("platform");
             platformFilter = "draft";
             document.querySelectorAll("#platformFilters .chip").forEach(function (c) {
               c.classList.toggle("is-on", c.getAttribute("data-pf") === "draft");
             });
             renderPlatformList();
+          } else {
+            setView("prelive");
           }
         } catch (err) {
           alert(err.message || "Erro ao criar evento");
@@ -2063,12 +2067,12 @@
           }
 
           platformLoaded = true;
-          // Mantém A liquidar na 1ª carga se houver jogos; senão cai na fila
+          // Nunca abre na Fila por defeito — A liquidar, senão rascunhos
           var settleN = platformMatches.filter(function (m) {
-            return matchBucket(m) === "settle";
+            return matchNeedsSettle(m);
           }).length;
           if (!force) {
-            platformFilter = settleN > 0 ? "settle" : "fila";
+            platformFilter = settleN > 0 ? "settle" : "draft";
             document.querySelectorAll("#platformFilters .chip").forEach(function (c) {
               c.classList.toggle("is-on", c.getAttribute("data-pf") === platformFilter);
             });
@@ -2813,11 +2817,7 @@
           el.classList.remove("on");
           el.setAttribute("aria-pressed", "false");
         });
-        // Liberar proteção ON por padrão (igual site antigo)
-        if ($("manLiberarProtecao")) {
-          $("manLiberarProtecao").classList.add("on");
-          $("manLiberarProtecao").setAttribute("aria-pressed", "true");
-        }
+        // Liberar proteção OFF por defeito — não publica na fila
         // Já abre com 1 mercado (nome com autocomplete, odd, liquidez)
         manualMarkets = [
           {
@@ -2943,9 +2943,10 @@
           platformLoaded = false;
           await loadPlatformMatches({ force: true });
           setView("platform");
-          platformFilter = result.match && result.match.is_published ? "fila" : "draft";
+          // Nunca cai na Fila automaticamente após lançar
+          platformFilter = "draft";
           document.querySelectorAll("#platformFilters .chip").forEach(function (c) {
-            c.classList.toggle("is-on", c.getAttribute("data-pf") === platformFilter);
+            c.classList.toggle("is-on", c.getAttribute("data-pf") === "draft");
           });
           renderPlatformList();
         } catch (err) {

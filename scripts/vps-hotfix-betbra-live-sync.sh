@@ -100,7 +100,7 @@ grep -q 'BETBRA_INPLAY_SYNC_VERSION' "$SCRIPTS_DIR/lib/betbra-inplay-sync.mjs" \
 log "2/3 UI"
 publish_web "deploy/vps-supabase/static/v2/admin-jogos.html"
 publish_web "deploy/vps-supabase/static/v2/app-proteger.html"
-grep -qE 'matchLiveInfo|admin-jogos-betbra-live-sync' "$WEB/admin-jogos.html" \
+grep -qE 'matchLiveInfo|admin-jogos-betbra-live-sync|admin-jogos-sem-fila-default' "$WEB/admin-jogos.html" \
   || die "admin-jogos sem live sync UI"
 grep -q 'metadata.live' "$WEB/app-proteger.html" || die "app-proteger sem metadata.live"
 
