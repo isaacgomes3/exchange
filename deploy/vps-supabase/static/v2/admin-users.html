@@ -6,11 +6,12 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Usuários — ArbiShield v2</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=users-wallets-1" />
+  <meta name="arbishield-build" content="admin-users-reembolso-v1" />
+  <link rel="stylesheet" href="/v2.css?v=users-reembolso-1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/finance-admins.js?v=fin-acl-1"></script>
-  <script src="/v2.js?v=users-wallets-1"></script>
-  <script src="/v2-shell.js?v=users-wallets-1" defer></script>
+  <script src="/v2.js?v=users-reembolso-1"></script>
+  <script src="/v2-shell.js?v=users-reembolso-1" defer></script>
   <style>
     .ops-wallets {
       display: grid; gap: 2px; font-size: 11px; line-height: 1.35;
@@ -118,7 +119,7 @@
 
       var PROFILE_SELECT =
         "id,full_name,account_status,phone,cpf,pix_key,location,is_affiliate," +
-        "balance_cents,reusable_balance_cents,demo_balance_cents,locked_balance_cents," +
+        "balance_cents,reusable_balance_cents,deduction_balance_cents,demo_balance_cents,locked_balance_cents," +
         "investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents," +
         "pending_balance_cents,total_profit_cents,created_at,updated_at";
 
@@ -138,8 +139,15 @@
         opts = opts || {};
         var compact = !!opts.compact;
         var items = [
-          { l: "Apostador", v: n(r.balance_cents) + n(r.reusable_balance_cents) },
+          {
+            l: "Apostador",
+            v:
+              n(r.balance_cents) +
+              n(r.reusable_balance_cents) +
+              n(r.deduction_balance_cents),
+          },
           { l: "Real", v: n(r.balance_cents), muted: true },
+          { l: "Reembolso", v: n(r.deduction_balance_cents) },
           { l: "Reutilizável", v: n(r.reusable_balance_cents), muted: true },
           { l: "Desafio", v: n(r.desafio_balance_cents) },
           { l: "Provedor", v: n(r.investor_balance_cents) + n(r.demo_balance_provider_cents) },
@@ -150,7 +158,15 @@
         ];
         if (compact) {
           items = items.filter(function (it) {
-            return it.l === "Apostador" || it.l === "Desafio" || it.l === "Provedor" || it.l === "Congelado" || it.v > 0;
+            return (
+              it.l === "Apostador" ||
+              it.l === "Real" ||
+              it.l === "Reembolso" ||
+              it.l === "Desafio" ||
+              it.l === "Provedor" ||
+              it.l === "Congelado" ||
+              it.v > 0
+            );
           });
         }
         return (
@@ -204,9 +220,15 @@
           })
           .join("");
         document.getElementById("udWallets").innerHTML = [
-          ["Apostador (real+reutilizável)", n(r.balance_cents) + n(r.reusable_balance_cents)],
+          [
+            "Apostador (real+reembolso+reutilizável)",
+            n(r.balance_cents) +
+              n(r.reusable_balance_cents) +
+              n(r.deduction_balance_cents),
+          ],
           ["Real", n(r.balance_cents)],
-          ["Reutilizável", n(r.reusable_balance_cents)],
+          ["Saldo Reembolso", n(r.deduction_balance_cents)],
+          ["Reutilizável (legado)", n(r.reusable_balance_cents)],
           ["Desafio", n(r.desafio_balance_cents)],
           ["Provedor", n(r.investor_balance_cents)],
           ["Provedor demo", n(r.demo_balance_provider_cents)],
