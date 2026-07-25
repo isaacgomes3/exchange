@@ -190,6 +190,26 @@
     .runner .odd { color: var(--lime); font-weight: 800; font-size: 14px; flex-shrink: 0; }
     .runner .odd.muted { color: var(--muted); font-weight: 700; font-size: 12px; }
     .runner.is-dry { opacity: 0.55; }
+    .runner-sides {
+      display: flex; flex-wrap: wrap; gap: 6px; flex-shrink: 0; justify-content: flex-end;
+    }
+    .runner-sides .btn-side {
+      min-width: 92px; padding: 8px 10px; font-size: 10px; font-weight: 800;
+      letter-spacing: 0.04em; text-transform: uppercase;
+    }
+    .runner-sides .btn-side.lay {
+      background: rgba(240, 184, 200, 0.16);
+      border: 1px solid rgba(240, 184, 200, 0.55);
+      color: #f0b8c8;
+    }
+    .runner-sides .btn-side.back {
+      background: rgba(168, 200, 232, 0.16);
+      border: 1px solid rgba(168, 200, 232, 0.55);
+      color: #a8c8e8;
+    }
+    .runner-sides .btn-side:disabled {
+      opacity: 0.35; cursor: not-allowed;
+    }
     .odds-toolbar {
       display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
       padding: 0 16px 12px; color: var(--muted); font-size: 12px;
@@ -598,7 +618,7 @@
       </div>
       <div class="odds-toolbar" id="oddsToolbar" hidden>
         <label>
-          <input type="checkbox" id="onlyWithOdds" checked />
+          <input type="checkbox" id="onlyWithOdds" />
           Só seleções com odd
         </label>
         <span id="oddsCoverage">—</span>
@@ -831,6 +851,7 @@
       var selectedEvent = null;
       var selectedMarket = null;
       var selectedRunner = null;
+      var selectedSide = "LAY";
       var platformMatches = [];
       var platformFilter = "settle";
       var platformLoaded = false;
@@ -1232,6 +1253,21 @@
         }
       }
 
+      function runnerHasAnyOdd(runner) {
+        return runner && (runner.layOdd != null || runner.backOdd != null || runner.odd != null);
+      }
+
+      function runnerSideOdd(runner, side) {
+        side = String(side || "").toUpperCase();
+        if (side === "BACK") {
+          return runner.backOdd != null ? runner.backOdd : null;
+        }
+        if (side === "LAY") {
+          return runner.layOdd != null ? runner.layOdd : null;
+        }
+        return runner.odd != null ? runner.odd : null;
+      }
+
       function renderMarkets(data) {
         selectedEvent = data.event;
         window.__preliveMarketsData = data;
@@ -1253,19 +1289,28 @@
 
         var html = markets.map(function (market) {
           var runners = (market.runners || []).filter(function (runner) {
-            return !onlyOdds || runner.odd != null;
+            return !onlyOdds || runnerHasAnyOdd(runner);
           });
           if (!runners.length) return "";
           var runnersHtml = runners.map(function (runner) {
-            var hasOdd = runner.odd != null;
-            var odd = hasOdd ? Number(runner.odd).toFixed(2) : "sem liquidez";
+            var lay = runnerSideOdd(runner, "LAY");
+            var back = runnerSideOdd(runner, "BACK");
+            var hasAny = lay != null || back != null;
+            var sides =
+              '<div class="runner-sides">' +
+                '<button class="btn btn-sm btn-side lay" type="button" data-market="' + market.marketId +
+                  '" data-runner="' + runner.runnerId + '" data-side="LAY"' +
+                  (lay != null ? "" : " disabled title=\"Sem odd LAY na BetBra\"") +
+                '>LAY @ ' + (lay != null ? Number(lay).toFixed(2) : "—") + "</button>" +
+                '<button class="btn btn-sm btn-side back" type="button" data-market="' + market.marketId +
+                  '" data-runner="' + runner.runnerId + '" data-side="BACK"' +
+                  (back != null ? "" : " disabled title=\"Sem odd BACK na BetBra\"") +
+                '>BACK @ ' + (back != null ? Number(back).toFixed(2) : "—") + "</button>" +
+              "</div>";
             return (
-              '<div class="runner' + (hasOdd ? "" : " is-dry") + '">' +
-                '<span class="name">' + runner.name + '</span>' +
-                '<span class="odd' + (hasOdd ? "" : " muted") + '">@ ' + odd + '</span>' +
-                '<button class="btn btn-primary btn-sm" type="button" data-market="' + market.marketId + '" data-runner="' + runner.runnerId + '"' +
-                  (hasOdd ? "" : " disabled title=\"Sem odd na BetBra — não é possível lançar\"") +
-                '>Lançar evento</button>' +
+              '<div class="runner' + (hasAny ? "" : " is-dry") + '">' +
+                '<span class="name">' + runner.name + "</span>" +
+                sides +
               "</div>"
             );
           }).join("");
@@ -1279,23 +1324,26 @@
         if (!html) {
           $("preliveContent").innerHTML =
             '<div class="empty">Nenhuma seleção com odd neste momento. ' +
-            'Desmarque “Só seleções com odd” para ver mercados sem liquidez, ' +
+            'Desmarque “Só seleções com odd” para ver todos os mercados, ' +
             'ou escolha outro jogo (ex.: Resultado / Mais-Menos 2.5).</div>';
           return;
         }
 
         $("preliveContent").innerHTML = html;
 
-        $("preliveContent").querySelectorAll("button[data-market]:not([disabled])").forEach(function (btn) {
+        $("preliveContent").querySelectorAll("button[data-market][data-side]:not([disabled])").forEach(function (btn) {
           btn.addEventListener("click", function (e) {
             e.stopPropagation();
             var marketId = btn.getAttribute("data-market");
             var runnerId = btn.getAttribute("data-runner");
+            var side = String(btn.getAttribute("data-side") || "LAY").toUpperCase();
+            if (side !== "BACK") side = "LAY";
             var market = markets.find(function (m) { return m.marketId === marketId; });
             var runner = market && (market.runners || []).find(function (r) { return r.runnerId === runnerId; });
             if (market && runner) {
-              if (runner.odd == null) {
-                alert("Esta seleção está sem odd/liquidez na BetBra.");
+              var odd = runnerSideOdd(runner, side);
+              if (odd == null) {
+                alert("Esta seleção está sem odd " + side + " na BetBra.");
                 return;
               }
               if (!auth) {
@@ -1303,7 +1351,7 @@
                 alert("Faça login admin para incluir eventos.");
                 return;
               }
-              openCreateModal(market, runner);
+              openCreateModal(market, runner, side);
             }
           });
         });
@@ -1363,14 +1411,22 @@
         return true;
       }
 
-      function openCreateModal(market, runner) {
+      function openCreateModal(market, runner, side) {
         if (confirmedPreliveLiqBrl == null || !(confirmedPreliveLiqBrl > 0)) {
           alert("Confirme a liquidez no botão acima de Próximos jogos antes de lançar.");
           if ($("preliveLiquidityBrl")) $("preliveLiquidityBrl").focus();
           return;
         }
+        side = String(side || runner.preferredSide || "LAY").toUpperCase();
+        if (side !== "BACK") side = "LAY";
+        var odd = runnerSideOdd(runner, side);
+        if (odd == null || !(Number(odd) > 1)) {
+          alert("Esta seleção está sem odd " + side + " na BetBra.");
+          return;
+        }
         selectedMarket = market;
         selectedRunner = runner;
+        selectedSide = side;
         var ev = selectedEvent;
         var link = ev.betbraLink + "/market/" + market.marketId;
         var liqBrl = readPreliveLiquidityBrl();
@@ -1380,7 +1436,8 @@
           ["Horário", fmtDate(ev.startsAt)],
           ["Mercado", market.name],
           ["Seleção", runner.name],
-          ["Odd", runner.odd != null ? runner.odd.toFixed(2) : "—"],
+          ["Tipo", side],
+          ["Odd", Number(odd).toFixed(2)],
           [
             "Liquidez",
             liqBrl != null && liqBrl > 0
@@ -1405,6 +1462,13 @@
         var ev = selectedEvent;
         var market = selectedMarket;
         var runner = selectedRunner;
+        var side = String(selectedSide || "LAY").toUpperCase();
+        if (side !== "BACK") side = "LAY";
+        var odd = runnerSideOdd(runner, side);
+        if (odd == null || !(Number(odd) > 1)) {
+          alert("Odd " + side + " inválida nesta seleção.");
+          return;
+        }
         var liqBrl = readPreliveLiquidityBrl();
         if (confirmedPreliveLiqBrl == null || liqBrl == null || !(liqBrl > 0)) {
           alert("Confirme a liquidez no botão acima de Próximos jogos. Ex.: 2000");
@@ -1432,7 +1496,9 @@
             marketName: market.name,
             runnerId: runner.runnerId,
             runnerName: runner.name,
-            odd: runner.odd,
+            odd: odd,
+            marketType: side,
+            market_type: side,
             betbraLink: betbraLink,
             isPublished: publishNow,
             liquidityCents: liquidityCents,

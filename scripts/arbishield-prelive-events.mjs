@@ -408,18 +408,24 @@ async function createMatchFromMarket(body, token) {
     err.status = 400;
     throw err;
   }
+  const marketType =
+    String(body.marketType || body.market_type || "LAY").toUpperCase() ===
+    "BACK"
+      ? "BACK"
+      : "LAY";
+  const sideLabel = marketType === "BACK" ? "Back" : "Lay";
   const marketLabel = body.runnerName
-    ? `${body.marketName} · ${body.runnerName}`
-    : body.marketName;
+    ? `${sideLabel} · ${body.marketName} · ${body.runnerName}`
+    : `${sideLabel} · ${body.marketName}`;
   const marketUuid = randomUUID();
   // Escrita com service role (triggers/RLS); admin_id vem do JWT em created_by/updated_by
   const dbToken = SERVICE_KEY || token;
   const eventExternalId = String(body.eventId);
   const betbraMarketId = String(body.marketId);
-  // Mesmo mercado BetBra (ex. placar exato) tem vários runners — chave por mercado+seleção
+  // Mesmo mercado BetBra (ex. placar exato) tem vários runners — chave por mercado+seleção+lado
   const betbraSelectionKey = body.runnerId
-    ? `${betbraMarketId}:${body.runnerId}`
-    : betbraMarketId;
+    ? `${betbraMarketId}:${body.runnerId}:${marketType}`
+    : `${betbraMarketId}:${marketType}`;
 
   const newMarket = {
     id: marketUuid,
@@ -428,7 +434,7 @@ async function createMatchFromMarket(body, token) {
     liquidity: liquidityCents,
     display_liquidity: null,
     used_liquidity: 0,
-    market_type: "LAY",
+    market_type: marketType,
     external_id: betbraSelectionKey,
     betbra_market_id: betbraMarketId,
     betbra_runner_id: body.runnerId ? String(body.runnerId) : null,
@@ -471,14 +477,24 @@ async function createMatchFromMarket(body, token) {
     const dup = markets.find((m) => {
       const ext = String(m.external_id || "");
       const runner = String(m.betbra_runner_id || m.runner_id || "");
-      // chave nova mercado:runner
+      const side = String(m.market_type || m.marketType || "LAY").toUpperCase();
+      // chave nova mercado:runner:SIDE
       if (ext === betbraSelectionKey) return true;
-      // legado: só marketId + mesmo runner
+      // chave intermediária mercado:runner (sem lado) — só colide no mesmo lado
+      if (
+        body.runnerId &&
+        ext === `${betbraMarketId}:${body.runnerId}` &&
+        side === marketType
+      ) {
+        return true;
+      }
+      // legado: só marketId + mesmo runner + mesmo lado
       if (
         body.runnerId &&
         (ext === betbraMarketId ||
           String(m.betbra_market_id || "") === betbraMarketId) &&
-        runner === String(body.runnerId)
+        runner === String(body.runnerId) &&
+        side === marketType
       ) {
         return true;
       }
