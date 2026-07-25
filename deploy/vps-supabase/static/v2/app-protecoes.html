@@ -333,9 +333,13 @@
       }
 
       function isVisibleProtection(row) {
-        var st = String((row && row.status) || "").toLowerCase();
+        var st = String((row && row.status) || "")
+          .toLowerCase()
+          .trim();
         // Canceladas saem da lista "Minhas Proteções"
-        if (st === "cancelled" || st === "canceled" || st === "void") return false;
+        if (!st) return true;
+        if (st.indexOf("cancel") >= 0) return false;
+        if (st === "void" || st === "refunded" || st === "estornada") return false;
         return true;
       }
 
@@ -348,19 +352,18 @@
               "id,status,amount_cents,responsibility_cents,odd,match_id,created_at,metadata,user_profit_cents"
             )
             .eq("user_id", user.id)
-            .neq("status", "cancelled")
             .order("created_at", { ascending: false })
-            .limit(150),
+            .limit(200),
           supa
             .from("back_protections")
             .select("id,status,amount_cents,odd,match_id,created_at,metadata,user_profit_cents")
             .eq("user_id", user.id)
-            .neq("status", "cancelled")
             .order("created_at", { ascending: false })
-            .limit(150),
+            .limit(200),
         ]);
         if (lay.error) throw lay.error;
         if (back.error) throw back.error;
+        // Filtro no cliente (não depende de .neq no PostgREST / cache)
         items = []
           .concat(
             (lay.data || []).map(function (r) {
