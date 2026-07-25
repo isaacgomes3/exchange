@@ -16,7 +16,8 @@ WEB_ROOT="${ARBISHIELD_TESTE_WEB:-/var/www/arbishield-teste}"
 WEB="$WEB_ROOT/v2"
 CODE_DIR="${ARBISHIELD_TESTE_DIR:-/opt/arbishield-teste}"
 SCRIPTS_DIR="$CODE_DIR/scripts"
-DOMAIN="${ARBISHIELD_TESTE_DOMAIN:-teste.arbishield.app}"
+PORT="${ARBISHIELD_TESTE_PORT:-8090}"
+DOMAIN="${ARBISHIELD_TESTE_DOMAIN:-127.0.0.1:${PORT}}"
 
 # Trava de segurança: nunca permitir apontar para produção
 if [[ "$WEB_ROOT" == "/var/www/arbishield" || "$WEB" == "/var/www/arbishield/v2" ]]; then
@@ -158,8 +159,10 @@ if [[ -f "$WEB/v2.js" ]] && ! grep -q 'arbishield-teste-banner' "$WEB/v2.js"; th
 /* --- ambiente teste (injetado por vps-deploy-teste.sh) --- */
 (function (global) {
   function isTesteHost() {
-    var h = String((global.location && global.location.hostname) || "").toLowerCase();
-    return h === "teste.arbishield.app" || h.indexOf("teste.") === 0;
+    var loc = global.location || {};
+    var h = String(loc.hostname || "").toLowerCase();
+    var p = String(loc.port || "");
+    return p === "8090" || p === "8091" || h === "teste.arbishield.app" || h.indexOf("teste.") === 0;
   }
   function paintBanner() {
     if (!isTesteHost() || document.getElementById("arbishield-teste-banner")) return;
@@ -208,7 +211,11 @@ else
   log "Units teste ainda não instalados — rode vps-enable-teste.sh"
 fi
 
+PUB_IP="$(curl -4 -fsS --max-time 3 ifconfig.me 2>/dev/null || true)"
 echo
 echo "OK — TESTE atualizado (produção NÃO foi alterada)"
-echo "  https://$DOMAIN/admin-jogos.html  (Ctrl+F5)"
+echo "  http://127.0.0.1:${PORT}/admin-jogos.html  (Ctrl+F5)"
+if [[ -n "$PUB_IP" ]]; then
+  echo "  http://${PUB_IP}:${PORT}/admin-jogos.html"
+fi
 echo "  build: $WEB/TESTE_BUILD.json"

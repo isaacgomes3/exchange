@@ -1,23 +1,14 @@
 #!/usr/bin/env bash
-# Habilita AMBIENTE DE TESTE isolado da produção (arbishield.app).
+# Ambiente de TESTE prático — SEM DNS / SEM subdomínio.
 #
-# O que cria:
-#   - UI:     /var/www/arbishield-teste/v2
-#   - código: /opt/arbishield-teste/scripts
-#   - prelive :3198  (unit arbishield-prelive-events-teste)
-#   - shim    :3201  (unit arbishield-serverfn-shim-teste)
-#   - nginx:  teste.arbishield.app
+# Acesso:
+#   http://127.0.0.1:8090/admin-jogos.html
+#   http://IP_DA_VPS:8090/admin-jogos.html
 #
-# NÃO toca em /var/www/arbishield nem nos workers :3098/:3101.
-#
-# Pré-requisito DNS:
-#   A  teste.arbishield.app  →  IP da VPS
+# Isolado da produção (arbishield.app nas portas 80/443).
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/SHA/scripts/vps-enable-teste.sh?v=2")
-#
-# Depois publique uma branch/SHA no teste:
-#   ARBISHIELD_REF=<sha> bash /opt/arbishield-teste/scripts/vps-deploy-teste.sh
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/ambiente-teste-3cf9/scripts/vps-enable-teste.sh?v=3")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/ambiente-teste-3cf9}"
@@ -27,7 +18,7 @@ WEB_ROOT="${ARBISHIELD_TESTE_WEB:-/var/www/arbishield-teste}"
 WEB="$WEB_ROOT/v2"
 CODE_DIR="${ARBISHIELD_TESTE_DIR:-/opt/arbishield-teste}"
 SCRIPTS_DIR="$CODE_DIR/scripts"
-DOMAIN="${ARBISHIELD_TESTE_DOMAIN:-teste.arbishield.app}"
+PORT="${ARBISHIELD_TESTE_PORT:-8090}"
 TMP_DIR=""
 
 log() { echo "==> $*"; }
@@ -46,25 +37,23 @@ need systemctl
 mkdir -p "$WEB" "$WEB/brand" "$WEB_ROOT/assets" "$SCRIPTS_DIR" "$CODE_DIR" \
   /etc/systemd/system
 
-# Detecta layout nginx (muitas VPS ArbiShield usam só conf.d)
 resolve_nginx_target() {
   if [[ -n "${ARBISHIELD_TESTE_NGINX:-}" ]]; then
     echo "$ARBISHIELD_TESTE_NGINX"
     return
   fi
-  if [[ -d /etc/nginx/sites-available ]]; then
-    echo "/etc/nginx/sites-available/teste.arbishield.app"
-    return
-  fi
   if [[ -d /etc/nginx/conf.d ]]; then
-    echo "/etc/nginx/conf.d/teste.arbishield.app.conf"
+    echo "/etc/nginx/conf.d/arbishield-teste-localhost.conf"
     return
   fi
-  die "nginx: nem sites-available nem conf.d existem"
+  if [[ -d /etc/nginx/sites-available ]]; then
+    echo "/etc/nginx/sites-available/arbishield-teste-localhost"
+    return
+  fi
+  die "nginx: nem conf.d nem sites-available"
 }
 
 NGINX_TARGET="$(resolve_nginx_target)"
-log "nginx target: $NGINX_TARGET"
 mkdir -p "$(dirname "$NGINX_TARGET")"
 
 fetch() {
@@ -76,13 +65,14 @@ fetch() {
   [[ -s "$dest" ]] || die "arquivo vazio: $dest"
 }
 
-log "1/6 — baixar nginx + units + scripts (ref=$REF)"
+log "1/5 — baixar conf localhost:$PORT + units + scripts (ref=$REF)"
 TMP_DIR="$(mktemp -d /tmp/arbishield-teste-enable.XXXXXX)"
 
-fetch "deploy/vps-supabase/nginx-teste.arbishield.app.conf" \
-  "$TMP_DIR/nginx-full.conf"
-fetch "deploy/vps-supabase/nginx-teste.arbishield.app.http-only.conf" \
-  "$TMP_DIR/nginx-http.conf"
+fetch "deploy/vps-supabase/nginx-teste-localhost.conf" "$TMP_DIR/nginx.conf"
+# Porta configurável
+sed -i "s/listen 8090;/listen ${PORT};/g; s/listen \\[::\\]:8090;/listen [::]:${PORT};/g" \
+  "$TMP_DIR/nginx.conf"
+
 fetch "deploy/vps-supabase/arbishield-prelive-events-teste.service" \
   /etc/systemd/system/arbishield-prelive-events-teste.service
 fetch "deploy/vps-supabase/arbishield-serverfn-shim-teste.service" \
@@ -91,59 +81,36 @@ fetch "scripts/vps-enable-teste.sh" "$SCRIPTS_DIR/vps-enable-teste.sh"
 fetch "scripts/vps-deploy-teste.sh" "$SCRIPTS_DIR/vps-deploy-teste.sh"
 chmod 0755 "$SCRIPTS_DIR/vps-enable-teste.sh" "$SCRIPTS_DIR/vps-deploy-teste.sh"
 
-grep -q 'teste.arbishield.app' "$TMP_DIR/nginx-full.conf" || die "nginx teste inválido"
-grep -q '3198' "$TMP_DIR/nginx-full.conf" || die "nginx teste sem :3198"
-grep -q '3201' "$TMP_DIR/nginx-full.conf" || die "nginx teste sem :3201"
-! grep -q 'default_server' "$TMP_DIR/nginx-full.conf" || die "nginx teste não pode ser default_server"
-[[ -f "$SCRIPTS_DIR/vps-deploy-teste.sh" ]] || die "vps-deploy-teste.sh não baixou"
+grep -q "listen ${PORT}" "$TMP_DIR/nginx.conf" || die "nginx sem listen $PORT"
+grep -q '3198' "$TMP_DIR/nginx.conf" || die "nginx sem :3198"
+grep -q 'arbishield-teste/v2' "$TMP_DIR/nginx.conf" || die "nginx sem root teste"
 
-log "2/6 — publicar UI + workers no ambiente teste"
+log "2/5 — publicar UI + workers no ambiente teste"
 ARBISHIELD_REF="$REF" ARBISHIELD_BRANCH="$BRANCH" \
   bash "$SCRIPTS_DIR/vps-deploy-teste.sh"
 
-install_nginx_conf() {
-  local src="$1"
-  cp -f "$src" "$NGINX_TARGET"
-  if [[ -d /etc/nginx/sites-enabled ]] && [[ "$NGINX_TARGET" == /etc/nginx/sites-available/* ]]; then
-    ln -sfn "$NGINX_TARGET" /etc/nginx/sites-enabled/teste.arbishield.app
-  fi
-  log "nginx instalado em $NGINX_TARGET"
-}
-
-log "3/6 — habilitar nginx do teste"
-if [[ -f /etc/letsencrypt/live/$DOMAIN/fullchain.pem ]]; then
-  install_nginx_conf "$TMP_DIR/nginx-full.conf"
-else
-  warn "sem certificado SSL — subindo HTTP-only até o certbot"
-  install_nginx_conf "$TMP_DIR/nginx-http.conf"
+log "3/5 — nginx localhost:$PORT (sem DNS)"
+cp -f "$TMP_DIR/nginx.conf" "$NGINX_TARGET"
+if [[ -d /etc/nginx/sites-enabled ]] && [[ "$NGINX_TARGET" == /etc/nginx/sites-available/* ]]; then
+  ln -sfn "$NGINX_TARGET" /etc/nginx/sites-enabled/arbishield-teste-localhost
 fi
+# Remove conf antiga de subdomínio se atrapalhar (opcional, não remove produção)
+rm -f /etc/nginx/conf.d/teste.arbishield.app.conf 2>/dev/null || true
+rm -f /etc/nginx/sites-enabled/teste.arbishield.app 2>/dev/null || true
+
 nginx -t || die "nginx -t falhou"
 systemctl reload nginx
+log "nginx: $NGINX_TARGET"
 
-log "4/6 — TLS (certbot) se DNS já aponta"
-if command -v certbot >/dev/null 2>&1; then
-  if [[ ! -f /etc/letsencrypt/live/$DOMAIN/fullchain.pem ]]; then
-    if getent hosts "$DOMAIN" >/dev/null 2>&1; then
-      certbot certonly --webroot -w "$WEB_ROOT" -d "$DOMAIN" --non-interactive --agree-tos \
-        --register-unsafely-without-email \
-        || certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos \
-          --register-unsafely-without-email --redirect \
-        || warn "certbot falhou — rode depois: certbot --nginx -d $DOMAIN"
-      if [[ -f /etc/letsencrypt/live/$DOMAIN/fullchain.pem ]]; then
-        install_nginx_conf "$TMP_DIR/nginx-full.conf"
-        nginx -t && systemctl reload nginx || warn "reload nginx pós-certbot"
-      fi
-    else
-      warn "DNS de $DOMAIN ainda não resolve — configure o A record e rode certbot"
-    fi
-  else
-    log "certificado já existe para $DOMAIN"
-  fi
-else
-  warn "certbot não instalado — HTTPS fica para depois"
+log "4/5 — firewall porta $PORT (se houver)"
+if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi 'active'; then
+  ufw allow "${PORT}/tcp" comment 'ArbiShield teste localhost' || warn "ufw allow $PORT falhou"
+elif command -v firewall-cmd >/dev/null 2>&1; then
+  firewall-cmd --permanent --add-port="${PORT}/tcp" 2>/dev/null || true
+  firewall-cmd --reload 2>/dev/null || true
 fi
 
-log "5/6 — systemd teste"
+log "5/5 — systemd + smoke"
 systemctl daemon-reload
 systemctl enable arbishield-prelive-events-teste.service
 systemctl enable arbishield-serverfn-shim-teste.service
@@ -151,22 +118,25 @@ systemctl restart arbishield-prelive-events-teste.service
 systemctl restart arbishield-serverfn-shim-teste.service
 sleep 1
 
-log "6/6 — smoke (não mexe na produção)"
-curl -fsS --max-time 5 "http://127.0.0.1:3198/health" | head -c 300 || warn "health :3198 falhou"
+curl -fsS --max-time 5 "http://127.0.0.1:3198/health" | head -c 200 || warn "health :3198 falhou"
 echo
-curl -fsS --max-time 5 "http://127.0.0.1:3201/health" | head -c 300 || warn "health :3201 falhou"
+curl -fsS --max-time 5 "http://127.0.0.1:3201/health" | head -c 200 || warn "health :3201 falhou"
 echo
-curl -fsS --max-time 5 "http://127.0.0.1:3098/health" >/dev/null \
-  && log "produção :3098 ainda responde (ok)" \
-  || warn "produção :3098 sem health (verifique se já estava assim)"
+CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:${PORT}/admin-jogos.html" || echo 000)"
+[[ "$CODE" == "200" || "$CODE" == "304" ]] \
+  && log "UI http://127.0.0.1:${PORT}/admin-jogos.html → HTTP $CODE" \
+  || warn "UI :${PORT} HTTP $CODE"
+
+PUB_IP="$(curl -4 -fsS --max-time 4 ifconfig.me 2>/dev/null || true)"
+[[ -z "$PUB_IP" ]] && PUB_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 
 echo
-echo "OK — ambiente de TESTE habilitado"
-echo "  URL:     https://$DOMAIN/  (ou http:// se SSL pendente)"
-echo "  Admin:   https://$DOMAIN/admin-jogos.html"
-echo "  Deploy:  ARBISHIELD_REF=<sha> bash $SCRIPTS_DIR/vps-deploy-teste.sh"
-echo "  Nginx:   $NGINX_TARGET"
+echo "OK — TESTE no ar (produção NÃO foi alterada)"
+echo "  Local:   http://127.0.0.1:${PORT}/admin-jogos.html"
+if [[ -n "$PUB_IP" ]]; then
+  echo "  Externo: http://${PUB_IP}:${PORT}/admin-jogos.html"
+fi
+echo "  Deploy:  ARBISHIELD_REF=<branch> bash $SCRIPTS_DIR/vps-deploy-teste.sh"
 echo
-echo "ATENÇÃO: por padrão o teste usa o MESMO Supabase da produção (:8000)."
-echo "  → UI/código ficam isolados; settle/depósito no teste alteram o banco real."
-echo "  → Use com cuidado. Produção: https://arbishield.app"
+echo "Sem DNS. Sem subdomínio. Só abrir a porta ${PORT}."
+echo "ATENÇÃO: mesmo Supabase da produção — cuidado com settle/pagamentos."

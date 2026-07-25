@@ -1,64 +1,41 @@
-# Ambiente de teste (antes da produção)
+# Ambiente de teste (localhost — sem DNS)
 
-URL: `https://teste.arbishield.app`  
-Produção: `https://arbishield.app` (não é alterada pelos scripts de teste)
+Acesso prático, **sem subdomínio**:
 
-## O que fica isolado
+```
+http://127.0.0.1:8090/admin-jogos.html
+http://IP_DA_VPS:8090/admin-jogos.html
+```
+
+Produção (`https://arbishield.app`) **não é alterada**.
+
+## Isolamento
 
 | Item | Produção | Teste |
 |------|----------|-------|
-| UI | `/var/www/arbishield/v2` | `/var/www/arbishield-teste/v2` |
+| UI | `:80/:443` → `/var/www/arbishield/v2` | **`:8090`** → `/var/www/arbishield-teste/v2` |
 | Prelive | `:3098` | `:3198` |
 | Shim | `:3101` | `:3201` |
-| Código | `/opt/arbishield` | `/opt/arbishield-teste` |
-| Domínio | `arbishield.app` | `teste.arbishield.app` |
 
-## O que NÃO fica isolado (padrão)
-
-O teste usa o **mesmo Supabase** da produção (`:8000`).  
-Código e UI são seguros para experimentar; **settle / depósito / saque no teste mexem no banco real**.
-
-## 1) DNS
-
-Crie um registro:
-
-```
-A  teste.arbishield.app  →  <IP da VPS>
-```
-
-## 2) Habilitar uma vez
-
-Na VPS (root):
+## 1) Habilitar uma vez (VPS root)
 
 ```bash
-bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/ambiente-teste-3cf9/scripts/vps-enable-teste.sh?v=2")
+bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/ambiente-teste-3cf9/scripts/vps-enable-teste.sh?v=3")
 ```
 
-> Se falhar com `curl: (23)`, a VPS não tem `sites-available` — a v2 do script detecta `conf.d` automaticamente.
+Abra a URL que o script imprimir (`:8090`). Faixa laranja = teste.
 
-## 3) Publicar alterações só no teste
+## 2) Publicar alteração só no teste
 
 ```bash
-# Ex.: branch com a feature
 ARBISHIELD_REF=cursor/reconectar-betbra-api-3cf9 \
   bash /opt/arbishield-teste/scripts/vps-deploy-teste.sh
-
-# Ou um SHA específico
-ARBISHIELD_REF=623482b6da8ef7f76595e94d291b28499b2e0193 \
-  bash /opt/arbishield-teste/scripts/vps-deploy-teste.sh
 ```
 
-Abra `https://teste.arbishield.app/admin-jogos.html` (Ctrl+F5).  
-Faixa laranja “AMBIENTE DE TESTE” confirma que não é produção.
+## 3) Depois → produção
 
-## 4) Só depois → produção
+Só quando validar no `:8090`, rode o hotfix/deploy de produção.
 
-Quando validar no teste, rode o hotfix/deploy **de produção** (scripts `vps-hotfix-*` / paths `/var/www/arbishield`).
+## Atenção
 
-## Checagens rápidas
-
-```bash
-curl -s http://127.0.0.1:3198/health   # teste
-curl -s http://127.0.0.1:3098/health   # produção (não deve ter sido reiniciada pelo deploy-teste)
-cat /var/www/arbishield-teste/v2/TESTE_BUILD.json
-```
+O teste usa o **mesmo Supabase** (`:8000`). Código/UI isolados; settle/depósito ainda mexem no banco real.

@@ -50,12 +50,14 @@
     return !!FINANCE_PAGE_IDS[String(id || "")];
   }
 
-  /** Host do ambiente de teste (isolado de arbishield.app). */
+  /** Ambiente de teste: porta 8090 (localhost) ou host teste.* */
   function isTesteEnv() {
-    var h = String(
-      (global.location && global.location.hostname) || ""
-    ).toLowerCase();
-    return h === "teste.arbishield.app" || h.indexOf("teste.") === 0;
+    var loc = global.location || {};
+    var h = String(loc.hostname || "").toLowerCase();
+    var p = String(loc.port || "");
+    if (p === "8090" || p === "8091") return true;
+    if (h === "teste.arbishield.app" || h.indexOf("teste.") === 0) return true;
+    return false;
   }
 
   function ensureTesteBanner() {
@@ -69,8 +71,11 @@
       "position:sticky;top:0;z-index:99999;background:#7c2d12;color:#ffedd5;" +
       "text-align:center;padding:8px 12px;font:700 12px/1.4 ui-sans-serif,system-ui,sans-serif;" +
       "letter-spacing:0.04em";
+    var origin = String((global.location && global.location.origin) || "localhost:8090");
     b.textContent =
-      "AMBIENTE DE TESTE — código isolado de produção. Banco pode ser o mesmo: cuidado com settle/pagamentos.";
+      "AMBIENTE DE TESTE (" +
+      origin +
+      ") — não é produção. Banco pode ser o mesmo: cuidado com settle/pagamentos.";
     var mount = document.body || document.documentElement;
     if (mount) mount.prepend(b);
   }
