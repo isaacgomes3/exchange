@@ -28,6 +28,7 @@ import {
   buildMexchangeOffersBody,
   extractOfferId,
   extractOfferStatus,
+  fetchMexchangeAccountInfo,
   hasTradingSession,
   resolveMexchangeApiBase,
 } from "./mexchange-offers.mjs";
@@ -333,6 +334,25 @@ export class BetbraOrdersAdapter {
       err.code = "SELECTION_REQUIRED";
       throw err;
     }
+    // Pré-checagem: sessão precisa resolver accountId (igual ao frontend)
+    try {
+      const acc = await fetchMexchangeAccountInfo(session);
+      if (!acc.ok || !acc.accountId) {
+        const err = new Error(
+          "AccountId not found — cookies da sessão não autenticaram na Mexchange. " +
+            "Cole de novo o cURL (Copy as cURL) em Conta BetBra e salve. " +
+            "Não use Bearer; a API da exchange usa só Cookie."
+        );
+        err.status = 401;
+        err.code = "MEXCHANGE_ACCOUNT_MISSING";
+        err.details = acc.raw;
+        throw err;
+      }
+    } catch (e) {
+      if (e?.code === "MEXCHANGE_ACCOUNT_MISSING") throw e;
+      // se account/info falhar por rede, ainda tenta place
+      if (e?.code === "MEXCHANGE_ACCOUNT_REDIRECT") throw e;
+    }
     const url = this.url(this.placePath, {});
     const body = buildExchangePlaceBody(payload);
     const res = await fetch(url, {
@@ -355,10 +375,15 @@ export class BetbraOrdersAdapter {
       throw err;
     }
     if (!res.ok) {
-      const err = new Error(
+      let msg =
         (data && (data.message || data.error || data.title)) ||
-          `Exchange place HTTP ${res.status}`
-      );
+        `Exchange place HTTP ${res.status}`;
+      if (/accountid not found/i.test(String(msg))) {
+        msg =
+          "AccountId not found — a Mexchange não reconheceu a sessão na VPS. " +
+          "Gere um cURL novo no Chrome e salve de novo em Conta BetBra (Cookie sb/BIAB_CUSTOMER).";
+      }
+      const err = new Error(String(msg));
       err.status = res.status;
       err.code = "EXCHANGE_PLACE_FAILED";
       err.details = data;

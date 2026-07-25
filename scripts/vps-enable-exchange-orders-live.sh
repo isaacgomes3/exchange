@@ -48,7 +48,7 @@ for f in "${ENV_FILES[@]}"; do
     upsert_env "$f" "EXCHANGE_ORDERS_CANCEL_PATH" "/offers"
     upsert_env "$f" "EXCHANGE_ORDERS_STATUS_PATH" "/offers"
     upsert_env "$f" "EXCHANGE_ORDERS_PAYLOAD" "mexchange"
-    upsert_env "$f" "EXCHANGE_ORDERS_AUTH_STYLE" "auto"
+    upsert_env "$f" "EXCHANGE_ORDERS_AUTH_STYLE" "cookie"
     echo "  OK $f"
     n=$((n + 1))
     grep -E '^EXCHANGE_ORDERS_(LIVE|PROVIDER|PLACE_PATH|PAYLOAD)=' "$f" || true

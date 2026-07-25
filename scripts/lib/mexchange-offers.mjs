@@ -95,12 +95,22 @@ export function amountToMexchangeStake({ side, odd, stakeCents, liabilityCents }
 /**
  * Body real de POST /offers (frontend submitOffersFromBetSlip).
  */
+function asApiId(v) {
+  const s = String(v ?? "").trim();
+  if (/^\d+$/.test(s)) {
+    // IDs Mexchange cabem em number seguro até ~15–16 dígitos; senão mantém string
+    const n = Number(s);
+    if (Number.isSafeInteger(n)) return n;
+  }
+  return s;
+}
+
 export function buildMexchangeOffersBody(payload = {}) {
   const conv = amountToMexchangeStake(payload);
   const offer = {
-    "runner-id": String(payload.selectionId || payload.runnerId || ""),
-    "event-id": String(payload.eventId || ""),
-    "market-id": String(payload.marketId || ""),
+    "runner-id": asApiId(payload.selectionId || payload.runnerId || ""),
+    "event-id": asApiId(payload.eventId || ""),
+    "market-id": asApiId(payload.marketId || ""),
     side: conv.side,
     odds: Number(payload.odd),
     stake: Number(conv.stakeBrl.toFixed(4)),
@@ -162,21 +172,85 @@ export function buildMexchangeAuthHeaders(session = {}) {
   } else {
     headers.Cookie = `BIAB_LANGUAGE=${lang}`;
   }
-  // JWT do cookie sb / BIAB_CUSTOMER também como Bearer (alguns endpoints aceitam)
-  let token = String(
-    session.houseToken ||
-      session.accessToken ||
-      session.sessionToken ||
-      ""
-  ).trim();
-  if ((!token || token.startsWith("cred:") || token === "browser-session") && jarHeader) {
-    const m = jarHeader.match(/(?:^|;\s*)(?:sb|BIAB_CUSTOMER)=([^;]+)/i);
-    if (m) token = m[1].trim();
-  }
-  if (token && !token.startsWith("cred:") && token !== "browser-session" && token !== "demo") {
-    headers.Authorization = `Bearer ${token}`;
+  // Frontend Mexchange: só cookies (withCredentials). Bearer com JWT sb
+  // costuma gerar "AccountId not found" — só envia Bearer se explicitamente pedido.
+  const authStyle = envStr("EXCHANGE_ORDERS_AUTH_STYLE", "auto").toLowerCase();
+  const forceBearer =
+    authStyle === "bearer" ||
+    session.forceBearer === true ||
+    process.env.EXCHANGE_ORDERS_FORCE_BEARER === "1";
+  if (forceBearer || (!browserish && authStyle !== "cookie")) {
+    let token = String(
+      session.houseToken ||
+        session.accessToken ||
+        session.sessionToken ||
+        ""
+    ).trim();
+    if (
+      (!token || token.startsWith("cred:") || token === "browser-session") &&
+      jarHeader
+    ) {
+      const m = jarHeader.match(
+        /(?:^|;\s*)(?:sb|BIAB_CUSTOMER)=([^;]+)/i
+      );
+      if (m) token = m[1].trim();
+    }
+    if (
+      token &&
+      !token.startsWith("cred:") &&
+      token !== "browser-session" &&
+      token !== "demo"
+    ) {
+      headers.Authorization = `Bearer ${token}`;
+    }
   }
   return { ...headers, ...(session.extraHeaders || {}) };
+}
+
+/**
+ * Confere se a sessão resolve accountId em GET /account/info.
+ */
+export async function fetchMexchangeAccountInfo(session = {}) {
+  const base = resolveMexchangeApiBase();
+  const url = `${base}/account/info`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: buildMexchangeAuthHeaders(session),
+    redirect: "manual",
+  });
+  const text = await res.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = { raw: text?.slice(0, 200) };
+  }
+  if (res.status >= 300 && res.status < 400) {
+    const loc = res.headers.get("location") || "";
+    const err = new Error(
+      /countryblock/i.test(loc)
+        ? "Mexchange countryblock ao ler account/info"
+        : `Redirect account/info: ${loc.slice(0, 80)}`
+    );
+    err.status = 403;
+    err.code = "MEXCHANGE_ACCOUNT_REDIRECT";
+    throw err;
+  }
+  const accountId =
+    data?.accountId != null && String(data.accountId) !== ""
+      ? String(data.accountId)
+      : data?.id != null
+        ? String(data.id)
+        : "";
+  return {
+    ok: res.ok,
+    status: res.status,
+    accountId,
+    currency: data?.currency || null,
+    minBet: data?.minBet != null ? Number(data.minBet) : null,
+    raw: data,
+    url,
+  };
 }
 
 export function hasTradingSession(session = {}) {

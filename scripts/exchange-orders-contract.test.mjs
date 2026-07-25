@@ -97,14 +97,29 @@ describe("public trading API adapter", () => {
     assert.equal(a.publicApi, EXCHANGE_PUBLIC_TRADING_API);
   });
 
-  it("monta Cookie + Bearer (auto/mexchange)", () => {
+  it("com cookies de navegador NÃO envia Bearer (evita AccountId not found)", () => {
     const h = buildExchangeAuthHeaders(
-      { houseToken: "tok-abc", cookieHeader: "SESSION=abc" },
+      { houseToken: "tok-abc", cookieHeader: "BIAB_LANGUAGE=PT_BR; sb=jwt.here" },
       "auto"
     );
-    assert.equal(h.Authorization, "Bearer tok-abc");
-    assert.match(h.Cookie, /SESSION=abc/);
+    assert.equal(h.Authorization, undefined);
+    assert.match(h.Cookie, /sb=jwt\.here/);
     assert.ok(h.Referer.includes("mexchange"));
+  });
+
+  it("Bearer só quando EXCHANGE_ORDERS_AUTH_STYLE=bearer", () => {
+    const prev = process.env.EXCHANGE_ORDERS_AUTH_STYLE;
+    process.env.EXCHANGE_ORDERS_AUTH_STYLE = "bearer";
+    try {
+      const h = buildExchangeAuthHeaders(
+        { houseToken: "tok-abc", cookieHeader: "sb=jwt.here" },
+        "bearer"
+      );
+      assert.equal(h.Authorization, "Bearer tok-abc");
+    } finally {
+      if (prev == null) delete process.env.EXCHANGE_ORDERS_AUTH_STYLE;
+      else process.env.EXCHANGE_ORDERS_AUTH_STYLE = prev;
+    }
   });
 
   it("monta X-Auth-Token quando style=x-auth-token", () => {
