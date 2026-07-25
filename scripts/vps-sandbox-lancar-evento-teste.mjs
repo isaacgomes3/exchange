@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 /**
- * Lança um evento MANUAL de teste (publicado) para validar fee_upfront.
- * Odd padrão 1,10 · liquidez R$ 5.000 · começa em ~2h.
+ * Lança OU revive evento MANUAL de teste (publicado).
+ * - Odd 1,10 BACK (dedução R$ 85 em stake R$ 1.000)
+ * - Se já existir sandbox_test, só empurra o horário e republica
  *
  * Na VPS:
- *   node /opt/arbishield-teste/scripts/vps-sandbox-lancar-evento-teste.mjs
- *   # ou:
- *   bash <(curl -fsSL ".../vps-sandbox-lancar-evento-teste.sh?v=1")
+ *   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-fee-upfront-3cf9/scripts/vps-sandbox-lancar-evento-teste.sh?$(date +%s)")
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -54,11 +53,15 @@ const SUPABASE_URL = (
 
 const ODD = Number(process.env.TEST_ODD || 1.1);
 const LIQ_BRL = Number(process.env.TEST_LIQ_BRL || 5000);
-const HOURS = Number(process.env.TEST_HOURS_AHEAD || 2);
+const HOURS = Number(process.env.TEST_HOURS_AHEAD || 6);
 const HOME = process.env.TEST_HOME || "ArbiShield Teste A";
 const AWAY = process.env.TEST_AWAY || "ArbiShield Teste B";
-// BACK @ 1,10: dedução R$ 85. LAY usa odd convertida L/(L−1).
-const SIDE = String(process.env.TEST_SIDE || "BACK").toUpperCase() === "LAY" ? "LAY" : "BACK";
+const SIDE =
+  String(process.env.TEST_SIDE || "BACK").toUpperCase() === "LAY"
+    ? "LAY"
+    : "BACK";
+const FORCE_NEW =
+  process.env.FORCE_NEW === "1" || process.env.FORCE_NEW === "true";
 
 if (!SERVICE_KEY) {
   console.error("ERRO: SERVICE_ROLE_KEY ausente");
@@ -94,16 +97,11 @@ async function sb(p, { method = "GET", body } = {}) {
   return data;
 }
 
-async function main() {
-  const liqCents = Math.round(LIQ_BRL * 100);
-  const starts = new Date(Date.now() + Math.max(0.5, HOURS) * 3600_000);
+function buildMarkets(liqCents) {
   const marketId = randomUUID();
-  const externalId = `sandbox-test-${Date.now()}`;
-
   const marketName =
     SIDE === "BACK" ? "Back · Sandbox Teste" : "Lay · Sandbox Teste";
-
-  const markets = [
+  return [
     {
       id: marketId,
       name: marketName,
@@ -115,65 +113,123 @@ async function main() {
       external_id: null,
     },
   ];
+}
 
-  const row = {
-    home_team: HOME,
-    away_team: AWAY,
-    league: "SANDBOX · Evento teste fee_upfront",
-    starts_at: starts.toISOString(),
-    status: "open",
-    status_v2: "open",
-    is_published: true,
-    sport_type: "futebol",
-    max_protection_cents: liqCents,
-    used_protection_cents: 0,
-    protection_odds: { home: ODD, away: ODD },
-    external_id: externalId,
-    score_sync_enabled: false,
-    has_live_stream: false,
-    metadata: {
-      source: "admin_manual",
-      sandbox_test: true,
-      billing_model_hint: "fee_upfront_v1",
-      release_minutes_before: 0,
-      note: "Evento de teste — pode apagar depois",
-    },
-    markets,
-  };
-
-  console.log("==> Lançar evento TESTE (publicado)");
-  console.log("    ", HOME, "vs", AWAY);
-  console.log("    odd", ODD, "·", SIDE, "· liq", money(liqCents));
-  console.log("    começa", starts.toLocaleString("pt-BR"));
-  console.log("    external_id", externalId);
-
-  const created = await sb("/rest/v1/matches", {
-    method: "POST",
-    body: row,
+async function findExisting() {
+  const rows = await sb(
+    `/rest/v1/matches?select=id,home_team,away_team,starts_at,is_published,deleted_at,metadata,markets,max_protection_cents,used_protection_cents&is_published=eq.true&deleted_at=is.null&order=starts_at.desc&limit=80`
+  );
+  const list = Array.isArray(rows) ? rows : [];
+  return list.filter((m) => {
+    const meta = m.metadata && typeof m.metadata === "object" ? m.metadata : {};
+    if (meta.sandbox_test === true) return true;
+    const league = String(m.league || "");
+    return /SANDBOX/i.test(league) || /ArbiShield Teste/i.test(m.home_team || "");
   });
-  const match = Array.isArray(created) ? created[0] : created;
-  if (!match?.id) throw new Error("match sem id");
+}
 
-  // Exemplo fee: stake 1000 @ 1.10 → 85
+async function main() {
+  const liqCents = Math.round(LIQ_BRL * 100);
+  const starts = new Date(Date.now() + Math.max(1, HOURS) * 3600_000);
+
+  const existing = FORCE_NEW ? [] : await findExisting();
+  if (existing.length) {
+    console.log("==> Reviver", existing.length, "evento(s) teste existente(s)");
+    for (const m of existing) {
+      const markets = buildMarkets(liqCents);
+      const patched = await sb(
+        `/rest/v1/matches?id=eq.${encodeURIComponent(m.id)}`,
+        {
+          method: "PATCH",
+          body: {
+            home_team: HOME,
+            away_team: AWAY,
+            league: "SANDBOX · Evento teste fee_upfront",
+            starts_at: starts.toISOString(),
+            status: "open",
+            status_v2: "open",
+            is_published: true,
+            deleted_at: null,
+            max_protection_cents: liqCents,
+            used_protection_cents: 0,
+            protection_odds: { home: ODD, away: ODD },
+            markets,
+            metadata: {
+              ...(m.metadata && typeof m.metadata === "object" ? m.metadata : {}),
+              source: "admin_manual",
+              sandbox_test: true,
+              billing_model_hint: "fee_upfront_v1",
+              release_minutes_before: 0,
+              revived_at: new Date().toISOString(),
+            },
+            updated_at: new Date().toISOString(),
+          },
+        }
+      );
+      const row = Array.isArray(patched) ? patched[0] : patched;
+      console.log("  OK revive", row?.id || m.id, "→", starts.toLocaleString("pt-BR"));
+    }
+  } else {
+    const markets = buildMarkets(liqCents);
+    const externalId = `sandbox-test-${Date.now()}`;
+    console.log("==> Criar evento TESTE novo");
+    console.log("   ", HOME, "vs", AWAY);
+    console.log("    odd", ODD, "·", SIDE, "· liq", money(liqCents));
+    console.log("    começa", starts.toLocaleString("pt-BR"));
+
+    const created = await sb("/rest/v1/matches", {
+      method: "POST",
+      body: {
+        home_team: HOME,
+        away_team: AWAY,
+        league: "SANDBOX · Evento teste fee_upfront",
+        starts_at: starts.toISOString(),
+        status: "open",
+        status_v2: "open",
+        is_published: true,
+        sport_type: "futebol",
+        max_protection_cents: liqCents,
+        used_protection_cents: 0,
+        protection_odds: { home: ODD, away: ODD },
+        external_id: externalId,
+        score_sync_enabled: false,
+        has_live_stream: false,
+        metadata: {
+          source: "admin_manual",
+          sandbox_test: true,
+          billing_model_hint: "fee_upfront_v1",
+          release_minutes_before: 0,
+          note: "Evento de teste — pode apagar depois",
+        },
+        markets,
+      },
+    });
+    const match = Array.isArray(created) ? created[0] : created;
+    if (!match?.id) throw new Error("match sem id");
+    console.log("  matchId:", match.id);
+  }
+
   const stake = 100_000;
-  const profit = Math.round(stake * (ODD - 1));
+  const profit = Math.max(0, Math.round(stake * (ODD - 1)));
   const user = Math.round(stake * 0.015);
   const fee = Math.max(0, profit - user);
 
-  console.log("\nOK — evento criado");
-  console.log("  matchId:", match.id);
-  console.log("  marketId:", marketId);
+  console.log("\nOK — evento teste disponível");
   console.log(
-    "  Exemplo proteção stake R$ 1.000 → cobra agora",
+    "  Ex.: stake R$ 1.000 @",
+    ODD,
+    SIDE,
+    "→ dedução",
     money(fee),
     `(seu lucro ${money(user)})`
   );
-  console.log("\nAbrir sandbox:");
+  console.log("\nAbrir:");
+  console.log("  https://arbishield.app/app-proteger.html");
   console.log("  https://arbishield.app/sandbox/app-proteger.html");
-  console.log("  (Ctrl+F5 · saldo DEMO · escolher este jogo)");
+  console.log("  (janela anônima · saldo DEMO · ArbiShield Teste A vs B)");
 }
 
 main().catch((e) => {
-  console.error(e);
+  console.error("ERRO:", e.message || e);
   process.exit(1);
 });

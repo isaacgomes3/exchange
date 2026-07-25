@@ -768,11 +768,7 @@
           if (matchesRes.error) throw matchesRes.error;
 
           state.matches = (matchesRes.data || []).filter(function (m) {
-            var meta =
-              m && m.metadata && typeof m.metadata === "object" ? m.metadata : {};
-            var isSandboxMatch = meta.sandbox_test === true;
-            // Produção não lista eventos de teste; sandbox lista todos (inclui teste)
-            if (!IS_SANDBOX && isSandboxMatch) return false;
+            // Eventos sandbox_test ficam visíveis (DB compartilhada); grade normal
             return isOnAvailableGrid(m);
           });
 
