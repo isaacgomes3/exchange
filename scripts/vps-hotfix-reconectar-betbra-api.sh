@@ -3,7 +3,7 @@
 # v2: restaura lista de eventos da plataforma + não mistura manual × BetBra
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/eeb9af823cf9969913c2f89739dfdf4bfe2dd4f0/scripts/vps-hotfix-reconectar-betbra-api.sh?v=2")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/2e3007329389253086ac3a10b81ea3de1aa5fbe1/scripts/vps-hotfix-reconectar-betbra-api.sh?v=2")
 #
 # Se a VPS estiver fora do Brasil e a BetBra bloquear (Cloudflare),
 # configure proxy em /opt/arbishield/.arbishield-odds-sync.env:
