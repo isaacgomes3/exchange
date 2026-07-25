@@ -7,10 +7,10 @@
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=proteger-fee-upfront-2" />
+  <link rel="stylesheet" href="/v2.css?v=proteger-fee-upfront-3" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=proteger-fee-upfront-2"></script>
-  <script src="/v2-shell.js?v=proteger-fee-upfront-2" defer></script>
+  <script src="/v2.js?v=proteger-fee-upfront-3"></script>
+  <script src="/v2-shell.js?v=proteger-fee-upfront-3" defer></script>
 </head>
 <body data-shell="app" data-active="proteger">
   <div class="page-head term-head">
@@ -341,10 +341,10 @@
         var avail = available(document.getElementById("balanceType").value);
         document.getElementById("preview").innerHTML =
           "<div><span>Tipo</span><b>" + mt + "</b></div>" +
-          "<div><span>Stake (não trava)</span><b>" + money(amountCents) + "</b></div>" +
-          "<div><span>Retorno na casa</span><b>" + money(c.grossReturnCents) + "</b></div>" +
+          "<div><span>Valor (stake)</span><b>" + money(amountCents) + "</b></div>" +
+          "<div><span>Retorno casa externa</span><b>" + money(c.grossReturnCents) + "</b></div>" +
           "<div><span>Seu lucro (1,5%)</span><b>" + money(c.userProfitCents) + "</b></div>" +
-          "<div><span>Cobrado agora (ArbiShield)</span><b>" + money(c.feeChargedCents) + "</b></div>" +
+          "<div><span>Dedução ArbiShield</span><b>" + money(c.feeChargedCents) + "</b></div>" +
           "<div><span>Saldo disponível</span><b>" + money(avail) + "</b></div>";
       }
 
