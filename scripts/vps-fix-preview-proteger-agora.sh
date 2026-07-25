@@ -1,46 +1,42 @@
 #!/usr/bin/env bash
-# CORRIGE retorno/dedução zerados no Proteger.
-# 1) Baixa HTML novo do GitHub
-# 2) Se ainda houver o bug (__pv.grossReturnCents), substitui updatePreview no arquivo local
-# 3) Publica em /v2 e /sandbox e valida
+# Corrige Retorno/Dedução zerados — em TODOS os app-proteger.html sob /var/www/arbishield
+# + injeta override JS inline (funciona mesmo se updatePreview legado voltar).
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-fee-upfront-3cf9/scripts/vps-fix-preview-proteger-agora.sh?v=$(date +%s)")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-fee-upfront-3cf9/scripts/vps-fix-preview-proteger-agora.sh?$(date +%s)")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/protecao-fee-upfront-3cf9}"
-RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
-V2="${ARBISHIELD_WEB:-/var/www/arbishield/v2}"
-SANDBOX="${ARBISHIELD_SANDBOX_WEB:-/var/www/arbishield/sandbox}"
 TS="$(date +%s)"
-
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
-need() { command -v "$1" >/dev/null || die "$1 não encontrado"; }
-need curl; need python3; need grep
 [[ "$(id -u)" -eq 0 ]] || die "rode como root"
-mkdir -p "$V2" "$SANDBOX"
+need() { command -v "$1" >/dev/null || die "$1 não encontrado"; }
+need python3
+need find
+need grep
 
-TMP="$(mktemp)"
-trap 'rm -f "$TMP"' EXIT
+log "Procurar app-proteger.html em /var/www/arbishield*"
+mapfile -t FILES < <(find /var/www/arbishield /var/www/arbishield-teste /opt/arbishield /opt/arbishield-teste \
+  -type f -name 'app-proteger.html' 2>/dev/null | sort -u)
+[[ ${#FILES[@]} -gt 0 ]] || die "nenhum app-proteger.html encontrado"
 
-log "Baixar HTML do GitHub ($REF)"
-curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
-  "$RAW/deploy/vps-supabase/static/v2/app-proteger.html?v=$TS" -o "$TMP"
-grep -q 'lucroBruto' "$TMP" || die "GitHub ainda sem lucroBruto — branch desatualizada?"
+for f in "${FILES[@]}"; do
+  echo "  · $f"
+done
 
-# Garante updatePreview autocontido (mesmo se o download vier errado)
-python3 - "$TMP" <<'PY'
+python3 - "$TS" "${FILES[@]}" <<'PY'
+import sys, re
 from pathlib import Path
-import re, sys
-path = Path(sys.argv[1])
-t = path.read_text(encoding="utf-8", errors="replace")
 
-GOOD = r'''
+ts = sys.argv[1]
+files = sys.argv[2:]
+
+GOOD_UPDATE = r'''
       function updatePreview() {
         if (!state.selected) return;
-        var amountReais = Number(document.getElementById("amount").value || 0);
-        var odd = Number(state.selected.market && state.selected.market.odd) || Number(String(document.getElementById("odd").value || "0").replace(",", "."));
+        var amountReais = Number(String(document.getElementById("amount").value || "0").replace(",", "."));
+        var odd = Number(state.selected.market && state.selected.market.odd) ||
+          Number(String(document.getElementById("odd").value || "0").replace(",", "."));
         var amountCents = Math.round(amountReais * 100);
         var mt = state.selected.marketType;
         var layOdd = Number(odd) > 1.01 ? Number(odd) : 1.01;
@@ -50,15 +46,11 @@ GOOD = r'''
         var seuLucro = Math.round(amountCents * 0.015);
         var deducao = Math.max(0, lucroBruto - seuLucro);
         var avail = typeof available === "function" ? available(document.getElementById("balanceType").value) : 0;
-        var oddLine =
-          mt === "LAY"
-            ? "<div><span>Odd LAY → back equiv.</span><b>" +
-              Number(effOdd).toFixed(3).replace(".", ",") +
-              "</b></div>"
-            : "";
+        var oddLine = mt === "LAY"
+          ? "<div><span>Odd LAY → back equiv.</span><b>" + Number(effOdd).toFixed(3).replace(".", ",") + "</b></div>"
+          : "";
         document.getElementById("preview").innerHTML =
-          "<div><span>Tipo</span><b>" + mt + "</b></div>" +
-          oddLine +
+          "<div><span>Tipo</span><b>" + mt + "</b></div>" + oddLine +
           "<div><span>Valor (stake)</span><b>" + money(amountCents) + "</b></div>" +
           "<div><span>Retorno casa externa</span><b>" + money(retorno) + "</b></div>" +
           "<div><span>Seu lucro (1,5%)</span><b>" + money(seuLucro) + "</b></div>" +
@@ -67,123 +59,147 @@ GOOD = r'''
       }
 '''
 
-m = re.search(r"function updatePreview\s*\(\)\s*\{", t)
-if not m:
-    raise SystemExit("updatePreview ausente no download")
-start = m.start()
-i = m.end() - 1
-depth = 0
-end = None
-while i < len(t):
-    if t[i] == "{":
-        depth += 1
-    elif t[i] == "}":
-        depth -= 1
-        if depth == 0:
-            end = i + 1
-            break
-    i += 1
-if end is None:
-    raise SystemExit("não fechei updatePreview")
-t = t[:start] + GOOD.strip() + t[end:]
-# remove helpers frágeis antigos que confundem
-t = re.sub(
-    r"\n\s*function layToBackOddPreview\s*\([\s\S]*?\n\s*function calcPreviewFeeUpfront\s*\([\s\S]*?\n\s*function updatePreview",
-    "\n      function updatePreview",
-    t,
-    count=1,
-)
-# se o regex acima comeu updatePreview, já está ok; re-garante GOOD uma vez
-if "__ret = __pv.grossReturnCents" in t or "calcPreviewFeeUpfront" in t and "lucroBruto" not in t:
+OVERRIDE = r'''
+<script id="arbishield-preview-fix-inline">
+(function(){
+  function money(c){try{if(window.ArbiV2&&ArbiV2.money)return ArbiV2.money(c);}catch(e){}return(Number(c||0)/100).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});}
+  function num(v){return Number(String(v==null?"":v).replace(",","."))||0;}
+  function fix(){
+    var amountEl=document.getElementById("amount");
+    var oddEl=document.getElementById("odd");
+    var preview=document.getElementById("preview");
+    var drawer=document.getElementById("drawer");
+    if(!amountEl||!oddEl||!preview)return;
+    if(drawer&&!drawer.classList.contains("open"))return;
+    var amountCents=Math.round(num(amountEl.value)*100);
+    var odd=num(oddEl.value); if(!(odd>1.01))return;
+    var title=document.getElementById("drawerTitle");
+    var mt=(title&&/BACK/i.test(title.textContent||""))?"BACK":"LAY";
+    var layOdd=odd>1.01?odd:1.01;
+    var effOdd=mt==="LAY"?(layOdd/(layOdd-1)):layOdd;
+    var retorno=Math.round(amountCents*effOdd);
+    var lucroBruto=Math.max(0,retorno-amountCents);
+    var seuLucro=Math.round(amountCents*0.015);
+    var deducao=Math.max(0,lucroBruto-seuLucro);
+    var availMatch=(preview.innerHTML||"").match(/<div><span>Saldo dispon[^<]*<\/span><b>([^<]*)<\/b><\/div>/i);
+    var availHtml=availMatch?("<div><span>Saldo disponível</span><b>"+availMatch[1]+"</b></div>"):"";
+    var oddLine=mt==="LAY"?("<div><span>Odd LAY → back equiv.</span><b>"+effOdd.toFixed(3).replace(".",",")+"</b></div>"):"";
+    preview.innerHTML="<div><span>Tipo</span><b>"+mt+"</b></div>"+oddLine+
+      "<div><span>Valor (stake)</span><b>"+money(amountCents)+"</b></div>"+
+      "<div><span>Retorno casa externa</span><b>"+money(retorno)+"</b></div>"+
+      "<div><span>Seu lucro (1,5%)</span><b>"+money(seuLucro)+"</b></div>"+
+      "<div><span>Dedução ArbiShield</span><b>"+money(deducao)+"</b></div>"+availHtml;
+    preview.setAttribute("data-fix-preview", "''' + ts + r'''");
+  }
+  function schedule(){setTimeout(fix,0);setTimeout(fix,40);setTimeout(fix,120);}
+  document.addEventListener("input",function(e){var id=e.target&&e.target.id;if(id==="amount"||id==="odd"||id==="balanceType")schedule();},true);
+  document.addEventListener("change",function(e){var id=e.target&&e.target.id;if(id==="amount"||id==="odd"||id==="balanceType")schedule();},true);
+  document.addEventListener("click",schedule,true);
+  var obs=new MutationObserver(function(){schedule();});
+  function boot(){var p=document.getElementById("preview");if(p)obs.observe(p,{childList:true,subtree:true,characterData:true});schedule();}
+  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot);else boot();
+})();
+</script>
+'''
+
+def replace_update_preview(t: str) -> str:
     m = re.search(r"function updatePreview\s*\(\)\s*\{", t)
-    if m:
-        start = m.start(); i = m.end()-1; depth=0; end=None
-        while i < len(t):
-            if t[i]=="{": depth+=1
-            elif t[i]=="}":
-                depth-=1
-                if depth==0: end=i+1; break
-            i+=1
-        t = t[:start] + GOOD.strip() + t[end:]
+    if not m:
+        raise SystemExit("updatePreview não encontrado")
+    start = m.start()
+    i = m.end() - 1
+    depth = 0
+    end = None
+    while i < len(t):
+        if t[i] == "{":
+            depth += 1
+        elif t[i] == "}":
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                break
+        i += 1
+    if end is None:
+        raise SystemExit("não fechei updatePreview")
+    return t[:start] + GOOD_UPDATE.strip() + t[end:]
 
-path.write_text(t, encoding="utf-8")
-out = path.read_text(encoding="utf-8")
-assert "lucroBruto" in out, "falhou injetar lucroBruto"
-assert "__ret = __pv.grossReturnCents" not in out, "ainda tem bug __pv"
-print("  updatePreview OK (lucroBruto)")
+for fp in files:
+    path = Path(fp)
+    t = path.read_text(encoding="utf-8", errors="replace")
+    t = replace_update_preview(t)
+    # remove helpers frágeis (não tocar no updatePreview bom)
+    t = re.sub(
+        r"\n\s*function layToBackOddPreview\s*\([^)]*\)\s*\{[\s\S]*?\n\s*\}",
+        "\n",
+        t,
+        count=3,
+    )
+    t = re.sub(
+        r"\n\s*function calcPreviewFeeUpfront\s*\([^)]*\)\s*\{[\s\S]*?\n\s*\}",
+        "\n",
+        t,
+        count=3,
+    )
+    # injeta/atualiza override inline
+    t = re.sub(
+        r"<script id=\"arbishield-preview-fix-inline\">[\s\S]*?</script>\s*",
+        "",
+        t,
+        count=2,
+    )
+    if "</body>" in t:
+        t = t.replace("</body>", OVERRIDE + "\n</body>", 1)
+    else:
+        t += "\n" + OVERRIDE
+
+    # cache bust
+    t = re.sub(r"(\?v=)[^\"']+", rf"\1fix-{ts}", t, count=8)
+
+    if "lucroBruto" not in t:
+        raise SystemExit(f"{fp}: sem lucroBruto após patch")
+    if "__ret = __pv.grossReturnCents" in t:
+        raise SystemExit(f"{fp}: ainda com bug __pv")
+    if "arbishield-preview-fix-inline" not in t:
+        raise SystemExit(f"{fp}: override inline ausente")
+
+    path.write_text(t, encoding="utf-8")
+    print(f"OK {fp}")
+
+print("DONE", len(files), "arquivos")
 PY
 
-publish() {
-  local dest="$1"
-  local mode="$2"
-  cp -f "$TMP" "$dest"
-  sed -i "s/proteger-lay-back-equiv-[0-9]*/proteger-fix-$TS/g" "$dest" || true
-  sed -i "s/proteger-fee-upfront-[0-9]*/proteger-fix-$TS/g" "$dest" || true
-  sed -i "s/?v=preview-[^\"']*/?v=proteger-fix-$TS/g" "$dest" || true
+# reload nginx se existir
+command -v nginx >/dev/null && nginx -t 2>/dev/null && nginx -s reload 2>/dev/null || true
 
-  if [[ "$mode" == "sandbox" ]]; then
-    python3 - "$dest" <<'PY'
-from pathlib import Path
-import re, sys
-p = Path(sys.argv[1])
-t = p.read_text(encoding="utf-8", errors="replace")
-for a,b in [
-    ('"/api/arbishield/', '"/__sandbox_api/arbishield/'),
-    ("'/api/arbishield/", "'/__sandbox_api/arbishield/"),
-    ("`/api/arbishield/", "`/__sandbox_api/arbishield/"),
-]:
-    t = t.replace(a,b)
-if "arbishield-sandbox-banner" not in t:
-    banner = '<div id="arbishield-sandbox-banner" style="position:sticky;top:0;z-index:99999;background:#7c2d12;color:#ffedd5;text-align:center;padding:8px 12px;font:700 12px/1.4 sans-serif">SANDBOX</div>\n'
-    t = re.sub(r"(<body[^>]*>)", r"\1\n"+banner, t, count=1, flags=re.I)
-p.write_text(t, encoding="utf-8")
-PY
-  fi
+echo
+echo "======== VERIFICAÇÃO LOCAL ========"
+FAIL=0
+for f in "${FILES[@]}"; do
+  C=$(grep -c 'lucroBruto' "$f" || true)
+  B=$(grep -c '__ret = __pv.grossReturnCents' "$f" || true)
+  O=$(grep -c 'arbishield-preview-fix-inline' "$f" || true)
+  echo "  $f → lucroBruto=$C bug=__pv:$B override=$O"
+  [[ "$C" -ge 1 && "$B" -eq 0 && "$O" -ge 1 ]] || FAIL=1
+done
+[[ "$FAIL" -eq 0 ]] || die "validação local falhou"
 
-  grep -q 'lucroBruto' "$dest" || die "$dest SEM lucroBruto"
-  if grep -q '__ret = __pv.grossReturnCents' "$dest"; then
-    die "$dest AINDA COM BUG __pv — abortado"
-  fi
-  # marca versão
-  if ! grep -q 'data-preview-fix=' "$dest"; then
-    sed -i "s|</body>|<div data-preview-fix=\"$TS\" hidden></div>\n</body>|" "$dest" || true
-  fi
-  echo "  OK $dest (md5 $(md5sum "$dest" | awk '{print $1}'))"
-}
-
-log "Publicar produção"
-publish "$V2/app-proteger.html" prod
-log "Publicar sandbox"
-publish "$SANDBOX/app-proteger.html" sandbox
-
-# tenta limpar cache nginx se houver
-if command -v nginx >/dev/null; then
-  nginx -s reload 2>/dev/null || true
+echo
+echo "======== VERIFICAÇÃO PÚBLICA ========"
+sleep 1
+PUB=$(curl -fsS "https://arbishield.app/app-proteger.html?v=$TS" | grep -c 'lucroBruto' || true)
+PUBB=$(curl -fsS "https://arbishield.app/app-proteger.html?v=$TS" | grep -c '__ret = __pv.grossReturnCents' || true)
+PUBO=$(curl -fsS "https://arbishield.app/app-proteger.html?v=$TS" | grep -c 'arbishield-preview-fix-inline' || true)
+echo "  público lucroBruto=$PUB bug=$PUBB override=$PUBO"
+if [[ "$PUB" -lt 1 || "$PUBB" -gt 0 || "$PUBO" -lt 1 ]]; then
+  echo "AVISO: público ainda não reflete o arquivo local."
+  echo "       Confira se o nginx root é o path que patchamos:"
+  grep -R "root /var/www/arbishield" /etc/nginx 2>/dev/null | head -20 || true
+  echo "       Rode: ls -la /var/www/arbishield/v2/app-proteger.html /var/www/arbishield/app-proteger.html 2>/dev/null"
+else
+  echo "PÚBLICO OK"
 fi
 
 echo
-echo "======== TESTE LOCAL ========"
-python3 - <<'PY'
-# simula LAY 11 / 1000
-odd=11.0
-amount=100000
-eff=odd/(odd-1)
-ret=round(amount*eff)
-lucro=max(0,ret-amount)
-user=round(amount*0.015)
-fee=max(0,lucro-user)
-print(f"LAY {odd:.0f} → back {eff:.3f} | retorno R$ {ret/100:.2f} | dedução R$ {fee/100:.2f}")
-assert ret==110000 and fee==8500
-print("cálculo OK")
-PY
-
-echo
-echo "OK publicado. Abra em JANELA ANÔNIMA:"
+echo "Abra em JANELA ANÔNIMA:"
 echo "  https://arbishield.app/app-proteger.html?v=$TS"
-echo
-echo "LAY 11 · R\$ 1.000 deve mostrar:"
-echo "  Retorno casa externa = R\$ 1.100,00"
-echo "  Dedução ArbiShield   = R\$ 85,00"
-echo
-echo "Confirme no HTML (tem que achar lucroBruto):"
-echo "  curl -s 'https://arbishield.app/app-proteger.html?v=$TS' | grep -c lucroBruto"
+echo "LAY 11 · R\$1000 → retorno R\$1.100 · dedução R\$85"
