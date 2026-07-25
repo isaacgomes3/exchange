@@ -37,7 +37,20 @@
           <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Rótulo</span>
           <strong id="stLabel">—</strong>
         </div>
+        <div class="field" style="flex-direction:column;align-items:flex-start;padding:12px;gap:4px">
+          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Saldo BetBra</span>
+          <strong id="stBalance">—</strong>
+        </div>
       </div>
+      <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" type="button" id="btnBalance">
+          Atualizar saldo
+        </button>
+      </div>
+      <p id="balanceHint" class="notice" style="margin-top:12px">
+        O saldo usa login/senha salvos na API BetBra (IP da VPS). Pode pedir
+        validação de dispositivo na primeira vez.
+      </p>
     </div>
 
     <div class="panel">
@@ -109,6 +122,50 @@
         return data?.session?.access_token || "";
       }
 
+      function formatBrl(n) {
+        const v = Number(n);
+        if (!Number.isFinite(v)) return "—";
+        return v.toLocaleString("pt-BR", {
+          style: "currency",
+          currency: "BRL",
+        });
+      }
+
+      async function refreshBalance() {
+        const stBalance = document.getElementById("stBalance");
+        const hint = document.getElementById("balanceHint");
+        stBalance.textContent = "Consultando…";
+        hint.textContent = "Fazendo login na BetBra e lendo clients/balance…";
+        try {
+          const res = await fetch(
+            "/api/arbishield/exchange-session/balance?provider=betbra",
+            {
+              headers: {
+                Accept: "application/json",
+                Authorization: "Bearer " + (await bearer()),
+              },
+            }
+          );
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || "Falha ao ler saldo");
+          stBalance.textContent = formatBrl(json.balance);
+          hint.textContent =
+            "Saldo " +
+            formatBrl(json.balance) +
+            (json.source ? " · via " + json.source : "") +
+            (json.fetchedAt
+              ? " · " + new Date(json.fetchedAt).toLocaleString("pt-BR")
+              : "");
+          return json;
+        } catch (ex) {
+          stBalance.textContent = "indisponível";
+          hint.textContent =
+            (ex instanceof Error ? ex.message : String(ex)) +
+            " — confira se LIVE/IP BR estão ok e se o dispositivo não precisa de aprovação.";
+          throw ex;
+        }
+      }
+
       async function refreshStatus() {
         statusLine.textContent = "Consultando…";
         statusBox.style.display = "none";
@@ -142,9 +199,10 @@
             : "não salva";
           document.getElementById("stLabel").textContent =
             json.accountLabel || "—";
-          if (json.loginMasked && json.loginMasked.includes("@")) {
-            // pré-preenche só o formato — usuário redigita login completo ao atualizar
-          }
+          document.getElementById("stBalance").textContent =
+            json.lastBalance != null
+              ? formatBrl(json.lastBalance)
+              : "clique em Atualizar saldo";
         } catch (ex) {
           statusLine.textContent =
             (ex instanceof Error ? ex.message : String(ex)) +
@@ -206,6 +264,16 @@
             (json.loginMasked || "ok") +
             " · senha criptografada";
           await refreshStatus();
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+        }
+      });
+
+      document.getElementById("btnBalance").addEventListener("click", async () => {
+        err.classList.remove("show");
+        try {
+          await refreshBalance();
         } catch (ex) {
           err.textContent = ex instanceof Error ? ex.message : String(ex);
           err.classList.add("show");

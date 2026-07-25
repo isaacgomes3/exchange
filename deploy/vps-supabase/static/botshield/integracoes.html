@@ -27,8 +27,12 @@
         Credenciais ficam criptografadas e só são acessíveis neste subdomínio.
       </p>
       <div id="betbraStatus" class="notice">Carregando status…</div>
-      <div style="margin-top:14px">
+      <div id="betbraBalance" class="notice" style="margin-top:10px">Saldo: —</div>
+      <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
         <a class="btn btn-primary" href="/conta-betbra.html">Abrir Conta BetBra</a>
+        <button class="btn btn-secondary" type="button" id="btnBalance">
+          Atualizar saldo
+        </button>
       </div>
     </div>
 
@@ -72,6 +76,7 @@
       const err = document.getElementById("err");
       const status = document.getElementById("status");
       const betbraStatus = document.getElementById("betbraStatus");
+      const betbraBalance = document.getElementById("betbraBalance");
       const providerEl = document.getElementById("provider");
       let betbraReady = false;
       let lastStatus = null;
@@ -85,6 +90,15 @@
         if (json && json.live === true) return " · LIVE ligado";
         if (json && json.live === false) return " · LIVE desligado na VPS";
         return "";
+      }
+
+      function formatBrl(n) {
+        const v = Number(n);
+        if (!Number.isFinite(v)) return "—";
+        return v.toLocaleString("pt-BR", {
+          style: "currency",
+          currency: "BRL",
+        });
       }
 
       async function loadBetbraStatus() {
@@ -111,6 +125,10 @@
               (json.loginMasked || "login ok") +
               (json.hasPassword ? " · senha salva" : " · sem senha") +
               liveLabel(json);
+            betbraBalance.textContent =
+              json.lastBalance != null
+                ? "Saldo: " + formatBrl(json.lastBalance)
+                : "Saldo: clique em Atualizar saldo";
             if (betbraReady) {
               providerEl.value = "betbra";
               status.textContent =
@@ -124,6 +142,7 @@
           } else {
             betbraStatus.textContent =
               "Nenhuma conta BetBra salva — abra Conta BetBra para cadastrar.";
+            betbraBalance.textContent = "Saldo: —";
             status.textContent =
               "Salve a Conta BetBra ou escolha Demo e aplique.";
           }
@@ -134,7 +153,35 @@
         }
       }
 
+      async function loadBalance() {
+        betbraBalance.textContent = "Saldo: consultando…";
+        const res = await fetch(
+          "/api/arbishield/exchange-session/balance?provider=betbra",
+          {
+            headers: {
+              Accept: "application/json",
+              Authorization: "Bearer " + (await token()),
+            },
+          }
+        );
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.error || "Falha ao ler saldo");
+        betbraBalance.textContent = "Saldo: " + formatBrl(json.balance);
+        return json;
+      }
+
       await loadBetbraStatus();
+
+      document.getElementById("btnBalance").addEventListener("click", async () => {
+        err.classList.remove("show");
+        try {
+          await loadBalance();
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+          betbraBalance.textContent = "Saldo: indisponível";
+        }
+      });
 
       document.getElementById("form").addEventListener("submit", async (e) => {
         e.preventDefault();

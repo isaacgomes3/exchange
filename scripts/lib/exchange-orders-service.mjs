@@ -14,6 +14,10 @@ import {
   createOrdersAdapter,
   ExchangeOrdersNotWiredError,
 } from "./exchange-orders-adapter.mjs";
+import {
+  betbraLoginAndBalance,
+  cookieHeaderFromJar,
+} from "./betbra-client-api.mjs";
 
 void EXCHANGE_ORDERS_LOCK;
 
@@ -289,6 +293,11 @@ export function createExchangeOrdersService(deps) {
         connectedAt: conn.connected_at,
         demo: conn.provider === "demo",
         live,
+        lastBalance:
+          conn.metadata?.last_balance != null
+            ? Number(conn.metadata.last_balance)
+            : null,
+        lastBalanceAt: conn.metadata?.last_balance_at || null,
         contract: EXCHANGE_ORDERS_CONTRACT_VERSION,
       };
     } catch (err) {
@@ -494,10 +503,104 @@ export function createExchangeOrdersService(deps) {
     }
   }
 
+  /**
+   * Lê saldo BetBra (login com credenciais salvas → clients/balance).
+   * Atualiza session_enc com JWT/cookies da casa quando o login ok.
+   */
+  async function sessionBalance(token, query = {}) {
+    const userId = await requireUserId(token);
+    const provider = String(query?.provider || "betbra").toLowerCase();
+    try {
+      const rows = await sb(
+        `/rest/v1/exchange_connections?user_id=eq.${encodeURIComponent(userId)}&status=eq.active&provider=eq.${encodeURIComponent(provider)}&select=*&order=connected_at.desc&limit=1`,
+        { token: serviceKey }
+      );
+      const conn = Array.isArray(rows) ? rows[0] : null;
+      if (!conn?.session_enc) {
+        const err = new Error(
+          "Nenhuma Conta BetBra salva. Cadastre login/senha em Conta BetBra."
+        );
+        err.status = 400;
+        err.code = "BETBRA_NO_CONNECTION";
+        throw err;
+      }
+      const session = decryptSessionPayload(conn.session_enc);
+      const login = String(session?.login || "").trim();
+      const password = String(session?.password || "").trim();
+      if (!login || !password) {
+        const err = new Error(
+          "Conta BetBra sem login/senha. Salve as credenciais de novo ou cole um token e use outro fluxo."
+        );
+        err.status = 400;
+        err.code = "BETBRA_NO_CREDENTIALS";
+        throw err;
+      }
+
+      const result = await betbraLoginAndBalance({ login, password });
+
+      // Persiste token/cookies da casa (mantém login+senha)
+      try {
+        const next = {
+          ...session,
+          accessToken: result.houseToken || session.accessToken,
+          houseToken: result.houseToken || null,
+          cookies: result.cookies || session.cookies || null,
+          cookieHeader:
+            cookieHeaderFromJar(result.cookies) || session.cookieHeader || null,
+          authMode: "credentials",
+          lastBalance: result.balance,
+          lastBalanceAt: new Date().toISOString(),
+          demo: false,
+        };
+        const sessionEnc = encryptSessionPayload(next);
+        const meta = {
+          ...(conn.metadata && typeof conn.metadata === "object"
+            ? conn.metadata
+            : {}),
+          has_login: true,
+          login_masked: maskLogin(login),
+          auth_mode: "credentials",
+          last_balance: result.balance,
+          last_balance_at: next.lastBalanceAt,
+          has_house_token: !!result.houseToken,
+        };
+        await sb(
+          `/rest/v1/exchange_connections?id=eq.${encodeURIComponent(conn.id)}`,
+          {
+            method: "PATCH",
+            token: serviceKey,
+            body: {
+              session_enc: sessionEnc,
+              metadata: meta,
+              updated_at: new Date().toISOString(),
+            },
+          }
+        );
+      } catch {
+        /* persistência best-effort — saldo já foi lido */
+      }
+
+      return {
+        ok: true,
+        provider,
+        balance: result.balance,
+        balanceCents: result.balanceCents,
+        currency: result.currency || "BRL",
+        source: result.source || "clients/balance",
+        loginMasked: maskLogin(login),
+        accountStatus: result.accountStatus || null,
+        fetchedAt: new Date().toISOString(),
+      };
+    } catch (err) {
+      return ensureTablesHint(err);
+    }
+  }
+
   return {
     connectSession,
     disconnectSession,
     sessionStatus,
+    sessionBalance,
     placeOrder,
     cancelOrder,
     orderStatus,

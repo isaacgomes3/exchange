@@ -124,7 +124,8 @@ mkdir -p "$SCRIPTS_DIR/lib" "$SHIM_ROOT/lib" "$SHIM_ROOT/scripts/lib"
 for rel in \
   scripts/lib/exchange-orders-contract.mjs \
   scripts/lib/exchange-orders-adapter.mjs \
-  scripts/lib/exchange-orders-service.mjs; do
+  scripts/lib/exchange-orders-service.mjs \
+  scripts/lib/betbra-client-api.mjs; do
   tmp="$(mktemp)"
   fetch "$rel" "$tmp" || die "falha $rel"
   base="$(basename "$rel")"
@@ -144,6 +145,7 @@ tmp_shim="$(mktemp)"
 fetch "scripts/arbishield-serverfn-shim.mjs" "$tmp_shim" || die "shim"
 grep -q 'exchange-session/status' "$tmp_shim" || die "shim sem exchange-session/status"
 grep -q 'exchange-session/connect' "$tmp_shim" || die "shim sem connect"
+grep -q 'exchange-session/balance' "$tmp_shim" || die "shim sem exchange-session/balance"
 for dest in \
   "$SHIM_ROOT/arbishield-serverfn-shim.mjs" \
   "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs"; do

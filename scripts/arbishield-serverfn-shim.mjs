@@ -7634,6 +7634,31 @@ const server = createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === "/api/arbishield/exchange-session/balance" && req.method === "GET") {
+    try {
+      if (!exchangeOrdersApi) {
+        return sendJson(res, 503, { error: "exchange-orders-service ausente" });
+      }
+      if (typeof exchangeOrdersApi.sessionBalance !== "function") {
+        return sendJson(res, 503, {
+          error:
+            "API de saldo desatualizada — atualize exchange-orders-service.mjs na VPS",
+        });
+      }
+      const token = bearerFromReq(req);
+      const out = await exchangeOrdersApi.sessionBalance(token, {
+        provider: url.searchParams.get("provider") || "betbra",
+      });
+      return sendJson(res, 200, out);
+    } catch (err) {
+      return sendJson(res, err.status || 400, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+        code: err.code || undefined,
+      });
+    }
+  }
+
   if (url.pathname === "/api/arbishield/exchange-orders/place" && req.method === "POST") {
     try {
       if (!exchangeOrdersApi) {
