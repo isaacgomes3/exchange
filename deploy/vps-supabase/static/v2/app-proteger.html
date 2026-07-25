@@ -4,14 +4,98 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <meta name="arbishield-build" content="proteger-espelho-readonly-v13" />
+  <meta name="arbishield-build" content="proteger-live-radar-v1" />
+  <meta name="arbishield-features" content="proteger-live-radar-v1 proteger-espelho-readonly-v13" />
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=proteger-espelho-readonly-13" />
+  <link rel="stylesheet" href="/v2.css?v=proteger-live-radar-1" />
+  <style>
+    .term-score {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 2.6em;
+      padding: 2px 8px;
+      border-radius: 8px;
+      background: rgba(201, 242, 35, 0.12);
+      border: 1px solid rgba(201, 242, 35, 0.35);
+      color: #c9f223;
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      flex-shrink: 0;
+    }
+    .term-elapsed {
+      display: block;
+      margin-top: 4px;
+      font-size: 12px;
+      font-weight: 800;
+      color: rgba(255, 255, 255, 0.7);
+      letter-spacing: 0.04em;
+    }
+    .term-radar {
+      grid-column: 1 / -1;
+      margin-top: 4px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: linear-gradient(180deg, rgba(28, 42, 24, 0.45) 0%, rgba(10, 12, 9, 0.85) 100%);
+      overflow: hidden;
+    }
+    .term-radar-toggle {
+      appearance: none;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 0;
+      background: transparent;
+      color: #e8ff8a;
+      font: inherit;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .term-radar-toggle .hint {
+      color: rgba(255, 255, 255, 0.45);
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: none;
+      font-size: 11px;
+    }
+    .term-radar-frame-wrap {
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      background: #0a1f12;
+    }
+    .term-radar-frame-wrap[hidden] { display: none !important; }
+    .term-radar-frame-wrap iframe {
+      display: block;
+      width: 100%;
+      height: min(42vw, 280px);
+      min-height: 200px;
+      border: 0;
+      background: #0a1f12;
+    }
+    .term-radar-foot {
+      display: flex;
+      justify-content: flex-end;
+      padding: 6px 10px 8px;
+      background: rgba(0, 0, 0, 0.25);
+    }
+    .term-radar-foot a {
+      color: rgba(232, 255, 138, 0.85);
+      font-size: 11px;
+      font-weight: 800;
+      text-decoration: none;
+    }
+  </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=proteger-espelho-readonly-13"></script>
-  <script src="/v2-shell.js?v=proteger-espelho-readonly-13" defer></script>
+  <script src="/v2.js?v=proteger-live-radar-1"></script>
+  <script src="/v2-shell.js?v=proteger-live-radar-1" defer></script>
 </head>
 <body data-shell="app" data-active="proteger">
   <div class="page-head term-head">
@@ -323,9 +407,49 @@
         var odd = (m.protection_odds && (m.protection_odds.home || m.protection_odds.lay)) || 0;
         return [{ id: null, name: "Mercado principal", odd: odd, market_type: "LAY", liquidity: m.max_protection_cents, used_liquidity: m.used_protection_cents }];
       }
+      function liveMetaOf(m) {
+        var meta = m && m.metadata && typeof m.metadata === "object" ? m.metadata : {};
+        return meta.live && typeof meta.live === "object" ? meta.live : null;
+      }
+      function extractBetbraEventId(url) {
+        var s = String(url || "").trim();
+        if (!s) return "";
+        var m = s.match(/[?&#](?:eventId|event_id|eventID|event)=([0-9]{6,})/i);
+        if (m) return m[1];
+        m = s.match(/\/(?:event|evento|e)\/([0-9]{6,})(?:\/|$|\?|#)/i);
+        if (m) return m[1];
+        m = s.match(/(?:^|[^\d])([0-9]{12,})(?:[^\d]|$)/);
+        return m ? m[1] : "";
+      }
+      function matchBetbraEventId(m) {
+        if (!m) return "";
+        if (m.betbra_event_id) return String(m.betbra_event_id);
+        if (m.external_id) return String(m.external_id);
+        var meta = m.metadata && typeof m.metadata === "object" ? m.metadata : {};
+        if (meta.betbra_event_id) return String(meta.betbra_event_id);
+        if (meta.external_id) return String(meta.external_id);
+        var fromLink = extractBetbraEventId(
+          meta.external_bet_link || meta.betbra_link || meta.external_link || ""
+        );
+        if (fromLink) return fromLink;
+        var mks = Array.isArray(m.markets) ? m.markets : [];
+        for (var i = 0; i < mks.length; i++) {
+          var mk = mks[i];
+          if (!mk) continue;
+          if (mk.external_id) return String(mk.external_id);
+          var mkLink = extractBetbraEventId(
+            mk.external_bet_link || mk.external_link || mk.betbra_link || ""
+          );
+          if (mkLink) return mkLink;
+        }
+        return "";
+      }
       function isLive(m) {
         // Legado Ne: kickoff <= now < kickoff + 2h30 e não encerrado
         if (!m || !m.starts_at) return false;
+        var live = liveMetaOf(m);
+        if (live && live.finished) return false;
+        if (live && live.live) return true;
         var now = Date.now();
         var start = new Date(m.starts_at).getTime();
         if (!Number.isFinite(start)) return false;
@@ -737,10 +861,7 @@
               mks.find(function (mk) {
                 return String(mk.market_type || "LAY").toUpperCase() === (state.side === "back" ? "BACK" : "LAY");
               }) || mks[0];
-            var liveMeta =
-              m.metadata && m.metadata.live && typeof m.metadata.live === "object"
-                ? m.metadata.live
-                : null;
+            var liveMeta = liveMetaOf(m);
             var liveScore =
               liveMeta &&
               (liveMeta.score ||
@@ -753,14 +874,14 @@
             if (liveElapsed && !/['′]$/.test(String(liveElapsed))) {
               liveElapsed = liveElapsed + "'";
             }
+            var liveNow =
+              isLive(m) || (liveMeta && liveMeta.live && !liveMeta.finished);
             var whenHtml;
-            if (isLive(m) || (liveMeta && liveMeta.live && !liveMeta.finished)) {
+            if (liveNow) {
               whenHtml =
                 '<span class="term-live">AO VIVO</span>' +
                 (liveElapsed
-                  ? '<span class="term-date" style="display:block;margin-top:2px">' +
-                    esc(liveElapsed) +
-                    "</span>"
+                  ? '<span class="term-elapsed">' + esc(liveElapsed) + "</span>"
                   : "");
             } else if (!m.starts_at) {
               whenHtml = "—";
@@ -781,12 +902,27 @@
             var actionBtn = canProtect
               ? '<button type="button" class="term-protect-btn" data-protect="1">Proteger</button>'
               : '<button type="button" class="term-protect-btn" disabled title="Liquidez esgotada">Sem liquidez</button>';
-            var scoreHtml = liveScore
-              ? '<div class="term-comp" style="margin-top:4px;color:var(--lime);font-weight:800">' +
+            var vsOrScore = liveScore
+              ? '<span class="term-score" title="Placar ao vivo">' +
                 esc(liveScore) +
-                (liveElapsed ? " · " + esc(liveElapsed) : "") +
-                "</div>"
-              : "";
+                "</span>"
+              : "<span>×</span>";
+            var eventId = matchBetbraEventId(m);
+            var betLink = marketBetLink(m, primary);
+            var radarHtml =
+              liveNow && eventId
+                ? '<div class="term-radar" data-radar data-event-id="' +
+                  esc(eventId) +
+                  '" data-link="' +
+                  esc(betLink || "") +
+                  '">' +
+                  '<button type="button" class="term-radar-toggle" data-radar-toggle>' +
+                  "<span>Radar</span>" +
+                  '<span class="hint" data-radar-hint>Carregar</span>' +
+                  "</button>" +
+                  '<div class="term-radar-frame-wrap" data-radar-frame hidden></div>' +
+                  "</div>"
+                : "";
             return (
               '<article class="term-row' +
               (canProtect ? "" : " is-exhausted") +
@@ -800,13 +936,13 @@
               teamLogoHtml(m.home_logo) +
               "<strong>" +
               esc(m.home_team || "?") +
-              " <span>×</span> " +
+              "</strong>" +
+              vsOrScore +
+              "<strong>" +
               esc(m.away_team || "?") +
               "</strong>" +
               teamLogoHtml(m.away_logo) +
-              "</div>" +
-              scoreHtml +
-              "</div>" +
+              "</div></div>" +
               '<div class="term-col-comp">' +
               '<span class="term-comp">' +
               esc(competition || "—") +
@@ -830,6 +966,7 @@
               '<div class="term-col-action">' +
               actionBtn +
               "</div>" +
+              radarHtml +
               "</article>"
             );
           })
@@ -861,6 +998,93 @@
                 return String(mk.market_type || "LAY").toUpperCase() === (state.side === "back" ? "BACK" : "LAY");
               }) || mks[0];
             openDrawer(match, preferred);
+          });
+        });
+        wireRadarBlocks(el);
+      }
+
+      function mountRadarIframe(wrap, mradarUrl, candidates) {
+        var urls = [];
+        if (mradarUrl) urls.push(mradarUrl);
+        if (Array.isArray(candidates)) {
+          candidates.forEach(function (u) {
+            if (u && urls.indexOf(u) < 0) urls.push(u);
+          });
+        }
+        if (!urls.length) return;
+        wrap.hidden = false;
+        wrap.innerHTML =
+          '<iframe title="Radar do jogo" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen src="' +
+          esc(urls[0]) +
+          '"></iframe>' +
+          (urls[0]
+            ? '<div class="term-radar-foot"><a href="' +
+              esc(urls[0]) +
+              '" target="_blank" rel="noopener noreferrer">Abrir em nova aba</a></div>'
+            : "");
+      }
+
+      async function openRadarBox(box) {
+        var btn = box.querySelector("[data-radar-toggle]");
+        var hint = box.querySelector("[data-radar-hint]");
+        var wrap = box.querySelector("[data-radar-frame]");
+        if (!wrap) return;
+        if (!wrap.hidden && wrap.querySelector("iframe")) {
+          wrap.hidden = true;
+          if (hint) hint.textContent = "Mostrar";
+          return;
+        }
+        if (wrap.querySelector("iframe")) {
+          wrap.hidden = false;
+          if (hint) hint.textContent = "Ocultar";
+          return;
+        }
+        var eventId = box.getAttribute("data-event-id") || "";
+        var link = box.getAttribute("data-link") || "";
+        if (btn) btn.disabled = true;
+        if (hint) hint.textContent = "Carregando…";
+        try {
+          var q =
+            API_BASE +
+            "/desafio-mradar?force=1&eventId=" +
+            encodeURIComponent(eventId) +
+            (link ? "&link=" + encodeURIComponent(link) : "");
+          var res = await fetch(q, {
+            method: "GET",
+            headers: { Accept: "application/json" },
+            cache: "no-store",
+          });
+          var data = await res.json().catch(function () {
+            return null;
+          });
+          if (data && data.ok && data.found && data.mradarUrl) {
+            mountRadarIframe(wrap, data.mradarUrl, data.mradarUrlCandidates);
+            if (hint) hint.textContent = "Ocultar";
+          } else {
+            if (hint) hint.textContent = "Indisponível";
+            wrap.hidden = false;
+            wrap.innerHTML =
+              '<p class="term-comp" style="padding:12px;margin:0">Radar indisponível para este jogo no momento.</p>';
+          }
+        } catch (ex) {
+          console.warn("[proteger-mradar]", ex);
+          if (hint) hint.textContent = "Erro";
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      }
+
+      function wireRadarBlocks(host) {
+        if (!host) return;
+        host.querySelectorAll("[data-radar]").forEach(function (box) {
+          if (box.getAttribute("data-wired") === "1") return;
+          box.setAttribute("data-wired", "1");
+          var btn = box.querySelector("[data-radar-toggle]");
+          if (!btn) return;
+          btn.addEventListener("click", function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            openRadarBox(box);
           });
         });
       }

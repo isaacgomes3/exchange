@@ -271,11 +271,11 @@ export function resolveMradarForEventId(eventIdMbook, feed, siteOrUrl) {
   const push = (url) => {
     if (url && !candidates.includes(url)) candidates.push(url);
   };
-  // Ordem: StatsPerform → SportRadar URN → numérico SR → sport_event raw → mbook
+  // Ordem: StatsPerform → numérico SR → URN match → sport_event raw → mbook
   push(buildMradarWidgetUrl(sp, base));
-  push(buildMradarWidgetUrl(sr, base));
   const srNum = sr && String(sr).match(/(\d+)$/);
   if (srNum) push(buildMradarWidgetUrl(srNum[1], base));
+  push(buildMradarWidgetUrl(sr, base));
   if (hit?.eventIdSportRadarRaw && hit.eventIdSportRadarRaw !== sr) {
     push(buildMradarWidgetUrl(hit.eventIdSportRadarRaw, base));
   }

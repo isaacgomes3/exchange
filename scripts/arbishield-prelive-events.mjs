@@ -29,6 +29,7 @@ import {
   indexInplayFeed,
   matchEligibleForInplaySync,
   buildMatchInplayPatch,
+  matchBetbraEventId,
   desafioStepEligibleForInplaySync,
   buildDesafioStepInplayPatch,
   desafioStepEventId,
@@ -3413,10 +3414,18 @@ async function syncBetbraInplayScores({ force = false } = {}) {
   const nowIso = new Date().toISOString();
   const nowMs = Date.now();
 
-  const rows = await sb(
-    "/rest/v1/matches?deleted_at=is.null&settled_at=is.null&select=id,external_id,starts_at,status,status_v2,final_score,settled_at,score_sync_enabled,metadata,updated_at&order=starts_at.asc&limit=300",
-    { token: SERVICE_KEY }
-  );
+  let rows = [];
+  try {
+    rows = await sb(
+      "/rest/v1/matches?deleted_at=is.null&settled_at=is.null&select=id,external_id,starts_at,status,status_v2,final_score,settled_at,score_sync_enabled,metadata,markets,updated_at&order=starts_at.asc&limit=300",
+      { token: SERVICE_KEY }
+    );
+  } catch {
+    rows = await sb(
+      "/rest/v1/matches?deleted_at=is.null&settled_at=is.null&select=id,external_id,starts_at,status,status_v2,final_score,settled_at,score_sync_enabled,metadata,updated_at&order=starts_at.asc&limit=300",
+      { token: SERVICE_KEY }
+    );
+  }
   const candidates = (Array.isArray(rows) ? rows : []).filter((m) =>
     matchEligibleForInplaySync(m, nowMs)
   );
@@ -3455,7 +3464,7 @@ async function syncBetbraInplayScores({ force = false } = {}) {
   // Fallback: busca placar por eventId (mexchange) quando o feed agregado falha/vazio
   const missingIds = new Set();
   for (const m of candidates) {
-    const id = normalizeEventId(m.external_id);
+    const id = matchBetbraEventId(m);
     if (id && !byEvent.has(id)) missingIds.add(id);
   }
   for (const s of stepCandidates) {
@@ -3511,7 +3520,7 @@ async function syncBetbraInplayScores({ force = false } = {}) {
         samples.push({
           kind: "match",
           id: match.id,
-          external_id: match.external_id,
+          external_id: match.external_id || matchBetbraEventId(match),
           score: built.live.score,
           elapsed: built.live.elapsed_label,
           finished: built.live.finished,
@@ -3641,6 +3650,30 @@ function isAvailableForClientGrid(m, now = Date.now()) {
   return true;
 }
 
+let lastMatchesListLiveSyncMs = 0;
+
+/**
+ * Expõe eventId BetBra + metadata.live para a grade Proteger (tempo/placar/radar).
+ * @param {any} match
+ */
+function enrichMatchForClientGrid(match) {
+  if (!match) return match;
+  const eventId = matchBetbraEventId(match);
+  const prevMeta =
+    match.metadata && typeof match.metadata === "object"
+      ? { ...match.metadata }
+      : {};
+  if (eventId && !prevMeta.betbra_event_id) {
+    prevMeta.betbra_event_id = eventId;
+  }
+  return {
+    ...match,
+    external_id: match.external_id || eventId || null,
+    betbra_event_id: eventId || null,
+    metadata: prevMeta,
+  };
+}
+
 /**
  * Lista jogos da grade Proteger via service_role (não depende de RLS do cliente).
  */
@@ -3649,22 +3682,40 @@ async function listAvailableMatchesForClient() {
     return { ok: false, error: "SERVICE_KEY ausente", matches: [], total: 0 };
   }
   const now = Date.now();
+  // Atualiza placar/minuto antes da grade (mesma ideia do Desafio).
+  if (now - lastMatchesListLiveSyncMs > 12_000) {
+    lastMatchesListLiveSyncMs = now;
+    try {
+      await Promise.race([
+        syncBetbraInplayScores({ force: true }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("sync timeout")), 4500)
+        ),
+      ]);
+    } catch (err) {
+      console.warn(
+        "[matches] sync inplay na listagem falhou",
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
   const windowStart = new Date(now - CLIENT_LIVE_WINDOW_MS).toISOString();
   const select =
-    "id,home_team,away_team,home_logo,away_logo,league,starts_at,status,status_v2,sport_type,is_published,markets,max_protection_cents,used_protection_cents,protection_odds,metadata,deleted_at";
+    "id,external_id,home_team,away_team,home_logo,away_logo,league,starts_at,status,status_v2,sport_type,is_published,markets,max_protection_cents,used_protection_cents,protection_odds,metadata,deleted_at";
   const rows = await sb(
     `/rest/v1/matches?deleted_at=is.null&is_published=eq.true&starts_at=gte.${encodeURIComponent(windowStart)}&select=${select}&order=starts_at.asc&limit=300`,
     { token: SERVICE_KEY }
   );
-  const matches = (Array.isArray(rows) ? rows : []).filter((m) =>
-    isAvailableForClientGrid(m, now)
-  );
+  const matches = (Array.isArray(rows) ? rows : [])
+    .filter((m) => isAvailableForClientGrid(m, now))
+    .map(enrichMatchForClientGrid);
   return {
     ok: true,
     matches,
     total: matches.length,
     windowStart,
     at: new Date(now).toISOString(),
+    inplayVersion: BETBRA_INPLAY_SYNC_VERSION,
   };
 }
 

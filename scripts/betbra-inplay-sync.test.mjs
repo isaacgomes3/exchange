@@ -9,6 +9,7 @@ import {
   buildMatchInplayPatch,
   buildDesafioStepInplayPatch,
   extractBetbraEventIdFromUrl,
+  matchBetbraEventId,
   desafioStepEventId,
   formatElapsedLabel,
   parseScoreSide,
@@ -18,7 +19,7 @@ import {
 
 describe("betbra-inplay-sync", () => {
   it("mantém versão", () => {
-    assert.equal(BETBRA_INPLAY_SYNC_VERSION, "betbra-inplay-sync-v6");
+    assert.equal(BETBRA_INPLAY_SYNC_VERSION, "betbra-inplay-sync-v7");
   });
 
   it("extrai eventId de links BetBra", () => {
@@ -254,5 +255,40 @@ describe("betbra-inplay-sync", () => {
     assert.equal(result.live.elapsed_label, "12'");
     assert.equal(result.patch.status_v2, "live");
     assert.equal(result.patch.metadata.live.source, "betbra_inplay");
+  });
+
+  it("resolve eventId do link BetBra quando external_id é null", () => {
+    const match = {
+      external_id: null,
+      starts_at: "2026-07-25T19:30:00.000Z",
+      metadata: {
+        source: "betbra_prelive_catalog",
+        external_bet_link:
+          "https://bolsadeaposta.bet.br/b/exchange/sport/soccer/event/33849379243700023/market/1",
+      },
+      markets: [{ external_id: "33849379243700023" }],
+    };
+    assert.equal(matchBetbraEventId(match), "33849379243700023");
+    const now = Date.parse("2026-07-25T20:00:00.000Z");
+    assert.equal(matchEligibleForInplaySync(match, now), true);
+
+    const feed = indexInplayFeed([
+      {
+        eventId: "33849379243700023",
+        status: "InPlay",
+        elapsedRegularTime: "25",
+        score: { home: { score: "1" }, away: { score: "0" } },
+      },
+    ]);
+    const built = buildMatchInplayPatch(
+      match,
+      feed,
+      "2026-07-25T20:00:00.000Z"
+    );
+    assert.ok(built);
+    assert.equal(built.live.score, "1-0");
+    assert.equal(built.live.elapsed_label, "25'");
+    assert.equal(built.patch.external_id, "33849379243700023");
+    assert.equal(built.patch.metadata.betbra_event_id, "33849379243700023");
   });
 });

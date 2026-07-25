@@ -3,7 +3,7 @@
  * Lógica pura (testável) + helpers de normalização.
  */
 
-export const BETBRA_INPLAY_SYNC_VERSION = "betbra-inplay-sync-v6";
+export const BETBRA_INPLAY_SYNC_VERSION = "betbra-inplay-sync-v7";
 
 /**
  * Extrai eventId BetBra de um link de mercado/evento.
@@ -20,6 +20,48 @@ export function extractBetbraEventIdFromUrl(url) {
   // IDs longos no path (comum em deeplinks BetBra/Mexchange)
   m = s.match(/(?:^|[^\d])([0-9]{12,})(?:[^\d]|$)/);
   if (m) return normalizeEventId(m[1]);
+  return "";
+}
+
+/**
+ * EventId BetBra de um match da Proteção (external_id, metadata ou markets).
+ * Muitos jogos publicados só têm o id no link BetBra / mercado — sem isso o sync
+ * não grava metadata.live e a grade fica só com "AO VIVO".
+ * @param {any} match
+ * @returns {string}
+ */
+export function matchBetbraEventId(match) {
+  if (!match) return "";
+  const fromCol = normalizeEventId(match.external_id);
+  if (fromCol) return fromCol;
+  const meta =
+    match.metadata && typeof match.metadata === "object" ? match.metadata : {};
+  const fromMeta = normalizeEventId(
+    meta.betbra_event_id ||
+      meta.external_id ||
+      meta.event_id ||
+      meta.eventId
+  );
+  if (fromMeta) return fromMeta;
+  const fromLink = extractBetbraEventIdFromUrl(
+    meta.external_bet_link ||
+      meta.betbra_link ||
+      meta.external_link ||
+      match.external_bet_link
+  );
+  if (fromLink) return fromLink;
+  const markets = Array.isArray(match.markets) ? match.markets : [];
+  for (const mk of markets) {
+    if (!mk) continue;
+    const fromMk = normalizeEventId(
+      mk.external_id || mk.event_id || mk.eventId || mk.betbra_event_id
+    );
+    if (fromMk) return fromMk;
+    const fromMkLink = extractBetbraEventIdFromUrl(
+      mk.external_bet_link || mk.external_link || mk.betbra_link || mk.url
+    );
+    if (fromMkLink) return fromMkLink;
+  }
   return "";
 }
 
@@ -475,7 +517,7 @@ export function matchEligibleForInplaySync(match, nowMs = Date.now(), opts = {})
     return false;
   }
 
-  const ext = normalizeEventId(match.external_id);
+  const ext = matchBetbraEventId(match);
   if (!ext) return false;
 
   const meta =
@@ -488,7 +530,11 @@ export function matchEligibleForInplaySync(match, nowMs = Date.now(), opts = {})
   const isBetbra =
     source === "betbra_prelive_catalog" ||
     source === "betbra" ||
-    Boolean(meta.market_id);
+    Boolean(meta.market_id) ||
+    Boolean(meta.external_bet_link) ||
+    Boolean(meta.betbra_link) ||
+    Boolean(meta.betbra_event_id) ||
+    Boolean(match.external_bet_link);
 
   if (!syncFlag && !isBetbra) return false;
 
@@ -511,7 +557,7 @@ export function matchEligibleForInplaySync(match, nowMs = Date.now(), opts = {})
  * @returns {null|{ patch: Record<string, unknown>, live: Record<string, unknown> }}
  */
 export function buildMatchInplayPatch(match, inplayByEventId, nowIso) {
-  const ext = normalizeEventId(match?.external_id);
+  const ext = matchBetbraEventId(match);
   if (!ext) return null;
   const nowMs = nowIso ? Date.parse(nowIso) : Date.now();
   const now = Number.isFinite(nowMs) ? nowMs : Date.now();
@@ -532,22 +578,31 @@ export function buildMatchInplayPatch(match, inplayByEventId, nowIso) {
   const prevLive =
     prevMeta.live && typeof prevMeta.live === "object" ? prevMeta.live : {};
 
+  const hadExternal = Boolean(normalizeEventId(match.external_id));
+  const hadBetbraMeta = Boolean(normalizeEventId(prevMeta.betbra_event_id));
+
   // evita writes inúteis
   const same =
     String(prevLive.score || "") === String(live.score || "") &&
     String(prevLive.elapsed || "") === String(live.elapsed || "") &&
     Boolean(prevLive.finished) === Boolean(live.finished) &&
-    String(prevLive.match_status || "") === String(live.match_status || "");
+    String(prevLive.match_status || "") === String(live.match_status || "") &&
+    hadExternal &&
+    hadBetbraMeta;
   if (same) return null;
 
   const patch = {
     metadata: {
       ...prevMeta,
+      betbra_event_id: ext,
       score_sync_enabled: true,
       live,
     },
     updated_at: nowIso,
   };
+  if (!hadExternal) {
+    patch.external_id = ext;
+  }
 
   if (info.live) {
     patch.status_v2 = "live";
