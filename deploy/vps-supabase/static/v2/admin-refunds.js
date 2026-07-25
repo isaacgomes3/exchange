@@ -1,6 +1,6 @@
 /**
  * Gestão de Reembolsos — pedidos + saques Saldo Reembolso (aprovar / excluir).
- * Marker: admin-refunds-actions-v2
+ * Marker: admin-refunds-actions-v3
  */
 (async function () {
   var errEl = document.getElementById("err");
@@ -80,6 +80,21 @@
     }
     if (r._source_table === "back_refund_requests") return st === "PENDING";
     if (r._source_table === "withdrawals") return st === "PENDING";
+    return false;
+  }
+
+  /** Cancelar devolve saldo reservado (saque Saldo Reembolso pendente). */
+  function canCancel(r) {
+    var st = String(r.status || "").toUpperCase();
+    if (r._source_table === "withdrawals") {
+      return st === "PENDING" && isSaldoReembolsoWithdrawal(r);
+    }
+    if (r._source_table === "refund_requests") {
+      return st !== "CONCLUÍDO" && st !== "CONCLUIDO" && st !== "REJEITADO";
+    }
+    if (r._source_table === "back_refund_requests") {
+      return st === "PENDING";
+    }
     return false;
   }
 
@@ -263,6 +278,11 @@
               idx +
               '">Aprovar</button>'
             : "";
+          var cancelBtn = canCancel(r)
+            ? '<button type="button" class="btn btn-ghost btn-sm" data-cancel="' +
+              idx +
+              '">Cancelar</button>'
+            : "";
           var delBtn =
             '<button type="button" class="btn btn-ghost btn-sm" data-del="' +
             idx +
@@ -289,6 +309,7 @@
             esc(when) +
             '</td><td><div class="rf-actions">' +
             approveBtn +
+            cancelBtn +
             delBtn +
             "</div></td></tr>"
           );
@@ -320,6 +341,11 @@
     tbody.querySelectorAll("[data-approve]").forEach(function (b) {
       b.addEventListener("click", function () {
         approve(Number(b.getAttribute("data-approve")));
+      });
+    });
+    tbody.querySelectorAll("[data-cancel]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        cancelRow(Number(b.getAttribute("data-cancel")));
       });
     });
     tbody.querySelectorAll("[data-del]").forEach(function (b) {
@@ -364,6 +390,76 @@
     }
   }
 
+  async function restoreSaldoReembolso(r) {
+    var cents = Math.round(Number(r.amount_cents || 0));
+    if (!(cents > 0) || !r.user_id) return;
+    var prof = await state.supa
+      .from("profiles")
+      .select("deduction_balance_cents")
+      .eq("id", r.user_id)
+      .maybeSingle();
+    if (prof.error) throw prof.error;
+    var cur = Number((prof.data && prof.data.deduction_balance_cents) || 0);
+    var rest = await state.supa
+      .from("profiles")
+      .update({
+        deduction_balance_cents: cur + cents,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", r.user_id);
+    if (rest.error) throw rest.error;
+  }
+
+  async function cancelRow(idx) {
+    var r = state._view && state._view[idx];
+    if (!r || !canCancel(r)) return;
+    var label =
+      (r.user_name || "cliente") +
+      " · " +
+      money(Number(r.amount_cents || 0)) +
+      " · " +
+      (r.origem || "");
+    var extra =
+      r._source_table === "withdrawals" && isSaldoReembolsoWithdrawal(r)
+        ? "\n\nO valor será devolvido ao Saldo Reembolso do cliente."
+        : "";
+    if (!window.confirm("Cancelar este registro?\n\n" + label + extra)) return;
+    showErr("");
+    showOk("");
+    try {
+      var table = r._source_table;
+      var patch = { updated_at: new Date().toISOString() };
+      if (table === "withdrawals") {
+        if (isSaldoReembolsoWithdrawal(r)) {
+          await restoreSaldoReembolso(r);
+        }
+        patch.status = "cancelled";
+        var meta = Object.assign({}, r.metadata || {}, {
+          cancelled_at: new Date().toISOString(),
+          cancelled_by: state.adminId,
+          cancel_reason: "admin_cancel_refund_balance",
+        });
+        patch.metadata = meta;
+      } else if (table === "refund_requests") {
+        patch.status = "REJEITADO";
+        patch.processed_at = new Date().toISOString();
+        patch.processed_by = state.adminId;
+        patch.admin_notes = "Cancelado pelo admin";
+      } else if (table === "back_refund_requests") {
+        patch.status = "cancelled";
+        patch.notes = "Cancelado pelo admin";
+      } else {
+        throw new Error("Origem desconhecida");
+      }
+      var up = await state.supa.from(table).update(patch).eq("id", r.id);
+      if (up.error) throw up.error;
+      showOk("Cancelado (saldo devolvido quando aplicável): " + label);
+      await reload();
+    } catch (ex) {
+      showErr((ex && ex.message) || "Falha ao cancelar");
+    }
+  }
+
   async function remove(idx) {
     var r = state._view && state._view[idx];
     if (!r) return;
@@ -373,18 +469,11 @@
       money(Number(r.amount_cents || 0)) +
       " · " +
       (r.origem || "");
-    var extra =
-      r._source_table === "withdrawals" &&
-      isSaldoReembolsoWithdrawal(r) &&
-      String(r.status).toLowerCase() === "pending"
-        ? "\n\nO valor será devolvido ao Saldo Reembolso do cliente."
-        : "";
     if (
       !window.confirm(
         "Excluir este registro?\n\n" +
           label +
-          extra +
-          "\n\nEsta ação não pode ser desfeita."
+          "\n\nO saldo NÃO será devolvido.\nPara devolver o saldo, use Cancelar.\n\nEsta ação não pode ser desfeita."
       )
     ) {
       return;
@@ -392,36 +481,9 @@
     showErr("");
     showOk("");
     try {
-      var table = r._source_table;
-      if (
-        table === "withdrawals" &&
-        isSaldoReembolsoWithdrawal(r) &&
-        String(r.status).toLowerCase() === "pending"
-      ) {
-        var cents = Math.round(Number(r.amount_cents || 0));
-        if (cents > 0 && r.user_id) {
-          var prof = await state.supa
-            .from("profiles")
-            .select("deduction_balance_cents")
-            .eq("id", r.user_id)
-            .maybeSingle();
-          if (prof.error) throw prof.error;
-          var cur = Number(
-            (prof.data && prof.data.deduction_balance_cents) || 0
-          );
-          var rest = await state.supa
-            .from("profiles")
-            .update({
-              deduction_balance_cents: cur + cents,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", r.user_id);
-          if (rest.error) throw rest.error;
-        }
-      }
-      var del = await state.supa.from(table).delete().eq("id", r.id);
+      var del = await state.supa.from(r._source_table).delete().eq("id", r.id);
       if (del.error) throw del.error;
-      showOk("Excluído: " + label);
+      showOk("Excluído (sem devolver saldo): " + label);
       await reload();
     } catch (ex) {
       showErr((ex && ex.message) || "Falha ao excluir");

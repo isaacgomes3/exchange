@@ -63,12 +63,16 @@ publish_one deploy/vps-supabase/static/v2/admin-refunds.js
 publish_one deploy/vps-supabase/static/v2/admin-refunds.html
 
 log "2) validar conteúdo local"
-grep -q 'admin-refunds-actions-v2' "$WEB_ROOT/admin-refunds.html" \
-  || die "HTML sem marker admin-refunds-actions-v2"
+grep -qE 'admin-refunds-actions-v[0-9]+' "$WEB_ROOT/admin-refunds.html" \
+  || die "HTML sem marker admin-refunds-actions"
 grep -q 'admin-refunds.js' "$WEB_ROOT/admin-refunds.html" \
   || die "HTML não referencia admin-refunds.js"
-grep -q 'admin-refunds-actions-v2' "$WEB_ROOT/admin-refunds.js" \
-  || die "JS sem marker admin-refunds-actions-v2"
+grep -qE 'admin-refunds-actions-v[0-9]+' "$WEB_ROOT/admin-refunds.js" \
+  || die "JS sem marker admin-refunds-actions"
+grep -q 'Cancelar' "$WEB_ROOT/admin-refunds.js" \
+  || die "JS sem botão Cancelar"
+grep -q 'NÃO será devolvido' "$WEB_ROOT/admin-refunds.js" \
+  || die "JS sem regra de Excluir sem devolução"
 # o bug antigo: aspas quebradas no tbody inline
 if grep -q 'tbody id="rfBody"' "$WEB_ROOT/admin-refunds.html" 2>/dev/null; then
   # só é erro se estiver DENTRO de string double-quoted quebrada — o marker novo usa arquivo externo
@@ -84,7 +88,7 @@ SMOKE="$(curl -fsS -m 8 "http://127.0.0.1/admin-refunds.html" 2>/dev/null || tru
 if [[ -z "$SMOKE" ]]; then
   SMOKE="$(curl -fsSk -m 8 "https://127.0.0.1/admin-refunds.html" 2>/dev/null || true)"
 fi
-echo "$SMOKE" | grep -q 'admin-refunds-actions-v2' \
+echo "$SMOKE" | grep -qE 'admin-refunds-actions-v[0-9]+' \
   || die "nginx ainda serve HTML antigo (sem marker). Confira root=/var/www/arbishield"
 echo "$SMOKE" | grep -q 'admin-refunds.js' \
   || die "HTML servido sem script admin-refunds.js"
