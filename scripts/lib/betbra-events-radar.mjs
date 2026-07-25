@@ -5,7 +5,7 @@
  *   Widget: https://{brand}/widget/mradar?id={eventIdStatsPerform}
  */
 
-export const BETBRA_EVENTS_RADAR_VERSION = "betbra-events-radar-v3";
+export const BETBRA_EVENTS_RADAR_VERSION = "betbra-events-radar-v4";
 
 export const KNOWN_SOFT2BET_HOSTS = [
   "betbra.bet.br",
@@ -217,7 +217,8 @@ export function buildMradarWidgetUrl(
 
 /**
  * Escolhe o melhor id para o widget mradar.
- * Soft2Bet: livestream usa StatsPerform; radar/LMT usa SportRadar na maioria dos jogos.
+ * Soft2Bet: livestream usa StatsPerform; radar/LMT usa SportRadar (URN sr:match:N).
+ * Id numérico puro costuma cair em "widget não encontrado" no /widget/mradar.
  * @param {{ eventIdStatsPerform?: string|null, eventIdSportRadar?: string|null, eventIdMbook?: string|null }} hit
  */
 export function pickMradarWidgetId(hit) {
@@ -226,10 +227,8 @@ export function pickMradarWidgetId(hit) {
     return { id: String(hit.eventIdStatsPerform), source: "statsPerform" };
   }
   if (hit.eventIdSportRadar) {
-    // Soft2Bet /widget/mradar costuma receber id numérico (igual livestream StatsPerform)
-    const num = String(hit.eventIdSportRadar).match(/(\d+)$/);
-    if (num) return { id: num[1], source: "sportRadar" };
-    return { id: String(hit.eventIdSportRadar), source: "sportRadar" };
+    const urn = normalizeSportRadarMatchId(hit.eventIdSportRadar);
+    return { id: urn || String(hit.eventIdSportRadar), source: "sportRadar" };
   }
   if (hit.eventIdMbook) {
     return { id: String(hit.eventIdMbook), source: "mbook" };
@@ -271,15 +270,15 @@ export function resolveMradarForEventId(eventIdMbook, feed, siteOrUrl) {
   const push = (url) => {
     if (url && !candidates.includes(url)) candidates.push(url);
   };
-  // Ordem: StatsPerform → numérico SR → URN match → sport_event raw → mbook
-  push(buildMradarWidgetUrl(sp, base));
-  const srNum = sr && String(sr).match(/(\d+)$/);
-  if (srNum) push(buildMradarWidgetUrl(srNum[1], base));
+  // Ordem: URN sr:match → StatsPerform → sport_event raw → matchId= → numérico → mbook
   push(buildMradarWidgetUrl(sr, base));
+  push(buildMradarWidgetUrl(sp, base));
   if (hit?.eventIdSportRadarRaw && hit.eventIdSportRadarRaw !== sr) {
     push(buildMradarWidgetUrl(hit.eventIdSportRadarRaw, base));
   }
   if (sr) push(`${base}?matchId=${encodeURIComponent(sr)}`);
+  const srNum = sr && String(sr).match(/(\d+)$/);
+  if (srNum) push(buildMradarWidgetUrl(srNum[1], base));
   push(buildMradarWidgetUrl(id, base));
   push(`${base}?eventId=${encodeURIComponent(id)}`);
 
