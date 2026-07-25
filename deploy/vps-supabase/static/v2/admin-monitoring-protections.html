@@ -567,7 +567,9 @@
   }
 
   function mapProtectionRow(r, names, matches) {
-    var m = (matches && matches[r.match_id]) || {};
+    var meta = r && r.metadata && typeof r.metadata === "object" ? r.metadata : {};
+    var mid = r.match_id != null ? String(r.match_id) : "";
+    var m = (matches && mid && matches[mid]) || {};
     var marketType = marketTypeOf(r);
     var odd = displayOddOf(r, m);
     var marketName = marketNameFrom(r, m);
@@ -575,13 +577,35 @@
     return {
       id: r.id,
       userId: r.user_id,
-      userName: (names && names[r.user_id]) || r.user_full_name || "Sem nome",
+      userName:
+        (names && names[String(r.user_id)]) ||
+        r.user_full_name ||
+        "Sem nome",
       matchId: r.match_id,
-      home: m.home_team || r.home_team,
-      away: m.away_team || r.away_team,
-      league: m.league || r.league,
-      matchStatus: m.status || r.match_status,
-      startsAt: m.starts_at || r.starts_at || null,
+      home:
+        m.home_team ||
+        meta.home_team ||
+        meta.homeTeam ||
+        r.home_team ||
+        "?",
+      away:
+        m.away_team ||
+        meta.away_team ||
+        meta.awayTeam ||
+        r.away_team ||
+        "?",
+      league:
+        m.league ||
+        meta.league ||
+        meta.competition ||
+        r.league ||
+        "Sem liga",
+      matchStatus: m.status || r.match_status || meta.match_status || null,
+      startsAt:
+        m.starts_at ||
+        meta.starts_at ||
+        r.starts_at ||
+        null,
       status: r.status,
       side: r.side || marketType,
       marketType: marketType,
@@ -629,24 +653,38 @@
       new Set(rows.map(function (r) { return r.user_id; }).filter(Boolean))
     );
     var matchIds = Array.from(
-      new Set(rows.map(function (r) { return r.match_id; }).filter(Boolean))
+      new Set(
+        rows
+          .map(function (r) {
+            return r.match_id ? String(r.match_id) : "";
+          })
+          .filter(Boolean)
+      )
     );
     var names = {};
     var matches = {};
     if (userIds.length) {
       var pr = await supa.from("profiles").select("id,full_name").in("id", userIds);
       (pr.data || []).forEach(function (p) {
-        names[p.id] = p.full_name || "Sem nome";
+        names[String(p.id)] = p.full_name || "Sem nome";
       });
     }
     if (matchIds.length) {
-      var mr = await supa
-        .from("matches")
-        .select("id,home_team,away_team,league,status,starts_at,markets")
-        .in("id", matchIds);
-      (mr.data || []).forEach(function (m) {
-        matches[m.id] = m;
-      });
+      // Busca em lotes — .in() grande + RLS às vezes devolve vazio.
+      for (var i = 0; i < matchIds.length; i += 80) {
+        var chunk = matchIds.slice(i, i + 80);
+        var mr = await supa
+          .from("matches")
+          .select("id,home_team,away_team,league,status,starts_at,markets")
+          .in("id", chunk);
+        if (mr.error) {
+          console.warn("[monitor] matches:", mr.error.message || mr.error);
+          continue;
+        }
+        (mr.data || []).forEach(function (m) {
+          matches[String(m.id)] = m;
+        });
+      }
     }
     return rows.map(function (r) {
       return mapProtectionRow(r, names, matches);
