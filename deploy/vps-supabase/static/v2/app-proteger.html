@@ -7,10 +7,10 @@
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=proteger-fee-upfront-3" />
+  <link rel="stylesheet" href="/v2.css?v=proteger-lay-back-equiv-1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=proteger-fee-upfront-3"></script>
-  <script src="/v2-shell.js?v=proteger-fee-upfront-3" defer></script>
+  <script src="/v2.js?v=proteger-lay-back-equiv-1"></script>
+  <script src="/v2-shell.js?v=proteger-lay-back-equiv-1" defer></script>
 </head>
 <body data-shell="app" data-active="proteger">
   <div class="page-head term-head">
@@ -352,21 +352,27 @@
         var odd = Number(state.selected.market && state.selected.market.odd) || Number(document.getElementById("odd").value || 0);
         var amountCents = Math.round(amountReais * 100);
         var mt = state.selected.marketType;
-        var c = calcForMarket(mt, amountCents, odd);
+        // Cálculo local (não depender de calcLay legado sem grossReturnCents)
+        var effOdd =
+          mt === "LAY" ? layToBackOdd(odd) : odd > 1.01 ? odd : 1.01;
+        var retorno = Math.round(amountCents * effOdd);
+        var lucroBruto = Math.max(0, retorno - amountCents);
+        var seuLucro = Math.round(amountCents * 0.015);
+        var deducao = Math.max(0, lucroBruto - seuLucro);
         var avail = available(document.getElementById("balanceType").value);
         var oddLine =
           mt === "LAY"
             ? "<div><span>Odd LAY → back equiv.</span><b>" +
-              Number(c.effectiveBackOdd).toFixed(3).replace(".", ",") +
+              Number(effOdd).toFixed(3).replace(".", ",") +
               "</b></div>"
             : "";
         document.getElementById("preview").innerHTML =
           "<div><span>Tipo</span><b>" + mt + "</b></div>" +
           oddLine +
           "<div><span>Valor (stake)</span><b>" + money(amountCents) + "</b></div>" +
-          "<div><span>Retorno casa externa</span><b>" + money(c.grossReturnCents) + "</b></div>" +
-          "<div><span>Seu lucro (1,5%)</span><b>" + money(c.userProfitCents) + "</b></div>" +
-          "<div><span>Dedução ArbiShield</span><b>" + money(c.feeChargedCents) + "</b></div>" +
+          "<div><span>Retorno casa externa</span><b>" + money(retorno) + "</b></div>" +
+          "<div><span>Seu lucro (1,5%)</span><b>" + money(seuLucro) + "</b></div>" +
+          "<div><span>Dedução ArbiShield</span><b>" + money(deducao) + "</b></div>" +
           "<div><span>Saldo disponível</span><b>" + money(avail) + "</b></div>";
       }
 
