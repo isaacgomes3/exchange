@@ -332,28 +332,73 @@
         return { ok: true };
       }
 
+      function isVisibleProtection(row) {
+        var st = String((row && row.status) || "").toLowerCase();
+        // Canceladas saem da lista "Minhas Proteções"
+        if (st === "cancelled" || st === "canceled" || st === "void") return false;
+        return true;
+      }
+
       async function load() {
         showErr("");
         var [lay, back] = await Promise.all([
-          supa.from("protections").select("id,status,amount_cents,responsibility_cents,odd,match_id,created_at,metadata,user_profit_cents").eq("user_id", user.id).order("created_at", { ascending: false }).limit(150),
-          supa.from("back_protections").select("id,status,amount_cents,odd,match_id,created_at,metadata,user_profit_cents").eq("user_id", user.id).order("created_at", { ascending: false }).limit(150),
+          supa
+            .from("protections")
+            .select(
+              "id,status,amount_cents,responsibility_cents,odd,match_id,created_at,metadata,user_profit_cents"
+            )
+            .eq("user_id", user.id)
+            .neq("status", "cancelled")
+            .order("created_at", { ascending: false })
+            .limit(150),
+          supa
+            .from("back_protections")
+            .select("id,status,amount_cents,odd,match_id,created_at,metadata,user_profit_cents")
+            .eq("user_id", user.id)
+            .neq("status", "cancelled")
+            .order("created_at", { ascending: false })
+            .limit(150),
         ]);
         if (lay.error) throw lay.error;
         if (back.error) throw back.error;
         items = []
-          .concat((lay.data || []).map(function (r) { return Object.assign({}, r, { market_category: "LAY" }); }))
-          .concat((back.data || []).map(function (r) { return Object.assign({}, r, { market_category: "BACK" }); }))
-          .sort(function (a, b) { return String(b.created_at).localeCompare(String(a.created_at)); });
+          .concat(
+            (lay.data || []).map(function (r) {
+              return Object.assign({}, r, { market_category: "LAY" });
+            })
+          )
+          .concat(
+            (back.data || []).map(function (r) {
+              return Object.assign({}, r, { market_category: "BACK" });
+            })
+          )
+          .filter(isVisibleProtection)
+          .sort(function (a, b) {
+            return String(b.created_at).localeCompare(String(a.created_at));
+          });
 
-        var matchIds = Array.from(new Set(items.map(function (i) { return i.match_id; }).filter(Boolean)));
+        if (selectedId && !items.some(function (i) { return i.id === selectedId; })) {
+          selectedId = null;
+        }
+
+        var matchIds = Array.from(
+          new Set(items.map(function (i) { return i.match_id; }).filter(Boolean))
+        );
         var matchMap = {};
         if (matchIds.length) {
-          var mres = await supa.from("matches").select("id,home_team,away_team,league,starts_at").in("id", matchIds);
+          var mres = await supa
+            .from("matches")
+            .select("id,home_team,away_team,league,starts_at")
+            .in("id", matchIds);
           if (!mres.error) {
-            (mres.data || []).forEach(function (m) { matchMap[m.id] = m; });
+            (mres.data || []).forEach(function (m) {
+              matchMap[m.id] = m;
+            });
           }
         }
-        items.forEach(function (i) { i.matches = matchMap[i.match_id] || null; });
+        items.forEach(function (i) {
+          i.matches = matchMap[i.match_id] || null;
+        });
         renderList();
         renderDetail();
       }
