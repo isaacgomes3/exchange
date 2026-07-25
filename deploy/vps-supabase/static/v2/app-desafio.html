@@ -6,8 +6,8 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-live-pack-v2" />
-  <meta name="arbishield-features" content="desafio-mradar-v2 desafio-ft-result-v2" />
+  <meta name="arbishield-build" content="desafio-saldo-reutilizavel-v1" />
+  <meta name="arbishield-features" content="desafio-mradar-v2 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1" />
   <link rel="stylesheet" href="/v2.css?v=dz-live-pack-2" />
   <style>
     /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
@@ -2008,7 +2008,7 @@
                 } else if (String(msg).indexOf("insufficient") >= 0) {
                   msg = "Saldo do Desafio insuficiente. Deposite via PIX na barra acima.";
                 } else if (String(msg).indexOf("Sem saldo retido") >= 0) {
-                  msg = "Sem saldo retido do ciclo para esta entrada.";
+                  msg = "Saldo do Desafio insuficiente. Deposite via PIX na barra acima.";
                 }
                 throw new Error(msg);
               }
