@@ -6,9 +6,41 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-alertas-gol-v1" />
-  <link rel="stylesheet" href="/v2.css?v=dz-alertas-1" />
+  <meta name="arbishield-build" content="desafio-mercado-vx-v1" />
+  <link rel="stylesheet" href="/v2.css?v=dz-mercado-vx-1" />
   <style>
+    .dz-sb-market {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .dz-sb-market-txt { flex: 1; min-width: 0; }
+    .dz-mkt-flag {
+      flex: 0 0 auto;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: inline-grid;
+      place-items: center;
+      font-size: 11px;
+      font-weight: 900;
+      line-height: 1;
+      letter-spacing: 0;
+      text-transform: none;
+      border: 1px solid transparent;
+    }
+    .dz-mkt-flag.is-win {
+      color: #08140a;
+      background: #c9f223;
+      border-color: rgba(201, 242, 35, 0.85);
+      box-shadow: 0 0 0 1px rgba(201, 242, 35, 0.25);
+    }
+    .dz-mkt-flag.is-lose {
+      color: #fff;
+      background: #dc2626;
+      border-color: rgba(248, 113, 113, 0.65);
+      box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.25);
+    }
     .dz-v2-score {
       font-size: clamp(1.8rem, 4vw, 2.6rem);
       font-weight: 900;
@@ -152,9 +184,9 @@
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js"></script>
-  <script src="/desafio-ciclo-math.js?v=dz-apostar-2"></script>
-  <script src="/v2-shell.js" defer></script>
+  <script src="/v2.js?v=dz-mercado-vx-1"></script>
+  <script src="/desafio-ciclo-math.js?v=dz-mercado-vx-1"></script>
+  <script src="/v2-shell.js?v=dz-mercado-vx-1" defer></script>
   <style>
     .dz-access-history {
       appearance: none;
@@ -1135,10 +1167,131 @@
 
         return {
           score: scoreLabel,
+          home: Number.isFinite(home) ? home : null,
+          away: Number.isFinite(away) ? away : null,
           elapsed: elapsed,
           live: isLive,
           finished: finished,
         };
+      }
+
+      function normMarketLabel(s) {
+        return String(s || "")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      /**
+       * Com placar conhecido: true = seleção ganhando/venceu, false = perdendo/perdeu, null = não dá pra avaliar.
+       * Ao vivo usa o placar atual como se fosse o momento.
+       */
+      function marketIsWinning(name, home, away) {
+        if (!Number.isFinite(home) || !Number.isFinite(away)) return null;
+        var n = normMarketLabel(name);
+        if (!n) return null;
+
+        var isBtts =
+          /ambas/.test(n) ||
+          /both teams/.test(n) ||
+          /\bbtts\b/.test(n) ||
+          (/marcam/.test(n) && /equipe/.test(n));
+        if (isBtts) {
+          var both = home > 0 && away > 0;
+          if (/\bnao\b/.test(n) || /\bno\b/.test(n)) return !both;
+          if (/\bsim\b/.test(n) || /\byes\b/.test(n)) return both;
+          // "Ambas marcam" sem sim/não → sim
+          return both;
+        }
+
+        var ou = n.match(/(acima|over|mais de)\s*(\d+(?:[.,]\d+)?)/);
+        if (ou) {
+          var lineOver = parseFloat(String(ou[2]).replace(",", "."));
+          if (Number.isFinite(lineOver)) return home + away > lineOver;
+        }
+        var uu = n.match(/(abaixo|under|menos de)\s*(\d+(?:[.,]\d+)?)/);
+        if (uu) {
+          var lineUnder = parseFloat(String(uu[2]).replace(",", "."));
+          if (Number.isFinite(lineUnder)) return home + away < lineUnder;
+        }
+
+        if (
+          /\bempate\b/.test(n) ||
+          /\bdraw\b/.test(n) ||
+          /(^|\s)x(\s|$)/.test(n)
+        ) {
+          if (!/ambas/.test(n)) return home === away;
+        }
+        if (
+          /\bvitoria (da )?casa\b/.test(n) ||
+          /\bcasa vence\b/.test(n) ||
+          /\bhome win\b/.test(n) ||
+          /(^|\s)1(\s|$)/.test(n)
+        ) {
+          return home > away;
+        }
+        if (
+          /\bvitoria (do )?fora\b/.test(n) ||
+          /\bfora vence\b/.test(n) ||
+          /\baway win\b/.test(n) ||
+          /(^|\s)2(\s|$)/.test(n)
+        ) {
+          return away > home;
+        }
+        return null;
+      }
+
+      function marketFlagHtml(name, liveInfo) {
+        if (!liveInfo) return "";
+        var home = liveInfo.home;
+        var away = liveInfo.away;
+        if (
+          (!Number.isFinite(home) || !Number.isFinite(away)) &&
+          liveInfo.score
+        ) {
+          var parts = String(liveInfo.score).split(/\s*[—–-]\s*/);
+          if (parts.length >= 2) {
+            home = Number(parts[0]);
+            away = Number(parts[1]);
+          }
+        }
+        var win = marketIsWinning(name, home, away);
+        if (win == null) return "";
+        var finished = !!liveInfo.finished;
+        var title = win
+          ? finished
+            ? "Venceu"
+            : "Vencendo no placar atual"
+          : finished
+            ? "Perdeu"
+            : "Perdendo no placar atual";
+        return (
+          '<span class="dz-mkt-flag ' +
+          (win ? "is-win" : "is-lose") +
+          '" title="' +
+          esc(title) +
+          '" aria-label="' +
+          esc(title) +
+          '">' +
+          (win ? "V" : "×") +
+          "</span>"
+        );
+      }
+
+      function marketLineHtml(name, liveInfo) {
+        var flag = "";
+        if (liveInfo && (liveInfo.live || liveInfo.finished || liveInfo.score)) {
+          flag = marketFlagHtml(name, liveInfo);
+        }
+        return (
+          '<div class="dz-sb-market">' +
+          flag +
+          '<span class="dz-sb-market-txt">' +
+          esc(name) +
+          "</span></div>"
+        );
       }
 
       function fmtCountdown(ms) {
@@ -1381,12 +1534,11 @@
           '<div class="dz-v2-panel arbi" data-side="arbi">' +
           '<div class="dz-v2-panel-top"><div class="dz-v2-panel-brand"><img src="/brand/favicon-192.png" alt="" width="20" height="20" />ArbiShield</div>' +
           '<span class="dz-v2-chip arbi">Maior retorno</span></div>' +
-          '<div class="dz-sb-market">' +
-          esc(item.marketArbi) +
-          "</div>" +
+          marketLineHtml(item.marketArbi, item.liveInfo) +
           '<div class="dz-sb-field"><span class="l">Odd</span><strong class="dz-sb-odd arbi" data-arbi-odd>' +
           esc(fmtOdd(item.arbiOdd)) +
           "</strong></div>" +
+
           '<div class="dz-sb-field"><span class="l">Entrar com</span>' +
           '<div class="dz-sb-input-row">' +
           '<input class="dz-sb-input" data-stake-input inputmode="decimal" ' +
@@ -1406,12 +1558,11 @@
           '<div class="dz-v2-panel-top"><div class="dz-v2-panel-brand">' +
           esc(item.casaBrand) +
           '</div><span class="dz-v2-chip casa">Casa de aposta</span></div>' +
-          '<div class="dz-sb-market">' +
-          esc(item.marketCasa) +
-          "</div>" +
+          marketLineHtml(item.marketCasa, item.liveInfo) +
           '<div class="dz-sb-field"><span class="l">Odd</span><strong class="dz-sb-odd casa">' +
           esc(fmtOdd(item.casaOdd)) +
           "</strong></div>" +
+
           '<div class="dz-sb-field"><span class="l">Aposte exatamente</span>' +
           '<div class="dz-sb-input-row">' +
           '<strong class="dz-sb-exact" data-casa-stake>' +
@@ -1690,9 +1841,13 @@
 
       function snapshotFromItem(item) {
         var live = item && item.liveInfo ? item.liveInfo : null;
-        var home = null;
-        var away = null;
-        if (live && live.score) {
+        var home = live && live.home != null ? Number(live.home) : null;
+        var away = live && live.away != null ? Number(live.away) : null;
+        if (
+          (!Number.isFinite(home) || !Number.isFinite(away)) &&
+          live &&
+          live.score
+        ) {
           var parts = String(live.score).split(/\s*[—–-]\s*/);
           if (parts.length >= 2) {
             home = Number(parts[0]);
