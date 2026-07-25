@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Publica nome do usuário na Gestão de Saques e Transações (v2-pages + HTMLs).
+# Publica nome do cliente/usuário em Saques, Transações e Reembolsos.
 #
 # Na VPS (root):
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-proteger-js-e85c/scripts/vps-hotfix-admin-saques-nome.sh?$(date +%s)")
@@ -9,7 +9,7 @@ REF="${ARBISHIELD_REF:-cursor/fix-proteger-js-e85c}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 
-echo "==> hotfix admin — nome do usuário (saques + transações) ($(date -Is))"
+echo "==> hotfix admin — nome do cliente (saques + transações + reembolsos) ($(date -Is))"
 
 publish() {
   local rel="$1"
@@ -36,6 +36,7 @@ publish() {
 publish deploy/vps-supabase/static/v2/v2-pages.js
 publish deploy/vps-supabase/static/v2/admin-saques.html
 publish deploy/vps-supabase/static/v2/admin-transactions.html
+publish deploy/vps-supabase/static/v2/admin-refunds.html
 
 if curl -fsS -m 8 "https://arbishield.app/v2-pages.js" 2>/dev/null | grep -q 'enrichUserNames'; then
   echo "  smoke v2-pages.js → OK"
@@ -47,3 +48,4 @@ echo
 echo "OK — Ctrl+Shift+R em:"
 echo "  https://arbishield.app/admin-saques.html"
 echo "  https://arbishield.app/admin-transactions.html"
+echo "  https://arbishield.app/admin-refunds.html"
