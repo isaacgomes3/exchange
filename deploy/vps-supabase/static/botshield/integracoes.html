@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Integrações — BotShield</title>
+  <link rel="stylesheet" href="/botshield.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/botshield.js"></script>
+  <script src="/botshield-shell.js" defer></script>
+</head>
+<body data-active="integracoes">
+  <div id="page" hidden>
+    <div class="page-head">
+      <div>
+        <h1>Minhas integrações</h1>
+        <p class="sub">Conecte a sessão da exchange (conta do cliente) para os bots operarem.</p>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Exchange (BetBra / Mexchange)</h2>
+      <p>
+        Usa a API de ordens ArbiShield com a <strong>sessão do cliente</strong>.
+        Demo não envia aposta real.
+      </p>
+      <div id="err" class="err"></div>
+      <div id="status" class="notice" style="margin-bottom:14px">Carregando…</div>
+      <form id="form" class="form-grid">
+        <label>
+          Modo
+          <select name="provider" id="provider">
+            <option value="demo">Demo (simulado)</option>
+            <option value="betbra">BetBra / Mexchange (live)</option>
+          </select>
+        </label>
+        <label id="tokenWrap">
+          Token da exchange (accessToken)
+          <input
+            name="accessToken"
+            id="accessToken"
+            placeholder="Cole o token/sessão da conta na exchange"
+            autocomplete="off"
+          />
+        </label>
+        <label>
+          Rótulo da conta
+          <input name="accountLabel" placeholder="Ex.: Conta principal" />
+        </label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" type="submit">Conectar</button>
+          <button class="btn btn-secondary" type="button" id="btnDisconnect">
+            Desconectar
+          </button>
+        </div>
+      </form>
+      <p class="notice">
+        Live exige <code>EXCHANGE_ORDERS_LIVE=1</code> na VPS. Sem token da casa,
+        use provider demo.
+      </p>
+    </div>
+  </div>
+  <script>
+    document.addEventListener("botshield:ready", async (ev) => {
+      const { sb } = ev.detail;
+      const err = document.getElementById("err");
+      const status = document.getElementById("status");
+      const providerEl = document.getElementById("provider");
+      const tokenWrap = document.getElementById("tokenWrap");
+
+      async function token() {
+        const { data } = await sb.auth.getSession();
+        return data?.session?.access_token || "";
+      }
+
+      function syncTokenField() {
+        tokenWrap.style.opacity = providerEl.value === "demo" ? "0.55" : "1";
+      }
+      providerEl.addEventListener("change", syncTokenField);
+      syncTokenField();
+
+      status.textContent =
+        "Pronto para conectar. Demo não precisa de token da exchange.";
+
+      document.getElementById("form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        err.classList.remove("show");
+        const fd = new FormData(e.target);
+        const provider = String(fd.get("provider") || "demo");
+        const body = {
+          provider,
+          accessToken: String(fd.get("accessToken") || "").trim(),
+          accountLabel: String(fd.get("accountLabel") || "").trim() || undefined,
+        };
+        if (provider === "demo" && !body.accessToken) body.accessToken = "demo";
+        try {
+          const res = await fetch("/api/arbishield/exchange-session/connect", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + (await token()),
+            },
+            body: JSON.stringify(body),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || "Falha ao conectar");
+          status.textContent =
+            "Conectado · provider=" +
+            (json.provider || provider) +
+            (json.demo ? " · demo" : " · live-ready") +
+            (json.connectionId ? " · id " + String(json.connectionId).slice(0, 8) : "");
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+        }
+      });
+
+      document.getElementById("btnDisconnect").addEventListener("click", async () => {
+        err.classList.remove("show");
+        try {
+          const res = await fetch("/api/arbishield/exchange-session/disconnect", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + (await token()),
+            },
+            body: "{}",
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || "Falha ao desconectar");
+          status.textContent = "Sessão exchange desconectada.";
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+        }
+      });
+    });
+  </script>
+</body>
+</html>

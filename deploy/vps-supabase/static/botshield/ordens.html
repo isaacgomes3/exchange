@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Minhas ordens — BotShield</title>
+  <link rel="stylesheet" href="/botshield.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/botshield.js"></script>
+  <script src="/botshield-shell.js" defer></script>
+</head>
+<body data-active="ordens">
+  <div id="page" hidden>
+    <div class="page-head">
+      <div>
+        <h1>Minhas ordens</h1>
+        <p class="sub">Histórico local + bridge para API de ordens ArbiShield quando live.</p>
+      </div>
+    </div>
+    <div class="panel" style="max-width:none">
+      <table class="table" id="tbl">
+        <thead>
+          <tr>
+            <th>Quando</th>
+            <th>Bot</th>
+            <th>Lado</th>
+            <th>Odd</th>
+            <th>Stake</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p class="notice" id="hint">
+        Sem ordens ainda. Com integração + EXCHANGE_ORDERS_LIVE, as entradas dos bots
+        aparecem aqui via <code>/api/arbishield/exchange-orders</code>.
+      </p>
+    </div>
+  </div>
+  <script>
+    document.addEventListener("botshield:ready", async (ev) => {
+      const { sb } = ev.detail;
+      const tbody = document.querySelector("#tbl tbody");
+      let rows = [];
+      try {
+        const { data: session } = await sb.auth.getSession();
+        const token = session?.session?.access_token;
+        if (token) {
+          const res = await fetch("/api/arbishield/exchange-orders", {
+            headers: {
+              Accept: "application/json",
+              Authorization: "Bearer " + token,
+            },
+          });
+          if (res.ok) {
+            const json = await res.json();
+            rows = Array.isArray(json?.orders) ? json.orders : [];
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+
+      if (!rows.length) {
+        tbody.innerHTML =
+          '<tr><td colspan="6" style="color:var(--muted)">Nenhuma ordem registrada.</td></tr>';
+        return;
+      }
+      document.getElementById("hint").hidden = true;
+      tbody.innerHTML = rows
+        .slice(0, 50)
+        .map((o) => {
+          const when = o.created_at
+            ? new Date(o.created_at).toLocaleString("pt-BR")
+            : "—";
+          return (
+            "<tr>" +
+            "<td>" +
+            when +
+            "</td>" +
+            "<td>" +
+            (o.metadata?.bot_name || "—") +
+            "</td>" +
+            "<td>" +
+            (o.side || "—") +
+            "</td>" +
+            "<td>" +
+            (o.odd != null ? o.odd : "—") +
+            "</td>" +
+            "<td>" +
+            BotShield.money(o.stake_cents) +
+            "</td>" +
+            "<td>" +
+            (o.status || "—") +
+            "</td>" +
+            "</tr>"
+          );
+        })
+        .join("");
+    });
+  </script>
+</body>
+</html>
