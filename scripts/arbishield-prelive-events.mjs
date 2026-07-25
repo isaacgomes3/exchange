@@ -837,9 +837,30 @@ function bearerFromReq(req) {
   return m?.[1] || null;
 }
 
+let lastDesafioListLiveSyncMs = 0;
+
 async function listDesafios() {
   if (!SERVICE_KEY) {
     throw new Error("SERVICE_ROLE_KEY ausente no .env da VPS");
+  }
+  // Ao abrir o Desafio, tenta sync de placar/minuto (nginx público às vezes
+  // bloqueia /match-live-sync — este caminho usa o GET /desafios que já funciona).
+  const now = Date.now();
+  if (now - lastDesafioListLiveSyncMs > 12_000) {
+    lastDesafioListLiveSyncMs = now;
+    try {
+      await Promise.race([
+        syncBetbraInplayScores({ force: true }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("sync timeout")), 4500)
+        ),
+      ]);
+    } catch (err) {
+      console.warn(
+        "[desafios] sync inplay na listagem falhou",
+        err instanceof Error ? err.message : err
+      );
+    }
   }
   const rows = await sb(
     "/rest/v1/desafios?select=*,desafio_steps(*)&order=updated_at.desc"

@@ -4,6 +4,7 @@ import {
   BETBRA_INPLAY_SYNC_VERSION,
   normalizeInplayItem,
   indexInplayFeed,
+  coerceInplayFeed,
   matchEligibleForInplaySync,
   buildMatchInplayPatch,
   buildDesafioStepInplayPatch,
@@ -15,7 +16,7 @@ import {
 
 describe("betbra-inplay-sync", () => {
   it("mantém versão", () => {
-    assert.equal(BETBRA_INPLAY_SYNC_VERSION, "betbra-inplay-sync-v2");
+    assert.equal(BETBRA_INPLAY_SYNC_VERSION, "betbra-inplay-sync-v3");
   });
 
   it("extrai eventId de links BetBra", () => {
@@ -32,11 +33,35 @@ describe("betbra-inplay-sync", () => {
       "33874869253600023"
     );
     assert.equal(
+      extractBetbraEventIdFromUrl(
+        "https://betbra.bet.br/b/exchange/sport/soccer/event/33842537216900023/market/33842554997300023"
+      ),
+      "33842537216900023"
+    );
+    assert.equal(
       desafioStepEventId({
         external_bet_link: "https://x/event/123456789012",
       }),
       "123456789012"
     );
+  });
+
+  it("coerce envelopes do feed inplay", () => {
+    assert.equal(coerceInplayFeed({ events: [{ eventId: "1" }] }).length, 1);
+    assert.equal(coerceInplayFeed([{ eventId: "1" }]).length, 1);
+    const map = indexInplayFeed({
+      data: {
+        events: [
+          {
+            eventId: "42",
+            status: "InPlay",
+            elapsedRegularTime: "10",
+            score: { home: { score: "0" }, away: { score: "1" } },
+          },
+        ],
+      },
+    });
+    assert.equal(map.get("42")?.scoreLabel, "0-1");
   });
 
   it("gera patch de etapa desafio", () => {

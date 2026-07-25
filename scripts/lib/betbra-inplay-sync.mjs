@@ -3,7 +3,7 @@
  * Lógica pura (testável) + helpers de normalização.
  */
 
-export const BETBRA_INPLAY_SYNC_VERSION = "betbra-inplay-sync-v2";
+export const BETBRA_INPLAY_SYNC_VERSION = "betbra-inplay-sync-v3";
 
 /**
  * Extrai eventId BetBra de um link de mercado/evento.
@@ -236,12 +236,49 @@ export function normalizeInplayItem(item) {
 }
 
 /**
- * @param {any[]} feed
+ * Aceita array puro ou envelopes comuns do feed BetBra/Mexchange.
+ * @param {unknown} feed
+ * @returns {any[]}
+ */
+export function coerceInplayFeed(feed) {
+  if (Array.isArray(feed)) return feed;
+  if (!feed || typeof feed !== "object") return [];
+  const obj = /** @type {Record<string, unknown>} */ (feed);
+  for (const key of [
+    "events",
+    "event",
+    "data",
+    "items",
+    "inplay",
+    "inPlay",
+    "results",
+    "payload",
+  ]) {
+    const v = obj[key];
+    if (Array.isArray(v)) return v;
+    if (v && typeof v === "object") {
+      const nested = coerceInplayFeed(v);
+      if (nested.length) return nested;
+    }
+  }
+  // objeto indexado por eventId
+  const values = Object.values(obj);
+  if (
+    values.length &&
+    values.every((v) => v && typeof v === "object" && !Array.isArray(v))
+  ) {
+    return values;
+  }
+  return [];
+}
+
+/**
+ * @param {unknown} feed
  * @returns {Map<string, ReturnType<typeof normalizeInplayItem>>}
  */
 export function indexInplayFeed(feed) {
   const map = new Map();
-  const list = Array.isArray(feed) ? feed : [];
+  const list = coerceInplayFeed(feed);
   for (const raw of list) {
     const n = normalizeInplayItem(raw);
     if (!n) continue;
