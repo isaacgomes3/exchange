@@ -8,10 +8,25 @@ set -euo pipefail
 
 REF="${ARBISHIELD_REF:-cursor/fix-proteger-js-e85c}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
+API="https://api.github.com/repos/isaacgomes3/exchange/contents"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 
 die() { echo "ERRO: $*" >&2; exit 1; }
 log() { echo "==> $*"; }
+
+download_repo_file() {
+  local rel="$1"
+  local out="$2"
+  # Prefer API (evita cache velho do raw.githubusercontent.com)
+  if curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
+    -H "Accept: application/vnd.github.raw" \
+    -H "User-Agent: arbishield-hotfix" \
+    "$API/$rel?ref=${REF}" -o "$out"; then
+    return 0
+  fi
+  curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
+    "$RAW/$rel?$(date +%s)" -o "$out"
+}
 
 echo "==> UNSTUCK admin-refunds ($(date -Is))"
 mkdir -p "$WEB_ROOT" "$WEB_ROOT/v2"
@@ -22,8 +37,7 @@ publish_one() {
   name="$(basename "$rel")"
   local tmp
   tmp="$(mktemp)"
-  curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
-    "$RAW/$rel?$(date +%s)" -o "$tmp" || die "download falhou: $rel"
+  download_repo_file "$rel" "$tmp" || die "download falhou: $rel"
 
   # destinos canônicos
   cp -f "$tmp" "$WEB_ROOT/$name"
