@@ -395,8 +395,16 @@
         var meta = metaOf(it);
         var name = meta.market_name || meta.marketName || meta.runner_name || "";
         if (name && String(name).trim()) return String(name).trim();
-        var odd = Number(it.odd || 0);
+        var odd = displayOddOf(it);
         return odd > 0 ? odd.toFixed(2) : "—";
+      }
+      /** Odd do mercado lançado (LAY 30 → 30), nunca a back-equivalente. */
+      function displayOddOf(it) {
+        var meta = metaOf(it);
+        var marketOdd = Number(meta.market_odd);
+        if (marketOdd > 1.01) return marketOdd;
+        var o = Number(it && it.odd);
+        return o > 0 ? o : 0;
       }
       function teamsOf(it) {
         var meta = metaOf(it);
@@ -695,7 +703,7 @@
             "<div><span>Reembolso</span><strong>" +
             (res.refundCents != null ? money(res.refundCents) : "—") +
             "</strong></div>" +
-            "<div><span>Odd alvo</span><strong>" + Number(it.odd || 0).toFixed(2) + "</strong></div>" +
+            "<div><span>Odd alvo</span><strong>" + Number(displayOddOf(it) || 0).toFixed(2) + "</strong></div>" +
             "<div><span>Valor protegido</span><strong>" + money(amount) + "</strong></div>" +
             "<div><span>Início</span><strong>" + starts + "</strong></div>" +
             "<div><span>Criada em</span><strong>" + esc(created) + "</strong></div>" +
@@ -879,7 +887,7 @@
         }
         var contestation = {
           type: payload.contestType,
-          original_odd: Number(row.odd),
+          original_odd: Number(displayOddOf(row) || row.odd),
           requested_odd: payload.newOdd != null ? Number(payload.newOdd) : null,
           proof_url: payload.proofUrl || null,
           reason: payload.reason || null,

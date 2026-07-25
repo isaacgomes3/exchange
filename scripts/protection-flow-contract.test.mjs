@@ -75,9 +75,12 @@ describe("contrato travado — metadados", () => {
 
 describe("fee_upfront — cálculo", () => {
   it("LAY @ 20 resp. R$1000 → dedução conhecida", () => {
-    // back equiv = 20/19 ≈ 1.052631…
+    // back equiv = 20/19 ≈ 1.052631… (só cálculo; odd persistida = 20)
     const c = calcLay(100_000, 20);
     assert.equal(c.input_mode, "responsabilidade");
+    assert.equal(c.odd, 20);
+    assert.equal(c.marketOdd, 20);
+    assert.ok(Math.abs(c.effectiveBackOdd - 20 / 19) < 1e-9);
     assert.equal(c.responsibilityCents, 100_000);
     assert.equal(c.stakeCents, Math.round(100_000 / 19)); // 5263
     // lucro bruto ≈ 5263; user 1.5% = 1500; dedução = lucro - 1500

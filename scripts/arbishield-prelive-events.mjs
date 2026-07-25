@@ -2215,7 +2215,8 @@ async function createProtection(body, userToken) {
     market_id: market?.id || marketId || null,
     market_name: market?.name || null,
     market_type: marketType,
-    market_odd: market?.odd ?? odd,
+    // Odd do mercado lançado (LAY/BACK). Não gravar back-equivalente aqui.
+    market_odd: Number(market?.odd) > 1.01 ? Number(market.odd) : odd,
     home_team: match.home_team || null,
     away_team: match.away_team || null,
     league: match.league || match.competition || null,
@@ -2227,10 +2228,18 @@ async function createProtection(body, userToken) {
     stake_cents: amountCents,
     user_profit_cents: c.userProfitCents,
     gross_profit_cents: c.grossProfitCents,
+    effective_back_odd:
+      marketType === "LAY" ? c.effectiveBackOdd : c.odd,
     calculations: c,
     balance_type: walletType,
     balance_type_requested: balanceType,
   };
+
+  // Coluna odd = odd do mercado (LAY 30 → 30). Conversão só no cálculo.
+  const persistOdd =
+    marketType === "LAY"
+      ? Number(c.marketOdd || meta.market_odd || odd)
+      : Number(c.odd || odd);
 
   let protectionId = "";
   try {
@@ -2241,7 +2250,7 @@ async function createProtection(body, userToken) {
         body: {
           user_id: userId,
           match_id: matchId,
-          odd: c.odd,
+          odd: persistOdd,
           status: "active",
           amount_cents: c.coverageCents,
           user_profit_cents: c.userProfitCents,
@@ -2260,7 +2269,7 @@ async function createProtection(body, userToken) {
           user_id: userId,
           match_id: matchId,
           side,
-          odd: c.odd,
+          odd: persistOdd,
           status: "active",
           amount_cents: c.responsibilityCents,
           responsibility_cents: c.responsibilityCents,

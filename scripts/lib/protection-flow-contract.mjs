@@ -84,7 +84,9 @@ export function settlementDeductionCents(row) {
     const stake = n(
       row?.responsibility_cents || row?.amount_cents || meta.stake_cents
     );
-    let odd = Number(row?.odd || meta.market_odd || 0);
+    // Preferir odd do mercado lançado (metadata.market_odd); senão coluna odd.
+    let odd = Number(meta.market_odd);
+    if (!(odd > 1.01)) odd = Number(row?.odd || 0);
     const mt = String(meta.market_type || "").toUpperCase();
     if (mt === "LAY" && odd > 1.01) odd = odd / (odd - 1);
     if (stake > 0 && odd > 1.01) {
@@ -195,6 +197,9 @@ export function calcLay(amountCents, odd) {
     marketOdd > 1.01 ? Math.round(liability / (marketOdd - 1)) : 0;
   return {
     ...c,
+    // Persistência/UI: odd LAY do mercado (não a back equivalente).
+    // A conversão L/(L−1) fica só em effectiveBackOdd p/ cálculo de fee.
+    odd: marketOdd,
     stakeCents: houseStakeCents,
     responsibilityCents: liability,
     coverageCents: liability,

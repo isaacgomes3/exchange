@@ -468,8 +468,20 @@
       r.marketName ||
       "";
     if (name && String(name).trim()) return String(name).trim();
-    if (r.odd != null && Number(r.odd) > 0) return "Odd " + Number(r.odd).toFixed(2);
+    var displayOdd = displayOddOf(r);
+    if (displayOdd != null && Number(displayOdd) > 0) {
+      return "Odd " + Number(displayOdd).toFixed(2);
+    }
     return "";
+  }
+
+  /** Odd do mercado lançado (LAY 30 → 30). Não usar back-equivalente. */
+  function displayOddOf(r) {
+    var meta = r && r.metadata && typeof r.metadata === "object" ? r.metadata : {};
+    var marketOdd = Number(meta.market_odd);
+    if (marketOdd > 1.01) return marketOdd;
+    var o = Number(r && r.odd);
+    return o > 0 ? o : null;
   }
 
   async function loadFromView(supa) {
@@ -497,7 +509,7 @@
             ? "BACK"
             : "LAY",
         marketName: marketNameFrom(r),
-        odd: r.odd,
+        odd: displayOddOf(r),
         amountCents: Number(r.responsibility_cents || r.amount_cents || 0),
         userProfitCents: Number(r.user_profit_cents || 0),
         createdAt: r.created_at,
@@ -584,8 +596,8 @@
           String(r.market_category || r.side || "LAY").toUpperCase() === "BACK"
             ? "BACK"
             : "LAY",
-        marketName: marketName || (r.odd != null ? "Odd " + Number(r.odd).toFixed(2) : "—"),
-        odd: r.odd,
+        marketName: marketName || (displayOddOf(r) != null ? "Odd " + Number(displayOddOf(r)).toFixed(2) : "—"),
+        odd: displayOddOf(r),
         amountCents: Number(r.responsibility_cents || r.amount_cents || 0),
         userProfitCents: Number(r.user_profit_cents || 0),
         createdAt: r.created_at,
