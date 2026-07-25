@@ -6,17 +6,23 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-mercado-vx-v1" />
-  <link rel="stylesheet" href="/v2.css?v=dz-mercado-vx-1" />
+  <meta name="arbishield-build" content="desafio-mercado-vx-v2" />
+  <link rel="stylesheet" href="/v2.css?v=dz-mercado-vx-2" />
   <style>
     .dz-sb-market {
       display: flex;
-      align-items: flex-start;
-      gap: 8px;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
     }
-    .dz-sb-market-txt { flex: 1; min-width: 0; }
+    .dz-sb-market-txt {
+      flex: 1;
+      min-width: 0;
+      padding-right: 4px;
+    }
     .dz-mkt-flag {
       flex: 0 0 auto;
+      margin-left: auto;
       width: 22px;
       height: 22px;
       border-radius: 50%;
@@ -27,7 +33,15 @@
       line-height: 1;
       letter-spacing: 0;
       text-transform: none;
-      border: 1px solid transparent;
+      border: 1.5px solid rgba(255, 255, 255, 0.28);
+      background: transparent;
+      color: transparent;
+      box-sizing: border-box;
+    }
+    .dz-mkt-flag.is-pending {
+      border-color: rgba(255, 255, 255, 0.28);
+      background: rgba(255, 255, 255, 0.04);
+      color: transparent;
     }
     .dz-mkt-flag.is-win {
       color: #08140a;
@@ -184,9 +198,9 @@
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=dz-mercado-vx-1"></script>
-  <script src="/desafio-ciclo-math.js?v=dz-mercado-vx-1"></script>
-  <script src="/v2-shell.js?v=dz-mercado-vx-1" defer></script>
+  <script src="/v2.js?v=dz-mercado-vx-2"></script>
+  <script src="/desafio-ciclo-math.js?v=dz-mercado-vx-2"></script>
+  <script src="/v2-shell.js?v=dz-mercado-vx-2" defer></script>
   <style>
     .dz-access-history {
       appearance: none;
@@ -1185,13 +1199,15 @@
       }
 
       /**
-       * Com placar conhecido: true = seleção ganhando/venceu, false = perdendo/perdeu, null = não dá pra avaliar.
-       * Ao vivo usa o placar atual como se fosse o momento.
+       * Resultado só quando já está decidido (não “provisório”).
+       * Ex. BTTS Não ao vivo 0-1 → pending; se o outro marcar → lose (×) na hora.
+       * Retorno: "win" | "lose" | "pending" | null
        */
-      function marketIsWinning(name, home, away) {
+      function marketDecidedStatus(name, home, away, finished) {
         if (!Number.isFinite(home) || !Number.isFinite(away)) return null;
         var n = normMarketLabel(name);
         if (!n) return null;
+        var done = !!finished;
 
         var isBtts =
           /ambas/.test(n) ||
@@ -1200,51 +1216,58 @@
           (/marcam/.test(n) && /equipe/.test(n));
         if (isBtts) {
           var both = home > 0 && away > 0;
-          if (/\bnao\b/.test(n) || /\bno\b/.test(n)) return !both;
-          if (/\bsim\b/.test(n) || /\byes\b/.test(n)) return both;
-          // "Ambas marcam" sem sim/não → sim
-          return both;
+          var isNo = /\bnao\b/.test(n) || /\bno\b/.test(n);
+          var isYes = /\bsim\b/.test(n) || /\byes\b/.test(n) || !isNo;
+          if (both) {
+            // Decidido no momento do 2º time a marcar — independente do tempo
+            return isNo ? "lose" : "win";
+          }
+          if (done) return isNo ? "win" : "lose";
+          return "pending";
         }
 
+        var total = home + away;
         var ou = n.match(/(acima|over|mais de)\s*(\d+(?:[.,]\d+)?)/);
         if (ou) {
           var lineOver = parseFloat(String(ou[2]).replace(",", "."));
-          if (Number.isFinite(lineOver)) return home + away > lineOver;
+          if (!Number.isFinite(lineOver)) return null;
+          if (total > lineOver) return "win";
+          if (done) return "lose";
+          return "pending";
         }
         var uu = n.match(/(abaixo|under|menos de)\s*(\d+(?:[.,]\d+)?)/);
         if (uu) {
           var lineUnder = parseFloat(String(uu[2]).replace(",", "."));
-          if (Number.isFinite(lineUnder)) return home + away < lineUnder;
+          if (!Number.isFinite(lineUnder)) return null;
+          if (total > lineUnder) return "lose";
+          if (done) return total < lineUnder ? "win" : "lose";
+          return "pending";
         }
 
-        if (
-          /\bempate\b/.test(n) ||
-          /\bdraw\b/.test(n) ||
-          /(^|\s)x(\s|$)/.test(n)
-        ) {
-          if (!/ambas/.test(n)) return home === away;
-        }
-        if (
+        var isDraw =
+          (/\bempate\b/.test(n) || /\bdraw\b/.test(n)) && !/ambas/.test(n);
+        var isHome =
           /\bvitoria (da )?casa\b/.test(n) ||
           /\bcasa vence\b/.test(n) ||
           /\bhome win\b/.test(n) ||
-          /(^|\s)1(\s|$)/.test(n)
-        ) {
-          return home > away;
-        }
-        if (
+          /\bmandante\b/.test(n);
+        var isAway =
           /\bvitoria (do )?fora\b/.test(n) ||
           /\bfora vence\b/.test(n) ||
           /\baway win\b/.test(n) ||
-          /(^|\s)2(\s|$)/.test(n)
-        ) {
-          return away > home;
+          /\bvisitante\b/.test(n);
+        if (isDraw || isHome || isAway) {
+          // 1X2 só fecha no encerramento
+          if (!done) return "pending";
+          if (isDraw) return home === away ? "win" : "lose";
+          if (isHome) return home > away ? "win" : "lose";
+          return away > home ? "win" : "lose";
         }
         return null;
       }
 
-      function marketFlagHtml(name, liveInfo) {
-        if (!liveInfo) return "";
+      function scoresFromLiveInfo(liveInfo) {
+        if (!liveInfo) return { home: null, away: null };
         var home = liveInfo.home;
         var away = liveInfo.away;
         if (
@@ -1257,16 +1280,29 @@
             away = Number(parts[1]);
           }
         }
-        var win = marketIsWinning(name, home, away);
-        if (win == null) return "";
-        var finished = !!liveInfo.finished;
-        var title = win
-          ? finished
-            ? "Venceu"
-            : "Vencendo no placar atual"
-          : finished
-            ? "Perdeu"
-            : "Perdendo no placar atual";
+        return {
+          home: Number.isFinite(home) ? home : null,
+          away: Number.isFinite(away) ? away : null,
+        };
+      }
+
+      function marketFlagHtml(name, liveInfo) {
+        if (!liveInfo) return "";
+        var sc = scoresFromLiveInfo(liveInfo);
+        var status = marketDecidedStatus(
+          name,
+          sc.home,
+          sc.away,
+          !!liveInfo.finished
+        );
+        if (status == null) return "";
+        if (status === "pending") {
+          return (
+            '<span class="dz-mkt-flag is-pending" title="Aguardando resultado" aria-label="Aguardando resultado"></span>'
+          );
+        }
+        var win = status === "win";
+        var title = win ? "Venceu" : "Perdeu";
         return (
           '<span class="dz-mkt-flag ' +
           (win ? "is-win" : "is-lose") +
@@ -1287,10 +1323,11 @@
         }
         return (
           '<div class="dz-sb-market">' +
-          flag +
           '<span class="dz-sb-market-txt">' +
           esc(name) +
-          "</span></div>"
+          "</span>" +
+          flag +
+          "</div>"
         );
       }
 

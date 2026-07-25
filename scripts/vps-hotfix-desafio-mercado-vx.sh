@@ -8,7 +8,7 @@ RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
-MARKER="desafio-mercado-vx-v1"
+MARKER="desafio-mercado-vx-v2"
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
@@ -60,9 +60,10 @@ download_repo_file "deploy/vps-supabase/static/v2/app-desafio.html" "$tmp"
 grep -q "$MARKER" "$tmp" || die "sem marker $MARKER"
 grep -q 'dz-mkt-flag' "$tmp" || die "sem dz-mkt-flag"
 grep -q 'marketFlagHtml' "$tmp" || die "sem marketFlagHtml"
-grep -q 'marketIsWinning' "$tmp" || die "sem marketIsWinning"
+grep -q 'marketDecidedStatus' "$tmp" || die "sem marketDecidedStatus"
+grep -q 'is-pending' "$tmp" || die "sem bolinha pending"
 rm -f "$tmp"
 publish_html "app-desafio.html"
 
 log "OK — Ctrl+Shift+R em /app-desafio.html"
-echo "  Ao vivo/encerrado: V verde no mercado que está ganhando, × vermelho no que está perdendo."
+echo "  Ícone à direita: bolinha transparente até decidir; V/× só com resultado definitivo."
