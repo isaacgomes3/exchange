@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Desafio: corrige V/x em mercados Empate Anula (DNB).
-# Antes: "PASTO EMPATE ANULA" era tratado como empate 1X2 → × nos dois lados.
+# Desafio: corrige V/x em Empate Anula (DNB) + Mais/Menos 1.5 sem "de".
 #
 # Na VPS (root):
 #   bash <(curl -fsSL "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-hotfix-desafio-dnb-flag.sh?ref=cursor/desafio-dnb-flag-e85c&t=$(date +%s%N)" \
@@ -41,14 +40,15 @@ echo "==> vps-hotfix-desafio-dnb-flag.sh ($(date -Is)) ref=$REF"
 log "1/1 UI app-desafio.html"
 tmp_html="$(mktemp)"
 download_repo_file "deploy/vps-supabase/static/v2/app-desafio.html" "$tmp_html"
+
 grep -q 'desafio-dnb-flag-v1' "$tmp_html" || die "sem marker desafio-dnb-flag-v1"
 grep -q 'desafio-ou-flag-v1' "$tmp_html" || die "sem marker desafio-ou-flag-v1"
 grep -q 'isDnb' "$tmp_html" || die "sem logica isDnb"
 grep -q 'namesOverlap' "$tmp_html" || die "sem namesOverlap"
 grep -q 'is-void' "$tmp_html" || die "sem estilo void"
-# -F: literal (o JS tem \s; grep BRE quebrava o check)
-grep -qF 'mais(?:\s+de)?' "$tmp_html" || die "sem regex mais/menos sem de"
-grep -qF 'menos(?:\s+de)?' "$tmp_html" || die "sem regex menos sem de"
+grep -q 'String(ou\[1\])' "$tmp_html" || die "sem parse O/U novo (ou[1])"
+grep -q 'String(uu\[1\])' "$tmp_html" || die "sem parse O/U novo (uu[1])"
+grep -q 'Aceita "mais 1.5"' "$tmp_html" || die "sem comentario O/U mais 1.5"
 
 while IFS= read -r -d '' f; do
   cp -a "$f" "${f}.bak-dz-dnb-$(date +%s)" 2>/dev/null || true
@@ -65,6 +65,6 @@ for f in "$WEB/app-desafio.html" "$WEB_ROOT/app-desafio.html"; do
 done
 rm -f "$tmp_html"
 
-echo "OK — Empate Anula agora marca V/x pelo time do mercado."
+echo "OK — flags DNB + Mais/Menos 1.5 atualizados."
 echo "  Abra /app-desafio.html e Ctrl+Shift+R"
-echo "  Ex.: 3-2 → PASTO EMPATE ANULA = x · MEDELIN EMPATE ANULA = V"
+echo "  Empate Anula: V/x pelo time | Mais/Menos: bolinha pending ao vivo"

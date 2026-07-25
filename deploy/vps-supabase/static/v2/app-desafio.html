@@ -1329,17 +1329,23 @@
         }
 
         var total = home + away;
-        var ou = n.match(/(acima|over|mais de)\s*(\d+(?:[.,]\d+)?)/);
+        // Aceita "mais 1.5", "mais de 1.5", "acima de 1,5", "over 1.5 gols"...
+        var ou = n.match(
+          /(?:\bacima(?:\s+de)?|\bover|\bmais(?:\s+de)?)\s*(\d+(?:[.,]\d+)?)/
+        );
         if (ou) {
-          var lineOver = parseFloat(String(ou[2]).replace(",", "."));
+          var lineOver = parseFloat(String(ou[1]).replace(",", "."));
           if (!Number.isFinite(lineOver)) return null;
           if (total > lineOver) return "win";
           if (done) return "lose";
           return "pending";
         }
-        var uu = n.match(/(abaixo|under|menos de)\s*(\d+(?:[.,]\d+)?)/);
+        // Aceita "menos 1.5", "menos de 1.5", "abaixo de 1,5", "under 1.5 gols"...
+        var uu = n.match(
+          /(?:\babaixo(?:\s+de)?|\bunder|\bmenos(?:\s+de)?)\s*(\d+(?:[.,]\d+)?)/
+        );
         if (uu) {
-          var lineUnder = parseFloat(String(uu[2]).replace(",", "."));
+          var lineUnder = parseFloat(String(uu[1]).replace(",", "."));
           if (!Number.isFinite(lineUnder)) return null;
           if (total > lineUnder) return "lose";
           if (done) return total < lineUnder ? "win" : "lose";
