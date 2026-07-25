@@ -1,11 +1,17 @@
 #!/usr/bin/env node
 /**
- * Lança OU revive evento MANUAL de teste (publicado).
- * - Odd 1,10 BACK (dedução R$ 85 em stake R$ 1.000)
- * - Se já existir sandbox_test, só empurra o horário e republica
+ * Lança OU revive evento MANUAL de teste (publicado) — visível na grade.
+ *
+ * - Odd 1,10 em BACK e LAY (filtro "Todos" / LAY / BACK)
+ * - Horário perto (+45 min por padrão) para aparecer no topo
+ * - Revive até eventos unpublished/deleted com sandbox_test
+ * - Imprime diagnóstico de por que aparece ou não
  *
  * Na VPS:
  *   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-fee-upfront-3cf9/scripts/vps-sandbox-lancar-evento-teste.sh?$(date +%s)")
+ *
+ * Forçar novo (não revive):
+ *   FORCE_NEW=1 bash <(curl ...)
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -53,15 +59,18 @@ const SUPABASE_URL = (
 
 const ODD = Number(process.env.TEST_ODD || 1.1);
 const LIQ_BRL = Number(process.env.TEST_LIQ_BRL || 5000);
-const HOURS = Number(process.env.TEST_HOURS_AHEAD || 6);
+/** Minutos até o kickoff (padrão 45 — aparece no topo da grade). */
+const MINUTES = Number(
+  process.env.TEST_MINUTES_AHEAD ||
+    (process.env.TEST_HOURS_AHEAD
+      ? Number(process.env.TEST_HOURS_AHEAD) * 60
+      : 45)
+);
 const HOME = process.env.TEST_HOME || "ArbiShield Teste A";
 const AWAY = process.env.TEST_AWAY || "ArbiShield Teste B";
-const SIDE =
-  String(process.env.TEST_SIDE || "BACK").toUpperCase() === "LAY"
-    ? "LAY"
-    : "BACK";
 const FORCE_NEW =
   process.env.FORCE_NEW === "1" || process.env.FORCE_NEW === "true";
+const LIVE_WINDOW_MS = 9000 * 1000;
 
 if (!SERVICE_KEY) {
   console.error("ERRO: SERVICE_ROLE_KEY ausente");
@@ -97,116 +106,192 @@ async function sb(p, { method = "GET", body } = {}) {
   return data;
 }
 
+/** Sempre BACK + LAY — assim não some se o usuário filtrar um lado. */
 function buildMarkets(liqCents) {
-  const marketId = randomUUID();
-  const marketName =
-    SIDE === "BACK" ? "Back · Sandbox Teste" : "Lay · Sandbox Teste";
   return [
     {
-      id: marketId,
-      name: marketName,
+      id: randomUUID(),
+      name: "Back · Sandbox Teste",
       odd: ODD,
       liquidity: liqCents,
       display_liquidity: null,
       used_liquidity: 0,
-      market_type: SIDE,
+      market_type: "BACK",
+      external_id: null,
+    },
+    {
+      id: randomUUID(),
+      name: "Lay · Sandbox Teste",
+      odd: ODD,
+      liquidity: liqCents,
+      display_liquidity: null,
+      used_liquidity: 0,
+      market_type: "LAY",
       external_id: null,
     },
   ];
 }
 
+function isSandboxRow(m) {
+  const meta = m.metadata && typeof m.metadata === "object" ? m.metadata : {};
+  if (meta.sandbox_test === true) return true;
+  if (/SANDBOX/i.test(String(m.league || ""))) return true;
+  if (/ArbiShield Teste/i.test(String(m.home_team || ""))) return true;
+  if (/ArbiShield Teste/i.test(String(m.away_team || ""))) return true;
+  return false;
+}
+
 async function findExisting() {
+  // Inclui unpublished/deleted — senão o revive falha e o usuário acha que “não apareceu”
   const rows = await sb(
-    `/rest/v1/matches?select=id,home_team,away_team,starts_at,is_published,deleted_at,metadata,markets,max_protection_cents,used_protection_cents&is_published=eq.true&deleted_at=is.null&order=starts_at.desc&limit=80`
+    `/rest/v1/matches?select=id,home_team,away_team,league,starts_at,status,status_v2,is_published,deleted_at,metadata,markets,max_protection_cents,used_protection_cents&order=updated_at.desc.nullslast&limit=200`
   );
   const list = Array.isArray(rows) ? rows : [];
-  return list.filter((m) => {
-    const meta = m.metadata && typeof m.metadata === "object" ? m.metadata : {};
-    if (meta.sandbox_test === true) return true;
-    const league = String(m.league || "");
-    return /SANDBOX/i.test(league) || /ArbiShield Teste/i.test(m.home_team || "");
-  });
+  return list.filter(isSandboxRow);
+}
+
+function visibilityWhy(m, now = Date.now()) {
+  const reasons = [];
+  if (m.is_published !== true) reasons.push("is_published≠true");
+  if (m.deleted_at) reasons.push("deleted_at preenchido");
+  const start = new Date(m.starts_at).getTime();
+  if (!Number.isFinite(start)) reasons.push("starts_at inválido");
+  else if (start + LIVE_WINDOW_MS <= now) reasons.push("fora da janela (+2h30 pós-kickoff)");
+  const status = m.status_v2 || m.status || "open";
+  if (
+    status === "FINISHED" ||
+    ["closed", "cancelled", "finished", "settled", "finalizado", "void"].includes(
+      String(status).toLowerCase()
+    )
+  ) {
+    reasons.push(`status=${status}`);
+  }
+  const max = Number(m.max_protection_cents || 0);
+  const used = Number(m.used_protection_cents || 0);
+  if (!(max > 0 && used < max)) reasons.push(`sem liquidez max=${max} used=${used}`);
+  const mks = Array.isArray(m.markets) ? m.markets : [];
+  const sides = [
+    ...new Set(
+      mks.map((mk) => String(mk.market_type || "LAY").toUpperCase())
+    ),
+  ];
+  if (!mks.length) reasons.push("markets vazio");
+  return {
+    ok: reasons.length === 0,
+    reasons,
+    sides,
+    startsAt: m.starts_at,
+    max,
+    used,
+  };
+}
+
+function payload(liqCents, startsIso, prevMeta) {
+  return {
+    home_team: HOME,
+    away_team: AWAY,
+    league: "SANDBOX · Evento teste fee_upfront",
+    starts_at: startsIso,
+    status: "open",
+    status_v2: "open",
+    is_published: true,
+    deleted_at: null,
+    sport_type: "futebol",
+    max_protection_cents: liqCents,
+    used_protection_cents: 0,
+    protection_odds: { home: ODD, away: ODD },
+    score_sync_enabled: false,
+    has_live_stream: false,
+    markets: buildMarkets(liqCents),
+    metadata: {
+      ...(prevMeta && typeof prevMeta === "object" ? prevMeta : {}),
+      source: "admin_manual",
+      sandbox_test: true,
+      billing_model_hint: "fee_upfront_v1",
+      release_minutes_before: 0,
+      revived_at: new Date().toISOString(),
+      note: "Evento de teste — BACK+LAY odd 1.10 — pode apagar depois",
+    },
+    updated_at: new Date().toISOString(),
+  };
 }
 
 async function main() {
   const liqCents = Math.round(LIQ_BRL * 100);
-  const starts = new Date(Date.now() + Math.max(1, HOURS) * 3600_000);
+  const mins = Math.max(10, Number.isFinite(MINUTES) ? MINUTES : 45);
+  const starts = new Date(Date.now() + mins * 60_000);
+  const startsIso = starts.toISOString();
+
+  console.log("==> Lançar evento teste (BACK + LAY @", ODD, ")");
+  console.log("    kickoff em", mins, "min →", starts.toLocaleString("pt-BR"));
+  console.log("    liq", money(liqCents), "· supabase", SUPABASE_URL);
 
   const existing = FORCE_NEW ? [] : await findExisting();
+  const touched = [];
+
   if (existing.length) {
-    console.log("==> Reviver", existing.length, "evento(s) teste existente(s)");
+    console.log("==> Reviver", existing.length, "evento(s) teste (incl. unpublished/deleted)");
     for (const m of existing) {
-      const markets = buildMarkets(liqCents);
+      const body = payload(liqCents, startsIso, m.metadata);
       const patched = await sb(
         `/rest/v1/matches?id=eq.${encodeURIComponent(m.id)}`,
-        {
-          method: "PATCH",
-          body: {
-            home_team: HOME,
-            away_team: AWAY,
-            league: "SANDBOX · Evento teste fee_upfront",
-            starts_at: starts.toISOString(),
-            status: "open",
-            status_v2: "open",
-            is_published: true,
-            deleted_at: null,
-            max_protection_cents: liqCents,
-            used_protection_cents: 0,
-            protection_odds: { home: ODD, away: ODD },
-            markets,
-            metadata: {
-              ...(m.metadata && typeof m.metadata === "object" ? m.metadata : {}),
-              source: "admin_manual",
-              sandbox_test: true,
-              billing_model_hint: "fee_upfront_v1",
-              release_minutes_before: 0,
-              revived_at: new Date().toISOString(),
-            },
-            updated_at: new Date().toISOString(),
-          },
-        }
+        { method: "PATCH", body }
       );
       const row = Array.isArray(patched) ? patched[0] : patched;
-      console.log("  OK revive", row?.id || m.id, "→", starts.toLocaleString("pt-BR"));
+      touched.push(row || { ...m, ...body });
+      console.log(
+        "  OK revive",
+        (row || m).id,
+        "pub=",
+        (row || m).is_published,
+        "del=",
+        (row || m).deleted_at
+      );
     }
   } else {
-    const markets = buildMarkets(liqCents);
-    const externalId = `sandbox-test-${Date.now()}`;
     console.log("==> Criar evento TESTE novo");
-    console.log("   ", HOME, "vs", AWAY);
-    console.log("    odd", ODD, "·", SIDE, "· liq", money(liqCents));
-    console.log("    começa", starts.toLocaleString("pt-BR"));
-
-    const created = await sb("/rest/v1/matches", {
-      method: "POST",
-      body: {
-        home_team: HOME,
-        away_team: AWAY,
-        league: "SANDBOX · Evento teste fee_upfront",
-        starts_at: starts.toISOString(),
-        status: "open",
-        status_v2: "open",
-        is_published: true,
-        sport_type: "futebol",
-        max_protection_cents: liqCents,
-        used_protection_cents: 0,
-        protection_odds: { home: ODD, away: ODD },
-        external_id: externalId,
-        score_sync_enabled: false,
-        has_live_stream: false,
-        metadata: {
-          source: "admin_manual",
-          sandbox_test: true,
-          billing_model_hint: "fee_upfront_v1",
-          release_minutes_before: 0,
-          note: "Evento de teste — pode apagar depois",
-        },
-        markets,
-      },
-    });
+    const body = {
+      ...payload(liqCents, startsIso, null),
+      external_id: `sandbox-test-${Date.now()}`,
+    };
+    delete body.updated_at;
+    const created = await sb("/rest/v1/matches", { method: "POST", body });
     const match = Array.isArray(created) ? created[0] : created;
     if (!match?.id) throw new Error("match sem id");
+    touched.push(match);
     console.log("  matchId:", match.id);
+  }
+
+  console.log("\n==> Diagnóstico de visibilidade (grade Proteger)");
+  let anyOk = false;
+  for (const m of touched) {
+    const fresh = await sb(
+      `/rest/v1/matches?select=id,home_team,away_team,league,starts_at,status,status_v2,is_published,deleted_at,metadata,markets,max_protection_cents,used_protection_cents&id=eq.${encodeURIComponent(m.id)}&limit=1`
+    );
+    const row = Array.isArray(fresh) ? fresh[0] : null;
+    if (!row) {
+      console.log("  ✗", m.id, "não encontrado após write");
+      continue;
+    }
+    const v = visibilityWhy(row);
+    anyOk = anyOk || v.ok;
+    console.log(
+      v.ok ? "  ✓ VISÍVEL" : "  ✗ OCULTO",
+      row.id,
+      "|",
+      row.home_team,
+      "×",
+      row.away_team
+    );
+    console.log(
+      "     lados:",
+      v.sides.join("+") || "(nenhum)",
+      "| liq",
+      money(v.max - v.used),
+      "| começa",
+      new Date(v.startsAt).toLocaleString("pt-BR")
+    );
+    if (!v.ok) console.log("     motivos:", v.reasons.join("; "));
   }
 
   const stake = 100_000;
@@ -214,19 +299,18 @@ async function main() {
   const user = Math.round(stake * 0.015);
   const fee = Math.max(0, profit - user);
 
-  console.log("\nOK — evento teste disponível");
+  console.log("\nOK — evento teste", anyOk ? "deve aparecer na grade" : "AINDA OCULTO (ver motivos)");
   console.log(
     "  Ex.: stake R$ 1.000 @",
     ODD,
-    SIDE,
-    "→ dedução",
+    "BACK → dedução",
     money(fee),
     `(seu lucro ${money(user)})`
   );
-  console.log("\nAbrir:");
-  console.log("  https://arbishield.app/app-proteger.html");
+  console.log("\nAbrir (janela anônima · filtro Todos · buscar “ArbiShield Teste”):");
   console.log("  https://arbishield.app/sandbox/app-proteger.html");
-  console.log("  (janela anônima · saldo DEMO · ArbiShield Teste A vs B)");
+  console.log("  https://arbishield.app/app-proteger.html");
+  if (!anyOk) process.exit(2);
 }
 
 main().catch((e) => {
