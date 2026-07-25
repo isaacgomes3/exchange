@@ -24,16 +24,71 @@
       background: #06251d; color: #fff; padding: 0 12px; font: inherit;
     }
     .d-wrap { border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; overflow: auto; background: rgba(4,26,20,0.75); }
-    .d-table { width: 100%; border-collapse: collapse; }
-    .d-table th, .d-table td { text-align: left; padding: 12px 10px; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 13px; vertical-align: top; }
-    .d-table th { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; }
+    .d-table {
+      width: 100%;
+      min-width: 960px;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    .d-table col.c-cli { width: 22%; }
+    .d-table col.c-val { width: 10%; }
+    .d-table col.c-rede { width: 8%; }
+    .d-table col.c-tipo { width: 10%; }
+    .d-table col.c-st { width: 11%; }
+    .d-table col.c-comp { width: 12%; }
+    .d-table col.c-data { width: 13%; }
+    .d-table col.c-act { width: 14%; }
+    .d-table th, .d-table td {
+      text-align: left;
+      padding: 14px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      font-size: 13px;
+      vertical-align: middle;
+      word-break: break-word;
+    }
+    .d-table th {
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+    }
+    .d-table td.col-val,
+    .d-table th.col-val { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .d-table td.col-rede,
+    .d-table th.col-rede,
+    .d-table td.col-tipo,
+    .d-table th.col-tipo,
+    .d-table td.col-st,
+    .d-table th.col-st,
+    .d-table td.col-comp,
+    .d-table th.col-comp { text-align: center; }
+    .d-table td.col-data,
+    .d-table th.col-data { text-align: right; white-space: nowrap; }
+    .d-table td.col-act,
+    .d-table th.col-act { text-align: right; }
+    .d-cli-name {
+      display: block;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.35;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
     .tag { display: inline-flex; padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; border: 1px solid rgba(255,255,255,0.12); }
     .tag.pending { color: #fbbf24; border-color: rgba(251,191,36,0.4); }
     .tag.approved { color: #c9f223; border-color: rgba(201,242,35,0.4); }
     .tag.rejected { color: #f87171; border-color: rgba(248,113,113,0.4); }
     .tag.await { color: #94a3b8; }
-    .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: flex-end;
+      align-items: center;
+      width: 100%;
+    }
     .actions .btn { height: 34px; padding: 0 10px; font-size: 11px; }
+    .actions .muted { margin: 0; text-align: right; width: 100%; }
     .proof-link { color: #c9f223; font-weight: 700; text-decoration: none; cursor: pointer; }
     .empty { padding: 28px; text-align: center; color: var(--muted); }
     .muted { color: var(--muted); font-size: 11px; margin-top: 4px; }
@@ -84,16 +139,26 @@
 
   <div class="d-wrap">
     <table class="d-table">
+      <colgroup>
+        <col class="c-cli" />
+        <col class="c-val" />
+        <col class="c-rede" />
+        <col class="c-tipo" />
+        <col class="c-st" />
+        <col class="c-comp" />
+        <col class="c-data" />
+        <col class="c-act" />
+      </colgroup>
       <thead>
         <tr>
           <th>Cliente</th>
-          <th>Valor</th>
-          <th>Rede</th>
-          <th>Tipo</th>
-          <th>Status</th>
-          <th>Comprovante</th>
-          <th>Data</th>
-          <th>Ações</th>
+          <th class="col-val">Valor</th>
+          <th class="col-rede">Rede</th>
+          <th class="col-tipo">Tipo</th>
+          <th class="col-st">Status</th>
+          <th class="col-comp">Comprovante</th>
+          <th class="col-data">Data</th>
+          <th class="col-act">Ações</th>
         </tr>
       </thead>
       <tbody id="tbody"><tr><td colspan="8" class="empty">Carregando…</td></tr></tbody>
@@ -240,17 +305,18 @@
           var canAct = ["PENDING", "PROCESSING", "AWAITING_PROOF"].indexOf(String(r.status || "").toUpperCase()) >= 0;
           return (
             "<tr>" +
-              "<td>" + ((r.profiles && r.profiles.full_name) || "Usuário") +
-                '<div class="muted">' + String(r.user_id || "").slice(0, 8) + "…</div></td>" +
-              "<td>" + money(r.amount_cents) + "</td>" +
-              "<td>" + (r.network || "—") + "</td>" +
-              "<td>" + depositDestLabel(r) + "</td>" +
-              '<td><span class="tag ' + statusClass(r.status) + '">' + statusLabel(r.status) + "</span></td>" +
-              "<td>" + (r.proof_url
+              '<td class="col-cli"><span class="d-cli-name">' +
+                ((r.profiles && r.profiles.full_name) || "Usuário") +
+                '</span><div class="muted">' + String(r.user_id || "").slice(0, 8) + "…</div></td>" +
+              '<td class="col-val">' + money(r.amount_cents) + "</td>" +
+              '<td class="col-rede">' + (r.network || "—") + "</td>" +
+              '<td class="col-tipo">' + depositDestLabel(r) + "</td>" +
+              '<td class="col-st"><span class="tag ' + statusClass(r.status) + '">' + statusLabel(r.status) + "</span></td>" +
+              '<td class="col-comp">' + (r.proof_url
                 ? '<a class="proof-link" href="#" data-proof="' + idx + '">Ver comprovante</a>'
                 : '<span class="muted">Sem comprovante</span>') + "</td>" +
-              "<td>" + (r.created_at ? new Date(r.created_at).toLocaleString("pt-BR") : "—") + "</td>" +
-              "<td><div class=\"actions\">" +
+              '<td class="col-data">' + (r.created_at ? new Date(r.created_at).toLocaleString("pt-BR") : "—") + "</td>" +
+              '<td class="col-act"><div class="actions">' +
                 (canAct
                   ? '<button type="button" class="btn btn-primary" data-approve="' + idx + '">Confirmar e Creditar</button>' +
                     '<button type="button" class="btn btn-ghost" data-credited="' + idx + '">Já creditado</button>' +

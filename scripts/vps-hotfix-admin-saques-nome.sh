@@ -37,6 +37,7 @@ publish deploy/vps-supabase/static/v2/v2-pages.js
 publish deploy/vps-supabase/static/v2/admin-saques.html
 publish deploy/vps-supabase/static/v2/admin-transactions.html
 publish deploy/vps-supabase/static/v2/admin-refunds.html
+publish deploy/vps-supabase/static/v2/admin-manual-deposits.html
 
 if curl -fsS -m 8 "https://arbishield.app/v2-pages.js" 2>/dev/null | grep -q 'enrichUserNames'; then
   echo "  smoke v2-pages.js → OK"
