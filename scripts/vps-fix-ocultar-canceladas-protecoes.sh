@@ -7,7 +7,7 @@ set -euo pipefail
 
 REF="${ARBISHIELD_REF:-cursor/protecao-fee-upfront-3cf9}"
 # Pin no commit para evitar cache de branch
-SHA="${ARBISHIELD_SHA:-67a7d2f08a4a010566e333ac17e07591602cc367}"
+SHA="${ARBISHIELD_SHA:-28ff8e81bb87d775ec5d7cd41a51b9451033bbf7}"
 RAW_SHA="https://raw.githubusercontent.com/isaacgomes3/exchange/${SHA}"
 RAW_REF="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 TS="$(date +%s)"
