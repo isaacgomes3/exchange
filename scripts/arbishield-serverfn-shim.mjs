@@ -5144,9 +5144,11 @@ async function settleMatch(token, body) {
     }
   }
 
+  const adminId = requireUserId(token);
   const patchMatch = {
     markets,
     updated_at: now,
+    updated_by: adminId,
   };
   if (!marketId) {
     if (finalScore) patchMatch.final_score = String(finalScore);
@@ -5154,21 +5156,40 @@ async function settleMatch(token, body) {
     patchMatch.status = "settled";
   }
 
-  try {
-    await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
-      method: "PATCH",
-      token: SERVICE_KEY,
-      body: { ...patchMatch, status_v2: "settled" },
-    });
-  } catch {
-    await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
-      method: "PATCH",
-      token: SERVICE_KEY,
-      body: patchMatch,
-    });
+  // status_v2 enum VPS: "closed" (não "settled"); updated_by alimenta trigger admin_id
+  let matchPatched = false;
+  for (const body of [
+    { ...patchMatch, status_v2: "closed" },
+    { ...patchMatch, status_v2: "finished" },
+    patchMatch,
+  ]) {
+    try {
+      await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body,
+      });
+      matchPatched = true;
+      break;
+    } catch {
+      try {
+        await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
+          method: "PATCH",
+          token,
+          body,
+        });
+        matchPatched = true;
+        break;
+      } catch {
+        /* next */
+      }
+    }
   }
-
-  const adminId = requireUserId(token);
+  if (!matchPatched) {
+    throw new Error(
+      "Falha ao marcar partida (admin_id/status). Confirme login admin e tente de novo."
+    );
+  }
   try {
     await sb("/rest/v1/admin_audit_logs", {
       method: "POST",

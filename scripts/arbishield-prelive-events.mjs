@@ -1161,7 +1161,11 @@ async function creditWalletForSettlement(row, outcome, now) {
   const wonArbi = String(outcome).toLowerCase() === "arbishield";
   const feeUpfront = isFeeUpfrontProtection(row);
   const balanceType = String(
-    (row.metadata && row.metadata.balance_type) || "REAL"
+    (row.metadata &&
+      (row.metadata.balance_type ||
+        row.metadata.balance_type_requested ||
+        row.metadata.balanceType)) ||
+      "REAL"
   ).toUpperCase();
   if (!row.user_id || amount <= 0) {
     return { refunded: 0, credited: 0, skipped: true };
@@ -1445,41 +1449,72 @@ async function settleMatchFromBody(body, token) {
     // sem abertas e sem reparo — ainda assim marca placar se pedido
   }
 
-  // Só agora marca a partida (evita o trigger de proteções ativas)
+  // Só agora marca a partida (evita o trigger de proteções ativas).
+  // updated_by = adminId: trigger match_change_logs exige admin_id NOT NULL.
+  // status_v2 enum na VPS aceita "closed" (não "settled").
   const basePatch = {
     final_score: String(finalScore),
     settled_at: now,
     status: "settled",
     markets,
     updated_at: now,
+    updated_by: adminId,
   };
-  try {
-    await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
-      method: "PATCH",
-      token: SERVICE_KEY,
-      body: { ...basePatch, status_v2: "settled" },
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+  const patchAttempts = [
+    { ...basePatch, status_v2: "closed" },
+    { ...basePatch, status_v2: "finished" },
+    basePatch,
+  ];
+  let patched = false;
+  let lastPatchErr = null;
+  for (const body of patchAttempts) {
     try {
       await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
         method: "PATCH",
         token: SERVICE_KEY,
-        body: basePatch,
+        body,
       });
-    } catch (err2) {
-      const msg2 = err2 instanceof Error ? err2.message : String(err2);
-      if (/bloqueado|ativas|liquidação oficial|liquidacao oficial/i.test(msg2 + msg)) {
-        const again = await countOpenProtections(matchId);
-        throw Object.assign(
-          new Error(
-            `Encerramento ainda bloqueado pelo banco (${again.lay} LAY / ${again.back} BACK). Proteções liquidadas nesta rodada: ${settledCount}.`
-          ),
-          { status: 409 }
-        );
+      patched = true;
+      break;
+    } catch (err) {
+      lastPatchErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/admin_id|match_change_logs/i.test(msg)) {
+        // tenta de novo com o token do admin (JWT sub = admin_id no trigger)
+        try {
+          await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
+            method: "PATCH",
+            token,
+            body,
+          });
+          patched = true;
+          break;
+        } catch (errAdmin) {
+          lastPatchErr = errAdmin;
+        }
       }
-      throw err2;
     }
+  }
+  if (!patched) {
+    const msg = lastPatchErr instanceof Error ? lastPatchErr.message : String(lastPatchErr || "");
+    if (/bloqueado|ativas|liquidação oficial|liquidacao oficial/i.test(msg)) {
+      const again = await countOpenProtections(matchId);
+      throw Object.assign(
+        new Error(
+          `Encerramento ainda bloqueado pelo banco (${again.lay} LAY / ${again.back} BACK). Proteções liquidadas nesta rodada: ${settledCount}.`
+        ),
+        { status: 409 }
+      );
+    }
+    if (/admin_id|match_change_logs/i.test(msg)) {
+      throw Object.assign(
+        new Error(
+          "Falha ao auditar encerramento (admin_id). Confirme o login admin e tente de novo."
+        ),
+        { status: 400 }
+      );
+    }
+    throw lastPatchErr || new Error("Falha ao marcar partida como encerrada");
   }
 
   try {
