@@ -531,11 +531,14 @@ async function sb(path, { token, method = "GET", body } = {}) {
   if (!res.ok) {
     const msg =
       (data && data.message) ||
+      (data && data.error) ||
       (data && data.error_description) ||
       text.slice(0, 200) ||
       res.statusText;
     const err = new Error(msg);
     err.status = res.status;
+    err.code = (data && data.code) || undefined;
+    err.details = data;
     throw err;
   }
   return data;
