@@ -34,6 +34,7 @@ import {
   desafioStepEventId,
   normalizeEventId,
   normalizeInplayItem,
+  buildLiveMetadata,
 } from "./lib/betbra-inplay-sync.mjs";
 
 // Trava de produto: fluxo de proteção — não alterar sem pedido explícito.
@@ -842,6 +843,48 @@ function bearerFromReq(req) {
 
 let lastDesafioListLiveSyncMs = 0;
 
+/** Cache em memória: placar/FT para o cliente (VPS sem coluna metadata). */
+const desafioStepLiveCache = new Map();
+
+function rememberDesafioStepLive(stepId, live) {
+  if (!stepId || !live) return;
+  desafioStepLiveCache.set(String(stepId), {
+    ...live,
+    cached_at: new Date().toISOString(),
+  });
+}
+
+function enrichDesafiosWithLiveCache(desafios) {
+  const list = Array.isArray(desafios) ? desafios : [];
+  return list.map((d) => {
+    const steps = Array.isArray(d?.desafio_steps) ? d.desafio_steps : [];
+    return {
+      ...d,
+      desafio_steps: steps.map((s) => {
+        if (!s?.id) return s;
+        const cached = desafioStepLiveCache.get(String(s.id));
+        if (!cached) return s;
+        const prevMeta =
+          s.metadata && typeof s.metadata === "object" ? { ...s.metadata } : {};
+        const home =
+          s.final_score_home != null ? s.final_score_home : cached.home_score;
+        const away =
+          s.final_score_away != null ? s.final_score_away : cached.away_score;
+        return {
+          ...s,
+          final_score_home: home,
+          final_score_away: away,
+          metadata: {
+            ...prevMeta,
+            live: cached,
+            score_sync_enabled: true,
+          },
+        };
+      }),
+    };
+  });
+}
+
 async function listDesafiosRaw() {
   if (!SERVICE_KEY) {
     throw new Error("SERVICE_ROLE_KEY ausente no .env da VPS");
@@ -849,7 +892,7 @@ async function listDesafiosRaw() {
   const rows = await sb(
     "/rest/v1/desafios?select=*,desafio_steps(*)&order=updated_at.desc"
   );
-  return Array.isArray(rows) ? rows : [];
+  return enrichDesafiosWithLiveCache(Array.isArray(rows) ? rows : []);
 }
 
 async function listDesafios() {
@@ -3321,11 +3364,18 @@ async function syncBetbraInplayScores({ force = false } = {}) {
   }
 
   for (const step of stepCandidates) {
+    const ext = desafioStepEventId(step);
+    const info = ext ? byEvent.get(ext) : null;
+    // Cache em memória mesmo sem PATCH (alertas de gol/FT no cliente)
+    if (info) {
+      rememberDesafioStepLive(step.id, buildLiveMetadata(info, nowIso));
+    }
     const built = buildDesafioStepInplayPatch(step, byEvent, nowIso);
     if (!built) {
       skipped += 1;
       continue;
     }
+    rememberDesafioStepLive(step.id, built.live);
     if (built.live.finished) finishedSeen += 1;
     // Preferir slimPatch: produção pode não ter coluna metadata em desafio_steps
     let wrote = false;

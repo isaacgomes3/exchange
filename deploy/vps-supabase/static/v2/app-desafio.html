@@ -6,8 +6,8 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-placar-horario-v4" />
-  <link rel="stylesheet" href="/v2.css?v=dz-placar-2" />
+  <meta name="arbishield-build" content="desafio-alertas-gol-v1" />
+  <link rel="stylesheet" href="/v2.css?v=dz-alertas-1" />
   <style>
     .dz-v2-score {
       font-size: clamp(1.8rem, 4vw, 2.6rem);
@@ -48,6 +48,107 @@
       font-size: 15px !important;
       letter-spacing: 0.08em !important;
       opacity: 0.95;
+    }
+    .dz-alert-toggle {
+      appearance: none;
+      border: 1px solid rgba(201, 242, 35, 0.35);
+      background: rgba(201, 242, 35, 0.08);
+      color: #e8ff8a;
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      margin-left: auto;
+    }
+    .dz-alert-toggle.is-off {
+      border-color: rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.04);
+      color: rgba(255, 255, 255, 0.55);
+    }
+    .dz-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .dz-live-toasts {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 120;
+      width: min(420px, calc(100vw - 24px));
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    }
+    .dz-live-toast {
+      pointer-events: auto;
+      border-radius: 16px;
+      padding: 14px 16px 14px 14px;
+      border: 1px solid rgba(201, 242, 35, 0.45);
+      background:
+        radial-gradient(420px 120px at 0% 0%, rgba(201, 242, 35, 0.22), transparent 55%),
+        linear-gradient(180deg, #171a12 0%, #0c0e0a 100%);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+      display: grid;
+      grid-template-columns: 48px 1fr auto;
+      gap: 12px;
+      align-items: center;
+      animation: dzToastIn 0.38s cubic-bezier(0.2, 0.9, 0.2, 1) both;
+    }
+    .dz-live-toast.is-ft {
+      border-color: rgba(255, 180, 80, 0.5);
+      background:
+        radial-gradient(420px 120px at 0% 0%, rgba(255, 160, 60, 0.2), transparent 55%),
+        linear-gradient(180deg, #1a140e 0%, #0c0a08 100%);
+    }
+    .dz-live-toast.is-out {
+      animation: dzToastOut 0.28s ease-in forwards;
+    }
+    .dz-live-toast-ico {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      background: rgba(201, 242, 35, 0.16);
+      color: #c9f223;
+    }
+    .dz-live-toast.is-ft .dz-live-toast-ico {
+      background: rgba(255, 160, 60, 0.16);
+      color: #ffb45c;
+    }
+    .dz-live-toast strong {
+      display: block;
+      font-size: 15px;
+      font-weight: 900;
+      letter-spacing: -0.01em;
+    }
+    .dz-live-toast p {
+      margin: 3px 0 0;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.72);
+      line-height: 1.35;
+    }
+    .dz-live-toast-score {
+      font-size: 1.35rem;
+      font-weight: 900;
+      font-style: italic;
+      color: #fff;
+      letter-spacing: 0.04em;
+    }
+    @keyframes dzToastIn {
+      from { opacity: 0; transform: translateY(-14px) scale(0.96); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes dzToastOut {
+      to { opacity: 0; transform: translateY(-10px) scale(0.96); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .dz-live-toast, .dz-v2-elapsed .dot { animation: none !important; }
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
@@ -336,10 +437,14 @@
     <button type="button" class="dz-filter" data-f="Hoje">Hoje</button>
     <button type="button" class="dz-filter" data-f="Amanhã">Amanhã</button>
     <button type="button" class="dz-filter" data-f="Alta">Alta</button>
+    <button type="button" class="dz-alert-toggle" id="btnDzLiveAlerts" aria-pressed="true" title="Alertas de gol e fim de jogo">
+      Alertas ON
+    </button>
   </div>
 
   <div class="section-label"><span class="dot" style="background:#c6ff00"></span>Desafios disponíveis</div>
   <div id="list" class="app-desafio-grid"><div class="ops-empty">Carregando…</div></div>
+  <div class="dz-live-toasts" id="dzLiveToasts" aria-live="assertive" aria-atomic="true"></div>
 
   <script>
     (async function () {
@@ -354,6 +459,9 @@
       var desafioBalCents = 0;
       var MIN_ACCESS_CENTS = 20000; // R$ 200 — entrada típica do ciclo
       var Ciclo = window.ArbiDesafioCiclo || null;
+      var liveWatch = Object.create(null); // stepId -> {home,away,finished,homeTeam,awayTeam}
+      var liveAlertsEnabled = localStorage.getItem("dz_live_alerts") !== "0";
+      var liveAudioCtx = null;
 
       function casaBrandFromLink(url) {
         var u = String(url || "").toLowerCase();
@@ -1497,6 +1605,171 @@
       }
 
       var liveSyncIn = 0;
+
+      function paintAlertToggle() {
+        var btn = document.getElementById("btnDzLiveAlerts");
+        if (!btn) return;
+        btn.textContent = liveAlertsEnabled ? "Alertas ON" : "Alertas OFF";
+        btn.classList.toggle("is-off", !liveAlertsEnabled);
+        btn.setAttribute("aria-pressed", liveAlertsEnabled ? "true" : "false");
+      }
+
+      function playAlertTone(kind) {
+        try {
+          var AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return;
+          if (!liveAudioCtx) liveAudioCtx = new AC();
+          if (liveAudioCtx.state === "suspended") liveAudioCtx.resume().catch(function () {});
+          var now = liveAudioCtx.currentTime;
+          var osc = liveAudioCtx.createOscillator();
+          var gain = liveAudioCtx.createGain();
+          osc.type = "triangle";
+          if (kind === "ft") {
+            osc.frequency.setValueAtTime(420, now);
+            osc.frequency.exponentialRampToValueAtTime(220, now + 0.35);
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.exponentialRampToValueAtTime(0.08, now + 0.04);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+            osc.start(now);
+            osc.stop(now + 0.45);
+          } else {
+            osc.frequency.setValueAtTime(660, now);
+            osc.frequency.exponentialRampToValueAtTime(990, now + 0.12);
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.exponentialRampToValueAtTime(0.09, now + 0.03);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+            osc.start(now);
+            osc.stop(now + 0.3);
+          }
+          osc.connect(gain);
+          gain.connect(liveAudioCtx.destination);
+        } catch (e) {
+          /* ignore */
+        }
+      }
+
+      function pushBrowserNotify(title, body) {
+        try {
+          if (!("Notification" in window)) return;
+          if (Notification.permission === "granted") {
+            new Notification(title, { body: body, silent: true });
+          }
+        } catch (e) {
+          /* ignore */
+        }
+      }
+
+      function showLiveToast(opts) {
+        var host = document.getElementById("dzLiveToasts");
+        if (!host || !opts) return;
+        var el = document.createElement("div");
+        el.className = "dz-live-toast" + (opts.kind === "ft" ? " is-ft" : "");
+        el.innerHTML =
+          '<div class="dz-live-toast-ico">' +
+          esc(opts.kind === "ft" ? "FT" : "GOL") +
+          "</div><div><strong>" +
+          esc(opts.title || "") +
+          "</strong><p>" +
+          esc(opts.body || "") +
+          '</p></div><div class="dz-live-toast-score">' +
+          esc(opts.score || "") +
+          "</div>";
+        host.appendChild(el);
+        playAlertTone(opts.kind === "ft" ? "ft" : "goal");
+        pushBrowserNotify(opts.title || "ArbiShield", opts.body || "");
+        setTimeout(function () {
+          el.classList.add("is-out");
+          setTimeout(function () {
+            if (el.parentNode) el.parentNode.removeChild(el);
+          }, 280);
+        }, opts.kind === "ft" ? 7000 : 5200);
+      }
+
+      function snapshotFromItem(item) {
+        var live = item && item.liveInfo ? item.liveInfo : null;
+        var home = null;
+        var away = null;
+        if (live && live.score) {
+          var parts = String(live.score).split(/\s*[—–-]\s*/);
+          if (parts.length >= 2) {
+            home = Number(parts[0]);
+            away = Number(parts[1]);
+          }
+        }
+        return {
+          home: Number.isFinite(home) ? home : null,
+          away: Number.isFinite(away) ? away : null,
+          finished: Boolean(live && live.finished),
+          live: Boolean(live && live.live),
+          homeTeam: item.homeTeam || "Casa",
+          awayTeam: item.awayTeam || "Visitante",
+          score: (live && live.score) || "",
+        };
+      }
+
+      function detectLiveAlerts(nextItems) {
+        if (!liveAlertsEnabled) {
+          (nextItems || []).forEach(function (item) {
+            if (item.stepId) liveWatch[item.stepId] = snapshotFromItem(item);
+          });
+          return;
+        }
+        var seen = Object.create(null);
+        (nextItems || []).forEach(function (item) {
+          var id = item.stepId;
+          if (!id) return;
+          seen[id] = true;
+          var cur = snapshotFromItem(item);
+          var prev = liveWatch[id];
+          if (prev) {
+            var homeUp =
+              prev.home != null &&
+              cur.home != null &&
+              cur.home > prev.home;
+            var awayUp =
+              prev.away != null &&
+              cur.away != null &&
+              cur.away > prev.away;
+            if (homeUp || awayUp) {
+              var scorer = homeUp && !awayUp
+                ? cur.homeTeam
+                : awayUp && !homeUp
+                  ? cur.awayTeam
+                  : "Gol";
+              showLiveToast({
+                kind: "goal",
+                title: "Gol! " + scorer,
+                body: cur.homeTeam + " × " + cur.awayTeam,
+                score: cur.score || (cur.home + " — " + cur.away),
+              });
+            }
+            if (!prev.finished && cur.finished) {
+              showLiveToast({
+                kind: "ft",
+                title: "Fim de jogo",
+                body: cur.homeTeam + " × " + cur.awayTeam,
+                score: cur.score || "",
+              });
+            }
+          }
+          liveWatch[id] = cur;
+        });
+        // Sumiu da lista após estar ao vivo → trata como encerrado
+        Object.keys(liveWatch).forEach(function (id) {
+          if (seen[id]) return;
+          var prev = liveWatch[id];
+          if (prev && (prev.live || prev.home != null) && !prev.finished) {
+            showLiveToast({
+              kind: "ft",
+              title: "Fim de jogo",
+              body: prev.homeTeam + " × " + prev.awayTeam,
+              score: prev.score || "",
+            });
+          }
+          delete liveWatch[id];
+        });
+      }
+
       async function refreshDesafioCardsLive() {
         try {
           // GET (nginx antigo às vezes bloqueia POST em rotas não mapeadas)
@@ -1530,6 +1803,7 @@
             var nb = b.startsAtMs || Number.MAX_SAFE_INTEGER;
             return na - nb;
           });
+          detectLiveAlerts(next);
           items = next;
           render();
         } catch (e) {
@@ -1547,6 +1821,19 @@
           render();
         });
       });
+
+      paintAlertToggle();
+      var btnAlerts = document.getElementById("btnDzLiveAlerts");
+      if (btnAlerts) {
+        btnAlerts.addEventListener("click", function () {
+          liveAlertsEnabled = !liveAlertsEnabled;
+          localStorage.setItem("dz_live_alerts", liveAlertsEnabled ? "1" : "0");
+          paintAlertToggle();
+          if (liveAlertsEnabled && "Notification" in window && Notification.permission === "default") {
+            Notification.requestPermission().catch(function () {});
+          }
+        });
+      }
 
       function paintDesafioBanner(imageUrl, title, ctaUrl, useBrandWebp) {
         var host = document.getElementById("desafioBanner");
@@ -1654,6 +1941,8 @@
           return na - nb;
         });
 
+        // Semeia placar atual (evita falso "gol" no 1º poll)
+        detectLiveAlerts(items);
         render();
         if (tickTimer) clearInterval(tickTimer);
         tickTimer = setInterval(function () {
