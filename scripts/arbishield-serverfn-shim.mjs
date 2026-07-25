@@ -2424,27 +2424,104 @@ async function getDesafioCircuitForUser(desafioId, userId) {
   };
 }
 
+function normalizeDesafioPartResult(raw) {
+  const r = String(raw || "").toLowerCase().trim();
+  if (!r || r === "null" || r === "undefined") return "pending";
+  if (["won", "win", "won_platform", "victory", "vitoria", "vitória"].includes(r)) {
+    return "won";
+  }
+  if (
+    ["lost", "lose", "loss", "won_exchange", "won_casa", "casa", "external"].includes(
+      r
+    )
+  ) {
+    return "lost";
+  }
+  if (["pending", "active", "open", "current"].includes(r)) return "pending";
+  return r;
+}
+
+function isClientDesafioSide(side) {
+  const s = String(side || "").toLowerCase().trim();
+  // Entrada do cliente no ciclo = lado ArbiShield/zebra.
+  // Aceita legado sem side ou variações de nome.
+  if (!s) return true;
+  if (s === "casa" || s === "exchange" || s === "external" || s === "back") {
+    return false;
+  }
+  return (
+    s === "arbishield" ||
+    s === "arbi" ||
+    s === "zebra" ||
+    s === "lay" ||
+    s === "platform"
+  );
+}
+
 /**
  * Histórico do cliente: desafios em andamento + realizados,
  * com valores apostados e lucros por ciclo.
  */
 async function listMyDesafioHistory(token) {
   const userId = requireUserId(token);
-  const parts = await sb(
-    `/rest/v1/desafio_participations?select=id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at,metadata&user_id=eq.${encodeURIComponent(userId)}&side=eq.arbishield&order=created_at.desc&limit=500`,
+
+  // Select enxuto (sem metadata) — coluna pode não existir e quebrava tudo no .catch([]).
+  let parts = await sb(
+    `/rest/v1/desafio_participations?select=id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at&user_id=eq.${encodeURIComponent(userId)}&order=created_at.desc&limit=500`,
     { token: SERVICE_KEY }
-  ).catch(() => []);
-  const list = Array.isArray(parts) ? parts : [];
-  const byDesafio = new Map();
-  for (const p of list) {
-    const did = String(p.desafio_id || "");
+  ).catch((err) => {
+    console.warn(
+      "[desafio-history] query participations falhou",
+      err instanceof Error ? err.message : err
+    );
+    return [];
+  });
+  if (!Array.isArray(parts)) parts = [];
+
+  // Resolve desafio_id ausente via step_id (registros legados).
+  const missingStepIds = [
+    ...new Set(
+      parts
+        .filter((p) => !p.desafio_id && p.step_id)
+        .map((p) => String(p.step_id))
+    ),
+  ];
+  const stepToDesafio = new Map();
+  const stepMap = new Map();
+  if (missingStepIds.length) {
+    for (let i = 0; i < missingStepIds.length; i += 40) {
+      const chunk = missingStepIds.slice(i, i + 40);
+      const inList = chunk.map(encodeURIComponent).join(",");
+      const srows = await sb(
+        `/rest/v1/desafio_steps?select=id,desafio_id,step_index,home_team,away_team,match_label,arbi_team_name,casa_team_name,starts_at,status&id=in.(${inList})&limit=200`,
+        { token: SERVICE_KEY }
+      ).catch(() => []);
+      for (const s of Array.isArray(srows) ? srows : []) {
+        stepMap.set(String(s.id), s);
+        if (s.desafio_id) stepToDesafio.set(String(s.id), String(s.desafio_id));
+      }
+    }
+  }
+
+  const clientParts = [];
+  for (const p of parts) {
+    if (!isClientDesafioSide(p.side)) continue;
+    const did =
+      String(p.desafio_id || "") ||
+      stepToDesafio.get(String(p.step_id || "")) ||
+      "";
     if (!did) continue;
+    clientParts.push({ ...p, desafio_id: did });
+  }
+
+  const byDesafio = new Map();
+  for (const p of clientParts) {
+    const did = String(p.desafio_id);
     if (!byDesafio.has(did)) byDesafio.set(did, []);
     byDesafio.get(did).push(p);
   }
   const desafioIds = [...byDesafio.keys()];
   const desafioMap = new Map();
-  const stepMap = new Map();
   if (desafioIds.length) {
     const chunkSize = 40;
     for (let i = 0; i < desafioIds.length; i += chunkSize) {
@@ -2484,30 +2561,33 @@ async function listMyDesafioHistory(token) {
     let lostN = 0;
     let pendingN = 0;
     const entries = ordered.map((p) => {
-      const res = String(p.result || "").toLowerCase() || "pending";
+      const res = normalizeDesafioPartResult(p.result);
       const amt = n(p.amount_cents);
       const pr = n(p.profit_cents);
       wagered += amt;
       if (res === "won") {
-        profit += pr;
+        profit += pr > 0 ? pr : 0;
         wonN += 1;
       } else if (res === "lost") {
         lostN += 1;
-      } else if (res === "pending" || !p.result) {
+      } else {
         pendingN += 1;
       }
       const step = stepMap.get(String(p.step_id || "")) || null;
       const matchLabel =
         (step &&
           (step.match_label ||
-            [step.home_team, step.away_team].filter(Boolean).join(" × "))) ||
+            [step.home_team || step.casa_team_name, step.away_team || step.arbi_team_name]
+              .filter(Boolean)
+              .join(" × "))) ||
         null;
       return {
         id: p.id,
         stepId: p.step_id || null,
         stepIndex: step ? Number(step.step_index) || null : null,
         matchLabel,
-        result: res === "" ? "pending" : res,
+        side: String(p.side || "arbishield").toLowerCase(),
+        result: res,
         amountCents: amt,
         profitCents: res === "won" ? pr : 0,
         createdAt: p.created_at || null,
@@ -2516,7 +2596,7 @@ async function listMyDesafioHistory(token) {
     });
     const last = ordered[ordered.length - 1];
     const lastResult = last
-      ? String(last.result || "").toLowerCase()
+      ? normalizeDesafioPartResult(last.result)
       : "";
     const cycleEndedSuccess = lastResult === "lost";
     const cycleEndedMax = wonN >= maxEntries && pendingN === 0;
@@ -2528,12 +2608,26 @@ async function listMyDesafioHistory(token) {
     } else if (cycleEndedMax) {
       status = "finalizado";
       statusLabel = "Finalizado";
-    } else if (pendingN > 0 || wonN > 0) {
+    } else if (pendingN > 0) {
       status = "em_andamento";
-      statusLabel = pendingN > 0 ? "Aguardando resultado" : "Em andamento";
+      statusLabel = "Aguardando resultado";
+    } else if (wonN > 0 || lostN > 0) {
+      status = "em_andamento";
+      statusLabel = "Em andamento";
     } else if (ordered.length === 0) {
       status = "vazio";
       statusLabel = "Sem entradas";
+    }
+    // Desafio admin inativo + sem pendência → trata como finalizado
+    if (
+      status === "em_andamento" &&
+      pendingN === 0 &&
+      d &&
+      d.is_active === false &&
+      (wonN > 0 || lostN > 0)
+    ) {
+      status = lostN > 0 ? "sucesso_casa" : "finalizado";
+      statusLabel = lostN > 0 ? "Sucesso na casa" : "Finalizado";
     }
     const firstAt = ordered[0]?.created_at || null;
     const lastAt = last?.created_at || null;
@@ -2574,7 +2668,17 @@ async function listMyDesafioHistory(token) {
     profitCents: items.reduce((a, x) => a + x.profitCents, 0),
   };
 
-  return { ok: true, items, totals };
+  return {
+    ok: true,
+    items,
+    totals,
+    debug: {
+      userId: String(userId).slice(0, 8),
+      rawParticipations: parts.length,
+      clientParticipations: clientParts.length,
+      desafios: items.length,
+    },
+  };
 }
 
 async function resolveDesafioStepId(raw) {

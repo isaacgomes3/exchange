@@ -37,9 +37,10 @@ download_repo_file() {
 log "1/3 UI app-desafio.html"
 tmp_html="$(mktemp)"
 download_repo_file "deploy/vps-supabase/static/v2/app-desafio.html" "$tmp_html"
-grep -q 'desafio-historico-v1' "$tmp_html" || die "sem marker desafio-historico-v1"
+grep -q 'desafio-historico-v2' "$tmp_html" || die "sem marker desafio-historico-v2"
 grep -q 'btnDesafioHistorico' "$tmp_html" || die "sem botao Historico"
 grep -q 'desafio-history' "$tmp_html" || die "sem fetch desafio-history"
+grep -q 'loadDesafioHistoryFallback' "$tmp_html" || die "sem fallback histórico"
 
 while IFS= read -r -d '' f; do
   cp -a "$f" "${f}.bak-dz-hist-$(date +%s)" 2>/dev/null || true
@@ -60,6 +61,7 @@ log "2/3 shim desafio-history"
 tmp_shim="$(mktemp)"
 download_repo_file "scripts/arbishield-serverfn-shim.mjs" "$tmp_shim"
 grep -q 'listMyDesafioHistory' "$tmp_shim" || die "shim sem listMyDesafioHistory"
+grep -q 'normalizeDesafioPartResult' "$tmp_shim" || die "shim sem normalizeDesafioPartResult"
 grep -q 'desafio-history' "$tmp_shim" || die "shim sem rota desafio-history"
 for dest in \
   "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs" \
@@ -85,23 +87,33 @@ for conf in \
   /etc/nginx/sites-available/arbishield.app
 do
   [[ -f "$conf" ]] || continue
-  if grep -q 'desafio-history' "$conf"; then
-    echo "  ja tem desafio-history em $conf"
-    continue
-  fi
-  if grep -q 'desafio-register|desafio-settle|desafio-participations' "$conf"; then
-    python3 - "$conf" <<'PY'
-import sys
+  python3 - "$conf" <<'PY'
+import re, sys
 path = sys.argv[1]
 text = open(path, encoding="utf-8", errors="replace").read()
-old = "desafio-register|desafio-settle|desafio-participations"
-new = "desafio-register|desafio-settle|desafio-participations|desafio-history"
-if old not in text:
+if "desafio-history" in text:
+    print("  ja tem desafio-history em", path)
     raise SystemExit(0)
-open(path, "w", encoding="utf-8").write(text.replace(old, new, 1))
+# Insere em qualquer regex de locations desafio-*
+new_text, n = re.subn(
+    r"(desafio-participations)(\|)?",
+    r"\1|desafio-history\2",
+    text,
+    count=1,
+)
+if n == 0:
+    new_text, n = re.subn(
+        r"(desafio-register\|desafio-settle)",
+        r"\1|desafio-history",
+        text,
+        count=1,
+    )
+if n == 0:
+    print("  aviso: nao achei bloco desafio em", path)
+    raise SystemExit(0)
+open(path, "w", encoding="utf-8").write(new_text)
 print("  patched", path)
 PY
-  fi
 done
 
 if command -v nginx >/dev/null 2>&1; then

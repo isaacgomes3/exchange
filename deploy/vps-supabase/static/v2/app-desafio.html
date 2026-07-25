@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-historico-v1" />
+  <meta name="arbishield-build" content="desafio-historico-v2" />
   <link rel="stylesheet" href="/v2.css?v=dz-historico-1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
@@ -565,6 +565,194 @@
         host.innerHTML = html;
       }
 
+      function normalizeHistResult(raw) {
+        var r = String(raw || "").toLowerCase().trim();
+        if (!r) return "pending";
+        if (r === "win" || r === "won" || r === "won_platform") return "won";
+        if (r === "lose" || r === "lost" || r === "won_exchange" || r === "casa")
+          return "lost";
+        if (r === "pending" || r === "active" || r === "open") return "pending";
+        return r;
+      }
+
+      function buildHistoryFromParts(parts, desafios, steps) {
+        var stepMap = {};
+        (steps || []).forEach(function (s) {
+          if (s && s.id) stepMap[String(s.id)] = s;
+        });
+        var dzMap = {};
+        (desafios || []).forEach(function (d) {
+          if (d && d.id) dzMap[String(d.id)] = d;
+        });
+        var by = {};
+        (parts || []).forEach(function (p) {
+          var side = String(p.side || "arbishield").toLowerCase();
+          if (side === "casa" || side === "exchange") return;
+          var did = String(p.desafio_id || "");
+          if (!did && p.step_id && stepMap[String(p.step_id)]) {
+            did = String(stepMap[String(p.step_id)].desafio_id || "");
+          }
+          if (!did) return;
+          if (!by[did]) by[did] = [];
+          by[did].push(p);
+        });
+        var items = Object.keys(by).map(function (desafioId) {
+          var ordered = by[desafioId].slice().sort(function (a, b) {
+            return (
+              new Date(a.created_at || 0).getTime() -
+              new Date(b.created_at || 0).getTime()
+            );
+          });
+          var d = dzMap[desafioId] || {};
+          var maxEntries = Math.min(
+            5,
+            Math.max(1, Number(d.total_steps) || 5)
+          );
+          var wagered = 0;
+          var profit = 0;
+          var wonN = 0;
+          var lostN = 0;
+          var pendingN = 0;
+          var entries = ordered.map(function (p) {
+            var res = normalizeHistResult(p.result);
+            var amt = Number(p.amount_cents) || 0;
+            var pr = Number(p.profit_cents) || 0;
+            wagered += amt;
+            if (res === "won") {
+              profit += pr;
+              wonN += 1;
+            } else if (res === "lost") lostN += 1;
+            else pendingN += 1;
+            var step = stepMap[String(p.step_id || "")] || null;
+            var matchLabel = step
+              ? step.match_label ||
+                [step.home_team, step.away_team].filter(Boolean).join(" × ")
+              : null;
+            return {
+              id: p.id,
+              stepId: p.step_id || null,
+              stepIndex: step ? Number(step.step_index) || null : null,
+              matchLabel: matchLabel,
+              result: res,
+              amountCents: amt,
+              profitCents: res === "won" ? pr : 0,
+              createdAt: p.created_at || null,
+              startsAt: step ? step.starts_at || null : null,
+            };
+          });
+          var last = ordered[ordered.length - 1];
+          var lastRes = last ? normalizeHistResult(last.result) : "";
+          var status = "em_andamento";
+          var statusLabel = "Em andamento";
+          if (lastRes === "lost") {
+            status = "sucesso_casa";
+            statusLabel = "Sucesso na casa";
+          } else if (wonN >= maxEntries && pendingN === 0) {
+            status = "finalizado";
+            statusLabel = "Finalizado";
+          } else if (pendingN > 0) {
+            statusLabel = "Aguardando resultado";
+          }
+          return {
+            desafioId: desafioId,
+            number: d.number != null ? d.number : null,
+            title: d.title || "Desafio " + String(desafioId).slice(0, 8),
+            subtitle: d.subtitle || null,
+            targetProfitPct: Number(d.target_profit_pct) || 5,
+            maxEntries: maxEntries,
+            status: status,
+            statusLabel: statusLabel,
+            entriesCount: ordered.length,
+            wonCount: wonN,
+            lostCount: lostN,
+            pendingCount: pendingN,
+            wageredCents: wagered,
+            profitCents: profit,
+            firstAt: ordered[0] && ordered[0].created_at,
+            lastAt: last && last.created_at,
+            entries: entries,
+            journeyUrl:
+              "/app-desafio-jornada.html?desafioId=" +
+              encodeURIComponent(desafioId),
+          };
+        });
+        items.sort(function (a, b) {
+          var rank = function (s) {
+            return s === "em_andamento" ? 0 : s === "sucesso_casa" ? 1 : 2;
+          };
+          if (rank(a.status) !== rank(b.status))
+            return rank(a.status) - rank(b.status);
+          return (
+            new Date(b.lastAt || 0).getTime() -
+            new Date(a.lastAt || 0).getTime()
+          );
+        });
+        return {
+          ok: true,
+          items: items,
+          totals: {
+            desafios: items.length,
+            emAndamento: items.filter(function (x) {
+              return x.status === "em_andamento";
+            }).length,
+            finalizados: items.filter(function (x) {
+              return x.status !== "em_andamento";
+            }).length,
+            wageredCents: items.reduce(function (a, x) {
+              return a + (x.wageredCents || 0);
+            }, 0),
+            profitCents: items.reduce(function (a, x) {
+              return a + (x.profitCents || 0);
+            }, 0),
+          },
+          source: "supabase",
+        };
+      }
+
+      async function loadDesafioHistoryFallback() {
+        var pr = await supa
+          .from("desafio_participations")
+          .select(
+            "id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at"
+          )
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(500);
+        if (pr.error) throw new Error(pr.error.message || "Falha no histórico");
+        var parts = pr.data || [];
+        var stepIds = [];
+        var dzIds = [];
+        parts.forEach(function (p) {
+          if (p.step_id) stepIds.push(p.step_id);
+          if (p.desafio_id) dzIds.push(p.desafio_id);
+        });
+        var steps = [];
+        if (stepIds.length) {
+          var sr = await supa
+            .from("desafio_steps")
+            .select(
+              "id,desafio_id,step_index,home_team,away_team,match_label,starts_at,status"
+            )
+            .in("id", stepIds.slice(0, 200));
+          if (!sr.error) steps = sr.data || [];
+          steps.forEach(function (s) {
+            if (s.desafio_id) dzIds.push(s.desafio_id);
+          });
+        }
+        dzIds = Array.from(new Set(dzIds.map(String)));
+        var desafios = [];
+        if (dzIds.length) {
+          var dr = await supa
+            .from("desafios")
+            .select(
+              "id,number,title,subtitle,status,is_active,total_steps,target_profit_pct"
+            )
+            .in("id", dzIds.slice(0, 100));
+          if (!dr.error) desafios = dr.data || [];
+        }
+        return buildHistoryFromParts(parts, desafios, steps);
+      }
+
       async function loadDesafioHistory() {
         var session = await supa.auth.getSession();
         var token =
@@ -573,23 +761,29 @@
           session.data.session &&
           session.data.session.access_token;
         if (!token) throw new Error("Faça login para ver o histórico.");
-        var res = await fetch("/api/arbishield/desafio-history", {
-          method: "GET",
-          headers: {
-            Accept: "application/json",
-            Authorization: "Bearer " + token,
-          },
-          cache: "no-store",
-        });
-        var data = await res.json().catch(function () {
-          return null;
-        });
-        if (!res.ok) {
-          throw new Error(
-            (data && data.error) || "Falha ao carregar histórico"
-          );
+        try {
+          var res = await fetch("/api/arbishield/desafio-history", {
+            method: "GET",
+            headers: {
+              Accept: "application/json",
+              Authorization: "Bearer " + token,
+            },
+            cache: "no-store",
+          });
+          var data = await res.json().catch(function () {
+            return null;
+          });
+          if (res.ok && data && Array.isArray(data.items)) {
+            // Se a API voltar vazia, tenta fallback — pode ser bug de filtro antigo.
+            if (data.items.length > 0) return data;
+            var fb = await loadDesafioHistoryFallback();
+            if (fb.items && fb.items.length) return fb;
+            return data;
+          }
+        } catch (eApi) {
+          console.warn("[desafio-history] API falhou, fallback", eApi);
         }
-        return data;
+        return loadDesafioHistoryFallback();
       }
 
       async function openHistModal() {
