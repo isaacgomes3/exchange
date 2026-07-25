@@ -20,7 +20,10 @@ const SITE = process.env.EXCHANGE_SITE_ORIGIN || "https://betbra.bet.br";
 const REFERER = process.env.MEXCHANGE_REFERER || "https://mexchange.betbra.bet.br/";
 const API_BASE =
   process.env.MEXCHANGE_API_BASE || "https://mexchange-api.betbra.bet.br/api";
-const SOCCER_ID = process.env.MEXCHANGE_SOCCER_ID || "1";
+const SOCCER_ID =
+  process.env.FULLTBET_SOCCER_SPORT_ID ||
+  process.env.MEXCHANGE_SOCCER_ID ||
+  "15";
 
 const INPLAY_URL =
   process.env.MEXCHANGE_INPLAY_FEED_URL ||
