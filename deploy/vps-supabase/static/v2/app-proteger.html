@@ -91,6 +91,7 @@
     <div class="drawer" role="dialog" aria-labelledby="drawerTitle">
       <h2 id="drawerTitle">Nova proteção</h2>
       <p class="hint" id="drawerHint">—</p>
+      <p class="hint" id="drawerBetLink" hidden style="margin-top:8px"></p>
       <div class="field">
         <label for="amount" id="amountLabel">Valor (R$)</label>
         <input id="amount" type="number" min="1" step="0.01" inputmode="decimal" placeholder="0,00" />
@@ -429,6 +430,21 @@
           "<div><span>Saldo disponível</span><b>" + money(avail) + "</b></div>";
       }
 
+      function marketBetLink(match, market) {
+        var fromMarket =
+          (market &&
+            (market.external_bet_link ||
+              market.betbra_link ||
+              market.betbraLink)) ||
+          "";
+        if (fromMarket) return String(fromMarket);
+        var meta =
+          match && match.metadata && typeof match.metadata === "object"
+            ? match.metadata
+            : {};
+        return String(meta.external_bet_link || meta.betbra_link || "");
+      }
+
       function openDrawer(match, market) {
         var mt = String(market.market_type || "LAY").toUpperCase() === "BACK" ? "BACK" : "LAY";
         state.selected = { match: match, market: market, marketType: mt };
@@ -446,6 +462,20 @@
           teamLogoHtml(match.away_logo) +
           "</span> · " +
           esc(market.name || "Mercado");
+        var linkEl = document.getElementById("drawerBetLink");
+        var betLink = marketBetLink(match, market);
+        if (linkEl) {
+          if (betLink) {
+            linkEl.hidden = false;
+            linkEl.innerHTML =
+              '<a href="' +
+              esc(betLink) +
+              '" target="_blank" rel="noopener noreferrer" style="color:var(--lime);font-weight:700">Abrir mercado na BetBra ↗</a>';
+          } else {
+            linkEl.hidden = true;
+            linkEl.innerHTML = "";
+          }
+        }
         document.getElementById("odd").value = Number(market.odd || 0).toFixed(2);
         document.getElementById("odd").readOnly = true;
         document.getElementById("amount").value = "";

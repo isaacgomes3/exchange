@@ -1428,7 +1428,11 @@
         selectedRunner = runner;
         selectedSide = side;
         var ev = selectedEvent;
-        var link = ev.betbraLink + "/market/" + market.marketId;
+        var link =
+          (market && market.betbraLink) ||
+          (ev.betbraLink
+            ? String(ev.betbraLink).replace(/\/$/, "") + "/market/" + market.marketId
+            : "");
         var liqBrl = readPreliveLiquidityBrl();
         $("createSummary").innerHTML = [
           ["Jogo", ev.homeTeam + " vs " + ev.awayTeam],
@@ -1438,6 +1442,16 @@
           ["Seleção", runner.name],
           ["Tipo", side],
           ["Odd", Number(odd).toFixed(2)],
+          [
+            "Link do mercado",
+            link
+              ? '<a href="' +
+                link +
+                '" target="_blank" rel="noopener noreferrer" style="color:var(--lime);word-break:break-all">' +
+                link +
+                "</a>"
+              : "—",
+          ],
           [
             "Liquidez",
             liqBrl != null && liqBrl > 0
@@ -1485,6 +1499,18 @@
         $("btnConfirmCreate").textContent = "Criando…";
         var publishNow = !($("publishNow") && !$("publishNow").checked);
         try {
+          var marketLink =
+            betbraLink ||
+            (market && market.betbraLink) ||
+            (ev.betbraLink
+              ? String(ev.betbraLink).replace(/\/$/, "") +
+                "/market/" +
+                market.marketId
+              : "");
+          if (!marketLink) {
+            alert("Link do mercado BetBra indisponível. Recarregue o jogo e tente de novo.");
+            return;
+          }
           var result = await apiPost("/api/arbishield/matches", {
             eventId: ev.eventId,
             sportId: ev.sportId,
@@ -1499,7 +1525,9 @@
             odd: odd,
             marketType: side,
             market_type: side,
-            betbraLink: betbraLink,
+            betbraLink: marketLink,
+            external_bet_link: marketLink,
+            external_bet_name: "BetBra",
             isPublished: publishNow,
             liquidityCents: liquidityCents,
             liquidity_brl: liqBrl,

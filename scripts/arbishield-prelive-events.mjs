@@ -422,6 +422,18 @@ async function createMatchFromMarket(body, token) {
   const dbToken = SERVICE_KEY || token;
   const eventExternalId = String(body.eventId);
   const betbraMarketId = String(body.marketId);
+  const sportId = body.sportId || body.sport_id || SOCCER_ID;
+  // Link do mercado BetBra: body → construído a partir do event/market
+  const resolvedMarketLink =
+    String(
+      body.betbraLink ||
+        body.external_bet_link ||
+        body.externalBetLink ||
+        ""
+    ).trim() ||
+    (body.eventId && body.marketId
+      ? marketLink(sportId, body.eventId, body.marketId)
+      : "");
   // Mesmo mercado BetBra (ex. placar exato) tem vários runners — chave por mercado+seleção+lado
   const betbraSelectionKey = body.runnerId
     ? `${betbraMarketId}:${body.runnerId}:${marketType}`
@@ -438,6 +450,8 @@ async function createMatchFromMarket(body, token) {
     external_id: betbraSelectionKey,
     betbra_market_id: betbraMarketId,
     betbra_runner_id: body.runnerId ? String(body.runnerId) : null,
+    external_bet_link: resolvedMarketLink || null,
+    betbra_link: resolvedMarketLink || null,
   };
 
   // Nunca misturar com evento MANUAL: só reutiliza match BetBra puro.
@@ -532,7 +546,8 @@ async function createMatchFromMarket(body, token) {
       updated_by: adminId,
       metadata: {
         ...prevMeta,
-        external_bet_link: body.betbraLink,
+        external_bet_link:
+          resolvedMarketLink || prevMeta.external_bet_link || null,
         external_bet_name: "BetBra",
         external_bet_logo: "https://betbra.bet.br/favicon.ico",
         market_id: body.marketId,
@@ -575,7 +590,7 @@ async function createMatchFromMarket(body, token) {
     created_by: adminId,
     updated_by: adminId,
     metadata: {
-      external_bet_link: body.betbraLink,
+      external_bet_link: resolvedMarketLink || null,
       external_bet_name: "BetBra",
       external_bet_logo: "https://betbra.bet.br/favicon.ico",
       market_id: body.marketId,
