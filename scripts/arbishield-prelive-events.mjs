@@ -32,6 +32,10 @@ loadEnvFile("/opt/arbishield/deploy/vps-supabase/.env");
 loadEnvFile("/opt/arbishield/.arbishield-odds-sync.env");
 
 const LISTEN = process.env.PRELIVE_LISTEN || "127.0.0.1:3098";
+const IS_SANDBOX_WORKER =
+  process.env.ARBISHIELD_SANDBOX === "1" ||
+  process.env.ARBISHIELD_ENV === "teste" ||
+  String(LISTEN).includes(":3198");
 const SUPABASE_URL = (
   process.env.ARBISHIELD_SUPABASE_URL ||
   process.env.API_EXTERNAL_URL ||
@@ -1241,7 +1245,7 @@ async function creditWalletForSettlement(row, outcome, now) {
           bucket,
           billing_model: feeUpfront ? "fee_upfront_v1" : "legacy_lock",
           fix: feeUpfront
-            ? "protection-fee-upfront-v1"
+            ? "protection-fee-upfront-v2"
             : "settle-arbishield-saldo-real-v1",
         },
       },
@@ -1609,6 +1613,17 @@ async function createProtection(body, userToken) {
     err.status = 400;
     throw err;
   }
+  {
+    const matchMeta =
+      match.metadata && typeof match.metadata === "object" ? match.metadata : {};
+    if (matchMeta.sandbox_test === true && !IS_SANDBOX_WORKER) {
+      const err = new Error(
+        "Evento de teste: proteja em https://arbishield.app/sandbox/app-proteger.html (API sandbox)."
+      );
+      err.status = 400;
+      throw err;
+    }
+  }
   if (match.starts_at) {
     const startMs = new Date(match.starts_at).getTime();
     const now = Date.now();
@@ -1695,9 +1710,21 @@ async function createProtection(body, userToken) {
     available = n(profile.balance_cents) + n(profile.reusable_balance_cents);
 
   // fee_upfront: só precisa ter saldo para a DEDUÇÃO (não para o stake)
+  // Se REAL estiver zerado mas DEMO cobrir (crédito de teste), usa DEMO.
+  let walletType = balanceType;
+  if (feeCents > available && walletType === "REAL") {
+    const demoAvail = n(profile.demo_balance_cents);
+    if (demoAvail >= feeCents) {
+      walletType = "DEMO";
+      available = demoAvail;
+      console.warn(
+        "[createProtection] REAL sem saldo para dedução — usando DEMO automaticamente"
+      );
+    }
+  }
   if (feeCents > available) {
     const err = new Error(
-      `Saldo insuficiente para a dedução de ${(feeCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} (1,5% fica com você; o restante do lucro da odd é cobrado agora).`
+      `Saldo insuficiente para a dedução de ${(feeCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} (1,5% fica com você; o restante do lucro da odd é cobrado agora). Saldo ${walletType}: ${(available / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`
     );
     err.status = 400;
     throw err;
@@ -1710,10 +1737,10 @@ async function createProtection(body, userToken) {
   };
   let balanceAfter = 0;
 
-  if (balanceType === "DEMO") {
+  if (walletType === "DEMO") {
     patch.demo_balance_cents = n(profile.demo_balance_cents) - feeCents;
     balanceAfter = patch.demo_balance_cents;
-  } else if (balanceType === "INVESTOR") {
+  } else if (walletType === "INVESTOR") {
     patch.investor_balance_cents =
       n(profile.investor_balance_cents) - feeCents;
     balanceAfter = patch.investor_balance_cents;
@@ -1724,11 +1751,34 @@ async function createProtection(body, userToken) {
     balanceAfter = bal - feeCents;
   }
 
-  await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: patch,
-  });
+  const patchedProfile = await sb(
+    `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`,
+    {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: patch,
+    }
+  );
+  const patchedRow = Array.isArray(patchedProfile)
+    ? patchedProfile[0]
+    : patchedProfile;
+  if (feeCents > 0 && patchedRow) {
+    const okDebit =
+      walletType === "DEMO"
+        ? n(patchedRow.demo_balance_cents) ===
+          n(profile.demo_balance_cents) - feeCents
+        : walletType === "INVESTOR"
+          ? n(patchedRow.investor_balance_cents) ===
+            n(profile.investor_balance_cents) - feeCents
+          : n(patchedRow.balance_cents) === balanceAfter;
+    if (!okDebit) {
+      const err = new Error(
+        `Falha ao debitar saldo ${walletType} (dedução ${feeCents} não aplicada no perfil).`
+      );
+      err.status = 500;
+      throw err;
+    }
+  }
 
   const meta = {
     ...(body.metadata && typeof body.metadata === "object" ? body.metadata : {}),
@@ -1744,7 +1794,8 @@ async function createProtection(body, userToken) {
     user_profit_cents: c.userProfitCents,
     gross_profit_cents: c.grossProfitCents,
     calculations: c,
-    balance_type: balanceType,
+    balance_type: walletType,
+    balance_type_requested: balanceType,
   };
 
   let protectionId = "";
@@ -1843,7 +1894,7 @@ async function createProtection(body, userToken) {
         protection_id: protectionId,
         match_id: matchId,
         market_type: marketType,
-        balance_type: balanceType,
+        balance_type: walletType,
         billing_model: "fee_upfront_v1",
         stake_cents: amountCents,
         fee_cents: feeCents,
@@ -1862,7 +1913,9 @@ async function createProtection(body, userToken) {
     feeChargedCents: feeCents,
     userProfitCents: c.userProfitCents,
     billingModel: "fee_upfront_v1",
+    balanceType: walletType,
     balanceAfterCents: balanceAfter,
+    sandboxWorker: IS_SANDBOX_WORKER,
   };
 }
 
@@ -2623,7 +2676,7 @@ async function handleApi(req, res) {
     return sendJson(res, 200, {
       ok: true,
       service: "arbishield-matches",
-      fix: "protection-fee-upfront-v1",
+      fix: "protection-fee-upfront-v2",
       env: process.env.ARBISHIELD_ENV || "production",
       listen: LISTEN,
     });

@@ -7,16 +7,17 @@
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=proteger-logos-odd-2" />
+  <link rel="stylesheet" href="/v2.css?v=proteger-fee-upfront-2" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js"></script>
-  <script src="/v2-shell.js?v=responsivo-26" defer></script>
+  <script src="/v2.js?v=proteger-fee-upfront-2"></script>
+  <script src="/v2-shell.js?v=proteger-fee-upfront-2" defer></script>
 </head>
 <body data-shell="app" data-active="proteger">
   <div class="page-head term-head">
     <div>
       <h1>Proteger <span>Aposta</span></h1>
       <p class="sub">Terminal de Liquidez • Mercado ao Vivo</p>
+      <p class="sub" id="billingHint" style="margin-top:6px;opacity:.85"></p>
     </div>
     <div class="term-head-actions">
       <a class="term-ghost-btn" href="/app-protecoes.html"><span aria-hidden="true">&gt;_</span> Minhas Proteções</a>
@@ -120,6 +121,18 @@
       var supa = ArbiV2.client();
       var user = await ArbiV2.requireUser(supa);
       if (!user) return;
+
+      /** Sandbox: cobrança fee_upfront via worker :3198. Produção: não misturar eventos de teste. */
+      var IS_SANDBOX =
+        /^\/sandbox(?:\/|$)/.test(location.pathname || "") ||
+        document.getElementById("arbishield-sandbox-banner") != null;
+      var API_BASE = IS_SANDBOX ? "/__sandbox_api/arbishield" : "/api/arbishield";
+      var hintEl = document.getElementById("billingHint");
+      if (hintEl) {
+        hintEl.textContent = IS_SANDBOX
+          ? "SANDBOX · dedução ArbiShield cobrada na ativação (stake não trava)"
+          : "Produção · eventos de teste sandbox ficam ocultos aqui";
+      }
 
       var SPORTS = [
         { id: "todos", label: "Todos", icon: "🏆" },
@@ -354,10 +367,41 @@
         document.getElementById("odd").value = Number(market.odd || 0).toFixed(2);
         document.getElementById("odd").readOnly = true;
         document.getElementById("amount").value = "";
-        document.getElementById("balanceType").value = "REAL";
+        // Preferir DEMO quando há saldo demo (crédito de teste) e REAL está zerado
+        var preferDemo =
+          available("DEMO") > 0 && available("REAL") < available("DEMO");
+        document.getElementById("balanceType").value = preferDemo
+          ? "DEMO"
+          : available("REAL") > 0
+            ? "REAL"
+            : available("DEMO") > 0
+              ? "DEMO"
+              : available("INVESTOR") > 0
+                ? "INVESTOR"
+                : "REAL";
         updatePreview();
         document.getElementById("drawer").classList.add("open");
         document.getElementById("drawer").setAttribute("aria-hidden", "false");
+      }
+
+      function refreshHeaderBalances(p) {
+        if (!p) return;
+        var apostador =
+          Number(p.balance_cents || 0) +
+          Number(p.reusable_balance_cents || 0) +
+          Number(p.demo_balance_cents || 0);
+        var set = function (id, cents) {
+          var el = document.getElementById(id);
+          if (el) el.textContent = money(cents);
+        };
+        set("v2BalApostador", apostador);
+        set(
+          "v2BalProvedor",
+          Number(p.investor_balance_cents || 0) +
+            Number(p.demo_balance_provider_cents || 0)
+        );
+        set("v2BalDesafio", Number(p.desafio_balance_cents || 0));
+        set("v2BalCongelado", Number(p.locked_balance_cents || 0));
       }
       function closeDrawer() {
         document.getElementById("drawer").classList.remove("open");
@@ -419,14 +463,14 @@
             "Content-Type": "application/json",
             Authorization: "Bearer " + token,
           };
-          var res = await fetch("/api/arbishield/protections", {
+          var res = await fetch(API_BASE + "/protections", {
             method: "POST",
             headers: headers,
             body: JSON.stringify(payload),
           });
           // Fallback se nginx ainda não proxiar /protections (405 HTML)
           if (res.status === 404 || res.status === 405) {
-            res = await fetch("/api/arbishield/create-protection", {
+            res = await fetch(API_BASE + "/create-protection", {
               method: "POST",
               headers: headers,
               body: JSON.stringify(payload),
@@ -449,14 +493,22 @@
             );
           }
           closeDrawer();
+          var charged =
+            data.feeChargedCents != null ? data.feeChargedCents : feeNeed;
+          if (!(Number(charged) > 0) && IS_SANDBOX) {
+            throw new Error(
+              "API sandbox não cobrou a dedução. Rode o hotfix fee_upfront na VPS e tente de novo."
+            );
+          }
           showOk(
             "Proteção ativada · cobrado " +
-              money(data.feeChargedCents != null ? data.feeChargedCents : feeNeed) +
+              money(charged) +
               " · " +
               String(data.protectionId).slice(0, 8) +
               "…"
           );
           await load();
+          refreshHeaderBalances(state.profile);
         } catch (ex) {
           showErr(ex.message || "Erro ao ativar proteção");
         } finally {
@@ -652,11 +704,14 @@
         try {
           var profileRes = await supa
             .from("profiles")
-            .select("balance_cents,reusable_balance_cents,demo_balance_cents,investor_balance_cents")
+            .select(
+              "balance_cents,reusable_balance_cents,demo_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,locked_balance_cents"
+            )
             .eq("id", user.id)
             .maybeSingle();
           if (profileRes.error) throw profileRes.error;
           state.profile = profileRes.data;
+          refreshHeaderBalances(state.profile);
 
           var act = await supa
             .from("protections")
@@ -677,6 +732,11 @@
           if (matchesRes.error) throw matchesRes.error;
 
           state.matches = (matchesRes.data || []).filter(function (m) {
+            var meta =
+              m && m.metadata && typeof m.metadata === "object" ? m.metadata : {};
+            var isSandboxMatch = meta.sandbox_test === true;
+            // Produção não lista eventos de teste; sandbox lista todos (inclui teste)
+            if (!IS_SANDBOX && isSandboxMatch) return false;
             return isOnAvailableGrid(m);
           });
 

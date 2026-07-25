@@ -3,7 +3,7 @@
 # NÃO altera o worker de produção :3098.
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-fee-upfront-3cf9/scripts/vps-hotfix-protecao-fee-upfront.sh?v=1")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-fee-upfront-3cf9/scripts/vps-hotfix-protecao-fee-upfront.sh?v=2")
 set -euo pipefail
 
 REF="${ARBISHIELD_REF:-cursor/protecao-fee-upfront-3cf9}"
@@ -29,26 +29,24 @@ curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
 chmod 0755 "$TESTE_SCRIPTS/arbishield-prelive-events.mjs"
 grep -q 'fee_upfront_v1' "$TESTE_SCRIPTS/arbishield-prelive-events.mjs" \
   || die "prelive teste sem fee_upfront_v1"
-grep -q 'protection-fee-upfront-v1' "$TESTE_SCRIPTS/arbishield-prelive-events.mjs" \
+grep -qE 'protection-fee-upfront-v[12]' "$TESTE_SCRIPTS/arbishield-prelive-events.mjs" \
   || die "prelive teste sem marker health"
 
-# Units teste (se ainda não existem)
-if [[ ! -f /etc/systemd/system/arbishield-prelive-events-teste.service ]]; then
-  curl -fsSL "$RAW/deploy/vps-supabase/arbishield-prelive-events-teste.service" \
-    -o /etc/systemd/system/arbishield-prelive-events-teste.service
-  systemctl daemon-reload
-  systemctl enable arbishield-prelive-events-teste.service
-fi
+# Unit teste (sempre atualiza unit + marker SANDBOX)
+curl -fsSL "$RAW/deploy/vps-supabase/arbishield-prelive-events-teste.service" \
+  -o /etc/systemd/system/arbishield-prelive-events-teste.service
+systemctl daemon-reload
+systemctl enable arbishield-prelive-events-teste.service
 systemctl restart arbishield-prelive-events-teste.service
 sleep 1
 BODY="$(curl -fsS --max-time 5 http://127.0.0.1:3198/health || true)"
-echo "$BODY" | grep -q 'protection-fee-upfront-v1' \
-  || die "health :3198 sem protection-fee-upfront-v1: $BODY"
-log "health :3198 OK"
+echo "$BODY" | grep -qE 'protection-fee-upfront-v[12]' \
+  || die "health :3198 sem protection-fee-upfront: $BODY"
+log "health :3198 OK ($BODY)"
 
 # Produção ainda no marker antigo?
 PROD_H="$(curl -fsS --max-time 5 http://127.0.0.1:3098/health || true)"
-if echo "$PROD_H" | grep -q 'protection-fee-upfront-v1'; then
+if echo "$PROD_H" | grep -qE 'protection-fee-upfront-v[12]'; then
   die "ABORTADO: produção :3098 já tem fee_upfront — não era para alterar prod"
 fi
 log "produção :3098 intacta ($(echo "$PROD_H" | head -c 120))"
@@ -58,7 +56,7 @@ curl -fsSL "$RAW/scripts/vps-deploy-sandbox.sh" -o "$PROD_SCRIPTS/vps-deploy-san
 chmod 0755 "$PROD_SCRIPTS/vps-deploy-sandbox.sh"
 ARBISHIELD_REF="$REF" bash "$PROD_SCRIPTS/vps-deploy-sandbox.sh"
 
-# Força API do sandbox para o worker teste
+# Força API do sandbox para o worker teste (+ garante app-proteger com API_BASE)
 python3 - "$SANDBOX_WEB" <<'PY'
 from pathlib import Path
 import sys
@@ -68,10 +66,21 @@ for path in list(root.glob("*.html")) + list(root.glob("*.js")):
     n = t.replace('"/api/arbishield/', '"/__sandbox_api/arbishield/')
     n = n.replace("'/api/arbishield/", "'/__sandbox_api/arbishield/")
     n = n.replace("`/api/arbishield/", "`/__sandbox_api/arbishield/")
-    n = n.replace('"/api/arbishield/', '"/__sandbox_api/arbishield/')
     if n != t:
         path.write_text(n, encoding="utf-8")
         print("  api→sandbox", path.name)
+
+prot = root / "app-proteger.html"
+if not prot.exists():
+    raise SystemExit("app-proteger.html ausente no sandbox")
+pt = prot.read_text(encoding="utf-8", errors="replace")
+if "fee_upfront" not in pt and "calcFeeUpfront" not in pt:
+    raise SystemExit("sandbox app-proteger sem fee_upfront — ref errada?")
+if "__sandbox_api" not in pt and 'API_BASE = IS_SANDBOX' not in pt:
+    # fallback: injeta base se a página antiga ainda aponta /api/
+    if '"/api/arbishield/' in pt or "'/api/arbishield/" in pt:
+        raise SystemExit("sandbox app-proteger ainda chama /api/arbishield/")
+print("  OK app-proteger sandbox (fee_upfront + API sandbox)")
 PY
 
 # Nginx: location /__sandbox_api/ → 3198
