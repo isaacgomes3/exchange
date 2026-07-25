@@ -8,20 +8,78 @@
 import { createServer } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
-import {
-  PROTECTION_FLOW_LOCK,
-  PROTECTION_FLOW_CONTRACT_VERSION,
-  settlementCreditParts,
-  settlementCreditCents,
-  settlementDeductionCents,
-  settlementStatusForOutcome,
-  isFeeUpfrontProtection,
-  creditBucketForSettlement,
-} from "./lib/protection-flow-contract.mjs";
 
-// Trava de produto: fluxo de proteção — não alterar sem pedido explícito.
+// Contrato travado — import opcional (se lib faltar na VPS, usa fallback inline
+// para o shim não cair e a rota de saque continuar disponível).
+let PROTECTION_FLOW_LOCK = "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST";
+let PROTECTION_FLOW_CONTRACT_VERSION = "protection-flow-contract-v1";
+let settlementCreditParts;
+let settlementCreditCents;
+let settlementDeductionCents;
+let settlementStatusForOutcome;
+let isFeeUpfrontProtection;
+let creditBucketForSettlement = () => "deduction_balance_cents";
+
+try {
+  const mod = await import(
+    pathToFileURL(
+      resolve(dirname(fileURLToPath(import.meta.url)), "lib/protection-flow-contract.mjs")
+    ).href
+  );
+  PROTECTION_FLOW_LOCK = mod.PROTECTION_FLOW_LOCK;
+  PROTECTION_FLOW_CONTRACT_VERSION = mod.PROTECTION_FLOW_CONTRACT_VERSION;
+  settlementCreditParts = mod.settlementCreditParts;
+  settlementCreditCents = mod.settlementCreditCents;
+  settlementDeductionCents = mod.settlementDeductionCents;
+  settlementStatusForOutcome = mod.settlementStatusForOutcome;
+  isFeeUpfrontProtection = mod.isFeeUpfrontProtection;
+  creditBucketForSettlement = mod.creditBucketForSettlement;
+} catch (err) {
+  console.warn(
+    "[serverfn-shim] protection-flow-contract ausente — fallback inline:",
+    err instanceof Error ? err.message : err
+  );
+  isFeeUpfrontProtection = (row) => {
+    const meta = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
+    return (
+      meta.billing_model === "fee_upfront_v1" ||
+      meta.fee_upfront === true ||
+      String(meta.source || "").includes("fee_upfront")
+    );
+  };
+  settlementDeductionCents = (row) => {
+    const meta = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
+    const raw =
+      row?.platform_deduction_cents ??
+      row?.platform_profit_cents ??
+      meta.fee_charged_cents ??
+      row?.locked_deduction_cents;
+    return Math.max(0, Number(raw) || 0);
+  };
+  settlementCreditParts = (row, outcome) => {
+    const amount = Math.max(
+      0,
+      Math.trunc(Number(row?.responsibility_cents || row?.amount_cents) || 0)
+    );
+    const fee = settlementDeductionCents(row);
+    const wonArbi = String(outcome || "").toLowerCase() === "arbishield";
+    if (isFeeUpfrontProtection(row)) {
+      if (!wonArbi) return { stake: 0, fee: 0, total: 0 };
+      return { stake: amount, fee, total: amount + fee };
+    }
+    if (wonArbi) return { stake: amount, fee: 0, total: amount };
+    const net = Math.max(0, amount - Math.min(fee, amount));
+    return { stake: net, fee: 0, total: net };
+  };
+  settlementCreditCents = (row, outcome) => settlementCreditParts(row, outcome).total;
+  settlementStatusForOutcome = (outcome) =>
+    String(outcome || "").toLowerCase() === "arbishield"
+      ? "lost_exchange"
+      : "won_exchange";
+}
+
 void PROTECTION_FLOW_LOCK;
 void PROTECTION_FLOW_CONTRACT_VERSION;
 void settlementCreditCents;
@@ -1704,6 +1762,18 @@ async function applyReferralCode(token, body) {
 }
 
 async function requestAffiliateWithdrawal(token, body) {
+  // Saldo Reembolso reutiliza esta rota (já liberada no nginx) quando
+  // wallet/kind indica reembolso — evita 404/not_found da rota nova.
+  const wallet = String(body?.wallet || body?.kind || body?.origin || "").toLowerCase();
+  if (
+    wallet === "reembolso" ||
+    wallet === "saldo_reembolso" ||
+    wallet === "deduction" ||
+    body?.saldo_reembolso === true
+  ) {
+    return requestDeductionWithdrawal(token, body);
+  }
+
   const userId = requireUserId(token);
   const amountCents = Math.round(
     Number(body?.amountCents ?? body?.amount_cents ?? 0)

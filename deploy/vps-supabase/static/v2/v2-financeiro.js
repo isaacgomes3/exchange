@@ -1302,29 +1302,56 @@
       var token =
         sess && sess.data && sess.data.session && sess.data.session.access_token;
       if (!token) throw new Error("Sessão expirada");
-      var res = await fetch("/api/arbishield/deduction-withdraw", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + token,
-        },
-        body: JSON.stringify({ amountCents: cents, pix_key: pix }),
-      });
-      var rawText = await res.text();
-      var data = {};
-      try {
-        data = rawText ? JSON.parse(rawText) : {};
-      } catch (_) {
-        data = {};
+      // Usa affiliate-withdraw (rota já liberada no nginx). O shim desvia
+      // para Saldo Reembolso quando wallet=reembolso.
+      async function postWithdraw(url, payload) {
+        var r = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify(payload),
+        });
+        var rawText = await r.text();
+        var parsed = {};
+        try {
+          parsed = rawText ? JSON.parse(rawText) : {};
+        } catch (_) {
+          parsed = {};
+        }
+        return { res: r, data: parsed, raw: rawText };
       }
+      var payload = {
+        amountCents: cents,
+        pix_key: pix,
+        wallet: "reembolso",
+        saldo_reembolso: true,
+        kind: "saldo_reembolso",
+      };
+      var attempt = await postWithdraw("/api/arbishield/affiliate-withdraw", payload);
+      // fallback se a VPS já tiver a rota dedicada
+      if (
+        !attempt.res.ok &&
+        (attempt.data.error === "not_found" || attempt.res.status === 404)
+      ) {
+        attempt = await postWithdraw("/api/arbishield/deduction-withdraw", payload);
+      }
+      var res = attempt.res;
+      var data = attempt.data;
       if (!res.ok) {
         var errCode = String(data.error || data.message || "");
         var msg = errCode;
         if (!msg || errCode === "not_found") {
           msg =
-            res.status === 405
-              ? "Rota de saque bloqueada no nginx — rode o hotfix na VPS."
-              : "API de saque desatualizada na VPS (not_found). Rode: vps-hotfix-saldo-reembolso-saque.sh";
+            "API de saque desatualizada na VPS. Rode como root:\n" +
+            "bash <(curl -fsSL \"https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-proteger-js-e85c/scripts/vps-hotfix-saldo-reembolso-saque-FORCE.sh\")";
+        }
+        // shim antigo trata como afiliado (dias 15/30) — pedir update
+        if (/afiliado|15 e 30/i.test(errCode)) {
+          msg =
+            "Shim antigo na VPS (ainda trata como afiliado). Rode:\n" +
+            "bash <(curl -fsSL \"https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-proteger-js-e85c/scripts/vps-hotfix-saldo-reembolso-saque-FORCE.sh\")";
         }
         throw new Error(msg);
       }
