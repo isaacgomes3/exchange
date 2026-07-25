@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Saques — ArbiShield v2</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/finance-admins.js?v=fin-acl-2"></script>
+  <script src="/v2.js?v=fin-acl-2"></script>
+  <script src="/v2-pages.js?v=reembolso-saque-1"></script>
+  <script src="/v2-shell.js?v=fin-acl-2" defer></script>
+</head>
+<body data-shell="admin" data-active="saques">
+  <div class="page-head">
+    <div>
+      <h1>Gestão de <span>Saques</span></h1>
+      <p class="sub">Financeiro · saques de saldo real (Saldo Reembolso fica em Reembolsos)</p>
+    </div>
+  </div>
+  <div id="err" class="err"></div>
+  <div id="pageBody"><div class="meta">Carregando…</div></div>
+  <script>
+    ArbiV2Page.mountAdmin({
+      sources: [
+        { table: "withdrawals", limit: 200 },
+        { table: "partner_withdraw_requests", limit: 200 },
+      ],
+      // Saques da carteira Saldo Reembolso vão para Financeiro → Reembolsos
+      rowFilter: function (r) {
+        return !ArbiV2Page.isSaldoReembolsoWithdrawal(r);
+      },
+      cols: ["id", "user_name", "amount_cents", "status", "created_at"],
+      enrichUserNames: true,
+      searchPlaceholder: "Buscar por nome, id, status…",
+    });
+  </script>
+</body>
+</html>
