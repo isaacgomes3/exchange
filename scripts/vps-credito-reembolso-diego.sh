@@ -38,16 +38,12 @@ fi
 grep -q 'vps-credito-reembolso-diego-v1' "$OUT" || die "script inválido (marker)"
 chmod 0644 "$OUT"
 
+# NÃO usar `source` no .env — tem linhas inválidas p/ bash (ex.: "Organization ...").
+# O .mjs já faz parse seguro KEY=VALUE.
 if [[ -f "$ROOT/deploy/vps-supabase/.env" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "$ROOT/deploy/vps-supabase/.env"
-  set +a
+  export ENV_FILE="$ROOT/deploy/vps-supabase/.env"
 elif [[ -f "$ROOT/.env" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "$ROOT/.env"
-  set +a
+  export ENV_FILE="$ROOT/.env"
 fi
 
 export FIX AMOUNT_CENTS NAME REASON
