@@ -110,6 +110,44 @@ export function createExchangeOrdersService(deps) {
     if (!accessToken && login && password) {
       accessToken = `cred:${login}`;
     }
+    // Reaplicar modo BetBra com credenciais/token já salvos (sem reenviar senha)
+    const useSaved =
+      body?.useSaved === true ||
+      body?.useSavedCredentials === true ||
+      body?.reuseSession === true;
+    if (!accessToken && !(login && password) && useSaved && provider !== "demo") {
+      const existing = await sessionStatus(token, { provider });
+      if (!existing?.connected) {
+        const err = new Error(
+          "Nenhuma Conta BetBra salva. Cadastre login/senha em Conta BetBra."
+        );
+        err.status = 400;
+        throw err;
+      }
+      if (!existing.hasPassword && existing.authMode !== "token") {
+        const err = new Error(
+          "Conta BetBra incompleta (sem senha). Salve de novo em Conta BetBra ou cole um token."
+        );
+        err.status = 400;
+        throw err;
+      }
+      return {
+        ok: true,
+        connectionId: existing.connectionId,
+        provider: existing.provider || provider,
+        status: existing.status || "active",
+        demo: false,
+        hasLogin: !!existing.hasLogin,
+        loginMasked: existing.loginMasked || null,
+        authMode: existing.authMode || (existing.hasPassword ? "credentials" : "token"),
+        reused: true,
+        contract: EXCHANGE_ORDERS_CONTRACT_VERSION,
+        adapter: adapter.provider,
+        live:
+          process.env.EXCHANGE_ORDERS_LIVE === "1" ||
+          process.env.EXCHANGE_ORDERS_LIVE === "true",
+      };
+    }
     if (!accessToken && !(login && password)) {
       const err = new Error(
         "Informe login+senha da BetBra, ou accessToken / sessionToken"
@@ -205,6 +243,9 @@ export function createExchangeOrdersService(deps) {
         { token: serviceKey }
       );
       const conn = Array.isArray(rows) ? rows[0] : null;
+      const live =
+        process.env.EXCHANGE_ORDERS_LIVE === "1" ||
+        process.env.EXCHANGE_ORDERS_LIVE === "true";
       if (!conn) {
         return {
           ok: true,
@@ -213,6 +254,7 @@ export function createExchangeOrdersService(deps) {
           hasLogin: false,
           hasPassword: false,
           loginMasked: null,
+          live,
         };
       }
       let hasPassword = false;
@@ -246,6 +288,7 @@ export function createExchangeOrdersService(deps) {
         authMode,
         connectedAt: conn.connected_at,
         demo: conn.provider === "demo",
+        live,
         contract: EXCHANGE_ORDERS_CONTRACT_VERSION,
       };
     } catch (err) {

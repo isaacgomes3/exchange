@@ -35,7 +35,7 @@
     <div class="panel">
       <h2>Sessão / modo</h2>
       <p>
-        Demo simula ordens. Live usa a conta salva +
+        Demo simula ordens. Live usa a Conta BetBra já salva (sem colar token) +
         <code>EXCHANGE_ORDERS_LIVE=1</code> na VPS.
       </p>
       <div id="err" class="err"></div>
@@ -53,7 +53,7 @@
           <input
             name="accessToken"
             id="accessToken"
-            placeholder="Só se já tiver session token da casa"
+            placeholder="Só se quiser forçar um session token da casa"
             autocomplete="off"
           />
         </label>
@@ -72,54 +72,87 @@
       const err = document.getElementById("err");
       const status = document.getElementById("status");
       const betbraStatus = document.getElementById("betbraStatus");
+      const providerEl = document.getElementById("provider");
+      let betbraReady = false;
+      let lastStatus = null;
 
       async function token() {
         const { data } = await sb.auth.getSession();
         return data?.session?.access_token || "";
       }
 
-      try {
-        const res = await fetch(
-          "/api/arbishield/exchange-session/status?provider=betbra",
-          {
-            headers: {
-              Accept: "application/json",
-              Authorization: "Bearer " + (await token()),
-            },
-          }
-        );
-        const json = await res.json().catch(() => ({}));
-        if (res.ok && json.connected) {
-          betbraStatus.textContent =
-            "Conta salva · " +
-            (json.loginMasked || "login ok") +
-            (json.hasPassword ? " · senha salva" : " · sem senha");
-        } else {
-          betbraStatus.textContent =
-            "Nenhuma conta BetBra salva — abra Conta BetBra para cadastrar.";
-        }
-      } catch {
-        betbraStatus.textContent =
-          "Não foi possível ler o status. Cadastre em Conta BetBra.";
+      function liveLabel(json) {
+        if (json && json.live === true) return " · LIVE ligado";
+        if (json && json.live === false) return " · LIVE desligado na VPS";
+        return "";
       }
 
-      status.textContent = "Escolha o modo e aplique.";
+      async function loadBetbraStatus() {
+        try {
+          const res = await fetch(
+            "/api/arbishield/exchange-session/status?provider=betbra",
+            {
+              headers: {
+                Accept: "application/json",
+                Authorization: "Bearer " + (await token()),
+              },
+            }
+          );
+          const json = await res.json().catch(() => ({}));
+          lastStatus = json;
+          betbraReady = !!(
+            res.ok &&
+            json.connected &&
+            (json.hasPassword || json.authMode === "token")
+          );
+          if (res.ok && json.connected) {
+            betbraStatus.textContent =
+              "Conta salva · " +
+              (json.loginMasked || "login ok") +
+              (json.hasPassword ? " · senha salva" : " · sem senha") +
+              liveLabel(json);
+            if (betbraReady) {
+              providerEl.value = "betbra";
+              status.textContent =
+                "Pronto para BetBra" +
+                liveLabel(json) +
+                ". Clique em Aplicar modo (token opcional).";
+            } else {
+              status.textContent =
+                "Conta incompleta — salve login/senha em Conta BetBra ou cole um token.";
+            }
+          } else {
+            betbraStatus.textContent =
+              "Nenhuma conta BetBra salva — abra Conta BetBra para cadastrar.";
+            status.textContent =
+              "Salve a Conta BetBra ou escolha Demo e aplique.";
+          }
+        } catch {
+          betbraStatus.textContent =
+            "Não foi possível ler o status. Cadastre em Conta BetBra.";
+          status.textContent = "Escolha o modo e aplique.";
+        }
+      }
+
+      await loadBetbraStatus();
 
       document.getElementById("form").addEventListener("submit", async (e) => {
         e.preventDefault();
         err.classList.remove("show");
         const fd = new FormData(e.target);
         const provider = String(fd.get("provider") || "demo");
-        const body = {
-          provider,
-          accessToken: String(fd.get("accessToken") || "").trim(),
-        };
-        if (provider === "demo" && !body.accessToken) body.accessToken = "demo";
-        if (provider === "betbra" && !body.accessToken) {
-          status.textContent =
-            "Para BetBra live, salve login/senha em Conta BetBra (ou cole um token).";
-          return;
+        const accessToken = String(fd.get("accessToken") || "").trim();
+        const body = { provider };
+
+        if (provider === "demo") {
+          body.accessToken = accessToken || "demo";
+        } else if (accessToken) {
+          body.accessToken = accessToken;
+        } else {
+          // Usa Conta BetBra já salva — sem exigir token
+          body.useSaved = true;
         }
+
         try {
           const res = await fetch("/api/arbishield/exchange-session/connect", {
             method: "POST",
@@ -131,10 +164,15 @@
           });
           const json = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(json.error || "Falha ao conectar");
+          const mode =
+            json.demo || provider === "demo"
+              ? "demo"
+              : json.reused
+                ? "BetBra (conta salva)"
+                : "BetBra";
           status.textContent =
-            "Modo " +
-            (json.provider || provider) +
-            (json.demo ? " · demo" : " · live-ready");
+            "Modo " + mode + (json.demo ? "" : " · live-ready") + liveLabel(json);
+          await loadBetbraStatus();
         } catch (ex) {
           err.textContent = ex instanceof Error ? ex.message : String(ex);
           err.classList.add("show");
@@ -150,11 +188,13 @@
               "Content-Type": "application/json",
               Authorization: "Bearer " + (await token()),
             },
-            body: "{}",
+            body: JSON.stringify({ provider: "betbra" }),
           });
           const json = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(json.error || "Falha ao desconectar");
-          status.textContent = "Sessão desconectada.";
+          status.textContent = "Sessão BetBra desconectada.";
+          betbraReady = false;
+          await loadBetbraStatus();
         } catch (ex) {
           err.textContent = ex instanceof Error ? ex.message : String(ex);
           err.classList.add("show");
