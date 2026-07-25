@@ -1223,6 +1223,7 @@ function isTerminalProtectionStatus(st) {
     s === "cancelled" ||
     s === "settled" ||
     s === "closed" ||
+    s === "void" ||
     s === "won_platform" ||
     s === "won_exchange" ||
     s === "lost_platform" ||
