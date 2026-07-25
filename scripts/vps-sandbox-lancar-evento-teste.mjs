@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 /**
- * Lança 1 evento MANUAL de teste (BACK+LAY @ 1.10), visível na grade.
- * Robusto: campos mínimos, revive só o mais recente, fallback se coluna faltar.
+ * Lança 1 evento MANUAL de teste com UM lado só (LAY ou BACK) @ 1.10.
+ * Regra: nunca LAY+BACK no mesmo evento.
+ *   LAY  → cálculo por responsabilidade
+ *   BACK → cálculo por stake
+ * Env: TEST_SIDE=LAY|BACK (default LAY)
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -53,6 +56,9 @@ const LIQ_BRL = Number(process.env.TEST_LIQ_BRL || 5000);
 const MINUTES = Number(process.env.TEST_MINUTES_AHEAD || 45);
 const HOME = process.env.TEST_HOME || "ArbiShield Teste A";
 const AWAY = process.env.TEST_AWAY || "ArbiShield Teste B";
+const SIDE = String(process.env.TEST_SIDE || "LAY").trim().toUpperCase() === "BACK"
+  ? "BACK"
+  : "LAY";
 const FORCE_NEW =
   process.env.FORCE_NEW === "1" || process.env.FORCE_NEW === "true";
 const LIVE_WINDOW_MS = 9000 * 1000;
@@ -97,25 +103,16 @@ async function sb(p, { method = "GET", body } = {}) {
 }
 
 function buildMarkets(liqCents) {
+  // Um único mercado: LAY (responsabilidade) OU BACK (stake) — nunca os dois.
   return [
     {
       id: randomUUID(),
-      name: "Back · Sandbox Teste",
+      name: SIDE === "BACK" ? "Back · Sandbox Teste" : "Lay · Sandbox Teste",
       odd: ODD,
       liquidity: liqCents,
       display_liquidity: null,
       used_liquidity: 0,
-      market_type: "BACK",
-      external_id: null,
-    },
-    {
-      id: randomUUID(),
-      name: "Lay · Sandbox Teste",
-      odd: ODD,
-      liquidity: liqCents,
-      display_liquidity: null,
-      used_liquidity: 0,
-      market_type: "LAY",
+      market_type: SIDE,
       external_id: null,
     },
   ];
@@ -168,7 +165,8 @@ function coreBody(liqCents, startsIso, prevMeta) {
       billing_model_hint: "fee_upfront_v1",
       release_minutes_before: 0,
       revived_at: new Date().toISOString(),
-      note: "Evento de teste BACK+LAY odd 1.10",
+      note: `Evento de teste ${SIDE} odd ${ODD} (${SIDE === "LAY" ? "responsabilidade" : "stake"})`,
+      test_side: SIDE,
     },
   };
 }
@@ -277,7 +275,8 @@ async function main() {
     process.exit(1);
   }
 
-  console.log("==> Lançar 1 evento teste BACK+LAY @", ODD);
+  console.log("==> Lançar 1 evento teste", SIDE, "@", ODD,
+    SIDE === "LAY" ? "(responsabilidade)" : "(stake)");
   console.log("    kickoff +", mins, "min · liq", money(liqCents));
 
   let match = null;

@@ -2917,22 +2917,20 @@ async function launchTestEvent(query = {}) {
   const startsAt = new Date(Date.now() + mins * 60_000).toISOString();
   const home = String(query.home || "ArbiShield Teste A");
   const away = String(query.away || "ArbiShield Teste B");
+  // Um lado só: LAY (responsabilidade) ou BACK (stake) — nunca os dois no mesmo evento.
+  const side =
+    String(query.side || query.market_type || "LAY").trim().toUpperCase() ===
+    "BACK"
+      ? "BACK"
+      : "LAY";
   const markets = [
     {
       id: randomUUID(),
-      name: "Back · Teste",
+      name: side === "BACK" ? "Back · Teste" : "Lay · Teste",
       odd,
       liquidity: liq,
       used_liquidity: 0,
-      market_type: "BACK",
-    },
-    {
-      id: randomUUID(),
-      name: "Lay · Teste",
-      odd,
-      liquidity: liq,
-      used_liquidity: 0,
-      market_type: "LAY",
+      market_type: side,
     },
   ];
   const row = {
@@ -2953,6 +2951,8 @@ async function launchTestEvent(query = {}) {
       sandbox_test: true,
       billing_model_hint: "fee_upfront_v1",
       release_minutes_before: 0,
+      test_side: side,
+      calc_mode: side === "LAY" ? "responsabilidade" : "stake",
     },
     markets,
   };

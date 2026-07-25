@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lança 1 evento teste (BACK+LAY @ 1.10). Script Node embutido (sem 2º download).
+# Lança 1 evento teste (LAY-ou-BACK @ 1.10). Script Node embutido (sem 2º download).
 #
 # Na VPS (root):
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-fee-upfront-3cf9/scripts/vps-lancar-evento-teste-agora.sh?$(date +%s)")
@@ -108,25 +108,16 @@ async function sb(p, { method = "GET", body } = {}) {
 }
 
 function buildMarkets(liqCents) {
+  const side = String(process.env.TEST_SIDE || "LAY").trim().toUpperCase() === "BACK" ? "BACK" : "LAY";
   return [
     {
       id: randomUUID(),
-      name: "Back · Sandbox Teste",
+      name: side === "BACK" ? "Back · Sandbox Teste" : "Lay · Sandbox Teste",
       odd: ODD,
       liquidity: liqCents,
       display_liquidity: null,
       used_liquidity: 0,
-      market_type: "BACK",
-      external_id: null,
-    },
-    {
-      id: randomUUID(),
-      name: "Lay · Sandbox Teste",
-      odd: ODD,
-      liquidity: liqCents,
-      display_liquidity: null,
-      used_liquidity: 0,
-      market_type: "LAY",
+      market_type: side,
       external_id: null,
     },
   ];
@@ -179,7 +170,7 @@ function coreBody(liqCents, startsIso, prevMeta) {
       billing_model_hint: "fee_upfront_v1",
       release_minutes_before: 0,
       revived_at: new Date().toISOString(),
-      note: "Evento de teste BACK+LAY odd 1.10",
+      note: "Evento de teste LAY-ou-BACK odd 1.10",
     },
   };
 }
@@ -273,7 +264,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log("==> Lançar 1 evento teste BACK+LAY @", ODD);
+  console.log("==> Lançar 1 evento teste LAY-ou-BACK @", ODD);
   console.log("    kickoff +", mins, "min · liq", money(liqCents));
 
   let match = null;

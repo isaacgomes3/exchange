@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-# Cria 1 jogo teste na PRODUÇÃO (BACK+LAY @ 1.10).
+# Cria 1 jogo teste na PRODUÇÃO com UM lado só (LAY ou BACK) @ 1.10.
+# Regra: nunca LAY+BACK no mesmo evento.
+#   LAY  → responsabilidade
+#   BACK → stake
+#   TEST_SIDE=LAY|BACK (default LAY)
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-fee-upfront-3cf9/scripts/vps-jogo-teste-prod.sh?$(date +%s)")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-proteger-js-e85c/scripts/vps-jogo-teste-prod.sh?$(date +%s)")
 set -euo pipefail
 
 # Lê KEY=VAL do .env sem source (evita "Organization: command not found")
@@ -46,9 +50,14 @@ export TEST_LIQ_CENTS="${TEST_LIQ_CENTS:-500000}"
 export TEST_MINUTES_AHEAD="${TEST_MINUTES_AHEAD:-45}"
 export TEST_HOME="${TEST_HOME:-ArbiShield Teste A}"
 export TEST_AWAY="${TEST_AWAY:-ArbiShield Teste B}"
+# LAY = responsabilidade · BACK = stake · nunca os dois
+case "$(echo "${TEST_SIDE:-LAY}" | tr '[:lower:]' '[:upper:]')" in
+  BACK) export TEST_SIDE=BACK ;;
+  *) export TEST_SIDE=LAY ;;
+esac
 
-echo "==> Criando jogo teste PRODUÇÃO @ ${TEST_ODD} (kickoff +${TEST_MINUTES_AHEAD} min)"
-echo "    supabase: $URL"
+echo "==> Criando jogo teste PRODUÇÃO ${TEST_SIDE} @ ${TEST_ODD} (kickoff +${TEST_MINUTES_AHEAD} min)"
+echo "    supabase: $URL · calc: $([ "$TEST_SIDE" = LAY ] && echo responsabilidade || echo stake)"
 
 python3 - <<'PY'
 import json, os, urllib.request, uuid
@@ -59,6 +68,7 @@ key = os.environ["SERVICE_ROLE_KEY"]
 odd = float(os.environ["TEST_ODD"])
 liq = int(os.environ["TEST_LIQ_CENTS"])
 mins = int(os.environ["TEST_MINUTES_AHEAD"])
+side = "BACK" if os.environ.get("TEST_SIDE", "LAY").upper() == "BACK" else "LAY"
 starts = (datetime.now(timezone.utc) + timedelta(minutes=mins)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 body = {
@@ -79,23 +89,17 @@ body = {
         "sandbox_test": True,
         "billing_model_hint": "fee_upfront_v1",
         "release_minutes_before": 0,
+        "test_side": side,
+        "calc_mode": "responsabilidade" if side == "LAY" else "stake",
     },
     "markets": [
         {
             "id": str(uuid.uuid4()),
-            "name": "Back · Teste",
+            "name": "Back · Teste" if side == "BACK" else "Lay · Teste",
             "odd": odd,
             "liquidity": liq,
             "used_liquidity": 0,
-            "market_type": "BACK",
-        },
-        {
-            "id": str(uuid.uuid4()),
-            "name": "Lay · Teste",
-            "odd": odd,
-            "liquidity": liq,
-            "used_liquidity": 0,
-            "market_type": "LAY",
+            "market_type": side,
         },
     ],
 }
