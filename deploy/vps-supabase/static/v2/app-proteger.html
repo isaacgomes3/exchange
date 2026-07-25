@@ -4,14 +4,42 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <meta name="arbishield-build" content="proteger-grade-api-v9" />
+  <meta name="arbishield-build" content="proteger-sync-api-btn-v10" />
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=proteger-lay-back-equiv-1" />
+  <link rel="stylesheet" href="/v2.css?v=proteger-sync-api-btn-v10" />
+  <style>
+    /* Garante botão visível mesmo com CSS antigo em cache */
+    .term-sync-btn,
+    #btnSyncApiHead {
+      margin-top: 0;
+      height: 40px;
+      padding: 0 16px;
+      border: 0;
+      border-radius: 10px;
+      background: #c6ff00 !important;
+      color: #04140f !important;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      display: inline-flex !important;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      visibility: visible !important;
+      opacity: 1 !important;
+    }
+    .term-empty .term-sync-btn { margin-top: 14px; }
+    .term-head-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    @media (max-width: 720px) {
+      #btnSyncApiHead { width: 100%; justify-content: center; }
+    }
+  </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=proteger-lay-back-equiv-1"></script>
-  <script src="/v2-shell.js?v=proteger-lay-back-equiv-1" defer></script>
+  <script src="/v2.js?v=proteger-sync-api-btn-v10"></script>
+  <script src="/v2-shell.js?v=proteger-sync-api-btn-v10" defer></script>
 </head>
 <body data-shell="app" data-active="proteger">
   <div class="page-head term-head">
@@ -22,6 +50,10 @@
     </div>
     <div class="term-head-actions">
       <a class="term-ghost-btn" href="/app-protecoes.html"><span aria-hidden="true">&gt;_</span> Minhas Proteções</a>
+      <button type="button" class="term-sync-btn" id="btnSyncApiHead" title="Atualizar grade de jogos">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Sincronizar API
+      </button>
       <button type="button" class="term-icon-btn" id="btnRefresh" title="Atualizar mercados" aria-label="Atualizar">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
@@ -82,8 +114,12 @@
     <div id="list" class="term-list">
       <div class="term-empty">
         <div class="term-empty-ico" aria-hidden="true">☰</div>
-        <h2>Sem partidas disponíveis</h2>
-        <p>Carregando…</p>
+        <h2>Sem partidas com liquidez</h2>
+        <p>Carregando grade… toque em Sincronizar API se demorar.</p>
+        <button type="button" class="term-sync-btn" id="btnSync" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Sincronizar API
+        </button>
       </div>
     </div>
   </div>
@@ -677,16 +713,36 @@
         });
       }
 
-      function emptyHtml() {
+      function emptyHtml(msg) {
         return (
           '<div class="term-empty">' +
           '<div class="term-empty-ico" aria-hidden="true">☰</div>' +
           "<h2>Sem partidas com liquidez</h2>" +
-          "<p>Só aparecem jogos com liquidez disponível. Quando a liquidez esgota, o jogo sai da grade automaticamente.</p>" +
+          "<p>" +
+          esc(
+            msg ||
+              "Só aparecem jogos com liquidez disponível. Quando a liquidez esgota, o jogo sai da grade automaticamente."
+          ) +
+          "</p>" +
           '<button type="button" class="term-sync-btn" id="btnSync">' +
           '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
           "Sincronizar API</button></div>"
         );
+      }
+
+      function bindSyncButtons() {
+        var handler = function () {
+          syncGrade(true);
+        };
+        var head = document.getElementById("btnSyncApiHead");
+        if (head) head.onclick = handler;
+        var emptyBtn = document.getElementById("btnSync");
+        if (emptyBtn) {
+          emptyBtn.disabled = false;
+          emptyBtn.onclick = handler;
+        }
+        var refreshBtn = document.getElementById("btnRefresh");
+        if (refreshBtn) refreshBtn.onclick = handler;
       }
 
       function render() {
@@ -699,9 +755,14 @@
 
         var el = document.getElementById("list");
         if (!rows.length) {
-          el.innerHTML = emptyHtml();
-          var syncBtn = document.getElementById("btnSync");
-          if (syncBtn) syncBtn.onclick = function () { load(true); };
+          var waitMsg =
+            state.syncIn > 0
+              ? "Sincronizando em " +
+                state.syncIn +
+                "s… Só aparecem jogos com liquidez disponível."
+              : null;
+          el.innerHTML = emptyHtml(waitMsg);
+          bindSyncButtons();
           return;
         }
 
@@ -850,13 +911,24 @@
         });
       }
 
-      async function load(manual) {
+      async function syncGrade(manual) {
         if (state.loading) return;
         state.loading = true;
         var refreshBtn = document.getElementById("btnRefresh");
+        var headBtn = document.getElementById("btnSyncApiHead");
+        var emptyBtn = document.getElementById("btnSync");
         if (refreshBtn) refreshBtn.classList.add("spin");
+        if (headBtn) headBtn.disabled = true;
+        if (emptyBtn) emptyBtn.disabled = true;
         showErr("");
         try {
+          // Kick sync de placar/odds no worker (não bloqueia a grade)
+          fetch(API_BASE + "/match-live-sync?t=" + Date.now(), {
+            method: "GET",
+            headers: { Accept: "application/json" },
+            cache: "no-store",
+          }).catch(function () {});
+
           var profileRes = await supa
             .from("profiles")
             .select(
@@ -922,15 +994,19 @@
           state.syncIn = 30;
           renderSports();
           render();
-          if (manual) showOk("Mercados atualizados");
+          if (manual) showOk("Grade sincronizada");
         } catch (ex) {
           showErr(ex.message || "Erro ao carregar");
-          document.getElementById("list").innerHTML = emptyHtml();
-          var syncBtn = document.getElementById("btnSync");
-          if (syncBtn) syncBtn.onclick = function () { load(true); };
+          document.getElementById("list").innerHTML = emptyHtml(
+            "Falha ao carregar. Toque em Sincronizar API para tentar de novo."
+          );
+          bindSyncButtons();
         } finally {
           state.loading = false;
           if (refreshBtn) refreshBtn.classList.remove("spin");
+          if (headBtn) headBtn.disabled = false;
+          if (emptyBtn) emptyBtn.disabled = false;
+          bindSyncButtons();
         }
       }
 
@@ -947,23 +1023,25 @@
         });
         render();
       });
-      document.getElementById("btnRefresh").onclick = function () {
-        load(true);
-      };
+
+      bindSyncButtons();
 
       state.timer = setInterval(function () {
         state.syncIn -= 1;
         if (state.syncIn <= 0) {
-          load(false);
+          syncGrade(false);
           return;
         }
         var p = document.querySelector(".term-empty p");
         if (p && /Sincronizando/.test(p.textContent || "")) {
-          p.textContent = "Sincronizando em " + state.syncIn + "s…";
+          p.textContent =
+            "Sincronizando em " +
+            state.syncIn +
+            "s… Só aparecem jogos com liquidez disponível.";
         }
       }, 1000);
 
-      await load(false);
+      await syncGrade(false);
     })();
   </script>
 </body>
