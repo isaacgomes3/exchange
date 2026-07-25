@@ -47,10 +47,37 @@
           Atualizar saldo
         </button>
       </div>
+      <div
+        id="deviceCodeBox"
+        class="form-grid"
+        style="margin-top:14px;display:grid"
+      >
+        <label style="grid-column:1/-1">
+          Código do e-mail BetBra (novo dispositivo)
+          <input
+            id="deviceCode"
+            type="text"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            maxlength="12"
+            placeholder="Ex.: 123456"
+            style="letter-spacing:0.12em;font-weight:800"
+          />
+        </label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" type="button" id="btnDeviceCode">
+            Enviar código e atualizar saldo
+          </button>
+        </div>
+        <p class="notice" style="margin:0;grid-column:1/-1">
+          Não há tela de “dispositivos” no site. O código chega por
+          <strong>e-mail/SMS</strong> (“Código de Login”) quando a VPS tenta
+          logar. Cole aqui e envie.
+        </p>
+      </div>
       <p id="balanceHint" class="notice" style="margin-top:12px">
         O login da VPS é um dispositivo diferente das suas sessões Chrome.
-        Se aparecer “validação de dispositivo”, use a seção
-        <strong>Sessão do navegador</strong> abaixo.
+        Se a BetBra enviar código por e-mail, use o campo acima.
       </p>
     </div>
 
@@ -205,23 +232,55 @@
         });
       }
 
-      async function refreshBalance() {
+      function showDeviceCodeBox(show) {
+        const box = document.getElementById("deviceCodeBox");
+        if (box) box.style.display = show ? "grid" : "none";
+        if (show) {
+          const inp = document.getElementById("deviceCode");
+          if (inp) setTimeout(() => inp.focus(), 50);
+        }
+      }
+
+      async function refreshBalance(validationCode) {
         const stBalance = document.getElementById("stBalance");
         const hint = document.getElementById("balanceHint");
+        const code = String(validationCode || "")
+          .replace(/\s+/g, "")
+          .trim();
         stBalance.textContent = "Consultando…";
-        hint.textContent = "Fazendo login na BetBra e lendo clients/balance…";
+        hint.textContent = code
+          ? "Enviando código de login e lendo saldo…"
+          : "Fazendo login na BetBra e lendo clients/balance…";
         try {
-          const res = await fetch(
-            "/api/arbishield/exchange-session/balance?provider=betbra",
-            {
-              headers: {
-                Accept: "application/json",
-                Authorization: "Bearer " + (await bearer()),
-              },
-            }
-          );
+          let url =
+            "/api/arbishield/exchange-session/balance?provider=betbra";
+          if (code) {
+            url +=
+              "&validationCode=" + encodeURIComponent(code);
+          }
+          const res = await fetch(url, {
+            headers: {
+              Accept: "application/json",
+              Authorization: "Bearer " + (await bearer()),
+            },
+          });
           const json = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(json.error || "Falha ao ler saldo");
+          if (!res.ok) {
+            const needsCode =
+              json.code === "BETBRA_DEVICE_VALIDATION" ||
+              json.validationRequired === true ||
+              /valida[cç][aã]o|c[oó]digo|dispositivo|device/i.test(
+                String(json.error || "")
+              );
+            if (needsCode) showDeviceCodeBox(true);
+            const err = new Error(json.error || "Falha ao ler saldo");
+            err.code = json.code;
+            err.validationRequired = needsCode;
+            throw err;
+          }
+          showDeviceCodeBox(false);
+          const inp = document.getElementById("deviceCode");
+          if (inp) inp.value = "";
           stBalance.textContent = formatBrl(json.balance);
           hint.textContent =
             "Saldo " +
@@ -229,13 +288,24 @@
             (json.source ? " · via " + json.source : "") +
             (json.fetchedAt
               ? " · " + new Date(json.fetchedAt).toLocaleString("pt-BR")
-              : "");
+              : "") +
+            (code ? " · dispositivo da VPS aprovado" : "");
           return json;
         } catch (ex) {
           stBalance.textContent = "indisponível";
-          hint.textContent =
-            (ex instanceof Error ? ex.message : String(ex)) +
-            " — confira se LIVE/IP BR estão ok e se o dispositivo não precisa de aprovação.";
+          const msg = ex instanceof Error ? ex.message : String(ex);
+          if (ex && ex.validationRequired) {
+            hint.textContent =
+              msg +
+              " — abra o e-mail da BetBra (“Código de Login”), cole o código acima e envie.";
+          } else if (/accountid not found/i.test(msg)) {
+            hint.textContent =
+              msg +
+              " — a API não reconheceu a conta nesta sessão. Tente Atualizar saldo de novo (pode gerar código por e-mail) ou Testar sessão.";
+          } else {
+            hint.textContent =
+              msg + " — confira login/senha e se o IP da VPS é BR.";
+          }
           throw ex;
         }
       }
@@ -348,6 +418,31 @@
         err.classList.remove("show");
         try {
           await refreshBalance();
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+        }
+      });
+
+      document.getElementById("btnDeviceCode")?.addEventListener("click", async () => {
+        err.classList.remove("show");
+        const code = String(
+          document.getElementById("deviceCode")?.value || ""
+        )
+          .replace(/\s+/g, "")
+          .trim();
+        if (!/^\d{4,12}$/.test(code)) {
+          err.textContent =
+            "Cole o código numérico do e-mail BetBra (ex.: 6 dígitos).";
+          err.classList.add("show");
+          showDeviceCodeBox(true);
+          return;
+        }
+        try {
+          await refreshBalance(code);
+          ok.style.display = "block";
+          ok.textContent =
+            "Código aceito · saldo atualizado · dispositivo da VPS autorizado.";
         } catch (ex) {
           err.textContent = ex instanceof Error ? ex.message : String(ex);
           err.classList.add("show");

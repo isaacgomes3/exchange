@@ -85,11 +85,19 @@ async function readJson(res) {
 
 /**
  * Login BetBra com usuário/senha.
+ * Se a BetBra enviar e-mail "Código de Login", passe validationCode no retry.
  * @returns {{ token, cookies, user, cashBalance, raw }}
  */
-export async function betbraClientLogin({ login, password, latitude, longitude } = {}) {
+export async function betbraClientLogin({
+  login,
+  password,
+  latitude,
+  longitude,
+  validationCode,
+} = {}) {
   const user = String(login || "").trim();
   const pass = String(password || "");
+  const code = String(validationCode || "").replace(/\s+/g, "").trim();
   if (!user || !pass) {
     const err = new Error("Login e senha BetBra obrigatórios");
     err.status = 400;
@@ -113,6 +121,14 @@ export async function betbraClientLogin({ login, password, latitude, longitude }
       longitude: lng,
     },
   };
+  // Soft2Bet / BetBra: campos comuns do código de novo dispositivo
+  if (code) {
+    body.validationCode = code;
+    body.code = code;
+    body.otp = code;
+    body.loginCode = code;
+    body.deviceCode = code;
+  }
   let res;
   try {
     res = await fetch(url, {
@@ -155,13 +171,15 @@ export async function betbraClientLogin({ login, password, latitude, longitude }
   }
   if (data?.validationRequired) {
     const err = new Error(
-      "BetBra pediu validação do login da VPS (IP do servidor ≠ suas sessões Chrome). " +
-        "Isso não aparece nas sessões do site. Aprove o novo dispositivo por e-mail/SMS, " +
-        "ou cole cookies da exchange em Conta BetBra → Sessão do navegador."
+      code
+        ? "Código de login inválido ou expirado. Peça um novo em Atualizar saldo e use o código do e-mail BetBra."
+        : "BetBra enviou código de novo dispositivo por e-mail/SMS. " +
+          "Cole o código em Conta BetBra e clique em Enviar código."
     );
     err.status = 403;
     err.code = "BETBRA_DEVICE_VALIDATION";
     err.details = data;
+    err.validationRequired = true;
     throw err;
   }
   const token = String(data?.token || data?.accessToken || "").trim();
@@ -273,8 +291,12 @@ export async function betbraClientBalance({ cookies, cookieHeader, token } = {})
 /**
  * Login + saldo em um passo (usa cashBalance do login se vier; senão GET balance).
  */
-export async function betbraLoginAndBalance({ login, password } = {}) {
-  const auth = await betbraClientLogin({ login, password });
+export async function betbraLoginAndBalance({
+  login,
+  password,
+  validationCode,
+} = {}) {
+  const auth = await betbraClientLogin({ login, password, validationCode });
   let bal = null;
   if (auth.cashBalance != null && Number.isFinite(auth.cashBalance)) {
     bal = {

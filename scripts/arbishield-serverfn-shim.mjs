@@ -7648,6 +7648,11 @@ const server = createServer(async (req, res) => {
       const token = bearerFromReq(req);
       const out = await exchangeOrdersApi.sessionBalance(token, {
         provider: url.searchParams.get("provider") || "betbra",
+        validationCode:
+          url.searchParams.get("validationCode") ||
+          url.searchParams.get("code") ||
+          url.searchParams.get("otp") ||
+          "",
       });
       return sendJson(res, 200, out);
     } catch (err) {
@@ -7655,6 +7660,10 @@ const server = createServer(async (req, res) => {
         ok: false,
         error: err instanceof Error ? err.message : String(err),
         code: err.code || undefined,
+        validationRequired:
+          err.code === "BETBRA_DEVICE_VALIDATION" ||
+          err.validationRequired === true ||
+          undefined,
       });
     }
   }

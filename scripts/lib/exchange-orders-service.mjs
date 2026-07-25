@@ -701,6 +701,11 @@ export function createExchangeOrdersService(deps) {
   async function sessionBalance(token, query = {}) {
     const userId = await requireUserId(token);
     const provider = String(query?.provider || "betbra").toLowerCase();
+    const validationCode = String(
+      query?.validationCode || query?.code || query?.otp || ""
+    )
+      .replace(/\s+/g, "")
+      .trim();
     try {
       const rows = await sb(
         `/rest/v1/exchange_connections?user_id=eq.${encodeURIComponent(userId)}&status=eq.active&provider=eq.${encodeURIComponent(provider)}&select=*&order=connected_at.desc&limit=1`,
@@ -727,7 +732,11 @@ export function createExchangeOrdersService(deps) {
         throw err;
       }
 
-      const result = await betbraLoginAndBalance({ login, password });
+      const result = await betbraLoginAndBalance({
+        login,
+        password,
+        validationCode: validationCode || undefined,
+      });
 
       // Persiste token/cookies da casa (mantém login+senha)
       try {
