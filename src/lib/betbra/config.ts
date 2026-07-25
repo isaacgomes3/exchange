@@ -5,6 +5,8 @@ export interface BetBraConfig {
   userAgent: string;
   biabLanguage: string;
   inplayFeedUrl: string;
+  eventsRadarUrl: string;
+  mradarWidgetUrl: string;
   soccerSportId: number;
   tennisSportId: number;
   useProxy: boolean;
@@ -39,6 +41,13 @@ export function getBetBraConfig(): BetBraConfig {
     inplayFeedUrl:
       process.env.MEXCHANGE_INPLAY_FEED_URL ??
       "https://betbra.bet.br/client/api/jumper/feedSports/inplay-info",
+    // Índice do radar de movimento (campo 2D / Stats Perform) — não é o /api/events
+    eventsRadarUrl:
+      process.env.MEXCHANGE_EVENTS_RADAR_URL ??
+      "https://betbra.bet.br/client/api/jumper/feedSports/inplayInfo/eventsRadar",
+    mradarWidgetUrl:
+      process.env.MEXCHANGE_MRADAR_WIDGET_URL ??
+      "https://betbra.bet.br/widget/mradar",
     soccerSportId: Number(process.env.FULLTBET_SOCCER_SPORT_ID ?? "15"),
     tennisSportId: Number(process.env.FULLTBET_TENNIS_SPORT_ID ?? "9"),
     useProxy: envBool("FULLTBET_USE_OUTBOUND_PROXY", false),

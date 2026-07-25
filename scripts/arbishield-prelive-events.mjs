@@ -36,6 +36,13 @@ import {
   normalizeInplayItem,
   buildLiveMetadata,
 } from "./lib/betbra-inplay-sync.mjs";
+import {
+  BETBRA_EVENTS_RADAR_VERSION,
+  DEFAULT_EVENTS_RADAR_URL,
+  DEFAULT_MRADAR_WIDGET_URL,
+  summarizeEventsRadarFeed,
+  buildMradarWidgetUrl,
+} from "./lib/betbra-events-radar.mjs";
 
 // Trava de produto: fluxo de proteção — não alterar sem pedido explícito.
 void PROTECTION_FLOW_LOCK;
@@ -92,6 +99,8 @@ const SPACING = Number(process.env.MEXCHANGE_REQUEST_SPACING_MS || 200);
 const INPLAY_FEED_URL =
   process.env.MEXCHANGE_INPLAY_FEED_URL ||
   "https://betbra.bet.br/client/api/jumper/feedSports/inplay-info";
+const EVENTS_RADAR_URL =
+  process.env.MEXCHANGE_EVENTS_RADAR_URL || DEFAULT_EVENTS_RADAR_URL;
 const INPLAY_SYNC_MS = Number(
   process.env.BETBRA_INPLAY_SYNC_MS ||
     process.env.MEXCHANGE_POLL_INTERVAL_MS ||
@@ -3224,6 +3233,45 @@ async function fetchBetbraInplayFeed() {
 }
 
 /**
+ * Feed índice do radar de movimento (campo 2D / Stats Perform).
+ * Não traz coordenadas — só o mapa eventId exchange → Stats Perform.
+ */
+async function fetchBetbraEventsRadar() {
+  return spaced(() =>
+    betbra(EVENTS_RADAR_URL, {
+      Referer: `${SITE}/`,
+    })
+  );
+}
+
+async function probeBetbraEventsRadar() {
+  const started = Date.now();
+  try {
+    const feed = await fetchBetbraEventsRadar();
+    const summary = summarizeEventsRadarFeed(feed);
+    const firstSp = summary.sample?.[0]?.eventIdStatsPerform || null;
+    return {
+      ok: true,
+      version: BETBRA_EVENTS_RADAR_VERSION,
+      latencyMs: Date.now() - started,
+      url: EVENTS_RADAR_URL,
+      mradarWidget: DEFAULT_MRADAR_WIDGET_URL,
+      mradarExample: buildMradarWidgetUrl(firstSp),
+      ...summary,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      version: BETBRA_EVENTS_RADAR_VERSION,
+      latencyMs: Date.now() - started,
+      url: EVENTS_RADAR_URL,
+      mradarWidget: DEFAULT_MRADAR_WIDGET_URL,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
  * Fallback: detalhe do evento mexchange pode trazer placar quando o feed
  * agregado inplay-info falha ou não lista o jogo.
  */
@@ -3667,7 +3715,9 @@ async function handleApi(req, res) {
       testEvent: "/api/arbishield/test-event",
       footballTeams: "/api/arbishield/football-teams",
       matchLiveSync: "/api/arbishield/match-live-sync",
+      betbraEventsRadar: "/api/arbishield/betbra-events-radar",
       unpublishExpired: "/api/arbishield/unpublish-expired",
+      eventsRadar: BETBRA_EVENTS_RADAR_VERSION,
     });
   }
 
@@ -3785,6 +3835,23 @@ async function handleApi(req, res) {
     } catch (err) {
       return sendJson(res, 500, {
         ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (
+    (url.pathname === "/api/arbishield/betbra-events-radar" ||
+      url.pathname === "/api/arbishield/betbra-movimento") &&
+    req.method === "GET"
+  ) {
+    try {
+      const result = await probeBetbraEventsRadar();
+      return sendJson(res, result.ok ? 200 : 502, result);
+    } catch (err) {
+      return sendJson(res, 500, {
+        ok: false,
+        version: BETBRA_EVENTS_RADAR_VERSION,
         error: err instanceof Error ? err.message : String(err),
       });
     }
