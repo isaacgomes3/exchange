@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta name="arbishield-vps-page" content="jogos" />
-  <meta name="arbishield-build" content="admin-jogos-back-lay-link-v3" />
+  <meta name="arbishield-build" content="admin-jogos-betbra-first-v4" />
   <title>Gestão de Jogos — ArbiShield v2</title>
   <link rel="stylesheet" href="/v2.css" />
   <script src="/v2-shell.js" defer></script>
@@ -551,8 +551,8 @@
         <p class="sub">Cockpit de Eventos e Risco · Catálogo Pré-Live BetBra</p>
       </div>
       <div class="actions">
-        <button class="btn btn-primary" id="btnManualMatch" type="button">Lançar evento manual</button>
-        <button class="btn btn-ghost" id="btnAddMatch" type="button">+ BetBra (cadastrar)</button>
+        <button class="btn btn-primary" id="btnAddMatch" type="button">+ BetBra (cadastrar)</button>
+        <button class="btn btn-ghost" id="btnManualMatch" type="button">Lançar evento manual</button>
         <button class="btn btn-ghost" id="btnRefresh" type="button">Atualizar</button>
       </div>
     </header>
@@ -561,13 +561,13 @@
 
     <div class="toolbar">
       <div class="tabs" id="viewTabs">
-        <button class="tab active" data-view="platform" type="button">Encerrar / Eventos ArbiShield</button>
-        <button class="tab" data-view="prelive" type="button">Próximos jogos (cadastrar)</button>
+        <button class="tab active" data-view="prelive" type="button">Próximos jogos (cadastrar)</button>
+        <button class="tab" data-view="platform" type="button">Encerrar / Eventos ArbiShield</button>
       </div>
       <input class="search" id="search" type="search" placeholder="Buscar time ou liga…" />
     </div>
 
-    <section class="panel platform-list" id="platformPanel">
+    <section class="panel platform-list" id="platformPanel" hidden>
       <div class="panel-head">
         <h2>Eventos cadastrados na plataforma</h2>
         <span class="hint" id="platformMeta">—</span>
@@ -588,7 +588,7 @@
       </div>
     </section>
 
-    <section class="panel" id="prelivePanel" hidden>
+    <section class="panel" id="prelivePanel">
       <div class="field prelive-liq" style="margin:0 16px 14px;max-width:420px">
         <label for="preliveLiquidityBrl">Liquidez real (R$) — usada ao lançar cada seleção BetBra</label>
         <div style="display:flex;gap:10px;align-items:stretch">
@@ -836,7 +836,7 @@
       });
 
       var auth = null;
-      var view = "platform";
+      var view = "prelive";
       var preliveEvents = [];
       var selectedEvent = null;
       var selectedMarket = null;
@@ -3191,7 +3191,7 @@
         await loadPrelive();
         auth = await resolveAuth();
         showAuthBanner(!auth);
-        setView("platform");
+        setView("prelive");
         await loadPlatformMatches();
       }
 

@@ -60,9 +60,18 @@ publish_web() {
 log "1/3 UI — admin-jogos (odds + BACK/LAY + link do mercado)"
 publish_web "deploy/vps-supabase/static/v2/admin-jogos.html"
 
-grep -qE 'admin-jogos-back-lay-link-v[0-9]+' "$WEB/admin-jogos.html" \
-  || die "admin-jogos sem marker admin-jogos-back-lay-link (ficheiro antigo/cache)"
+grep -qE 'admin-jogos-(back-lay-link|betbra-first)-v[0-9]+' "$WEB/admin-jogos.html" \
+  || die "admin-jogos sem marker de build (ficheiro antigo/cache)"
 grep -q 'settleHint' "$WEB/admin-jogos.html" && die "banner settleHint ainda presente" || true
+# BetBra primeiro nos botões (btnAddMatch antes de btnManualMatch)
+python3 -c '
+import sys
+html=open(sys.argv[1],encoding="utf-8").read()
+i=html.find("id=\"btnAddMatch\"")
+j=html.find("id=\"btnManualMatch\"")
+sys.exit(0 if 0<=i<j else 1)
+' "$WEB/admin-jogos.html" || die "BetBra não está primeiro nos botões"
+grep -q 'var view = "prelive"' "$WEB/admin-jogos.html" || die "view default não é prelive"
 grep -q 'btn-side lay' "$WEB/admin-jogos.html" || die "sem botão LAY"
 grep -q 'btn-side back' "$WEB/admin-jogos.html" || die "sem botão BACK"
 grep -q 'runnerSideOdd' "$WEB/admin-jogos.html" || die "sem runnerSideOdd"
