@@ -2734,6 +2734,81 @@ async function contestReject(body, token) {
   return { ok: true, protectionId, status: "active", rejected: true };
 }
 
+/** Um jogo teste BACK+LAY @ 1.10 — sem JWT admin. Só localhost do worker. */
+async function launchTestEvent(query = {}) {
+  if (!SERVICE_KEY) throw Object.assign(new Error("SERVICE_ROLE_KEY ausente"), { status: 500 });
+  const odd = Number(query.odd || 1.1);
+  const liq = Math.round(Number(query.liqBrl || query.liq || 5000) * 100);
+  const mins = Math.max(10, Number(query.minutes || 45));
+  const startsAt = new Date(Date.now() + mins * 60_000).toISOString();
+  const home = String(query.home || "ArbiShield Teste A");
+  const away = String(query.away || "ArbiShield Teste B");
+  const markets = [
+    {
+      id: randomUUID(),
+      name: "Back · Teste",
+      odd,
+      liquidity: liq,
+      used_liquidity: 0,
+      market_type: "BACK",
+    },
+    {
+      id: randomUUID(),
+      name: "Lay · Teste",
+      odd,
+      liquidity: liq,
+      used_liquidity: 0,
+      market_type: "LAY",
+    },
+  ];
+  const row = {
+    home_team: home,
+    away_team: away,
+    league: "SANDBOX · Evento teste",
+    starts_at: startsAt,
+    status: "open",
+    status_v2: "open",
+    is_published: true,
+    sport_type: "futebol",
+    max_protection_cents: liq,
+    used_protection_cents: 0,
+    protection_odds: { home: odd, away: odd },
+    external_id: `sandbox-test-${Date.now()}`,
+    metadata: {
+      source: "admin_manual",
+      sandbox_test: true,
+      billing_model_hint: "fee_upfront_v1",
+      release_minutes_before: 0,
+    },
+    markets,
+  };
+  let created;
+  try {
+    created = await sb("/rest/v1/matches", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: row,
+    });
+  } catch (err) {
+    delete row.external_id;
+    created = await sb("/rest/v1/matches", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: row,
+    });
+  }
+  const match = Array.isArray(created) ? created[0] : created;
+  return {
+    ok: true,
+    matchId: match?.id,
+    home_team: match?.home_team,
+    away_team: match?.away_team,
+    starts_at: match?.starts_at,
+    odd,
+    open: "https://arbishield.app/sandbox/app-proteger.html",
+  };
+}
+
 async function handleApi(req, res) {
   if (req.method === "OPTIONS") return sendJson(res, 204, {});
 
@@ -2743,10 +2818,35 @@ async function handleApi(req, res) {
     return sendJson(res, 200, {
       ok: true,
       service: "arbishield-matches",
-      fix: "protection-fee-upfront-v4",
+      fix: "protection-fee-upfront-v5",
       env: process.env.ARBISHIELD_ENV || "production",
       listen: LISTEN,
+      testEvent: "/api/arbishield/test-event",
     });
+  }
+
+  if (
+    (url.pathname === "/api/arbishield/test-event" ||
+      url.pathname === "/test-event") &&
+    (req.method === "POST" || req.method === "GET")
+  ) {
+    try {
+      const q = Object.fromEntries(url.searchParams.entries());
+      if (req.method === "POST") {
+        try {
+          Object.assign(q, await parseBody(req));
+        } catch {
+          /* body vazio ok */
+        }
+      }
+      const result = await launchTestEvent(q);
+      return sendJson(res, 200, result);
+    } catch (err) {
+      return sendJson(res, err.status || 500, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   if (url.pathname === "/api/arbishield/desafios" && req.method === "GET") {
