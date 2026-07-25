@@ -8,9 +8,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/finance-admins.js?v=dash-kpi-1"></script>
-  <script src="/v2.js?v=dash-kpi-1"></script>
-  <script src="/v2-shell.js?v=dash-kpi-1" defer></script>
+  <script src="/finance-admins.js?v=dash-kpi-2"></script>
+  <script src="/v2.js?v=dash-kpi-2"></script>
+  <script src="/v2-shell.js?v=dash-kpi-2" defer></script>
+  <meta name="arbishield-build" content="dashboard-kpis-v2" />
 </head>
 <body data-shell="admin" data-active="hub">
   <div class="page-head">
@@ -36,7 +37,7 @@
     <div class="tpl-card-head"><h2>Indicadores do dia</h2></div>
     <div class="tpl-day-grid">
       <div class="tpl-day"><div class="l">Depósitos Hoje</div><div class="v pos" id="dDep">—</div></div>
-      <div class="tpl-day"><div class="l">Receita Líquida Hoje</div><div class="v pos" id="dRev">—</div><div class="s" id="dRevSub" style="font-size:10px;opacity:.7;margin-top:4px">Proteções + desafio</div></div>
+      <div class="tpl-day"><div class="l">Receita Líquida Hoje</div><div class="v pos" id="dRev">—</div><div class="s" id="dRevSub" style="font-size:10px;opacity:.7;margin-top:4px">Deduções cobradas + desafio</div></div>
       <div class="tpl-day"><div class="l">Reembolsos Hoje</div><div class="v neg" id="dRef">—</div></div>
       <div class="tpl-day"><div class="l">Despesas Hoje</div><div class="v neg" id="dExp">—</div></div>
       <div class="tpl-day"><div class="l">Lucro Real Hoje</div><div class="v pos" id="dProfit">—</div><div class="s" id="dProfitSub" style="font-size:10px;opacity:.7;margin-top:4px">Receita − despesas</div></div>
@@ -126,7 +127,10 @@
           throw new Error(typeof data.error === "string" ? data.error : (data.error.message || "Erro dashboard"));
         }
         if (!res.ok) throw new Error("HTTP " + res.status);
-        if (!data || data.fix !== "dashboard-kpis-v1") {
+        if (
+          !data ||
+          (data.fix !== "dashboard-kpis-v1" && data.fix !== "dashboard-kpis-v2")
+        ) {
           // aceita mesmo sem fix se campos novos existirem
           if (data && data.todayDeposits == null && data.todayRealProfit != null && data.todayEarnings != null) {
             // legado: lucro hoje = depósitos — rejeita para forçar hotfix do shim
@@ -161,9 +165,21 @@
           var dep = d.todayDeposits != null ? d.todayDeposits : d.todayEarnings;
           document.getElementById("dDep").textContent = money(dep);
           document.getElementById("dRev").textContent = money(d.todayNetRevenue);
-          document.getElementById("dRevSub").textContent =
-            "Prot. " + money(d.todayProtectionProfit || 0) +
-            " + Desafio " + money(d.todayDesafioProfit || 0);
+          var revSub =
+            "Prot. " +
+            money(d.todayProtectionProfit || 0) +
+            " + Desafio " +
+            money(d.todayDesafioProfit || 0);
+          if (d.todayProtectionCharged != null || d.fix === "dashboard-kpis-v2") {
+            revSub +=
+              " · deduções cobradas " +
+              money(d.todayProtectionCharged || 0);
+            if (Number(d.todayProtectionReversed || 0) > 0) {
+              revSub +=
+                " (− estornos " + money(d.todayProtectionReversed) + ")";
+            }
+          }
+          document.getElementById("dRevSub").textContent = revSub;
           document.getElementById("dRef").textContent = money(d.todayRefundsOut);
           document.getElementById("dExp").textContent = money(d.todayExpenses);
           document.getElementById("dProfit").textContent = money(d.todayRealProfit);

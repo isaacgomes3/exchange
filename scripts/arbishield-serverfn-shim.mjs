@@ -1011,6 +1011,25 @@ function dashPlatformCut(row) {
   return plat + n(row.exchange_profit_net_cents) + n(row.exchange_fee_cents);
 }
 
+/** Dedução fee_upfront cobrada no ato da proteção. */
+function dashFeeUpfrontCents(row) {
+  const fee = settlementDeductionCents(row);
+  if (fee > 0) return fee;
+  return Math.max(
+    0,
+    n(row.platform_deduction_cents) || n(row.platform_profit_cents)
+  );
+}
+
+function dashIsFeeReturnedStatus(row) {
+  const st = String(row?.status || "").toLowerCase();
+  const outcome = String(row?.settled_outcome || "").toLowerCase();
+  if (st.includes("cancelled") || st === "canceled") return true;
+  if (st.includes("won_platform")) return true;
+  if (outcome === "arbishield") return true;
+  return false;
+}
+
 async function sbPageAll(basePath, hardCap = 20000) {
   const pageSize = 1000;
   let from = 0;
@@ -1081,34 +1100,102 @@ async function sumDesafioCasaWinProfit(fromIso) {
   };
 }
 
+/**
+ * Receita de proteções:
+ * - fee_upfront: dedução conta no DIA DA COBRANÇA (created_at), não no settle
+ * - se depois for cancelada ou ArbiShield (won_platform), a dedução é estornada
+ * - legado (lock): continua no settle (exceto won_platform)
+ */
 async function sumProtectionCuts(fromIso) {
   const cols =
-    "id,status,settled_at,platform_profit_cents,platform_deduction_cents,locked_deduction_cents,exchange_profit_net_cents,exchange_fee_cents";
-  async function load(table) {
-    let q = `/rest/v1/${table}?select=${cols}&settled_at=not.is.null&order=settled_at.asc`;
-    if (fromIso) q += `&settled_at=gte.${encodeURIComponent(fromIso)}`;
+    "id,status,created_at,settled_at,settled_outcome,platform_profit_cents,platform_deduction_cents,locked_deduction_cents,exchange_profit_net_cents,exchange_fee_cents,metadata,responsibility_cents,amount_cents,odd";
+
+  async function loadBy(table, field) {
+    let q = `/rest/v1/${table}?select=${cols}&order=${field}.asc`;
+    if (fromIso) q += `&${field}=gte.${encodeURIComponent(fromIso)}`;
     try {
       return await sbPageAll(q);
     } catch {
       return [];
     }
   }
-  const [lays, backs] = await Promise.all([
-    load("protections"),
-    load("back_protections"),
+
+  const [
+    laysCreated,
+    backsCreated,
+    laysSettled,
+    backsSettled,
+  ] = await Promise.all([
+    loadBy("protections", "created_at"),
+    loadBy("back_protections", "created_at"),
+    (async () => {
+      let q = `/rest/v1/protections?select=${cols}&settled_at=not.is.null&order=settled_at.asc`;
+      if (fromIso) q += `&settled_at=gte.${encodeURIComponent(fromIso)}`;
+      try {
+        return await sbPageAll(q);
+      } catch {
+        return [];
+      }
+    })(),
+    (async () => {
+      let q = `/rest/v1/back_protections?select=${cols}&settled_at=not.is.null&order=settled_at.asc`;
+      if (fromIso) q += `&settled_at=gte.${encodeURIComponent(fromIso)}`;
+      try {
+        return await sbPageAll(q);
+      } catch {
+        return [];
+      }
+    })(),
   ]);
-  let cut = 0;
-  let nRows = 0;
-  for (const r of [...lays, ...backs]) {
+
+  let charged = 0;
+  let reversed = 0;
+  let legacy = 0;
+  let nCharged = 0;
+  let nReversed = 0;
+  let nLegacy = 0;
+
+  for (const r of [...laysCreated, ...backsCreated]) {
+    if (!isFeeUpfrontProtection(r)) continue;
+    const fee = dashFeeUpfrontCents(r);
+    if (!(fee > 0)) continue;
+    charged += fee;
+    nCharged += 1;
+  }
+
+  for (const r of [...laysSettled, ...backsSettled]) {
+    if (isFeeUpfrontProtection(r)) {
+      // Estorno: cancelamento ou ArbiShield devolve a dedução cobrada na ativação
+      if (dashIsFeeReturnedStatus(r)) {
+        const fee = dashFeeUpfrontCents(r);
+        if (fee > 0) {
+          reversed += fee;
+          nReversed += 1;
+        }
+      }
+      // Exchange: taxa já entrou em charged no created_at — não somar de novo
+      continue;
+    }
     const st = String(r.status || "").toLowerCase();
-    if (st.includes("won_platform")) continue;
+    if (st.includes("won_platform") || st.includes("cancelled")) continue;
     const c = dashPlatformCut(r);
     if (c > 0) {
-      cut += c;
-      nRows += 1;
+      legacy += c;
+      nLegacy += 1;
     }
   }
-  return { cut, nRows };
+
+  return {
+    cut: Math.max(0, charged - reversed) + legacy,
+    charged,
+    reversed,
+    legacy,
+    nRows: nCharged + nLegacy,
+    nCharged,
+    nReversed,
+    nLegacy,
+    model: "fee_upfront_on_charge_v2",
+  };
 }
 
 async function getDashboardStats() {
@@ -1278,6 +1365,7 @@ async function getDashboardStats() {
   const todayProtectionProfit = protToday.cut;
   const todayDesafioProfit = desafioToday.net;
   // Receita/lucro operacional do dia — NÃO inclui depósitos
+  // Proteções fee_upfront: dedução no ato da proteção (created_at)
   const todayNetRevenue = todayProtectionProfit + todayDesafioProfit;
   const todayRealProfit = todayNetRevenue - todayExpenses;
 
@@ -1310,8 +1398,10 @@ async function getDashboardStats() {
     todayExpenses,
     todayRealProfit,
     todayProtectionCount: protToday.nRows,
+    todayProtectionCharged: protToday.charged || 0,
+    todayProtectionReversed: protToday.reversed || 0,
     todayDesafioSteps: desafioToday.steps,
-    fix: "dashboard-kpis-v1",
+    fix: "dashboard-kpis-v2",
   };
 }
 
