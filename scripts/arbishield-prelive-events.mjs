@@ -1449,8 +1449,33 @@ async function settleMatchFromBody(body, token) {
     // sem abertas e sem reparo — ainda assim marca placar se pedido
   }
 
+  // Resolve nome do admin para gravar “Encerrado por”
+  let settledByName = adminId.slice(0, 8);
+  try {
+    const profRows = await sb(
+      `/rest/v1/profiles?select=full_name,email&id=eq.${encodeURIComponent(adminId)}&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    const prof = Array.isArray(profRows) ? profRows[0] : null;
+    if (prof) {
+      settledByName =
+        (prof.full_name && String(prof.full_name).trim()) ||
+        (prof.email && String(prof.email).trim()) ||
+        settledByName;
+    }
+  } catch {
+    /* keep short id */
+  }
+
+  const prevMeta =
+    match.metadata && typeof match.metadata === "object" ? { ...match.metadata } : {};
+  prevMeta.settled_by = adminId;
+  prevMeta.settled_by_name = settledByName;
+  prevMeta.settled_at = now;
+  prevMeta.settled_outcome = outcome;
+
   // Só agora marca a partida (evita o trigger de proteções ativas).
-  // updated_by = adminId: trigger match_change_logs exige admin_id NOT NULL.
+  // updated_by/settled_by = adminId: trigger match_change_logs exige admin_id NOT NULL.
   // status_v2 enum na VPS aceita "closed" (não "settled").
   const basePatch = {
     final_score: String(finalScore),
@@ -1459,6 +1484,8 @@ async function settleMatchFromBody(body, token) {
     markets,
     updated_at: now,
     updated_by: adminId,
+    settled_by: adminId,
+    metadata: prevMeta,
   };
   const patchAttempts = [
     { ...basePatch, status_v2: "closed" },

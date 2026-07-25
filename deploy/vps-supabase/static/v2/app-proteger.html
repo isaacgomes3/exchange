@@ -187,16 +187,17 @@
         var a = Number(layOdd) > 1.01 ? Number(layOdd) : 1.01;
         return a / (a - 1);
       }
-      /** fee_upfront sobre odd BACK efetiva. Não trava o stake. */
+      /** fee_upfront sobre odd BACK efetiva. amount = cobertura (LAY=resp. · BACK=stake). */
       function calcFeeUpfront(amountCents, odd) {
-        var stake = Math.floor(amountCents);
+        var coverage = Math.floor(amountCents);
         var a = odd > 1.01 ? odd : 1.01;
-        var grossReturn = Math.round(stake * a);
-        var profit = Math.max(0, grossReturn - stake);
-        var userProfit = Math.round(stake * 0.015);
+        var grossReturn = Math.round(coverage * a);
+        var profit = Math.max(0, grossReturn - coverage);
+        var userProfit = Math.round(coverage * 0.015);
         var feeNow = Math.max(0, profit - userProfit);
         return {
-          stakeCents: stake,
+          stakeCents: coverage,
+          responsibilityCents: coverage,
           grossReturnCents: grossReturn,
           grossProfitCents: profit,
           userProfitCents: userProfit,
@@ -204,13 +205,19 @@
           effectiveBackOdd: a,
         };
       }
+      /** LAY: amountCents = responsabilidade (não o stake da casa). */
       function calcLay(amountCents, odd) {
-        var backOdd = layToBackOdd(odd);
+        var marketOdd = Number(odd) > 1.01 ? Number(odd) : 1.01;
+        var backOdd = layToBackOdd(marketOdd);
         var c = calcFeeUpfront(amountCents, backOdd);
-        c.marketOdd = Number(odd) > 1.01 ? Number(odd) : 1.01;
+        c.marketOdd = marketOdd;
         c.effectiveBackOdd = backOdd;
+        c.responsibilityCents = Math.floor(amountCents);
+        c.stakeCents =
+          marketOdd > 1.01 ? Math.round(amountCents / (marketOdd - 1)) : 0;
         return c;
       }
+      /** BACK: amountCents = stake da casa. */
       function calcBack(amountCents, odd) {
         return calcFeeUpfront(amountCents, odd);
       }

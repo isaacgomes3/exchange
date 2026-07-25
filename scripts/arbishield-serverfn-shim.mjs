@@ -5145,15 +5145,43 @@ async function settleMatch(token, body) {
   }
 
   const adminId = requireUserId(token);
+  let settledByName = String(adminId).slice(0, 8);
+  try {
+    const profRows = await sb(
+      `/rest/v1/profiles?select=full_name,email&id=eq.${encodeURIComponent(adminId)}&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    const prof = Array.isArray(profRows) ? profRows[0] : null;
+    if (prof) {
+      settledByName =
+        (prof.full_name && String(prof.full_name).trim()) ||
+        (prof.email && String(prof.email).trim()) ||
+        settledByName;
+    }
+  } catch {
+    /* */
+  }
+
+  const prevMeta =
+    match.metadata && typeof match.metadata === "object" ? { ...match.metadata } : {};
+  if (!marketId) {
+    prevMeta.settled_by = adminId;
+    prevMeta.settled_by_name = settledByName;
+    prevMeta.settled_at = now;
+    if (outcome) prevMeta.settled_outcome = outcome;
+  }
+
   const patchMatch = {
     markets,
     updated_at: now,
     updated_by: adminId,
+    metadata: prevMeta,
   };
   if (!marketId) {
     if (finalScore) patchMatch.final_score = String(finalScore);
     patchMatch.settled_at = now;
     patchMatch.status = "settled";
+    patchMatch.settled_by = adminId;
   }
 
   // status_v2 enum VPS: "closed" (não "settled"); updated_by alimenta trigger admin_id
