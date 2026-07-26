@@ -1,9 +1,9 @@
 /**
- * Cliente HTTP BetBra (sportsbook / client API).
- * Descoberta no bundle Angular: base https://betbra.bet.br/client/api/
+ * Cliente HTTP Soft2Bet sportsbook (BetBra / Fulltbet / etc.).
  *   POST auth/login  → cookies de sessão + JWT em body.token
  *   GET  clients/balance → { balance }
  *
+ * Marca via EXCHANGE_BRAND=betbra|fulltbet (default betbra).
  * Precisa IP BR (VPS). Fora do BR o Cloudflare redireciona para countryblock.
  */
 
@@ -12,20 +12,54 @@ function envStr(name, fallback = "") {
   return v == null || v === "" ? fallback : String(v);
 }
 
+/** Defaults por marca Mexchange (mesmo stack Soft2Bet). */
+export function resolveExchangeBrand() {
+  const raw = envStr("EXCHANGE_BRAND", envStr("BOTSHIELD_EXCHANGE_BRAND", "betbra"));
+  const b = String(raw || "betbra").toLowerCase().trim();
+  if (b === "fulltbet" || b === "fullt" || b === "ftb") return "fulltbet";
+  return "betbra";
+}
+
+export function exchangeBrandDefaults(brand = resolveExchangeBrand()) {
+  if (brand === "fulltbet") {
+    return {
+      brand: "fulltbet",
+      label: "Fulltbet",
+      site: "https://fulltbet.bet.br",
+      clientApi: "https://fulltbet.bet.br/client/api",
+      origin: "https://fulltbet.bet.br",
+      referer: "https://fulltbet.bet.br/",
+      mexchangeApi: "https://mexchange-api.fulltbet.bet.br/api",
+      mexchangeOrigin: "https://mexchange.fulltbet.bet.br",
+      mexchangeReferer: "https://mexchange.fulltbet.bet.br/",
+    };
+  }
+  return {
+    brand: "betbra",
+    label: "BetBra",
+    site: "https://betbra.bet.br",
+    clientApi: "https://betbra.bet.br/client/api",
+    origin: "https://betbra.bet.br",
+    referer: "https://betbra.bet.br/",
+    mexchangeApi: "https://mexchange-api.betbra.bet.br/api",
+    mexchangeOrigin: "https://mexchange.betbra.bet.br",
+    mexchangeReferer: "https://mexchange.betbra.bet.br/",
+  };
+}
+
 export function resolveBetbraClientApiBase() {
-  return envStr(
-    "BETBRA_CLIENT_API_BASE",
-    "https://betbra.bet.br/client/api"
-  ).replace(/\/$/, "");
+  const d = exchangeBrandDefaults();
+  return envStr("BETBRA_CLIENT_API_BASE", d.clientApi).replace(/\/$/, "");
 }
 
 function defaultHeaders() {
+  const d = exchangeBrandDefaults();
   return {
     Accept: "application/json",
     "Content-Type": "application/json",
     "Accept-Language": "pt-BR,pt;q=0.9",
-    Referer: envStr("BETBRA_REFERER", "https://betbra.bet.br/"),
-    Origin: envStr("BETBRA_ORIGIN", "https://betbra.bet.br"),
+    Referer: envStr("BETBRA_REFERER", d.referer),
+    Origin: envStr("BETBRA_ORIGIN", d.origin),
     "User-Agent": envStr(
       "BETBRA_USER_AGENT",
       "Mozilla/5.0 (compatible; ArbiShieldBotShield/1.0)"

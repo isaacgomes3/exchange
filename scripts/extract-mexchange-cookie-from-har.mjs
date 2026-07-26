@@ -39,7 +39,7 @@ function extractFromHar(har) {
   const hits = [];
   for (const entry of entries) {
     const url = String(entry?.request?.url || "");
-    if (!/mexchange-api\.betbra\.bet\.br/i.test(url)) continue;
+    if (!/mexchange-api\.(?:betbra|fulltbet)\.bet\.br/i.test(url)) continue;
     const cookie = headerValue(entry.request?.headers, "Cookie");
     if (!cookie) continue;
     hits.push({

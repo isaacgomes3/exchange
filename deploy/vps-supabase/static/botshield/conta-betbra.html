@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex,nofollow" />
-  <title>Conta BetBra — BotShield</title>
+  <title>Conta Exchange — BotShield</title>
   <link rel="stylesheet" href="/botshield.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/botshield.js"></script>
@@ -14,9 +14,10 @@
   <div id="page" hidden>
     <div class="page-head">
       <div>
-        <h1>Conta BetBra</h1>
+        <h1>Conta Exchange</h1>
         <p class="sub">
-          Login e senha da exchange — guardados criptografados. Só neste subdomínio.
+          Login e senha da Mexchange (Fulltbet ou BetBra) — criptografados.
+          A marca ativa é a configurada na VPS (<code>EXCHANGE_BRAND</code>).
         </p>
       </div>
     </div>
@@ -38,7 +39,7 @@
           <strong id="stLabel">—</strong>
         </div>
         <div class="field" style="flex-direction:column;align-items:flex-start;padding:12px;gap:4px">
-          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Saldo BetBra</span>
+          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Saldo Exchange</span>
           <strong id="stBalance">—</strong>
         </div>
       </div>
@@ -53,7 +54,7 @@
         style="margin-top:14px;display:grid"
       >
         <label style="grid-column:1/-1">
-          Código do e-mail BetBra (novo dispositivo)
+          Código do e-mail da exchange (novo dispositivo)
           <input
             id="deviceCode"
             type="text"
@@ -71,8 +72,8 @@
         </div>
         <p class="notice" style="margin:0;grid-column:1/-1">
           Não há tela de “dispositivos” no site. O código chega por
-          <strong>e-mail/SMS</strong> (“Código de Login”) quando a VPS tenta
-          logar. Cole aqui e envie.
+          <strong>e-mail/SMS</strong> (“Código de Login”) da Fulltbet/BetBra
+          quando a VPS tenta logar. Cole aqui e envie.
         </p>
       </div>
       <p id="balanceHint" class="notice" style="margin-top:12px">
@@ -133,7 +134,7 @@
         console). O jeito mais fácil é exportar um HAR e capturar aqui:
       </p>
       <ol class="notice" style="margin:10px 0;padding-left:1.2em">
-        <li>Chrome logado na exchange → <kbd>F12</kbd> → Network → filtro <code>mexchange-api</code></li>
+        <li>Chrome logado na exchange (Fulltbet ou BetBra) → <kbd>F12</kbd> → Network → filtro <code>mexchange-api</code></li>
         <li>Botão direito num pedido → <strong>Copiar → Copiar como cURL</strong></li>
         <li>Cole o cURL na caixa abaixo (ou arraste um arquivo <code>.har</code>)</li>
       </ol>
@@ -143,7 +144,7 @@
         <textarea
           id="curlPaste"
           rows="4"
-          placeholder="curl &quot;https://mexchange-api.betbra.bet.br/...&quot; -b &quot;BIAB_LANGUAGE=PT_BR; sb=...&quot; ..."
+          placeholder="curl &quot;https://mexchange-api.fulltbet.bet.br/...&quot; -b &quot;BIAB_LANGUAGE=PT_BR; sb=...&quot; ..."
           style="width:100%;margin-top:6px"
         ></textarea>
       </label>
@@ -551,7 +552,7 @@
         const hits = [];
         for (const entry of entries) {
           const url = String(entry?.request?.url || "");
-          if (!/mexchange-api\.betbra\.bet\.br/i.test(url)) continue;
+          if (!/mexchange-api\.(?:betbra|fulltbet)\.bet\.br/i.test(url)) continue;
           let cookie = headerFromHar(entry.request?.headers, "Cookie");
           if (!cookie && entry.request?.cookies?.length) {
             cookie = entry.request.cookies
@@ -604,7 +605,7 @@
           const hit = extractCookieFromHar(har);
           if (!hit) {
             throw new Error(
-              "Nenhum Cookie de mexchange-api no HAR. Exporte com a exchange aberta e logada."
+              "Nenhum Cookie de mexchange-api (Fulltbet/BetBra) no HAR. Exporte com a exchange aberta e logada."
             );
           }
           document.getElementById("cookieHeader").value = hit.cookie;

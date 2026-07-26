@@ -1,16 +1,18 @@
 /**
- * Helpers Mexchange (BetBra exchange) — descobertos no frontend Next.js:
+ * Helpers Mexchange (BetBra / Fulltbet) — descobertos no frontend Next.js:
  *   POST   /api/offers   body { odds-type, exchange-type, offers:[{runner-id,event-id,market-id,side,odds,stake,keep-in-play}] }
  *   DELETE /api/offers?offer-ids=...
  *   GET    /api/offers?offset=0&per-page=200
  *   GET    /api/events/{id}?sport-id=15
  *   GET    /api/account/info
  * Auth: cookies (withCredentials) no domínio mexchange-api.*.bet.br
+ * Marca: EXCHANGE_BRAND=betbra|fulltbet
  */
 
 import {
   cookieHeaderFromJar,
   mergeCookieJars,
+  exchangeBrandDefaults,
 } from "./betbra-client-api.mjs";
 
 function envStr(name, fallback = "") {
@@ -20,11 +22,12 @@ function envStr(name, fallback = "") {
 }
 
 export function resolveMexchangeApiBase() {
+  const d = exchangeBrandDefaults();
   return envStr(
     "MEXCHANGE_ORDERS_API_BASE",
     envStr(
       "EXCHANGE_ORDERS_BASE_URL",
-      envStr("MEXCHANGE_API_BASE_URL", "https://mexchange-api.betbra.bet.br/api")
+      envStr("MEXCHANGE_API_BASE_URL", d.mexchangeApi)
     )
   ).replace(/\/$/, "");
 }
@@ -185,15 +188,13 @@ export function cookieLooksAuthed(cookieHeader = "") {
 export function buildMexchangeAuthHeaders(session = {}) {
   const jarHeader = sessionCookieHeader(session);
   const browserish = cookieLooksAuthed(jarHeader);
+  const brand = exchangeBrandDefaults();
   const headers = {
     Accept: "application/json",
     "Content-Type": "application/json",
     "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-    Origin: envStr("MEXCHANGE_ORIGIN", "https://mexchange.betbra.bet.br"),
-    Referer: envStr(
-      "MEXCHANGE_REFERER",
-      "https://mexchange.betbra.bet.br/"
-    ),
+    Origin: envStr("MEXCHANGE_ORIGIN", brand.mexchangeOrigin),
+    Referer: envStr("MEXCHANGE_REFERER", brand.mexchangeReferer),
     "User-Agent": envStr(
       "MEXCHANGE_USER_AGENT",
       browserish
