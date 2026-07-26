@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Monitor de Desafios — ArbiShield</title>
-  <meta name="arbishield-build" content="desafio-monitor-mercado-settle-v1" />
+  <meta name="arbishield-build" content="desafio-monitor-mercado-settle-v2" />
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css?v=monitor-desafios-mercado-v1" />
@@ -267,22 +267,18 @@
         current &&
         (dz.is_active === true ||
           normalizePartResult(current.result) === "pending");
-      var liveMeta =
-        step.metadata && step.metadata.live && typeof step.metadata.live === "object"
-          ? step.metadata.live
-          : null;
-      var feedFinished =
-        !!(liveMeta &&
-          (liveMeta.finished === true ||
-            /^(finished|ended|closed|ft)$/i.test(
-              String(liveMeta.status || liveMeta.match_status || "")
-            )));
+      // Não usar desafio_steps.metadata — coluna pode não existir no schema PostgREST do join.
       var scoreHint =
         step.final_score_home != null && step.final_score_away != null
           ? String(step.final_score_home) + "-" + String(step.final_score_away)
-          : liveMeta && liveMeta.score
-            ? String(liveMeta.score)
-            : "";
+          : "";
+      var stepStatus = String(step.status || "").toLowerCase();
+      var feedFinished =
+        stepStatus === "pending" ||
+        (!!scoreHint &&
+          (stepStatus === "live" ||
+            stepStatus === "current" ||
+            stepStatus === "pending"));
 
       row.stepIndex = Math.min(stepIndex, row.totalSteps || 5);
       row.entriesPlayed = cycle.length;
@@ -573,20 +569,40 @@
         return;
       }
 
-      var res = await supa
-        .from("desafio_participations")
-        .select(
-          "id,user_id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at," +
-            "profiles(full_name)," +
-            "desafios(title,number,status,is_active,target_profit_pct,total_steps,deleted_at)," +
-            "desafio_steps(id,step_index,match_label,status,home_team,away_team,league_name,starts_at,result," +
-            "market_name,market_name_arbishield,market_name_casa,final_score_home,final_score_away,metadata)"
-        )
-        .eq("side", "arbishield")
-        .order("created_at", { ascending: false })
-        .limit(2000);
-
-      if (res.error) throw res.error;
+      // Select em camadas: schema antigo pode não ter market_name_* / scores.
+      var selects = [
+        "id,user_id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at," +
+          "profiles(full_name)," +
+          "desafios(title,number,status,is_active,target_profit_pct,total_steps,deleted_at)," +
+          "desafio_steps(id,step_index,match_label,status,home_team,away_team,league_name,starts_at,result," +
+          "market_name,market_name_arbishield,market_name_casa,final_score_home,final_score_away)",
+        "id,user_id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at," +
+          "profiles(full_name)," +
+          "desafios(title,number,status,is_active,target_profit_pct,total_steps,deleted_at)," +
+          "desafio_steps(id,step_index,match_label,status,home_team,away_team,league_name,starts_at,result," +
+          "market_name,market_name_arbishield,market_name_casa)",
+        "id,user_id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at," +
+          "profiles(full_name)," +
+          "desafios(title,number,status,is_active,target_profit_pct,total_steps,deleted_at)," +
+          "desafio_steps(id,step_index,match_label,status,home_team,away_team,league_name,starts_at,result)",
+      ];
+      var res = null;
+      var lastErr = null;
+      for (var si = 0; si < selects.length; si++) {
+        res = await supa
+          .from("desafio_participations")
+          .select(selects[si])
+          .eq("side", "arbishield")
+          .order("created_at", { ascending: false })
+          .limit(2000);
+        if (!res.error) break;
+        lastErr = res.error;
+        // Só faz fallback se for coluna inexistente
+        var msg = String((res.error && res.error.message) || "");
+        if (!/does not exist|column/i.test(msg)) break;
+        res = null;
+      }
+      if (!res || res.error) throw lastErr || (res && res.error) || new Error("Falha ao carregar");
       state.rows = buildRows(res.data || []);
       render();
       if (manual) showErr("");

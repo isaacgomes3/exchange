@@ -18,7 +18,7 @@ WEB="$WEB_ROOT/v2"
 SHIM_DIR="${ARBISHIELD_SHIM_DIR:-/opt/arbishield}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-$SHIM_DIR/scripts}"
 MARKER_ADMIN="desafio-finalizar-ft-pending-v1"
-MARKER_MONITOR="desafio-monitor-mercado-settle-v1"
+MARKER_MONITOR="desafio-monitor-mercado-settle-v2"
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
@@ -83,6 +83,10 @@ tmpm="$(mktemp)"
 download_repo_file "deploy/vps-supabase/static/v2/admin-monitoring-desafios.html" "$tmpm"
 grep -q 'data-settle' "$tmpm" || die "monitor sem botões de encerrar"
 grep -q 'Arbi:' "$tmpm" || die "monitor sem linha de mercado Arbi"
+# Não pode pedir metadata no join (schema PostgREST da VPS quebra)
+if grep -q 'desafio_steps([^)]*metadata' "$tmpm"; then
+  die "monitor ainda seleciona desafio_steps.metadata"
+fi
 rm -f "$tmpm"
 
 log "3/4 sync lib — FT → status pending"
