@@ -66,6 +66,7 @@
   var COL_LABELS = {
     user_name: "nome",
     user_id: "user id",
+    carteira: "carteira",
     amount_cents: "valor",
     created_at: "criado em",
     origem: "origem",

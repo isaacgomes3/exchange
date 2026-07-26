@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Publica nome do cliente na Gestão de Aprovações (admin-approvals).
+# Publica nome do cliente + carteira (Apostador/Provedor/Desafio) na Gestão de Aprovações.
 #
 # Na VPS (root):
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/aprovacoes-nome-cliente-8f4a/scripts/vps-hotfix-admin-aprovacoes-nome.sh?$(date +%s)")
@@ -9,7 +9,7 @@ REF="${ARBISHIELD_REF:-cursor/aprovacoes-nome-cliente-8f4a}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 
-echo "==> hotfix admin aprovações — nome do cliente ($(date -Is))"
+echo "==> hotfix admin aprovações — nome + carteira ($(date -Is))"
 
 publish() {
   local rel="$1"
@@ -33,12 +33,13 @@ publish() {
   [[ "$n" -gt 0 ]] || echo "  AVISO: nenhum $name em /var/www (copiado em $WEB_ROOT)"
 }
 
+publish deploy/vps-supabase/static/v2/v2-pages.js
 publish deploy/vps-supabase/static/v2/admin-approvals.html
 
-if curl -fsS -m 8 "https://arbishield.app/admin-approvals.html" 2>/dev/null | grep -q 'user_name'; then
-  echo "  smoke admin-approvals.html → OK (user_name)"
+if curl -fsS -m 8 "https://arbishield.app/admin-approvals.html" 2>/dev/null | grep -q 'carteiraLabel'; then
+  echo "  smoke admin-approvals.html → OK (carteira)"
 else
-  echo "  AVISO: admin-approvals.html público ainda sem user_name (cache/path?)"
+  echo "  AVISO: admin-approvals.html público ainda sem carteira (cache/path?)"
 fi
 
 echo

@@ -10,7 +10,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/finance-admins.js?v=fin-acl-2"></script>
   <script src="/v2.js?v=fin-acl-2"></script>
-  <script src="/v2-pages.js?v=aprovacoes-nome-1"></script>
+  <script src="/v2-pages.js?v=aprovacoes-carteira-1"></script>
   <script src="/v2-shell.js?v=fin-acl-2" defer></script>
 </head>
 <body data-shell="admin" data-active="approvals">
@@ -23,14 +23,26 @@
   <div id="err" class="err"></div>
   <div id="pageBody"><div class="meta">Carregando…</div></div>
   <script>
+    function carteiraLabel(row) {
+      var t = String((row && row.deposit_type) || "").toLowerCase();
+      if (t === "desafio" || t === "challenge") return "Desafio";
+      if (t === "investor" || t === "provider" || t === "partner") return "Provedor";
+      return "Apostador";
+    }
+
     ArbiV2Page.mountAdmin({
       sources: [
         { table: "manual_deposits", limit: 200 },
         { table: "withdrawals", limit: 200 },
       ],
-      cols: ["id", "user_name", "amount_cents", "status", "created_at"],
+      cols: ["id", "user_name", "carteira", "amount_cents", "status", "created_at"],
       enrichUserNames: true,
-      searchPlaceholder: "Buscar por nome, id, status…",
+      searchPlaceholder: "Buscar por nome, carteira, id, status…",
+      rowMap: function (row) {
+        var copy = Object.assign({}, row);
+        copy.carteira = carteiraLabel(row);
+        return copy;
+      },
     });
   </script>
 </body>
