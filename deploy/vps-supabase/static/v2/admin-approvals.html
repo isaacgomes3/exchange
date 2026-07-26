@@ -6,11 +6,12 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Aprovações — ArbiShield v2</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css" />
+  <link rel="stylesheet" href="/v2.css?v=nav-acc-3" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js"></script>
-  <script src="/v2-pages.js"></script>
-  <script src="/v2-shell.js" defer></script>
+  <script src="/finance-admins.js?v=fin-acl-2"></script>
+  <script src="/v2.js?v=fin-acl-2"></script>
+  <script src="/v2-pages.js?v=aprovacoes-nome-1"></script>
+  <script src="/v2-shell.js?v=fin-acl-2" defer></script>
 </head>
 <body data-shell="admin" data-active="approvals">
   <div class="page-head">
@@ -22,7 +23,15 @@
   <div id="err" class="err"></div>
   <div id="pageBody"><div class="meta">Carregando…</div></div>
   <script>
-    ArbiV2Page.mountAdmin({"sources": [{"table": "manual_deposits", "limit": 200}, {"table": "withdrawals", "limit": 200}], "cols": ["id", "user_id", "amount_cents", "status", "created_at"]});
+    ArbiV2Page.mountAdmin({
+      sources: [
+        { table: "manual_deposits", limit: 200 },
+        { table: "withdrawals", limit: 200 },
+      ],
+      cols: ["id", "user_name", "amount_cents", "status", "created_at"],
+      enrichUserNames: true,
+      searchPlaceholder: "Buscar por nome, id, status…",
+    });
   </script>
 </body>
 </html>
