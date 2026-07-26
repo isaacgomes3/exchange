@@ -132,8 +132,8 @@
     const top = el(
       '<div class="topbar">' +
         '<div class="crumbs">Dashboard · <strong></strong></div>' +
-        '<div class="bal-chip" id="bsBalanceChip" title="Saldo Exchange">' +
-        '<span class="bal-label">Saldo Exchange</span>' +
+        '<div class="bal-chip" id="bsBalanceChip" title="Saldo BetBra">' +
+        '<span class="bal-label">Saldo BetBra</span>' +
         '<strong class="bal-value" id="bsBalanceValue">…</strong>' +
         '<span class="bal-hint" id="bsBalanceHint" hidden></span>' +
         '<button type="button" class="btn-ghost bal-refresh" id="bsBalanceRefresh" title="Atualizar">↻</button>' +
@@ -211,7 +211,7 @@
       val.textContent = formatBrl(balance);
       chip.classList.remove("is-err");
       chip.classList.add("is-ok");
-      chip.title = "Saldo Exchange";
+      chip.title = "Saldo BetBra";
       if (hint) {
         hint.hidden = true;
         hint.textContent = "";
