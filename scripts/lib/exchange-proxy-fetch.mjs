@@ -53,10 +53,41 @@ function envStr(name, fallback = "") {
   return v == null || v === "" ? fallback : String(v).trim();
 }
 
+/** Remove aspas acidentais de valores de .env */
+function stripEnvQuotes(s = "") {
+  return String(s || "")
+    .trim()
+    .replace(/^['"]+|['"]+$/g, "")
+    .trim();
+}
+
+const PROXY_PLACEHOLDERS = new Set([
+  "",
+  "sua-url",
+  "sua_url",
+  "your-url",
+  "changeme",
+  "placeholder",
+  "none",
+  "null",
+  "undefined",
+  "-",
+  "n/a",
+]);
+
+function looksLikePlaceholder(raw = "") {
+  const s = stripEnvQuotes(raw).toLowerCase();
+  if (PROXY_PLACEHOLDERS.has(s)) return true;
+  if (/^https?:\/\/(sua-?url|your-?url|example\.com|localhost)\/?$/i.test(s)) {
+    return true;
+  }
+  return false;
+}
+
 /** host:port:user:pass → http://user:pass@host:port */
 export function parseProxyDsn(dsn = "") {
-  const s = String(dsn || "").trim();
-  if (!s) return "";
+  const s = stripEnvQuotes(dsn);
+  if (!s || looksLikePlaceholder(s)) return "";
   if (/^https?:\/\//i.test(s) || /^socks5?:\/\//i.test(s)) return s;
   const parts = s.split(":");
   if (parts.length < 4) return "";
@@ -65,27 +96,66 @@ export function parseProxyDsn(dsn = "") {
   const user = parts[2];
   const pass = parts.slice(3).join(":"); // senha pode ter ':'
   if (!host || !port || !user) return "";
+  if (!/^\d+$/.test(port)) return "";
   const u = encodeURIComponent(user);
   const p = encodeURIComponent(pass);
   return `http://${u}:${p}@${host}:${port}`;
 }
 
-export function resolveExchangeProxyUrl() {
-  const direct =
-    envStr("EXCHANGE_PROXY") ||
-    envStr("BETBRA_PROXY") ||
-    envStr("HTTPS_PROXY") ||
-    envStr("HTTP_PROXY") ||
-    envStr("ALL_PROXY");
-  if (direct) {
-    if (!/^https?:\/\//i.test(direct) && !/^socks/i.test(direct) && direct.includes(":")) {
-      const fromDsn = parseProxyDsn(direct);
-      if (fromDsn) return fromDsn;
+/** Aceita só URL de proxy que o Undici ProxyAgent consegue usar. */
+export function normalizeProxyUrl(raw = "") {
+  const s = stripEnvQuotes(raw);
+  if (!s || looksLikePlaceholder(s)) return "";
+
+  let candidate = s;
+  if (!/^https?:\/\//i.test(s) && !/^socks5?:\/\//i.test(s)) {
+    if (s.includes(":")) {
+      candidate = parseProxyDsn(s);
+      if (!candidate) return "";
+    } else {
+      return "";
     }
-    return direct;
   }
-  const dsn = envStr("EXCHANGE_PROXY_DSN") || envStr("BETBRA_PROXY_DSN");
-  return parseProxyDsn(dsn);
+
+  try {
+    const u = new URL(candidate);
+    if (u.protocol !== "http:" && u.protocol !== "https:") {
+      // socks: ProxyAgent do undici não aceita — rejeita com clareza depois
+      if (/^socks/i.test(u.protocol)) return candidate;
+      return "";
+    }
+    if (!u.hostname) return "";
+    return u.toString();
+  } catch {
+    return "";
+  }
+}
+
+export function resolveExchangeProxyUrl() {
+  const candidates = [
+    envStr("EXCHANGE_PROXY"),
+    envStr("BETBRA_PROXY"),
+    envStr("HTTPS_PROXY"),
+    envStr("HTTP_PROXY"),
+    envStr("ALL_PROXY"),
+    envStr("EXCHANGE_PROXY_DSN"),
+    envStr("BETBRA_PROXY_DSN"),
+  ];
+
+  const skipped = [];
+  for (const raw of candidates) {
+    if (!raw) continue;
+    const url = normalizeProxyUrl(raw);
+    if (url) return url;
+    skipped.push(raw.slice(0, 48));
+  }
+
+  // Se só havia placeholders (ex.: EXCHANGE_PROXY=SUA-URL), devolve vazio
+  // para o caller não chamar ProxyAgent com lixo.
+  if (skipped.length) {
+    return "";
+  }
+  return "";
 }
 
 export function isExchangeProxyEnabled() {
@@ -103,29 +173,84 @@ export function getExchangeProxyAgent() {
   if (!isExchangeProxyEnabled()) return null;
   const url = resolveExchangeProxyUrl();
   if (!url) return null;
+  if (/^socks/i.test(url)) {
+    const err = new Error(
+      "Proxy SOCKS não suportado pelo Undici. Use HTTP(S) sticky BR " +
+        "(EXCHANGE_PROXY_DSN=host:port:user:pass)."
+    );
+    err.code = "EXCHANGE_PROXY_SOCKS";
+    throw err;
+  }
   if (cachedAgent && cachedUrl === url) return cachedAgent;
-  cachedUrl = url;
-  cachedAgent = new ProxyAgent(url);
-  return cachedAgent;
+  try {
+    cachedUrl = url;
+    cachedAgent = new ProxyAgent(url);
+    return cachedAgent;
+  } catch (e) {
+    cachedAgent = null;
+    cachedUrl = "";
+    const err = new Error(
+      "Proxy inválido (Invalid URL). Confira EXCHANGE_PROXY_DSN=host:port:user:pass " +
+        "e remova EXCHANGE_PROXY=SUA-URL / placeholders do .env. " +
+        (e instanceof Error ? e.message : String(e))
+    );
+    err.code = "EXCHANGE_PROXY_INVALID";
+    err.cause = e;
+    throw err;
+  }
 }
 
 /** fetch com proxy quando configurado; senão fetch global. */
 export async function exchangeFetch(url, init = {}) {
+  const target = String(url || "").trim();
+  if (!target || !/^https?:\/\//i.test(target)) {
+    const err = new Error(
+      `URL da exchange inválida: ${JSON.stringify(target)}. ` +
+        "Confira BETBRA_CLIENT_API_BASE (ex.: https://betbra.bet.br/client/api)."
+    );
+    err.code = "EXCHANGE_TARGET_INVALID";
+    throw err;
+  }
   const agent = getExchangeProxyAgent();
   if (!agent) {
-    return fetch(url, init);
+    return fetch(target, init);
   }
   const { signal, ...rest } = init || {};
-  return undiciFetch(url, {
-    ...rest,
-    signal,
-    dispatcher: agent,
-  });
+  try {
+    return await undiciFetch(target, {
+      ...rest,
+      signal,
+      dispatcher: agent,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/invalid url/i.test(msg)) {
+      const err = new Error(
+        "Invalid URL no proxy/fetch — geralmente EXCHANGE_PROXY=SUA-URL no .env. " +
+          "Rode o hotfix proxy de novo com EXCHANGE_PROXY_DSN=host:port:user:pass " +
+          "(ele limpa placeholders)."
+      );
+      err.code = "EXCHANGE_PROXY_INVALID";
+      err.cause = e;
+      throw err;
+    }
+    throw e;
+  }
 }
 
 export function proxyPublicInfo() {
+  const rawDsn = envStr("EXCHANGE_PROXY_DSN") || envStr("BETBRA_PROXY_DSN");
+  const rawUrl = envStr("EXCHANGE_PROXY") || envStr("BETBRA_PROXY");
   const url = resolveExchangeProxyUrl();
-  if (!url) return { enabled: false };
+  if (!url) {
+    return {
+      enabled: false,
+      hint:
+        rawUrl || rawDsn
+          ? "proxy env presente mas inválido (ex.: SUA-URL) — use DSN host:port:user:pass"
+          : "sem EXCHANGE_PROXY_DSN",
+    };
+  }
   try {
     const u = new URL(url);
     return {

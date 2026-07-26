@@ -277,11 +277,17 @@ export async function betbraClientLogin({
         redirect: "manual",
       });
     } catch (e) {
-      const err = new Error(
-        `Falha de rede no login BetBra: ${e instanceof Error ? e.message : e}`
-      );
+      const raw = e instanceof Error ? e.message : String(e);
+      const hint = /invalid url|proxy/i.test(raw)
+        ? " — proxy/URL inválidos. No .env da VPS remova EXCHANGE_PROXY=SUA-URL e use EXCHANGE_PROXY_DSN=host:port:user:pass; rode o hotfix proxy de novo."
+        : " — confira login/senha, BETBRA_CLIENT_API_BASE e se o proxy Sticky BR está ativo.";
+      const err = new Error(`Falha de rede no login BetBra: ${raw}${hint}`);
       err.status = 502;
-      err.code = "BETBRA_LOGIN_NETWORK";
+      err.code =
+        e && e.code === "EXCHANGE_PROXY_INVALID"
+          ? "EXCHANGE_PROXY_INVALID"
+          : "BETBRA_LOGIN_NETWORK";
+      err.cause = e;
       throw err;
     }
   }

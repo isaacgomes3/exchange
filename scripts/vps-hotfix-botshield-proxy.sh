@@ -77,6 +77,37 @@ p.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
 PY
 }
 
+# Remove EXCHANGE_PROXY=SUA-URL (e similares) que geram "Invalid URL" no Undici
+clear_bad_proxy_url() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+  CLEAR_PROXY_FILE="$file" python3 - <<'PY'
+from pathlib import Path
+import os
+p = Path(os.environ["CLEAR_PROXY_FILE"])
+bad = {
+    "", "sua-url", "sua_url", "your-url", "changeme", "placeholder",
+    "none", "null", "undefined", "-", "n/a",
+}
+lines = p.read_text(encoding="utf-8", errors="ignore").splitlines()
+out = []
+removed = 0
+for ln in lines:
+    if not ln.startswith("EXCHANGE_PROXY="):
+        out.append(ln)
+        continue
+    raw = ln.split("=", 1)[1].strip().strip("'\"")
+    low = raw.lower()
+    if low in bad or low.startswith("sua-") or "sua-url" in low:
+        removed += 1
+        continue
+    out.append(ln)
+p.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
+if removed:
+    print(f"  limpou EXCHANGE_PROXY placeholder em {p}")
+PY
+}
+
 echo "==> vps-hotfix-botshield-proxy.sh ($(date -Is)) ref=$REF"
 
 log "1/4 undici (ProxyAgent)"
@@ -145,6 +176,8 @@ for f in "${ENV_FILES[@]}"; do
     upsert_env "$f" "EXCHANGE_ORDERS_PLACE_PATH" "/offers"
     upsert_env "$f" "EXCHANGE_LOCAL_BRIDGE" "0"
     upsert_env "$f" "EXCHANGE_PROXY_ENABLED" "1"
+    # Placeholder antigo EXCHANGE_PROXY=SUA-URL gera "Invalid URL" e bloqueia o DSN
+    clear_bad_proxy_url "$f"
     if [[ -n "$PROXY_DSN" ]]; then
       upsert_env "$f" "EXCHANGE_PROXY_DSN" "$PROXY_DSN"
     fi
