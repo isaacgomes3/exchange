@@ -6,9 +6,9 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-etapa-contagem-v2" />
-  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-etapa-contagem-v2" />
-  <link rel="stylesheet" href="/v2.css?v=desafio-etapa-contagem-2" />
+  <meta name="arbishield-build" content="desafio-em-andamento-v3" />
+  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-em-andamento-v3" />
+  <link rel="stylesheet" href="/v2.css?v=desafio-em-andamento-3" />
   <style>
     /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
     .dz-sb-market {
@@ -427,6 +427,143 @@
       .dz-hist-metrics { grid-template-columns: 1fr; }
       .dz-hist-entries li { grid-template-columns: 1fr; gap: 4px; }
     }
+
+    /* Desafio em andamento — stepper horizontal acima do card */
+    .dz-andamento {
+      margin: 0 0 18px;
+      padding: 16px 14px 18px;
+      border-radius: 18px;
+      border: 1px solid rgba(198, 255, 0, 0.18);
+      background:
+        radial-gradient(700px 180px at 50% 0%, rgba(198, 255, 0, 0.08), transparent 60%),
+        linear-gradient(180deg, #0a1410 0%, #050505 100%);
+    }
+    .dz-andamento[hidden] { display: none !important; }
+    .dz-andamento .section-label { margin: 0 0 12px; }
+    .dz-andamento-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px 14px;
+      margin-bottom: 14px;
+    }
+    .dz-andamento-head .etapa-now {
+      font-size: 13px;
+      font-weight: 900;
+      color: #fff;
+      letter-spacing: -0.01em;
+    }
+    .dz-andamento-head .etapa-now b { color: #c6ff00; }
+    .dz-andamento-head a {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #c6ff00;
+      text-decoration: none;
+    }
+    .dz-andamento-head a:hover { text-decoration: underline; }
+
+    .dz-stepper {
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0;
+      width: 100%;
+      margin: 0 0 16px;
+      padding: 4px 2px 2px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .dz-step {
+      flex: 1 1 0;
+      min-width: 56px;
+      max-width: 100px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 0 2px;
+    }
+    .dz-step-dot {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 12px;
+      font-weight: 900;
+      border: 2px solid rgba(255, 255, 255, 0.14);
+      background: #141a18;
+      color: #8b9690;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+    }
+    .dz-step.is-won .dz-step-dot {
+      border-color: #c6ff00;
+      background: radial-gradient(circle at 30% 30%, #1a2e14, #0c160c);
+      color: #c6ff00;
+      box-shadow: 0 0 16px rgba(198, 255, 0, 0.3);
+    }
+    .dz-step.is-current .dz-step-dot {
+      border-color: #60a5fa;
+      background: radial-gradient(circle at 30% 30%, #16304a, #0a1420);
+      color: #60a5fa;
+      box-shadow: 0 0 20px rgba(96, 165, 250, 0.4);
+      animation: dz-step-pulse 1.8s ease-in-out infinite;
+    }
+    .dz-step.is-final.is-current .dz-step-dot {
+      border-color: #fbbf24;
+      color: #fbbf24;
+      background: radial-gradient(circle at 30% 30%, #3a2a0a, #1a1408);
+      box-shadow: 0 0 20px rgba(251, 191, 36, 0.35);
+    }
+    .dz-step.is-locked .dz-step-dot { opacity: 0.45; }
+    .dz-step-label {
+      margin-top: 6px;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #8b9690;
+      line-height: 1.2;
+    }
+    .dz-step.is-current .dz-step-label { color: #60a5fa; }
+    .dz-step.is-won .dz-step-label { color: #c6ff00; }
+    .dz-step-conn {
+      flex: 0 0 auto;
+      align-self: center;
+      width: clamp(14px, 3.5vw, 32px);
+      height: 3px;
+      margin-top: 16px;
+      border-radius: 99px;
+      background: rgba(255, 255, 255, 0.08);
+      position: relative;
+      overflow: hidden;
+    }
+    .dz-step-conn.is-lit {
+      background: linear-gradient(90deg, #c6ff00, rgba(198, 255, 0, 0.25));
+      box-shadow: 0 0 10px rgba(198, 255, 0, 0.3);
+    }
+    .dz-step-conn.is-lit::after {
+      content: "";
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 40%;
+      background: linear-gradient(90deg, transparent, #fff, transparent);
+      animation: dz-step-flow 1.6s linear infinite;
+      opacity: 0.5;
+    }
+    @keyframes dz-step-pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.08); }
+    }
+    @keyframes dz-step-flow {
+      0% { left: -40%; }
+      100% { left: 100%; }
+    }
+    #listAndamento.app-desafio-grid { margin: 0; }
   </style>
 </head>
 <body data-shell="app" data-active="desafio">
@@ -483,6 +620,17 @@
     </div>
   </div>
 
+  <!-- Desafio em andamento: stepper horizontal + card atual (acima dos disponíveis) -->
+  <section class="dz-andamento" id="dzAndamento" hidden aria-label="Desafio em andamento">
+    <div class="section-label"><span class="dot" style="background:#c6ff00"></span>Desafio em andamento</div>
+    <div class="dz-andamento-head">
+      <div class="etapa-now" id="dzAndamentoEtapa">Etapa <b>—</b> de 5</div>
+      <a id="dzAndamentoJornada" href="/app-desafio-jornada.html">Ver jornada →</a>
+    </div>
+    <div class="dz-stepper" id="dzStepper" aria-label="Progresso das etapas"></div>
+    <div id="listAndamento" class="app-desafio-grid"></div>
+  </section>
+
   <div class="dz-filters" id="filters" role="tablist">
     <button type="button" class="dz-filter is-on" data-f="Todos">Todos</button>
     <button type="button" class="dz-filter" data-f="Futebol">Futebol</button>
@@ -494,7 +642,7 @@
     </button>
   </div>
 
-  <div class="section-label"><span class="dot" style="background:#c6ff00"></span>Desafios disponíveis</div>
+  <div class="section-label" id="dzDisponiveisLabel"><span class="dot" style="background:#c6ff00"></span>Desafios disponíveis</div>
   <div id="list" class="app-desafio-grid"><div class="ops-empty">Carregando…</div></div>
   <div class="dz-live-toasts" id="dzLiveToasts" aria-live="assertive" aria-atomic="true"></div>
 
@@ -517,6 +665,17 @@
       var liveWatch = Object.create(null); // stepId -> {home,away,finished,homeTeam,awayTeam}
       var liveAlertsEnabled = localStorage.getItem("dz_live_alerts") !== "0";
       var liveAudioCtx = null;
+      /** Circuito do cliente (etapas) — independente do step_index do evento */
+      var clientCircuit = {
+        active: false,
+        currentStage: 1,
+        totalStages: 5,
+        wonCount: 0,
+        pendingCount: 0,
+        pendingStepIds: {},
+        pendingDesafioIds: {},
+        cycleParts: [],
+      };
 
       function casaBrandFromLink(url) {
         var u = String(url || "").toLowerCase();
@@ -628,13 +787,166 @@
           if (box) box.classList.toggle("is-unlocked", unlocked);
           var filters = document.getElementById("filters");
           if (filters) filters.hidden = !unlocked;
-          var sectionLabel = document.querySelector(".section-label");
+          var sectionLabel = document.getElementById("dzDisponiveisLabel");
           if (sectionLabel) sectionLabel.hidden = !unlocked;
+          var andamento = document.getElementById("dzAndamento");
+          if (andamento && !unlocked) andamento.hidden = true;
           if (items.length) render();
         } catch (ex) {
           if (balEl) balEl.textContent = "—";
           console.warn("[desafio] saldo", ex);
         }
+      }
+
+      function normCircuitResult(r) {
+        r = String(r || "").toLowerCase().trim();
+        if (!r) return "pending";
+        if (r === "win" || r === "won" || r === "won_platform" || r === "won_external") return "won";
+        if (r === "lose" || r === "lost" || r === "won_exchange" || r === "casa") return "lost";
+        if (r === "pending" || r === "active" || r === "open" || r === "current") return "pending";
+        return r;
+      }
+
+      function currentCycleParts(parts) {
+        var list = (parts || []).slice().sort(function (a, b) {
+          return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+        });
+        var start = 0;
+        for (var i = 0; i < list.length; i++) {
+          if (normCircuitResult(list[i].result) === "lost") start = i + 1;
+        }
+        return list.slice(start);
+      }
+
+      async function loadClientCircuit() {
+        clientCircuit = {
+          active: false,
+          currentStage: 1,
+          totalStages: 5,
+          wonCount: 0,
+          pendingCount: 0,
+          pendingStepIds: {},
+          pendingDesafioIds: {},
+          cycleParts: [],
+        };
+        try {
+          var pr = await supa
+            .from("desafio_participations")
+            .select("id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at")
+            .eq("user_id", viewUserId)
+            .eq("side", "arbishield")
+            .order("created_at", { ascending: true })
+            .limit(200);
+          if (pr.error || !Array.isArray(pr.data)) return clientCircuit;
+          var cycle = currentCycleParts(pr.data);
+          var won = 0;
+          var pending = 0;
+          var pendingStepIds = {};
+          var pendingDesafioIds = {};
+          cycle.forEach(function (p) {
+            var res = normCircuitResult(p.result);
+            if (res === "won") won += 1;
+            else if (res === "pending") {
+              pending += 1;
+              if (p.step_id) pendingStepIds[String(p.step_id)] = true;
+              if (p.desafio_id) pendingDesafioIds[String(p.desafio_id)] = true;
+            }
+          });
+          var stage = pending > 0 ? won + 1 : cycle.length ? won + 1 : 1;
+          stage = Math.min(Math.max(1, stage), 5);
+          clientCircuit = {
+            active: cycle.length > 0 || pending > 0 || won > 0,
+            currentStage: stage,
+            totalStages: 5,
+            wonCount: won,
+            pendingCount: pending,
+            pendingStepIds: pendingStepIds,
+            pendingDesafioIds: pendingDesafioIds,
+            cycleParts: cycle,
+          };
+        } catch (ex) {
+          console.warn("[desafio] circuito", ex);
+        }
+        return clientCircuit;
+      }
+
+      function stepperHtml(circuit) {
+        var total = circuit.totalStages || 5;
+        var cur = circuit.currentStage || 1;
+        var won = circuit.wonCount || 0;
+        var html = "";
+        for (var i = 1; i <= total; i++) {
+          var isFinal = i === total;
+          var cls = "dz-step";
+          if (i <= won) cls += " is-won";
+          else if (i === cur) cls += " is-current";
+          else cls += " is-locked";
+          if (isFinal) cls += " is-final";
+          var mark = i <= won ? "✓" : isFinal ? "👑" : String(i);
+          var label = isFinal ? "Final" : "Etapa " + i;
+          var hint =
+            i <= won ? "Concluída" : i === cur ? "Você está aqui" : "Bloqueada";
+          html +=
+            '<div class="' +
+            cls +
+            '"><div class="dz-step-dot" aria-hidden="true">' +
+            mark +
+            '</div><div class="dz-step-label">' +
+            label +
+            "<br/>" +
+            hint +
+            "</div></div>";
+          if (i < total) {
+            html +=
+              '<div class="dz-step-conn' +
+              (i <= won ? " is-lit" : "") +
+              '" aria-hidden="true"></div>';
+          }
+        }
+        return html;
+      }
+
+      function splitItemsByCircuit(list) {
+        var andamento = [];
+        var disponiveis = [];
+        var c = clientCircuit || {};
+        var used = {};
+        function mark(it) {
+          used[String(it.id)] = true;
+        }
+        function isUsed(it) {
+          return !!used[String(it.id)];
+        }
+
+        // 1) Entrada pendente do cliente = desafio em andamento
+        (list || []).forEach(function (it) {
+          if (c.pendingStepIds && c.pendingStepIds[String(it.stepId || "")]) {
+            andamento.push(it);
+            mark(it);
+          } else if (
+            c.pendingDesafioIds &&
+            c.pendingDesafioIds[String(it.desafioId || "")]
+          ) {
+            andamento.push(it);
+            mark(it);
+          }
+        });
+
+        // 2) Sem pendente, mas com vitórias: próximo jogo jogável = em andamento
+        if (!andamento.length && c.active && (c.wonCount > 0 || c.pendingCount > 0)) {
+          var next = (list || []).find(function (it) {
+            return !it.isFinished && it.isActiveDesafio;
+          });
+          if (next) {
+            andamento.push(next);
+            mark(next);
+          }
+        }
+
+        (list || []).forEach(function (it) {
+          if (!isUsed(it)) disponiveis.push(it);
+        });
+        return { andamento: andamento, disponiveis: disponiveis };
       }
 
       await refreshAccessBar();
@@ -1679,41 +1991,28 @@
         });
       }
 
-      function render() {
-        var now = Date.now();
-        var host = document.getElementById("list");
-        if (!(desafioBalCents > 0)) {
-          host.innerHTML =
-            '<div class="ops-empty"><h2>Acesso aos desafios bloqueado</h2><p>Deposite no saldo do Desafio para ver e entrar nos jogos disponíveis.</p></div>';
-          return;
-        }
-        var visible = applyFilter(items);
-        if (!visible.length) {
-          host.innerHTML =
-            '<div class="ops-empty"><h2>Nenhum desafio disponível no momento</h2><p>Aguarde o lançamento de um novo desafio pela equipe ArbiShield.</p></div>';
-          return;
-        }
-        host.innerHTML = visible.map(function (it) { return cardHtml(it, now); }).join("");
+      function refreshCardMath(card) {
+        if (!card) return null;
+        var id = card.getAttribute("data-card");
+        var item = items.find(function (x) { return String(x.id) === String(id); });
+        if (!item) return null;
+        var input = card.querySelector("[data-stake-input]");
+        var stake = reaisToCents(input && input.value);
+        if (!(stake > 0)) stake = item.entradaCents || MIN_ACCESS_CENTS;
+        var sides = calcSides(item, stake);
+        var elCasa = card.querySelector("[data-casa-stake]");
+        var elArbi = card.querySelector("[data-recebe-arbi]");
+        var elCasaRec = card.querySelector("[data-recebe-casa]");
+        var elRet = card.querySelector(".dz-v2-retorno");
+        if (elCasa) elCasa.textContent = money(sides.casaStakeCents);
+        if (elArbi) elArbi.textContent = money(sides.recebeArbiCents);
+        if (elCasaRec) elCasaRec.textContent = money(sides.recebeCasaCents);
+        if (elRet) elRet.innerHTML = retornoEstimadoHtml(item);
+        return { item: item, sides: sides };
+      }
 
-        function refreshCardMath(card) {
-          var id = card.getAttribute("data-card");
-          var item = items.find(function (x) { return String(x.id) === String(id); });
-          if (!item) return null;
-          var input = card.querySelector("[data-stake-input]");
-          var stake = reaisToCents(input && input.value);
-          if (!(stake > 0)) stake = item.entradaCents || MIN_ACCESS_CENTS;
-          var sides = calcSides(item, stake);
-          var elCasa = card.querySelector("[data-casa-stake]");
-          var elArbi = card.querySelector("[data-recebe-arbi]");
-          var elCasaRec = card.querySelector("[data-recebe-casa]");
-          var elRet = card.querySelector(".dz-v2-retorno");
-          if (elCasa) elCasa.textContent = money(sides.casaStakeCents);
-          if (elArbi) elArbi.textContent = money(sides.recebeArbiCents);
-          if (elCasaRec) elCasaRec.textContent = money(sides.recebeCasaCents);
-          if (elRet) elRet.innerHTML = retornoEstimadoHtml(item);
-          return { item: item, sides: sides };
-        }
-
+      function bindCardHost(host) {
+        if (!host) return;
         host.querySelectorAll("[data-stake-input]").forEach(function (input) {
           input.addEventListener("input", function () {
             refreshCardMath(input.closest(".dz-card"));
@@ -1813,16 +2112,81 @@
                 throw new Error(msg);
               }
               alert("Aposta registrada na ArbiShield!");
-              // Etapa é do cliente (jornada calcula); evento não tem etapa
-              location.href =
-                "/app-desafio-jornada.html" +
-                (item.desafioId ? "?desafioId=" + encodeURIComponent(item.desafioId) : "");
+              location.href = "/app-desafio.html";
             } catch (ex) {
               alert((ex && ex.message) || "Erro ao apostar");
               btn.disabled = false;
             }
           });
         });
+      }
+
+      function paintAndamentoSection(andamentoItems, now) {
+        var box = document.getElementById("dzAndamento");
+        var stepHost = document.getElementById("dzStepper");
+        var listHost = document.getElementById("listAndamento");
+        var etapaEl = document.getElementById("dzAndamentoEtapa");
+        var link = document.getElementById("dzAndamentoJornada");
+        if (!box || !stepHost || !listHost) return;
+
+        var show =
+          desafioBalCents > 0 &&
+          clientCircuit.active &&
+          (andamentoItems.length > 0 ||
+            clientCircuit.wonCount > 0 ||
+            clientCircuit.pendingCount > 0);
+        box.hidden = !show;
+        if (!show) {
+          listHost.innerHTML = "";
+          stepHost.innerHTML = "";
+          return;
+        }
+
+        if (etapaEl) {
+          etapaEl.innerHTML =
+            "Etapa <b>" +
+            esc(String(clientCircuit.currentStage || 1)) +
+            "</b> de " +
+            esc(String(clientCircuit.totalStages || 5));
+        }
+        if (link) {
+          var dzId =
+            (andamentoItems[0] && andamentoItems[0].desafioId) ||
+            (clientCircuit.cycleParts[0] && clientCircuit.cycleParts[0].desafio_id) ||
+            "";
+          link.href =
+            "/app-desafio-jornada.html" +
+            (dzId ? "?desafioId=" + encodeURIComponent(dzId) : "");
+        }
+        stepHost.innerHTML = stepperHtml(clientCircuit);
+        listHost.innerHTML = andamentoItems.length
+          ? andamentoItems.map(function (it) { return cardHtml(it, now); }).join("")
+          : '<div class="ops-empty" style="padding:18px 8px"><p>Você está na etapa ' +
+            esc(String(clientCircuit.currentStage)) +
+            " — aguarde o próximo evento lançado.</p></div>";
+        bindCardHost(listHost);
+      }
+
+      function render() {
+        var now = Date.now();
+        var host = document.getElementById("list");
+        var split = splitItemsByCircuit(items);
+        paintAndamentoSection(split.andamento, now);
+
+        if (!(desafioBalCents > 0)) {
+          host.innerHTML =
+            '<div class="ops-empty"><h2>Acesso aos desafios bloqueado</h2><p>Deposite no saldo do Desafio para ver e entrar nos jogos disponíveis.</p></div>';
+          return;
+        }
+        var visible = applyFilter(split.disponiveis);
+        if (!visible.length) {
+          host.innerHTML = split.andamento.length
+            ? '<div class="ops-empty"><h2>Nenhum outro desafio disponível</h2><p>Seu desafio em andamento está acima. Novos eventos aparecem aqui.</p></div>'
+            : '<div class="ops-empty"><h2>Nenhum desafio disponível no momento</h2><p>Aguarde o lançamento de um novo desafio pela equipe ArbiShield.</p></div>';
+          return;
+        }
+        host.innerHTML = visible.map(function (it) { return cardHtml(it, now); }).join("");
+        bindCardHost(host);
       }
 
       function tickCountdowns() {
@@ -2188,6 +2552,8 @@
           var nb = b.startsAtMs || Number.MAX_SAFE_INTEGER;
           return na - nb;
         });
+
+        await loadClientCircuit();
 
         // Semeia placar atual (evita falso "gol" no 1º poll)
         detectLiveAlerts(items);

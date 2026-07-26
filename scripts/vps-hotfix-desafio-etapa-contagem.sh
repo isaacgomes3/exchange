@@ -64,7 +64,7 @@ log "1/4 UI — monitor + jornada + cards"
 for pair in \
   "deploy/vps-supabase/static/v2/admin-monitoring-desafios.html|currentCycleParts|desafio-etapa-contagem-v3" \
   "deploy/vps-supabase/static/v2/app-desafio-jornada.html|j-flow-h|desafio-jornada-horizontal-v1" \
-  "deploy/vps-supabase/static/v2/app-desafio.html|desafio-etapa-contagem-v2|dz-v2-brand"
+  "deploy/vps-supabase/static/v2/app-desafio.html|dzAndamento|desafio-em-andamento-v3"
 do
   IFS='|' read -r rel needle marker <<<"$pair"
   tmp="$(mktemp)"
@@ -85,6 +85,9 @@ do
     fi
   fi
   if [[ "$rel" == *app-desafio.html ]]; then
+    grep -q 'dz-stepper' "$tmp" || die "app-desafio sem stepper horizontal"
+    grep -q 'Desafio em andamento' "$tmp" || die "app-desafio sem seção em andamento"
+    grep -q 'loadClientCircuit' "$tmp" || die "app-desafio sem loadClientCircuit"
     if grep -q 'dz-v2-etapa' "$tmp"; then
       die "app-desafio.html ainda mostra Etapa no evento (dz-v2-etapa)"
     fi

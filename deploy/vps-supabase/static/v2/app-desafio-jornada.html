@@ -1386,10 +1386,13 @@
         showErr("");
         $("layout").hidden = false;
         $("empty").hidden = true;
-        $("mapTitle").textContent = "Desafio";
+        $("mapTitle").textContent = "Sua jornada";
         $("mainPath").innerHTML =
-          '<p class="j-empty" style="padding:28px 12px">Aguardando lançamento manual de um desafio no admin.</p>';
-        try { paintProgress(); } catch (e2) { /* */ }
+          '<p class="j-empty" style="padding:20px 12px;width:100%">Aguardando lançamento do evento.</p>';
+        try {
+          paintEventCard();
+          paintProgress();
+        } catch (e2) { /* */ }
       }
     })();
   </script>
