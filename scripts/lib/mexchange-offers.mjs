@@ -14,6 +14,7 @@ import {
   mergeCookieJars,
   exchangeBrandDefaults,
 } from "./betbra-client-api.mjs";
+import { exchangeFetch } from "./exchange-proxy-fetch.mjs";
 
 function envStr(name, fallback = "") {
   const v = process.env[name];
@@ -267,7 +268,7 @@ export function buildMexchangeAuthHeaders(session = {}) {
 export async function fetchMexchangeAccountInfo(session = {}) {
   const base = resolveMexchangeApiBase();
   const url = `${base}/account/info`;
-  const res = await fetch(url, {
+  const res = await exchangeFetch(url, {
     method: "GET",
     headers: buildMexchangeAuthHeaders(session),
     redirect: "manual",
@@ -436,7 +437,7 @@ export async function resolveExactScoreRunner({
   }
   const base = resolveMexchangeApiBase();
   const url = `${base}/events/${encodeURIComponent(eventId)}?sport-id=${encodeURIComponent(sportId)}`;
-  const res = await fetch(url, {
+  const res = await exchangeFetch(url, {
     method: "GET",
     headers: buildMexchangeAuthHeaders(session),
     redirect: "manual",

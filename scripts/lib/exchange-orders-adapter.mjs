@@ -37,6 +37,7 @@ import {
   bridgePlaceOrder,
   isLocalBridgeEnabled,
 } from "./exchange-local-bridge.mjs";
+import { exchangeFetch } from "./exchange-proxy-fetch.mjs";
 
 /** Marker: API pública autenticada da exchange existe (não só catálogo). */
 export const EXCHANGE_PUBLIC_TRADING_API = "mexchange-public-trading-api-v1";
@@ -372,7 +373,7 @@ export class BetbraOrdersAdapter {
     }
     const url = this.url(this.placePath, {});
     const body = buildExchangePlaceBody(payload);
-    const res = await fetch(url, {
+    const res = await exchangeFetch(url, {
       method: "POST",
       headers: buildExchangeAuthHeaders(session),
       body: JSON.stringify(body),
@@ -443,7 +444,7 @@ export class BetbraOrdersAdapter {
     const url = /offer-ids=/.test(base)
       ? base
       : `${base}${base.includes("?") ? "&" : "?"}offer-ids=${encodeURIComponent(id)}`;
-    const res = await fetch(url, {
+    const res = await exchangeFetch(url, {
       method: "DELETE",
       headers: buildExchangeAuthHeaders(session),
       redirect: "manual",
@@ -482,7 +483,7 @@ export class BetbraOrdersAdapter {
     const url = /[?]/.test(listUrl)
       ? listUrl
       : `${listUrl}?offset=0&per-page=200`;
-    const res = await fetch(url, {
+    const res = await exchangeFetch(url, {
       method: "GET",
       headers: buildExchangeAuthHeaders(session),
       redirect: "manual",

@@ -158,7 +158,9 @@ function loadEnvFile(path, { overrideKeys = null } = {}) {
 }
 
 const forceBridgeEnv = (k) =>
-  /^(EXCHANGE_LOCAL_BRIDGE|BOTSHIELD_LOCAL_BRIDGE)/i.test(k);
+  /^(EXCHANGE_LOCAL_BRIDGE|BOTSHIELD_LOCAL_BRIDGE|EXCHANGE_PROXY|BETBRA_PROXY|HTTPS_PROXY|HTTP_PROXY|ALL_PROXY)/i.test(
+    k
+  );
 
 loadEnvFile(resolve(root, ".env.local"));
 loadEnvFile(resolve(root, ".env"));

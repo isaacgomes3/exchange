@@ -4,8 +4,10 @@
  *   GET  clients/balance → { balance }
  *
  * Marca via EXCHANGE_BRAND=betbra|fulltbet (default betbra).
- * Precisa IP BR (VPS). Fora do BR o Cloudflare redireciona para countryblock.
+ * Precisa IP BR (VPS ou proxy residencial Sticky BR).
  */
+
+import { exchangeFetch } from "./exchange-proxy-fetch.mjs";
 
 function envStr(name, fallback = "") {
   const v = process.env[name];
@@ -72,9 +74,10 @@ export async function resolveLoginPublicIp() {
   ];
   for (const u of urls) {
     try {
-      const r = await fetch(u, {
+      // Via proxy quando EXCHANGE_PROXY_* — Soft2Bet precisa do mesmo IP no ipDto
+      const r = await exchangeFetch(u, {
         headers: { Accept: "text/plain" },
-        signal: AbortSignal.timeout(4000),
+        signal: AbortSignal.timeout(8000),
       });
       const t = String(await r.text() || "")
         .trim()
@@ -233,7 +236,7 @@ export async function betbraClientLogin({
 
   async function postLogin() {
     try {
-      return await fetch(url, {
+      return await exchangeFetch(url, {
         method: "POST",
         headers: defaultHeaders(),
         body: JSON.stringify(body),
@@ -353,7 +356,7 @@ export async function betbraClientBalance({ cookies, cookieHeader, token } = {})
 
   let res;
   try {
-    res = await fetch(url, {
+    res = await exchangeFetch(url, {
       method: "GET",
       headers,
       redirect: "manual",
