@@ -92,6 +92,12 @@
     return COL_LABELS[c] || c.replace(/_/g, " ");
   }
 
+  var EMPHASIS_COLS = {
+    user_name: 1,
+    carteira: 1,
+    amount_cents: 1,
+  };
+
   function renderTable(cols, rows) {
     var head =
       "<tr>" +
@@ -106,17 +112,20 @@
         var cells = cols
           .map(function (c) {
             var val = moneyMaybe(c, r[c]);
+            var tdClass = EMPHASIS_COLS[c] ? ' class="ops-cell-emphasis"' : "";
             if (/status/i.test(c)) {
               var sc = statusClass(r[c]);
               return (
-                '<td><span class="ops-badge' +
+                "<td" +
+                tdClass +
+                '><span class="ops-badge' +
                 (sc ? " " + sc : "") +
                 '">' +
                 val +
                 "</span></td>"
               );
             }
-            return "<td>" + val + "</td>";
+            return "<td" + tdClass + ">" + val + "</td>";
           })
           .join("");
         return "<tr>" + cells + "</tr>";

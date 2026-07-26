@@ -1399,6 +1399,10 @@ body.lp a { text-decoration: none; }
   color: var(--muted-2);
   vertical-align: top;
 }
+.ops-table td.ops-cell-emphasis {
+  color: #fff;
+  font-weight: 700;
+}
 .ops-table tr:hover td { background: rgba(255,255,255,0.02); }
 .ops-badge {
   display: inline-flex;

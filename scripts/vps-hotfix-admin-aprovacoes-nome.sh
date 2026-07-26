@@ -33,6 +33,7 @@ publish() {
   [[ "$n" -gt 0 ]] || echo "  AVISO: nenhum $name em /var/www (copiado em $WEB_ROOT)"
 }
 
+publish deploy/vps-supabase/static/v2/v2.css
 publish deploy/vps-supabase/static/v2/v2-pages.js
 publish deploy/vps-supabase/static/v2/admin-approvals.html
 
@@ -40,6 +41,11 @@ if curl -fsS -m 8 "https://arbishield.app/admin-approvals.html" 2>/dev/null | gr
   echo "  smoke admin-approvals.html → OK (carteira)"
 else
   echo "  AVISO: admin-approvals.html público ainda sem carteira (cache/path?)"
+fi
+if curl -fsS -m 8 "https://arbishield.app/v2.css?v=aprovacoes-emphasis-1" 2>/dev/null | grep -q 'ops-cell-emphasis'; then
+  echo "  smoke v2.css → OK (emphasis)"
+else
+  echo "  AVISO: v2.css público ainda sem ops-cell-emphasis (cache/path?)"
 fi
 
 echo
