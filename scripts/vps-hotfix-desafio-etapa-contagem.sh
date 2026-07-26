@@ -63,7 +63,7 @@ publish_named() {
 log "1/4 UI — monitor + jornada + cards"
 for pair in \
   "deploy/vps-supabase/static/v2/admin-monitoring-desafios.html|currentCycleParts|desafio-etapa-contagem-v3" \
-  "deploy/vps-supabase/static/v2/app-desafio-jornada.html|indexesUnique|desafio-etapa-contagem-v1" \
+  "deploy/vps-supabase/static/v2/app-desafio-jornada.html|j-flow-h|desafio-jornada-horizontal-v1" \
   "deploy/vps-supabase/static/v2/app-desafio.html|desafio-etapa-contagem-v2|dz-v2-brand"
 do
   IFS='|' read -r rel needle marker <<<"$pair"
@@ -74,6 +74,14 @@ do
   if [[ "$rel" == *admin-monitoring-desafios.html ]]; then
     if grep -q '<th>Desafio</th>' "$tmp"; then
       die "monitor ainda tem coluna Desafio"
+    fi
+  fi
+  if [[ "$rel" == *app-desafio-jornada.html ]]; then
+    grep -q 'j-banner-slot' "$tmp" || die "jornada sem banner separado"
+    grep -q 'j-event' "$tmp" || die "jornada sem card evento lançado"
+    grep -q 'flex-direction: row' "$tmp" || die "jornada stepper não está horizontal"
+    if grep -q 'j-map-banner' "$tmp"; then
+      die "jornada ainda tem banner dentro do mapa"
     fi
   fi
   if [[ "$rel" == *app-desafio.html ]]; then
@@ -107,8 +115,8 @@ systemctl restart arbishield-serverfn-shim.service 2>/dev/null || \
 
 log "3/4 smoke UI"
 html="$(curl -fsS -m 8 "https://arbishield.app/admin-monitoring-desafios.html" 2>/dev/null || true)"
-if echo "$html" | grep -q 'resolveEtapaAtual' && echo "$html" | grep -q 'desafio-etapa-contagem-v1'; then
-  echo "  smoke monitor → OK"
+if echo "$html" | grep -q 'currentCycleParts' && echo "$html" | grep -q 'desafio-etapa-contagem-v3' && ! echo "$html" | grep -q '<th>Desafio</th>'; then
+  echo "  smoke monitor → OK (cliente + etapa, sem coluna Desafio)"
 else
   echo "  AVISO: monitor público ainda desatualizado (cache/path?)"
 fi
