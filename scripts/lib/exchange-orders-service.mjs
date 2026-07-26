@@ -912,6 +912,25 @@ export function createExchangeOrdersService(deps) {
         : acc.raw?.availableBalance != null
           ? Number(acc.raw.availableBalance)
           : null;
+    const isExternalApp =
+      session.authMode === "external_app" || session.forceBearer === true;
+    let failHint =
+      "AccountId vazio: a Mexchange respondeu sem conta autenticada. ";
+    if (isExternalApp) {
+      failHint +=
+        "Token de aplicativo externo não autenticou (ou a tela não entrega o token real). " +
+        "Use Atualizar saldo → código do e-mail, ou Cookie/cURL da exchange no Chrome.";
+    } else if (!cookieNames.length) {
+      failHint +=
+        "Sem cookies na sessão. Salve login+código do e-mail ou cole o cURL.";
+    } else {
+      failHint +=
+        "Cookie do Chrome costuma falhar no IP da VPS. " +
+        "Aprove o device da VPS: Atualizar saldo → código do e-mail.";
+    }
+    if (acc.errorMessage) {
+      failHint += " Resposta: " + String(acc.errorMessage).slice(0, 120);
+    }
     return {
       ok: authenticated,
       authenticated,
@@ -920,12 +939,17 @@ export function createExchangeOrdersService(deps) {
       currency: acc.currency,
       minBet: acc.minBet,
       httpStatus: acc.status,
-      cookieAuthed: true,
+      cookieAuthed: cookieNames.length > 0,
       cookieNames,
+      authMode: session.authMode || null,
+      error: authenticated
+        ? undefined
+        : "Sessão NÃO autenticada — accountId vazio (HTTP Mexchange " +
+          (acc.status || "?") +
+          "). Não tente LAY+BACK ainda.",
       hint: authenticated
         ? "Sessão OK na Mexchange — pode tentar o place."
-        : "AccountId vazio: sessão do Chrome não autentica na VPS (IP diferente). " +
-          "Aprove o login da VPS por e-mail/SMS (Atualizar saldo) — Cookie do Chrome costuma falhar fora do seu IP.",
+        : failHint,
       rawKeys:
         acc.raw && typeof acc.raw === "object" ? Object.keys(acc.raw) : [],
     };

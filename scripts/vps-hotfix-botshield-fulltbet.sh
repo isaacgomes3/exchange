@@ -93,6 +93,8 @@ grep -q 'exchangeBrandDefaults' "$SCRIPTS_DIR/lib/mexchange-offers.mjs" || die "
 grep -q 'fulltbet' "$WEB/conta-betbra.html" || die "UI sem mencao Fulltbet"
 grep -q 'Saldo Exchange' "$WEB/botshield-shell.js" || die "shell sem label Saldo Exchange"
 grep -q 'API bloqueada' "$WEB/botshield-shell.js" || die "shell sem tratamento API bloqueada"
+grep -q 'accountId vazio' "$WEB/conta-betbra.html" || die "UI Testar sessão sem exigir accountId"
+grep -q 'Sessão NÃO autenticada' "$SCRIPTS_DIR/lib/exchange-orders-service.mjs" || die "service sem erro accountId vazio"
 
 log "2/3 env → Fulltbet"
 n=0

@@ -721,23 +721,27 @@
             }
           );
           const json = await res.json().catch(() => ({}));
-          if (!res.ok || json?.ok === false) {
+          const id =
+            json.accountId != null && String(json.accountId).trim() !== ""
+              ? String(json.accountId)
+              : "";
+          const names = Array.isArray(json.cookieNames)
+            ? json.cookieNames.filter(Boolean).join(",")
+            : "";
+          // Critério real: accountId. HTTP 200 da Mexchange sem conta ≠ conectado.
+          if (!res.ok || json?.ok === false || json?.authenticated === false || !id) {
             const msg =
               (json.error || json.hint || `HTTP ${res.status}`) +
               (json.hint && json.error ? " — " + json.hint : "");
-            throw new Error(msg);
+            throw new Error(
+              msg ||
+                "accountId vazio — sessão não autenticou. Não tente LAY+BACK."
+            );
           }
-          const id =
-            json.accountId != null && String(json.accountId) !== ""
-              ? String(json.accountId)
-              : "—";
           const bal =
             json.balance != null && Number.isFinite(Number(json.balance))
               ? formatBrl(json.balance)
               : "—";
-          const names = Array.isArray(json.cookieNames)
-            ? json.cookieNames.join(",")
-            : "—";
           ok.style.display = "block";
           ok.textContent =
             "Sessão OK · accountId=" + id + " · saldo " + bal;
@@ -746,18 +750,20 @@
               "accountId=" +
               id +
               " · cookiesUsados=" +
-              names +
+              (names || "—") +
               " · HTTP " +
               (json.httpStatus || res.status) +
               ". Pode tentar LAY+BACK em Ordens.";
           }
           return json;
         } catch (ex) {
+          ok.style.display = "none";
           err.textContent = ex instanceof Error ? ex.message : String(ex);
           err.classList.add("show");
           if (hint) {
             hint.textContent =
-              "Falha no Testar sessão — token do app inválido, Cookie do Chrome sem IP VPS, ou device não aprovado. Tente código do e-mail ou outro token.";
+              "NÃO conectado — precisa de accountId. Token do app sem valor na tela, " +
+              "Cookie Chrome (IP ≠ VPS) ou device pendente. Use Atualizar saldo → código do e-mail.";
           }
           throw ex;
         }

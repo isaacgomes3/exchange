@@ -290,20 +290,38 @@ export async function fetchMexchangeAccountInfo(session = {}) {
     err.code = "MEXCHANGE_ACCOUNT_REDIRECT";
     throw err;
   }
-  const accountId =
-    data?.accountId != null && String(data.accountId) !== ""
-      ? String(data.accountId)
-      : data?.id != null
-        ? String(data.id)
-        : "";
+  const nested =
+    data && typeof data === "object"
+      ? data.account || data.data || data.result || data.payload || null
+      : null;
+  const pickId = (obj) => {
+    if (!obj || typeof obj !== "object") return "";
+    for (const k of ["accountId", "account_id", "id", "customerId", "userId"]) {
+      if (obj[k] != null && String(obj[k]).trim() !== "") return String(obj[k]);
+    }
+    return "";
+  };
+  const accountId = pickId(data) || pickId(nested);
+  const apiMsg =
+    (data && (data.errorMessage || data.message || data.error)) ||
+    (typeof data === "string" ? data : "") ||
+    "";
+  const blocked = /api blocked in server/i.test(String(apiMsg));
+  const ok = !!(res.ok && accountId && !blocked);
   return {
-    ok: res.ok,
+    ok,
     status: res.status,
-    accountId,
-    currency: data?.currency || null,
-    minBet: data?.minBet != null ? Number(data.minBet) : null,
+    accountId: accountId || "",
+    currency: data?.currency || nested?.currency || null,
+    minBet:
+      data?.minBet != null
+        ? Number(data.minBet)
+        : nested?.minBet != null
+          ? Number(nested.minBet)
+          : null,
     raw: data,
     url,
+    errorMessage: apiMsg ? String(apiMsg).slice(0, 240) : null,
   };
 }
 
