@@ -60,13 +60,14 @@ upsert_env() {
 
 echo "==> vps-hotfix-botshield-fulltbet.sh ($(date -Is)) ref=$REF"
 
-log "1/3 baixar libs + Conta Exchange"
+log "1/3 baixar libs + Conta Exchange + shell"
 for pair in \
   "scripts/lib/betbra-client-api.mjs:$SCRIPTS_DIR/lib/betbra-client-api.mjs" \
   "scripts/lib/mexchange-offers.mjs:$SCRIPTS_DIR/lib/mexchange-offers.mjs" \
   "scripts/lib/exchange-orders-service.mjs:$SCRIPTS_DIR/lib/exchange-orders-service.mjs" \
   "scripts/arbishield-serverfn-shim.mjs:$SHIM_DIR/scripts/arbishield-serverfn-shim.mjs" \
-  "deploy/vps-supabase/static/botshield/conta-betbra.html:$WEB/conta-betbra.html"
+  "deploy/vps-supabase/static/botshield/conta-betbra.html:$WEB/conta-betbra.html" \
+  "deploy/vps-supabase/static/botshield/botshield-shell.js:$WEB/botshield-shell.js"
 do
   rel="${pair%%:*}"
   out="${pair#*:}"
@@ -83,8 +84,15 @@ if [[ -f "$SHIM_DIR/arbishield-serverfn-shim.mjs" ]] || [[ -L "$SHIM_DIR/arbishi
 fi
 
 grep -q 'fulltbet' "$SCRIPTS_DIR/lib/betbra-client-api.mjs" || die "betbra-client-api sem fulltbet"
+grep -q 'BETBRA_API_BLOCKED' "$SCRIPTS_DIR/lib/betbra-client-api.mjs" || die "betbra-client-api sem mapa API blocked"
+grep -q 'Chrome/' "$SCRIPTS_DIR/lib/betbra-client-api.mjs" || die "betbra-client-api sem Chrome UA"
+if grep -q 'ArbiShieldBotShield' "$SCRIPTS_DIR/lib/betbra-client-api.mjs"; then
+  die "UA de bot ainda presente (causa API blocked)"
+fi
 grep -q 'exchangeBrandDefaults' "$SCRIPTS_DIR/lib/mexchange-offers.mjs" || die "mexchange-offers sem brand defaults"
 grep -q 'fulltbet' "$WEB/conta-betbra.html" || die "UI sem mencao Fulltbet"
+grep -q 'Saldo Exchange' "$WEB/botshield-shell.js" || die "shell sem label Saldo Exchange"
+grep -q 'API bloqueada' "$WEB/botshield-shell.js" || die "shell sem tratamento API bloqueada"
 
 log "2/3 env → Fulltbet"
 n=0

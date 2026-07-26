@@ -132,8 +132,8 @@
     const top = el(
       '<div class="topbar">' +
         '<div class="crumbs">Dashboard · <strong></strong></div>' +
-        '<div class="bal-chip" id="bsBalanceChip" title="Saldo BetBra">' +
-        '<span class="bal-label">Saldo BetBra</span>' +
+        '<div class="bal-chip" id="bsBalanceChip" title="Saldo Exchange">' +
+        '<span class="bal-label">Saldo Exchange</span>' +
         '<strong class="bal-value" id="bsBalanceValue">…</strong>' +
         '<span class="bal-hint" id="bsBalanceHint" hidden></span>' +
         '<button type="button" class="btn-ghost bal-refresh" id="bsBalanceRefresh" title="Atualizar">↻</button>' +
@@ -182,14 +182,24 @@
       const hint = document.getElementById("bsBalanceHint");
       const chip = document.getElementById("bsBalanceChip");
       if (!val || !chip) return;
-      const msg = String(detail || shortLabel || "Falha saldo");
-      val.textContent = shortLabel || "—";
+      let msg = String(detail || shortLabel || "Falha saldo");
+      let short = shortLabel || "—";
+      // Soft2Bet WAF: mensagem longa no chip; tooltip mantém o detalhe
+      if (/api blocked|BETBRA_API_BLOCKED|bloqueou o login/i.test(msg)) {
+        short = "API bloqueada";
+        msg =
+          "API bloqueada (WAF/VPS). Tente de novo em 1–2 min ou use Cookie da exchange no Chrome. · Conta Exchange";
+      }
+      val.textContent = short;
       chip.classList.remove("is-ok");
       chip.classList.add("is-err");
-      chip.title = msg + " · abra Conta BetBra";
+      chip.title = msg + (msg.includes("Conta Exchange") ? "" : " · abra Conta Exchange");
       if (hint) {
         hint.hidden = false;
-        hint.textContent = msg.length > 42 ? msg.slice(0, 40) + "…" : msg;
+        const tip = /api blocked|bloqueou o login|WAF/i.test(msg)
+          ? "API bloqueada (WAF/VPS)"
+          : msg;
+        hint.textContent = tip.length > 42 ? tip.slice(0, 40) + "…" : tip;
       }
     }
 
@@ -201,7 +211,7 @@
       val.textContent = formatBrl(balance);
       chip.classList.remove("is-err");
       chip.classList.add("is-ok");
-      chip.title = "Saldo BetBra";
+      chip.title = "Saldo Exchange";
       if (hint) {
         hint.hidden = true;
         hint.textContent = "";
@@ -234,13 +244,13 @@
           throw new Error(sj.error || "Status da conta indisponível");
         }
         if (!sj.connected) {
-          setChipErr("sem conta", "Nenhuma Conta BetBra salva");
+          setChipErr("sem conta", "Nenhuma Conta Exchange salva");
           return;
         }
         if (!sj.hasPassword) {
           setChipErr(
             "sem senha",
-            "Salve login/senha em Conta BetBra para ler o saldo"
+            "Salve login/senha em Conta Exchange para ler o saldo"
           );
           return;
         }

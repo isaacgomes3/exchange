@@ -52,19 +52,39 @@ export function resolveBetbraClientApiBase() {
   return envStr("BETBRA_CLIENT_API_BASE", d.clientApi).replace(/\/$/, "");
 }
 
+const CHROME_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36";
+
 function defaultHeaders() {
   const d = exchangeBrandDefaults();
   return {
-    Accept: "application/json",
+    Accept: "application/json, text/plain, */*",
     "Content-Type": "application/json",
-    "Accept-Language": "pt-BR,pt;q=0.9",
+    "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
     Referer: envStr("BETBRA_REFERER", d.referer),
     Origin: envStr("BETBRA_ORIGIN", d.origin),
-    "User-Agent": envStr(
-      "BETBRA_USER_AGENT",
-      "Mozilla/5.0 (compatible; ArbiShieldBotShield/1.0)"
-    ),
+    // Soft2Bet bloqueia UA de bot com "API blocked in server"
+    "User-Agent": envStr("BETBRA_USER_AGENT", CHROME_UA),
+    "sec-ch-ua": '"Chromium";v="150", "Not A(Brand";v="24", "Google Chrome";v="150"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
   };
+}
+
+function mapBetbraApiError(msg, data, status) {
+  const m = String(msg || "");
+  if (/api blocked in server/i.test(m)) {
+    const err = new Error(
+      "Exchange bloqueou o login da VPS (API blocked). " +
+        "Geralmente é anti-bot/WAF: tente de novo em 1–2 min, confira IP BR, " +
+        "ou use Cookie/cURL da Fulltbet logada no Chrome."
+    );
+    err.status = status || 403;
+    err.code = "BETBRA_API_BLOCKED";
+    err.details = data;
+    return err;
+  }
+  return null;
 }
 
 /** Extrai cookies de Set-Cookie (Node fetch getSetCookie ou header concatenado). */
@@ -191,24 +211,30 @@ export async function betbraClientLogin({
     err.details = { location: loc };
     throw err;
   }
+  const msgRaw =
+    (data && (data.errorMessage || data.message || data.error)) ||
+    (typeof data === "string" ? data : null) ||
+    text?.slice(0, 200) ||
+    "";
   if (!res.ok) {
-    const msg =
-      (data && (data.errorMessage || data.message || data.error)) ||
-      (typeof data === "string" ? data : null) ||
-      text?.slice(0, 200) ||
-      `Login BetBra HTTP ${res.status}`;
-    const err = new Error(String(msg));
+    const mapped = mapBetbraApiError(msgRaw, data, res.status);
+    if (mapped) throw mapped;
+    const err = new Error(String(msgRaw || `Login exchange HTTP ${res.status}`));
     err.status = res.status;
     err.code = "BETBRA_LOGIN_FAILED";
     err.details = data;
     throw err;
   }
+  // Soft2Bet às vezes responde 200 com "API blocked in server"
+  if (msgRaw && /api blocked in server/i.test(String(msgRaw))) {
+    throw mapBetbraApiError(msgRaw, data, 403);
+  }
   if (data?.validationRequired) {
     const err = new Error(
       code
-        ? "Código de login inválido ou expirado. Peça um novo em Atualizar saldo e use o código do e-mail BetBra."
-        : "BetBra enviou código de novo dispositivo por e-mail/SMS. " +
-          "Cole o código em Conta BetBra e clique em Enviar código."
+        ? "Código de login inválido ou expirado. Peça um novo em Atualizar saldo e use o código do e-mail."
+        : "A exchange enviou código de novo dispositivo por e-mail/SMS. " +
+          "Cole o código em Conta Exchange e clique em Enviar código."
     );
     err.status = 403;
     err.code = "BETBRA_DEVICE_VALIDATION";
@@ -285,7 +311,9 @@ export async function betbraClientBalance({ cookies, cookieHeader, token } = {})
     const msg =
       (data && (data.errorMessage || data.message || data.error)) ||
       text?.slice(0, 200) ||
-      `Saldo BetBra HTTP ${res.status}`;
+      `Saldo exchange HTTP ${res.status}`;
+    const mapped = mapBetbraApiError(msg, data, res.status);
+    if (mapped) throw mapped;
     const err = new Error(String(msg));
     err.status = res.status;
     err.code = "BETBRA_BALANCE_FAILED";
