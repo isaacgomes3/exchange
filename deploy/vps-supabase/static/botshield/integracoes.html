@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Integrações — BotShield</title>
+  <link rel="stylesheet" href="/botshield.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/botshield.js"></script>
+  <script src="/botshield-shell.js" defer></script>
+</head>
+<body data-active="integracoes">
+  <div id="page" hidden>
+    <div class="page-head">
+      <div>
+        <h1>Minhas integrações</h1>
+        <p class="sub">Conta BetBra e modo de sessão para os bots.</p>
+      </div>
+      <a class="btn btn-primary" href="/conta-betbra.html">Conta BetBra</a>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px">
+      <h2>Conta BetBra (login e senha)</h2>
+      <p>
+        Cadastre o login e a senha da exchange na área dedicada.
+        Credenciais ficam criptografadas e só são acessíveis neste subdomínio.
+      </p>
+      <div id="betbraStatus" class="notice">Carregando status…</div>
+      <div id="betbraBalance" class="notice" style="margin-top:10px">Saldo: —</div>
+      <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+        <a class="btn btn-primary" href="/conta-betbra.html">Abrir Conta BetBra</a>
+        <button class="btn btn-secondary" type="button" id="btnBalance">
+          Atualizar saldo
+        </button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Sessão / modo</h2>
+      <p>
+        Demo simula ordens. Live usa a Conta BetBra já salva (sem colar token) +
+        <code>EXCHANGE_ORDERS_LIVE=1</code> na VPS.
+      </p>
+      <div id="err" class="err"></div>
+      <div id="status" class="notice" style="margin-bottom:14px">—</div>
+      <form id="form" class="form-grid">
+        <label>
+          Modo
+          <select name="provider" id="provider">
+            <option value="demo">Demo (simulado)</option>
+            <option value="betbra">BetBra (usa Conta BetBra salva)</option>
+          </select>
+        </label>
+        <label>
+          Token opcional (avançado)
+          <input
+            name="accessToken"
+            id="accessToken"
+            placeholder="Só se quiser forçar um session token da casa"
+            autocomplete="off"
+          />
+        </label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" type="submit">Aplicar modo</button>
+          <button class="btn btn-secondary" type="button" id="btnDisconnect">
+            Desconectar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <script>
+    document.addEventListener("botshield:ready", async (ev) => {
+      const { sb } = ev.detail;
+      const err = document.getElementById("err");
+      const status = document.getElementById("status");
+      const betbraStatus = document.getElementById("betbraStatus");
+      const betbraBalance = document.getElementById("betbraBalance");
+      const providerEl = document.getElementById("provider");
+      let betbraReady = false;
+      let lastStatus = null;
+
+      async function token() {
+        const { data } = await sb.auth.getSession();
+        return data?.session?.access_token || "";
+      }
+
+      function liveLabel(json) {
+        if (json && json.live === true) return " · LIVE ligado";
+        if (json && json.live === false) return " · LIVE desligado na VPS";
+        return "";
+      }
+
+      function formatBrl(n) {
+        const v = Number(n);
+        if (!Number.isFinite(v)) return "—";
+        return v.toLocaleString("pt-BR", {
+          style: "currency",
+          currency: "BRL",
+        });
+      }
+
+      async function loadBetbraStatus() {
+        try {
+          const res = await fetch(
+            "/api/arbishield/exchange-session/status?provider=betbra",
+            {
+              headers: {
+                Accept: "application/json",
+                Authorization: "Bearer " + (await token()),
+              },
+            }
+          );
+          const json = await res.json().catch(() => ({}));
+          lastStatus = json;
+          betbraReady = !!(
+            res.ok &&
+            json.connected &&
+            (json.hasPassword || json.authMode === "token")
+          );
+          if (res.ok && json.connected) {
+            betbraStatus.textContent =
+              "Conta salva · " +
+              (json.loginMasked || "login ok") +
+              (json.hasPassword ? " · senha salva" : " · sem senha") +
+              liveLabel(json);
+            betbraBalance.textContent =
+              json.lastBalance != null
+                ? "Saldo: " + formatBrl(json.lastBalance)
+                : "Saldo: clique em Atualizar saldo";
+            if (betbraReady) {
+              providerEl.value = "betbra";
+              status.textContent =
+                "Pronto para BetBra" +
+                liveLabel(json) +
+                ". Clique em Aplicar modo (token opcional).";
+            } else {
+              status.textContent =
+                "Conta incompleta — salve login/senha em Conta BetBra ou cole um token.";
+            }
+          } else {
+            betbraStatus.textContent =
+              "Nenhuma conta BetBra salva — abra Conta BetBra para cadastrar.";
+            betbraBalance.textContent = "Saldo: —";
+            status.textContent =
+              "Salve a Conta BetBra ou escolha Demo e aplique.";
+          }
+        } catch {
+          betbraStatus.textContent =
+            "Não foi possível ler o status. Cadastre em Conta BetBra.";
+          status.textContent = "Escolha o modo e aplique.";
+        }
+      }
+
+      async function loadBalance() {
+        betbraBalance.textContent = "Saldo: consultando…";
+        const res = await fetch(
+          "/api/arbishield/exchange-session/balance?provider=betbra",
+          {
+            headers: {
+              Accept: "application/json",
+              Authorization: "Bearer " + (await token()),
+            },
+          }
+        );
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.error || "Falha ao ler saldo");
+        betbraBalance.textContent = "Saldo: " + formatBrl(json.balance);
+        return json;
+      }
+
+      await loadBetbraStatus();
+
+      document.getElementById("btnBalance").addEventListener("click", async () => {
+        err.classList.remove("show");
+        try {
+          await loadBalance();
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+          betbraBalance.textContent = "Saldo: indisponível";
+        }
+      });
+
+      document.getElementById("form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        err.classList.remove("show");
+        const fd = new FormData(e.target);
+        const provider = String(fd.get("provider") || "demo");
+        const accessToken = String(fd.get("accessToken") || "").trim();
+        const body = { provider };
+
+        if (provider === "demo") {
+          body.accessToken = accessToken || "demo";
+        } else if (accessToken) {
+          body.accessToken = accessToken;
+        } else {
+          // Usa Conta BetBra já salva — sem exigir token
+          body.useSaved = true;
+        }
+
+        try {
+          const res = await fetch("/api/arbishield/exchange-session/connect", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + (await token()),
+            },
+            body: JSON.stringify(body),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || "Falha ao conectar");
+          const mode =
+            json.demo || provider === "demo"
+              ? "demo"
+              : json.reused
+                ? "BetBra (conta salva)"
+                : "BetBra";
+          status.textContent =
+            "Modo " + mode + (json.demo ? "" : " · live-ready") + liveLabel(json);
+          await loadBetbraStatus();
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+        }
+      });
+
+      document.getElementById("btnDisconnect").addEventListener("click", async () => {
+        err.classList.remove("show");
+        try {
+          const res = await fetch("/api/arbishield/exchange-session/disconnect", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + (await token()),
+            },
+            body: JSON.stringify({ provider: "betbra" }),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || "Falha ao desconectar");
+          status.textContent = "Sessão BetBra desconectada.";
+          betbraReady = false;
+          await loadBetbraStatus();
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+        }
+      });
+    });
+  </script>
+</body>
+</html>
