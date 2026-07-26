@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Reembolsos — ArbiShield v2</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/finance-admins.js?v=fin-acl-2"></script>
+  <script src="/v2.js?v=fin-acl-2"></script>
+  <script src="/v2-pages.js?v=reembolso-acoes-2"></script>
+  <script src="/v2-shell.js?v=fin-acl-2" defer></script>
+  <style>
+    .rf-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .rf-actions .btn { white-space: nowrap; }
+    .rf-ok { color: var(--lime); font-size: 12px; margin: 0 0 10px; }
+  </style>
+</head>
+<body data-shell="admin" data-active="refunds">
+  <div class="page-head">
+    <div>
+      <h1>Gestão de <span>Reembolsos</span></h1>
+      <p class="sub">Financeiro · pedidos + saques do Saldo Reembolso · aprovar / excluir</p>
+    </div>
+  </div>
+  <div id="err" class="err"></div>
+  <div id="rfMsg" class="rf-ok" hidden></div>
+  <div id="pageBody"><div class="meta">Carregando…</div></div>
+  <!-- marker: admin-refunds-actions-v3 -->
+  <script src="/admin-refunds.js?v=actions-v3"></script>
+</body>
+</html>
