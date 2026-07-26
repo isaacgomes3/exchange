@@ -25,6 +25,8 @@ import {
 } from "./lib/mexchange-offers.mjs";
 import { createOrdersAdapter } from "./lib/exchange-orders-adapter.mjs";
 
+console.log("[bridge] iniciando...");
+
 function envStr(name, fallback = "") {
   const v = process.env[name];
   return v == null || v === "" ? fallback : String(v);
@@ -59,7 +61,18 @@ process.env.EXCHANGE_LOCAL_BRIDGE = "0";
 delete process.env.EXCHANGE_LOCAL_BRIDGE_URL;
 delete process.env.BOTSHIELD_LOCAL_BRIDGE_URL;
 
-const adapter = createOrdersAdapter();
+let adapter = null;
+function getAdapter() {
+  if (!adapter) adapter = createOrdersAdapter();
+  return adapter;
+}
+
+process.on("uncaughtException", (e) => {
+  console.error("[bridge] uncaughtException:", e);
+});
+process.on("unhandledRejection", (e) => {
+  console.error("[bridge] unhandledRejection:", e);
+});
 
 function send(res, status, obj) {
   const body = JSON.stringify(obj);
@@ -203,14 +216,14 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/v1/place") {
       const body = await readJson(req);
       const session = scrubSession(body.session || {});
-      const out = await adapter.placeOrder(session, body.payload || {});
+      const out = await getAdapter().placeOrder(session, body.payload || {});
       return send(res, 200, { ...out, via: "local-bridge" });
     }
 
     if (req.method === "POST" && url.pathname === "/v1/cancel") {
       const body = await readJson(req);
       const session = scrubSession(body.session || {});
-      const out = await adapter.cancelOrder(session, body.orderId);
+      const out = await getAdapter().cancelOrder(session, body.orderId);
       return send(res, 200, { ...out, via: "local-bridge" });
     }
 
@@ -226,17 +239,28 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, HOST, async () => {
-  const ip = await publicIp().catch(() => null);
+server.on("error", (e) => {
+  console.error("[bridge] falha ao abrir porta:", e.message || e);
+  if (e && e.code === "EADDRINUSE") {
+    console.error(`[bridge] porta ${PORT} ja em uso. Feche o outro processo ou use outra PORT.`);
+  }
+  process.exit(1);
+});
+
+console.log(`[bridge] abrindo http://${HOST}:${PORT} ...`);
+server.listen(PORT, HOST, () => {
+  // Loga NA HORA (nao espera IP publico — isso travava no Windows)
   console.log("==> BotShield local bridge");
   console.log(`    listen  http://${HOST}:${PORT}`);
   console.log(`    brand   ${envStr("EXCHANGE_BRAND", "betbra")}`);
-  console.log(`    publicIp ${ip || "(desconhecido)"}`);
   console.log("");
-  console.log("Túnel (outro terminal):");
+  console.log("OK — deixe esta janela aberta.");
+  console.log("Em OUTRO PowerShell teste:");
+  console.log(`  Invoke-RestMethod http://${HOST}:${PORT}/health`);
+  console.log("Túnel:");
   console.log(`  cloudflared tunnel --url http://${HOST}:${PORT}`);
-  console.log("Na VPS (.env):");
-  console.log("  EXCHANGE_LOCAL_BRIDGE_URL=https://SEU-TUNEL.trycloudflare.com");
-  console.log(`  EXCHANGE_LOCAL_BRIDGE_SECRET=${SECRET.slice(0, 4)}…`);
-  console.log("  EXCHANGE_LOCAL_BRIDGE=1");
+  console.log(`Secret (VPS): ${SECRET}`);
+  publicIp()
+    .then((ip) => console.log(`    publicIp ${ip || "(desconhecido)"}`))
+    .catch(() => console.log("    publicIp (falhou — ok, bridge ja esta no ar)"));
 });
