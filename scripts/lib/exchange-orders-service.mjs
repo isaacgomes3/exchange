@@ -25,6 +25,12 @@ import {
   sanitizeTradingCookieHeader,
   sessionCookieHeader,
 } from "./mexchange-offers.mjs";
+import {
+  bridgeHealth,
+  bridgeLoginAndBalance,
+  bridgeMexchangeAccount,
+  isLocalBridgeEnabled,
+} from "./exchange-local-bridge.mjs";
 
 void EXCHANGE_ORDERS_LOCK;
 
@@ -800,11 +806,26 @@ export function createExchangeOrdersService(deps) {
 
       let result;
       try {
-        result = await betbraLoginAndBalance({
-          login,
-          password,
-          validationCode: validationCode || undefined,
-        });
+        if (isLocalBridgeEnabled()) {
+          result = await bridgeLoginAndBalance({
+            login,
+            password,
+            validationCode: validationCode || undefined,
+          });
+          result = {
+            ...result,
+            source: result.source || "local-bridge/login-balance",
+            warning:
+              result.warning ||
+              "Saldo via bridge local (IP do PC).",
+          };
+        } else {
+          result = await betbraLoginAndBalance({
+            login,
+            password,
+            validationCode: validationCode || undefined,
+          });
+        }
       } catch (loginErr) {
         // Soft2Bet WAF: tentar saldo/conta via Mexchange com sessão já salva
         if (loginErr?.code !== "BETBRA_API_BLOCKED") throw loginErr;
@@ -955,7 +976,17 @@ export function createExchangeOrdersService(deps) {
         cookieNames,
         error:
           "Sem cookies de sessão. Cole o cURL em Conta BetBra → Extrair → Salvar.",
-        hint: "Cookie do Chrome pode não valer na VPS (IP diferente).",
+        hint: isLocalBridgeEnabled()
+          ? "Com bridge local: Atualizar saldo no PC (código e-mail) ou cole Cookie fresco."
+          : "Cookie do Chrome pode não valer na VPS (IP diferente). Ative o bridge local.",
+      };
+    }
+    if (isLocalBridgeEnabled()) {
+      const via = await bridgeMexchangeAccount(session);
+      return {
+        ...via,
+        cookieNames: via.cookieNames || cookieNames,
+        via: "local-bridge",
       };
     }
     const acc = await fetchMexchangeAccountInfo(session);
@@ -980,7 +1011,7 @@ export function createExchangeOrdersService(deps) {
     } else {
       failHint +=
         "Cookie do Chrome costuma falhar no IP da VPS. " +
-        "Aprove o device da VPS: Atualizar saldo → código do e-mail.";
+        "Use o bridge local (PC) ou aprove o device: Atualizar saldo → código do e-mail.";
     }
     if (acc.errorMessage) {
       failHint += " Resposta: " + String(acc.errorMessage).slice(0, 120);
@@ -1009,12 +1040,36 @@ export function createExchangeOrdersService(deps) {
     };
   }
 
+  async function localBridgeStatus() {
+    if (!isLocalBridgeEnabled()) {
+      return {
+        ok: false,
+        enabled: false,
+        error:
+          "Bridge local desligado. No PC: rode botshield-local-bridge + cloudflared; " +
+          "na VPS: EXCHANGE_LOCAL_BRIDGE_URL + SECRET.",
+      };
+    }
+    try {
+      const h = await bridgeHealth();
+      return { ok: true, enabled: true, ...h };
+    } catch (err) {
+      return {
+        ok: false,
+        enabled: true,
+        error: err instanceof Error ? err.message : String(err),
+        code: err.code || undefined,
+      };
+    }
+  }
+
   return {
     connectSession,
     disconnectSession,
     sessionStatus,
     sessionBalance,
     sessionMexchangeAccount,
+    localBridgeStatus,
     placeOrder,
     cancelOrder,
     orderStatus,

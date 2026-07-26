@@ -7697,6 +7697,33 @@ const server = createServer(async (req, res) => {
     }
   }
 
+  if (
+    url.pathname === "/api/arbishield/exchange-session/local-bridge" &&
+    req.method === "GET"
+  ) {
+    try {
+      if (!exchangeOrdersApi) {
+        return sendJson(res, 503, { error: "exchange-orders-service ausente" });
+      }
+      if (typeof exchangeOrdersApi.localBridgeStatus !== "function") {
+        return sendJson(res, 503, {
+          error:
+            "API desatualizada — rode vps-hotfix-botshield-local-bridge.sh na VPS",
+        });
+      }
+      bearerFromReq(req); // exige login BotShield
+      const out = await exchangeOrdersApi.localBridgeStatus();
+      return sendJson(res, out.ok ? 200 : 503, out);
+    } catch (err) {
+      return sendJson(res, err.status || 400, {
+        ok: false,
+        enabled: false,
+        error: err instanceof Error ? err.message : String(err),
+        code: err.code || undefined,
+      });
+    }
+  }
+
   if (url.pathname === "/api/arbishield/exchange-orders/place" && req.method === "POST") {
     try {
       if (!exchangeOrdersApi) {

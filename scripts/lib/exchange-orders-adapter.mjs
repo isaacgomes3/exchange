@@ -32,6 +32,11 @@ import {
   hasTradingSession,
   resolveMexchangeApiBase,
 } from "./mexchange-offers.mjs";
+import {
+  bridgeCancelOrder,
+  bridgePlaceOrder,
+  isLocalBridgeEnabled,
+} from "./exchange-local-bridge.mjs";
 
 /** Marker: API pública autenticada da exchange existe (não só catálogo). */
 export const EXCHANGE_PUBLIC_TRADING_API = "mexchange-public-trading-api-v1";
@@ -334,6 +339,18 @@ export class BetbraOrdersAdapter {
       err.code = "SELECTION_REQUIRED";
       throw err;
     }
+    // IP residencial: VPS delega place ao agente no PC
+    if (isLocalBridgeEnabled()) {
+      const out = await bridgePlaceOrder(session, payload);
+      return {
+        ...out,
+        provider: this.provider,
+        publicApi: this.publicApi,
+        via: "local-bridge",
+        wired: true,
+        demo: false,
+      };
+    }
     // Pré-checagem: sessão precisa resolver accountId (igual ao frontend)
     try {
       const acc = await fetchMexchangeAccountInfo(session);
@@ -410,6 +427,15 @@ export class BetbraOrdersAdapter {
     if (!this.live) {
       const r = await this.demo.cancelOrder(session, orderId);
       return { ...r, provider: this.provider, publicApi: this.publicApi };
+    }
+    if (isLocalBridgeEnabled()) {
+      const out = await bridgeCancelOrder(session, orderId);
+      return {
+        ...out,
+        provider: this.provider,
+        publicApi: this.publicApi,
+        via: "local-bridge",
+      };
     }
     const id = String(orderId || "");
     // Mexchange: DELETE /offers?offer-ids=ID

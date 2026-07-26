@@ -77,9 +77,26 @@
         </p>
       </div>
       <p id="balanceHint" class="notice" style="margin-top:12px">
-        O login da VPS é um dispositivo diferente das suas sessões Chrome.
-        Se a exchange enviar código por e-mail, use o campo acima.
+        Com <strong>bridge local</strong>, o login sai do IP do seu PC (evita API blocked da VPS).
+        Sem bridge, a VPS é outro dispositivo — use o código do e-mail se pedir.
       </p>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px">
+      <h2>Bridge local (IP do PC)</h2>
+      <p>
+        Contorna o WAF da VPS: saldo / Testar sessão / place passam pelo seu Windows.
+        PC ligado + <code>start-botshield-local-bridge.ps1</code> +
+        <code>cloudflared tunnel</code>.
+      </p>
+      <p id="bridgeLine" class="notice" style="margin-top:12px">
+        Verificando bridge…
+      </p>
+      <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-secondary" type="button" id="btnBridgeStatus">
+          Testar bridge
+        </button>
+      </div>
     </div>
 
     <div class="panel" style="margin-bottom:16px">
@@ -854,7 +871,52 @@
         }
       });
 
+      async function refreshBridgeStatus() {
+        const line = document.getElementById("bridgeLine");
+        if (!line) return;
+        line.textContent = "Consultando bridge local…";
+        try {
+          const res = await fetch(
+            "/api/arbishield/exchange-session/local-bridge",
+            {
+              headers: {
+                Accept: "application/json",
+                Authorization: "Bearer " + (await bearer()),
+              },
+            }
+          );
+          const json = await res.json().catch(() => ({}));
+          if (json.enabled && json.ok) {
+            line.textContent =
+              "Bridge OK · IP do PC " +
+              (json.publicIp || "—") +
+              " · marca " +
+              (json.brand || "betbra") +
+              ". Saldo/place usam sua conexão local.";
+            return;
+          }
+          if (json.enabled && !json.ok) {
+            line.textContent =
+              "Bridge configurado mas offline: " +
+              (json.error || "PC/túnel inacessível");
+            return;
+          }
+          line.textContent =
+            json.error ||
+            "Bridge desligado. No PC: start-botshield-local-bridge.ps1 + cloudflared; na VPS rode o hotfix local-bridge.";
+        } catch (ex) {
+          line.textContent =
+            "Falha ao consultar bridge: " +
+            (ex instanceof Error ? ex.message : String(ex));
+        }
+      }
+
+      document
+        .getElementById("btnBridgeStatus")
+        ?.addEventListener("click", () => refreshBridgeStatus());
+
       await refreshStatus();
+      await refreshBridgeStatus();
       // Se já tem conta salva, tenta ler o saldo automaticamente
       try {
         const line = statusLine.textContent || "";
