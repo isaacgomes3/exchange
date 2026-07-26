@@ -62,7 +62,7 @@ publish_named() {
 
 log "1/4 UI — monitor + jornada + cards"
 for pair in \
-  "deploy/vps-supabase/static/v2/admin-monitoring-desafios.html|resolveEtapaAtual|desafio-etapa-contagem-v1" \
+  "deploy/vps-supabase/static/v2/admin-monitoring-desafios.html|currentCycleParts|desafio-etapa-contagem-v3" \
   "deploy/vps-supabase/static/v2/app-desafio-jornada.html|indexesUnique|desafio-etapa-contagem-v1" \
   "deploy/vps-supabase/static/v2/app-desafio.html|desafio-etapa-contagem-v2|dz-v2-brand"
 do
@@ -71,6 +71,11 @@ do
   download_repo_file "$rel" "$tmp"
   grep -q "$needle" "$tmp" || die "$(basename "$rel") sem $needle"
   grep -q "$marker" "$tmp" || die "$(basename "$rel") sem $marker"
+  if [[ "$rel" == *admin-monitoring-desafios.html ]]; then
+    if grep -q '<th>Desafio</th>' "$tmp"; then
+      die "monitor ainda tem coluna Desafio"
+    fi
+  fi
   if [[ "$rel" == *app-desafio.html ]]; then
     if grep -q 'dz-v2-etapa' "$tmp"; then
       die "app-desafio.html ainda mostra Etapa no evento (dz-v2-etapa)"

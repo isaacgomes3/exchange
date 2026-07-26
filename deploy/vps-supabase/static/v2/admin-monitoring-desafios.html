@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Monitor de Desafios — ArbiShield</title>
-  <meta name="arbishield-build" content="desafio-etapa-contagem-v1" />
+  <meta name="arbishield-build" content="desafio-etapa-contagem-v3" />
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=monitor-desafios-etapa-v2" />
+  <link rel="stylesheet" href="/v2.css?v=monitor-desafios-etapa-v3" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=monitor-desafios-etapa-v2"></script>
-  <script src="/v2-shell.js?v=monitor-desafios-etapa-v2" defer></script>
+  <script src="/v2.js?v=monitor-desafios-etapa-v3"></script>
+  <script src="/v2-shell.js?v=monitor-desafios-etapa-v3" defer></script>
   <style>
     .mdz-wrap { display: grid; gap: 16px; padding-bottom: 48px; }
     .mdz-head h1 { margin: 0; font-size: clamp(1.4rem, 3vw, 1.9rem); font-weight: 900; letter-spacing: -0.03em; text-transform: uppercase; }
@@ -142,14 +142,24 @@
     return r;
   }
 
-  /* desafio-etapa-contagem-v1 */
+  /* desafio-etapa-contagem-v3 */
   /**
-   * Etapa do cliente no ciclo = posição nas participações (vitórias + pendente),
-   * nunca só step_index do jogo (que costuma ficar em 1 quando o admin relança).
-   * Usa o maior entre step_index e o ordinal do circuito.
+   * Ciclo atual do cliente = participações após o último "lost" (casa bateu).
+   * Cada jogo pode ser um desafio_id diferente — etapa é do CLIENTE, não do evento.
    */
-  function resolveEtapaAtual(parts, current, step) {
-    var list = Array.isArray(parts) ? parts : [];
+  function currentCycleParts(parts) {
+    var list = (parts || []).slice().sort(function (a, b) {
+      return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+    });
+    var start = 0;
+    for (var i = 0; i < list.length; i++) {
+      if (normalizePartResult(list[i].result) === "lost") start = i + 1;
+    }
+    return list.slice(start);
+  }
+
+  function resolveEtapaAtual(cycleParts, current) {
+    var list = Array.isArray(cycleParts) ? cycleParts : [];
     var wonCount = 0;
     var pendingCount = 0;
     for (var i = 0; i < list.length; i++) {
@@ -166,31 +176,25 @@
         }
       }
     }
-    var fromCircuit = pendingCount > 0 ? wonCount + 1 : ordinal;
-    var fromStep = Number(step && step.step_index) || 0;
-    return Math.max(fromStep, fromCircuit, ordinal, 1);
+    if (pendingCount > 0) return Math.max(1, wonCount + 1);
+    return Math.max(1, ordinal);
   }
 
-  /** Agrega participações por cliente + desafio → etapa atual. */
+  /** Uma linha por cliente — etapa do circuito, sem coluna/filtro de Desafio. */
   function buildRows(parts) {
     var map = {};
     (parts || []).forEach(function (p) {
-      if (!p || !p.user_id || !p.desafio_id) return;
+      if (!p || !p.user_id) return;
       if (String(p.side || "").toLowerCase() !== "arbishield") return;
       var dz = p.desafios || {};
       if (dz.deleted_at) return;
-      var key = p.user_id + "::" + p.desafio_id;
+      var key = String(p.user_id);
       if (!map[key]) {
         map[key] = {
           userId: p.user_id,
           userName: (p.profiles && p.profiles.full_name) || "—",
-          desafioId: p.desafio_id,
-          desafioTitle: dz.title || "Desafio",
-          desafioNumber: dz.number,
-          desafioActive: !!dz.is_active,
-          desafioStatus: dz.status || "",
-          totalSteps: Number(dz.total_steps) || 5,
-          targetPct: Number(dz.target_profit_pct) || 5,
+          totalSteps: 5,
+          targetPct: 5,
           totalAmount: 0,
           totalProfit: 0,
           parts: [],
@@ -198,52 +202,63 @@
         };
       }
       var row = map[key];
-      row.totalAmount += Number(p.amount_cents) || 0;
-      row.totalProfit += Number(p.profit_cents) || 0;
       row.parts.push(p);
+      var ts = Number(dz.total_steps) || 0;
+      if (ts > row.totalSteps) row.totalSteps = ts;
+      var pct = Number(dz.target_profit_pct) || 0;
+      if (pct > 0) row.targetPct = pct;
       if ((p.created_at || "") > (row.latestAt || "")) row.latestAt = p.created_at;
     });
 
     return Object.keys(map).map(function (key) {
       var row = map[key];
-      row.parts.sort(function (a, b) {
-        var ia = Number((a.desafio_steps && a.desafio_steps.step_index) || 0);
-        var ib = Number((b.desafio_steps && b.desafio_steps.step_index) || 0);
-        if (ia !== ib) return ia - ib;
-        return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+      var cycle = currentCycleParts(row.parts);
+      row.parts = cycle;
+
+      var totalAmount = 0;
+      var totalProfit = 0;
+      cycle.forEach(function (p) {
+        totalAmount += Number(p.amount_cents) || 0;
+        totalProfit += Number(p.profit_cents) || 0;
       });
+      row.totalAmount = totalAmount;
+      row.totalProfit = totalProfit;
 
       var current = null;
-      var pending = row.parts.filter(function (p) {
-        return String(p.result || "").toLowerCase() === "pending";
+      var pending = cycle.filter(function (p) {
+        return normalizePartResult(p.result) === "pending";
       });
       if (pending.length) {
         current = pending[pending.length - 1];
       } else {
-        current = row.parts[row.parts.length - 1] || null;
+        current = cycle[cycle.length - 1] || null;
       }
 
       var step = (current && current.desafio_steps) || {};
-      var stepIndex = resolveEtapaAtual(row.parts, current, step);
+      var stepIndex = resolveEtapaAtual(cycle, current);
       var match =
         step.match_label ||
         [step.home_team, step.away_team].filter(Boolean).join(" × ") ||
         "—";
+      var dz = (current && current.desafios) || {};
+      var active =
+        current &&
+        (dz.is_active === true ||
+          normalizePartResult(current.result) === "pending");
 
-      row.stepIndex = stepIndex;
-      row.entriesPlayed = row.parts.length;
+      row.stepIndex = Math.min(stepIndex, row.totalSteps || 5);
+      row.entriesPlayed = cycle.length;
       row.stepResult = (current && current.result) || "";
       row.stepAmount = current ? Number(current.amount_cents) || 0 : 0;
       row.matchLabel = match;
       row.league = step.league_name || "";
       row.startsAt = step.starts_at || "";
       row.inProgress =
-        row.desafioActive &&
-        String(row.stepResult || "").toLowerCase() === "pending";
+        !!active && normalizePartResult(row.stepResult) === "pending";
       row.finishedCycle =
         !row.inProgress &&
-        (String(row.stepResult || "").toLowerCase() === "lost" ||
-          stepIndex >= row.totalSteps);
+        (normalizePartResult(row.stepResult) === "lost" ||
+          row.stepIndex >= row.totalSteps);
       return row;
     }).sort(function (a, b) {
       return String(b.latestAt || "").localeCompare(String(a.latestAt || ""));
@@ -263,9 +278,7 @@
         if (String(r.stepResult || "").toLowerCase() !== "lost") return false;
       }
       if (q) {
-        var hay = [
-          r.userName, r.userId, r.desafioTitle, r.desafioNumber, r.matchLabel, r.desafioId,
-        ].join(" ").toLowerCase();
+        var hay = [r.userName, r.userId, r.matchLabel, r.league].join(" ").toLowerCase();
         if (hay.indexOf(q) < 0) return false;
       }
       return true;
@@ -313,20 +326,13 @@
     } else {
       bodyHtml =
         '<div class="mdz-table-wrap"><table class="mdz"><thead><tr>' +
-        "<th>Desafio</th><th>Cliente</th><th>Etapa</th><th>Jogo / mercado</th><th>Valores</th><th>Status etapa</th>" +
+        "<th>Cliente</th><th>Etapa</th><th>Jogo / mercado</th><th>Valores</th><th>Status etapa</th>" +
         "</tr></thead><tbody>" +
         rows
           .map(function (r) {
             var badge = resultLabel(r.stepResult);
             return (
               "<tr>" +
-              '<td><div class="mdz-desafio">' +
-              esc(r.desafioTitle) +
-              '</div><div class="num">#' +
-              esc(r.desafioNumber != null ? r.desafioNumber : shortId(r.desafioId)) +
-              " · alvo +" +
-              esc(String(r.targetPct)) +
-              "%</div></td>" +
               '<td><div class="mdz-client">' +
               esc(r.userName) +
               '</div><span class="id">' +
@@ -372,7 +378,7 @@
 
     root.innerHTML =
       '<div class="mdz-head"><h1>Monitor de <span>Desafios</span></h1>' +
-      '<p class="sub">Clientes em operação no ciclo · etapa atual · valores da entrada</p></div>' +
+      '<p class="sub">Clientes em operação · etapa do circuito · jogo e valores da entrada</p></div>' +
       '<div class="mdz-kpis">' +
       '<article class="mdz-kpi"><div class="l">Em andamento</div><strong>' +
       andamento +
@@ -390,7 +396,7 @@
       '<div class="mdz-tabs">' +
       tabsHtml +
       "</div>" +
-      '<input type="search" id="mdzQ" placeholder="Buscar cliente, desafio ou jogo" value="' +
+      '<input type="search" id="mdzQ" placeholder="Buscar cliente ou jogo" value="' +
       esc(state.q) +
       '" />' +
       '<button type="button" class="mdz-btn ghost" id="mdzRefresh">Atualizar</button>' +
