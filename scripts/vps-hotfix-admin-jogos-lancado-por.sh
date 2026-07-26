@@ -65,30 +65,71 @@ run_sql() {
 publish deploy/vps-supabase/static/v2/admin-jogos.html
 publish_script scripts/arbishield-prelive-events.mjs
 
-echo "==> SQL backfill nomes + settled_by a partir da auditoria"
+echo "==> SQL backfill nomes reais (profiles + auth.users), corrige prefixos UUID"
 SQL="$(cat <<'SQL'
--- Nomes a partir de created_by / settled_by
+-- Helper inline: nome amigável (nunca prefixo de UUID se houver email/nome)
+-- Regrava created_by_name fraco (vazio ou 8 hex)
 UPDATE public.matches m
 SET metadata = coalesce(m.metadata, '{}'::jsonb) || jsonb_build_object(
   'created_by', m.created_by::text,
-  'created_by_name', coalesce(nullif(btrim(p.full_name), ''), nullif(btrim(p.email), ''), left(m.created_by::text, 8))
+  'created_by_name', coalesce(
+    nullif(btrim(p.full_name), ''),
+    nullif(split_part(nullif(btrim(p.email), ''), '@', 1), ''),
+    nullif(btrim(p.email), ''),
+    nullif(btrim(u.raw_user_meta_data->>'full_name'), ''),
+    nullif(btrim(u.raw_user_meta_data->>'name'), ''),
+    nullif(split_part(nullif(btrim(u.email), ''), '@', 1), ''),
+    nullif(btrim(u.email), '')
+  )
 )
 FROM public.profiles p
+LEFT JOIN auth.users u ON u.id = p.id
 WHERE m.deleted_at IS NULL
   AND m.created_by IS NOT NULL
   AND m.created_by = p.id
-  AND coalesce(m.metadata->>'created_by_name', '') = '';
+  AND (
+    coalesce(m.metadata->>'created_by_name', '') = ''
+    OR m.metadata->>'created_by_name' ~* '^[0-9a-f]{8}$'
+    OR m.metadata->>'created_by_name' ~* '^[0-9a-f-]{36}$'
+  )
+  AND coalesce(
+    nullif(btrim(p.full_name), ''),
+    nullif(btrim(p.email), ''),
+    nullif(btrim(u.email), ''),
+    nullif(btrim(u.raw_user_meta_data->>'full_name'), ''),
+    nullif(btrim(u.raw_user_meta_data->>'name'), '')
+  ) IS NOT NULL;
 
 UPDATE public.matches m
 SET metadata = coalesce(m.metadata, '{}'::jsonb) || jsonb_build_object(
   'settled_by', m.settled_by::text,
-  'settled_by_name', coalesce(nullif(btrim(p.full_name), ''), nullif(btrim(p.email), ''), left(m.settled_by::text, 8))
+  'settled_by_name', coalesce(
+    nullif(btrim(p.full_name), ''),
+    nullif(split_part(nullif(btrim(p.email), ''), '@', 1), ''),
+    nullif(btrim(p.email), ''),
+    nullif(btrim(u.raw_user_meta_data->>'full_name'), ''),
+    nullif(btrim(u.raw_user_meta_data->>'name'), ''),
+    nullif(split_part(nullif(btrim(u.email), ''), '@', 1), ''),
+    nullif(btrim(u.email), '')
+  )
 )
 FROM public.profiles p
+LEFT JOIN auth.users u ON u.id = p.id
 WHERE m.deleted_at IS NULL
   AND m.settled_by IS NOT NULL
   AND m.settled_by = p.id
-  AND coalesce(m.metadata->>'settled_by_name', '') = '';
+  AND (
+    coalesce(m.metadata->>'settled_by_name', '') = ''
+    OR m.metadata->>'settled_by_name' ~* '^[0-9a-f]{8}$'
+    OR m.metadata->>'settled_by_name' ~* '^[0-9a-f-]{36}$'
+  )
+  AND coalesce(
+    nullif(btrim(p.full_name), ''),
+    nullif(btrim(p.email), ''),
+    nullif(btrim(u.email), ''),
+    nullif(btrim(u.raw_user_meta_data->>'full_name'), ''),
+    nullif(btrim(u.raw_user_meta_data->>'name'), '')
+  ) IS NOT NULL;
 
 -- Encerrado por: puxa admin_id do audit quando settled_by está vazio
 UPDATE public.matches m
@@ -97,7 +138,13 @@ SET
   updated_by = coalesce(m.updated_by, a.admin_id),
   metadata = coalesce(m.metadata, '{}'::jsonb) || jsonb_build_object(
     'settled_by', a.admin_id::text,
-    'settled_by_name', coalesce(nullif(btrim(p.full_name), ''), nullif(btrim(p.email), ''), left(a.admin_id::text, 8))
+    'settled_by_name', coalesce(
+      nullif(btrim(p.full_name), ''),
+      nullif(split_part(nullif(btrim(p.email), ''), '@', 1), ''),
+      nullif(btrim(u.raw_user_meta_data->>'full_name'), ''),
+      nullif(split_part(nullif(btrim(u.email), ''), '@', 1), ''),
+      nullif(btrim(u.email), '')
+    )
   )
 FROM (
   SELECT DISTINCT ON (entity_id)
@@ -113,6 +160,7 @@ FROM (
   ORDER BY entity_id, created_at DESC
 ) a
 JOIN public.profiles p ON p.id = a.admin_id
+LEFT JOIN auth.users u ON u.id = a.admin_id
 WHERE m.deleted_at IS NULL
   AND m.settled_at IS NOT NULL
   AND m.settled_by IS NULL
@@ -126,8 +174,10 @@ SET
     'created_by', a.admin_id::text,
     'created_by_name', coalesce(
       nullif(btrim(p.full_name), ''),
-      nullif(btrim(p.email), ''),
-      left(a.admin_id::text, 8)
+      nullif(split_part(nullif(btrim(p.email), ''), '@', 1), ''),
+      nullif(btrim(u.raw_user_meta_data->>'full_name'), ''),
+      nullif(split_part(nullif(btrim(u.email), ''), '@', 1), ''),
+      nullif(btrim(u.email), '')
     )
   )
 FROM (
@@ -140,10 +190,20 @@ FROM (
   ORDER BY entity_id, created_at ASC
 ) a
 JOIN public.profiles p ON p.id = a.admin_id
+LEFT JOIN auth.users u ON u.id = a.admin_id
 WHERE m.deleted_at IS NULL
-  AND m.created_by IS NULL
-  AND coalesce(m.metadata->>'created_by_name', '') = ''
-  AND a.entity_id::text = m.id::text;
+  AND (
+    m.created_by IS NULL
+    OR coalesce(m.metadata->>'created_by_name', '') = ''
+    OR m.metadata->>'created_by_name' ~* '^[0-9a-f]{8}$'
+  )
+  AND a.entity_id::text = m.id::text
+  AND coalesce(
+    nullif(btrim(p.full_name), ''),
+    nullif(btrim(p.email), ''),
+    nullif(btrim(u.email), ''),
+    nullif(btrim(u.raw_user_meta_data->>'full_name'), '')
+  ) IS NOT NULL;
 SQL
 )"
 if run_sql "$SQL"; then
@@ -156,10 +216,10 @@ systemctl restart arbishield-prelive-events.service 2>/dev/null || true
 systemctl restart arbishield-prelive-events-teste.service 2>/dev/null || true
 
 html="$(curl -fsS -m 8 "https://arbishield.app/admin-jogos.html" 2>/dev/null || true)"
-if echo "$html" | grep -q 'admin-jogos-lancado-por-v10'; then
-  echo "  smoke admin-jogos.html → OK (v10)"
+if echo "$html" | grep -q 'admin-jogos-lancado-por-v11'; then
+  echo "  smoke admin-jogos.html → OK (v11)"
 else
-  echo "  AVISO: build v10 ainda não público"
+  echo "  AVISO: build v11 ainda não público"
 fi
 
 echo

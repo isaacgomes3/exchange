@@ -1316,27 +1316,72 @@ async function requireAdminToken(token) {
   return userId;
 }
 
-/** Nome amigável do admin (full_name → email → id curto). */
+function isWeakAdminLabel(value) {
+  const t = String(value || "").trim();
+  if (!t) return true;
+  // prefixo de UUID ou UUID completo (backfill antigo)
+  if (/^[0-9a-f]{8}$/i.test(t)) return true;
+  if (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(t)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function pickAdminLabel(...candidates) {
+  for (const c of candidates) {
+    const t = String(c || "").trim();
+    if (t && !isWeakAdminLabel(t)) return t;
+  }
+  return null;
+}
+
+/** Nome via Auth Admin API (email / user_metadata) — service role. */
+async function resolveAdminNameFromAuth(adminId) {
+  const id = String(adminId || "").trim();
+  if (!id || !SERVICE_KEY) return null;
+  try {
+    const user = await sb(`/auth/v1/admin/users/${encodeURIComponent(id)}`, {
+      token: SERVICE_KEY,
+    });
+    const meta =
+      (user && (user.user_metadata || user.raw_user_meta_data)) || {};
+    const email = user && user.email ? String(user.email).trim() : "";
+    return pickAdminLabel(
+      meta.full_name,
+      meta.name,
+      meta.display_name,
+      email ? email.split("@")[0] : null,
+      email
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** Nome amigável do admin (full_name → email → auth → id curto). */
 async function resolveAdminDisplayName(adminId) {
   const id = String(adminId || "").trim();
   if (!id) return null;
-  let name = id.slice(0, 8);
   try {
     const profRows = await sb(
       `/rest/v1/profiles?select=full_name,email&id=eq.${encodeURIComponent(id)}&limit=1`,
       { token: SERVICE_KEY }
     );
     const prof = Array.isArray(profRows) ? profRows[0] : null;
-    if (prof) {
-      name =
-        (prof.full_name && String(prof.full_name).trim()) ||
-        (prof.email && String(prof.email).trim()) ||
-        name;
-    }
+    const fromProf = pickAdminLabel(
+      prof && prof.full_name,
+      prof && prof.email && String(prof.email).split("@")[0],
+      prof && prof.email
+    );
+    if (fromProf) return fromProf;
   } catch {
-    /* keep short id */
+    /* auth abaixo */
   }
-  return name;
+  const fromAuth = await resolveAdminNameFromAuth(id);
+  if (fromAuth) return fromAuth;
+  return id.slice(0, 8);
 }
 
 /** Resolve vários admins de uma vez (service role — ignora RLS do browser). */
@@ -1360,15 +1405,19 @@ async function resolveAdminNamesMap(ids) {
         { token: SERVICE_KEY }
       );
       for (const p of Array.isArray(profs) ? profs : []) {
-        const label =
-          (p.full_name && String(p.full_name).trim()) ||
-          (p.email && String(p.email).trim()) ||
-          String(p.id).slice(0, 8);
-        out[String(p.id)] = label;
+        const label = pickAdminLabel(
+          p.full_name,
+          p.email && String(p.email).split("@")[0],
+          p.email
+        );
+        if (label) out[String(p.id)] = label;
       }
     } catch {
-      for (const id of chunk) {
-        if (!out[id]) out[id] = await resolveAdminDisplayName(id);
+      /* resolve individual abaixo */
+    }
+    for (const id of chunk) {
+      if (!out[id] || isWeakAdminLabel(out[id])) {
+        out[id] = await resolveAdminDisplayName(id);
       }
     }
   }

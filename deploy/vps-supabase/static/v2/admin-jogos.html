@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta name="arbishield-vps-page" content="jogos" />
-  <meta name="arbishield-build" content="admin-jogos-lancado-por-v10" />
+  <meta name="arbishield-build" content="admin-jogos-lancado-por-v11" />
   <title>Gestão de Jogos — ArbiShield v2</title>
   <link rel="stylesheet" href="/v2.css" />
   <script src="/v2-shell.js" defer></script>
@@ -1122,6 +1122,29 @@
         return {};
       }
 
+      /** true se o rótulo for só um pedaço de UUID (backfill fraco). */
+      function isWeakAdminLabel(value) {
+        var t = String(value || "").trim();
+        if (!t) return true;
+        if (/^[0-9a-f]{8}$/i.test(t)) return true;
+        if (
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+            t
+          )
+        ) {
+          return true;
+        }
+        return false;
+      }
+
+      function pickAdminLabel() {
+        for (var i = 0; i < arguments.length; i++) {
+          var t = String(arguments[i] || "").trim();
+          if (t && !isWeakAdminLabel(t)) return t;
+        }
+        return null;
+      }
+
       async function loadProfileNameMap(ids) {
         var nameMap = {};
         var list = Array.from(
@@ -1143,14 +1166,14 @@
           });
           if (apiNames && apiNames.names && !apiNames.error) {
             Object.keys(apiNames.names).forEach(function (k) {
-              var v = apiNames.names[k];
-              if (v) nameMap[String(k)] = String(v);
+              var v = pickAdminLabel(apiNames.names[k]);
+              if (v) nameMap[String(k)] = v;
             });
           }
         } catch (eApi) {}
 
         var missing = list.filter(function (id) {
-          return !nameMap[id];
+          return !nameMap[id] || isWeakAdminLabel(nameMap[id]);
         });
         // 2) profiles REST (admin)
         for (var i = 0; i < missing.length; i += 80) {
@@ -1162,11 +1185,12 @@
                 ")"
             );
             (profs || []).forEach(function (p) {
-              var label =
-                (p.full_name && String(p.full_name).trim()) ||
-                (p.email && String(p.email).trim()) ||
-                String(p.id).slice(0, 8);
-              nameMap[String(p.id)] = label;
+              var label = pickAdminLabel(
+                p.full_name,
+                p.email && String(p.email).split("@")[0],
+                p.email
+              );
+              if (label) nameMap[String(p.id)] = label;
             });
           } catch (eProf) {}
         }
@@ -1178,11 +1202,13 @@
         var need = (rows || []).filter(function (m) {
           var meta = parseMatchMeta(m.metadata);
           var hasCreator =
-            m.created_by || meta.created_by || meta.created_by_name;
+            m.created_by ||
+            meta.created_by ||
+            !isWeakAdminLabel(meta.created_by_name);
           var hasCloser =
             m.settled_by ||
             meta.settled_by ||
-            meta.settled_by_name ||
+            !isWeakAdminLabel(meta.settled_by_name) ||
             (m.settled_at && m.updated_by);
           return !hasCreator || (m.settled_at && !hasCloser);
         });
@@ -1279,16 +1305,16 @@
             (m.settled_at ? m.updated_by : null) ||
             null;
           m._settledById = sid;
-          m._settledByName =
-            (meta.settled_by_name && String(meta.settled_by_name).trim()) ||
-            (sid && nameMap[String(sid)]) ||
-            null;
+          m._settledByName = pickAdminLabel(
+            meta.settled_by_name,
+            sid && nameMap[String(sid)]
+          );
           var cid = m.created_by || meta.created_by || null;
           m._createdById = cid;
-          m._createdByName =
-            (meta.created_by_name && String(meta.created_by_name).trim()) ||
-            (cid && nameMap[String(cid)]) ||
-            null;
+          m._createdByName = pickAdminLabel(
+            meta.created_by_name,
+            cid && nameMap[String(cid)]
+          );
         });
         return rows;
       }
