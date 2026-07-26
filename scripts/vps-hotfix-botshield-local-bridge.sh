@@ -131,7 +131,54 @@ for f in "${ENV_FILES[@]}"; do
 done
 [[ "$n" -gt 0 ]] || die "nenhum .env em /opt/arbishield"
 
-log "3/3 restart shim + ping bridge"
+log "3/4 liberar rota no nginx BotShield (local-bridge)"
+python3 - <<'PY'
+from pathlib import Path
+roots = [
+    Path("/etc/nginx/sites-enabled"),
+    Path("/etc/nginx/sites-available"),
+    Path("/etc/nginx/conf.d"),
+]
+needle = "exchange-session/mexchange-account|"
+insert = "exchange-session/mexchange-account|exchange-session/local-bridge|"
+patched = 0
+seen = set()
+for root in roots:
+    if not root.is_dir():
+        continue
+    for p in root.iterdir():
+        if not p.is_file():
+            continue
+        try:
+            t = p.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        if "exchange-session" not in t and "botshield" not in t.lower():
+            continue
+        key = str(p.resolve()) if p.exists() else str(p)
+        if key in seen:
+            continue
+        seen.add(key)
+        if "exchange-session/local-bridge" in t:
+            print(f"  ja ok {p}")
+            patched += 1
+            continue
+        if needle not in t:
+            continue
+        p.write_text(t.replace(needle, insert, 1), encoding="utf-8")
+        print(f"  patched {p}")
+        patched += 1
+if patched == 0:
+    print("  AVISO: nenhum conf nginx com exchange-session encontrado")
+PY
+if command -v nginx >/dev/null 2>&1; then
+  nginx -t && systemctl reload nginx || die "nginx reload falhou — confira location local-bridge"
+  echo "  nginx reloaded"
+else
+  echo "  AVISO: nginx nao encontrado — libere manualmente exchange-session/local-bridge"
+fi
+
+log "4/4 restart shim + ping bridge"
 systemctl restart arbishield-serverfn-shim.service || die "restart shim falhou"
 sleep 1
 systemctl is-active --quiet arbishield-serverfn-shim.service || die "shim nao active"
