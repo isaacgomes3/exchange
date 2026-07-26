@@ -5,12 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Monitor de Desafios — ArbiShield</title>
+  <meta name="arbishield-build" content="desafio-etapa-contagem-v1" />
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=monitor-desafios-1" />
+  <link rel="stylesheet" href="/v2.css?v=monitor-desafios-etapa-v2" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=monitor-desafios-1"></script>
-  <script src="/v2-shell.js?v=monitor-desafios-1" defer></script>
+  <script src="/v2.js?v=monitor-desafios-etapa-v2"></script>
+  <script src="/v2-shell.js?v=monitor-desafios-etapa-v2" defer></script>
   <style>
     .mdz-wrap { display: grid; gap: 16px; padding-bottom: 48px; }
     .mdz-head h1 { margin: 0; font-size: clamp(1.4rem, 3vw, 1.9rem); font-weight: 900; letter-spacing: -0.03em; text-transform: uppercase; }
@@ -132,6 +133,44 @@
     return ["done", r || "—"];
   }
 
+  function normalizePartResult(r) {
+    r = String(r || "").toLowerCase().trim();
+    if (!r) return "pending";
+    if (r === "win" || r === "won" || r === "won_platform" || r === "won_external") return "won";
+    if (r === "lose" || r === "lost" || r === "won_exchange" || r === "casa") return "lost";
+    if (r === "pending" || r === "active" || r === "open" || r === "current") return "pending";
+    return r;
+  }
+
+  /* desafio-etapa-contagem-v1 */
+  /**
+   * Etapa do cliente no ciclo = posição nas participações (vitórias + pendente),
+   * nunca só step_index do jogo (que costuma ficar em 1 quando o admin relança).
+   * Usa o maior entre step_index e o ordinal do circuito.
+   */
+  function resolveEtapaAtual(parts, current, step) {
+    var list = Array.isArray(parts) ? parts : [];
+    var wonCount = 0;
+    var pendingCount = 0;
+    for (var i = 0; i < list.length; i++) {
+      var res = normalizePartResult(list[i].result);
+      if (res === "won") wonCount += 1;
+      else if (res === "pending") pendingCount += 1;
+    }
+    var ordinal = list.length || 1;
+    if (current && current.id) {
+      for (var j = 0; j < list.length; j++) {
+        if (list[j].id === current.id) {
+          ordinal = j + 1;
+          break;
+        }
+      }
+    }
+    var fromCircuit = pendingCount > 0 ? wonCount + 1 : ordinal;
+    var fromStep = Number(step && step.step_index) || 0;
+    return Math.max(fromStep, fromCircuit, ordinal, 1);
+  }
+
   /** Agrega participações por cliente + desafio → etapa atual. */
   function buildRows(parts) {
     var map = {};
@@ -185,13 +224,14 @@
       }
 
       var step = (current && current.desafio_steps) || {};
-      var stepIndex = Number(step.step_index) || row.parts.length || 1;
+      var stepIndex = resolveEtapaAtual(row.parts, current, step);
       var match =
         step.match_label ||
         [step.home_team, step.away_team].filter(Boolean).join(" × ") ||
         "—";
 
       row.stepIndex = stepIndex;
+      row.entriesPlayed = row.parts.length;
       row.stepResult = (current && current.result) || "";
       row.stepAmount = current ? Number(current.amount_cents) || 0 : 0;
       row.matchLabel = match;

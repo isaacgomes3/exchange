@@ -2901,7 +2901,7 @@ async function listMyDesafioHistory(token) {
     let wonN = 0;
     let lostN = 0;
     let pendingN = 0;
-    const entries = ordered.map((p) => {
+    const entries = ordered.map((p, entryIdx) => {
       const res = normalizeDesafioPartResult(p.result);
       const amt = n(p.amount_cents);
       const pr = n(p.profit_cents);
@@ -2922,10 +2922,13 @@ async function listMyDesafioHistory(token) {
               .filter(Boolean)
               .join(" × "))) ||
         null;
+      const entryOrdinal = entryIdx + 1;
+      const rawStepIndex = step ? Number(step.step_index) || 0 : 0;
       return {
         id: p.id,
         stepId: p.step_id || null,
-        stepIndex: step ? Number(step.step_index) || null : null,
+        // Circuito do usuário: nunca deixar E1 quando é a 3ª entrada
+        stepIndex: Math.max(rawStepIndex, entryOrdinal) || null,
         matchLabel,
         side: String(p.side || "arbishield").toLowerCase(),
         result: res,
@@ -3763,6 +3766,15 @@ async function getDesafioJornada(token, body) {
   for (const p of partList) {
     byStep.set(String(p.step_id), p);
   }
+  const byIndex = new Map();
+  const indexCounts = new Map();
+  for (const s of steps) {
+    const si = n(s.step_index);
+    if (!(si > 0)) continue;
+    indexCounts.set(si, (indexCounts.get(si) || 0) + 1);
+    if (!byIndex.has(si)) byIndex.set(si, s);
+  }
+  const indexesUnique = [...indexCounts.values()].every((c) => c === 1);
 
   const prof = await sb(
     `/rest/v1/profiles?select=desafio_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`,
@@ -3775,13 +3787,21 @@ async function getDesafioJornada(token, body) {
   let foundCurrent = false;
   let inRecovery = false;
   let failedAt = null;
+  const usedPartIds = new Set();
 
   const stages = [];
   for (let i = 0; i < maxEntries; i++) {
-    const step = steps[i] || null;
     const stepIndex = i + 1;
+    let step = indexesUnique ? byIndex.get(stepIndex) || null : steps[i] || null;
     const isFinal = stepIndex === maxEntries;
-    const part = step ? byStep.get(String(step.id)) : null;
+    let part = step ? byStep.get(String(step.id)) : null;
+    if ((!part || usedPartIds.has(String(part.id))) && partList[i]) {
+      part = partList[i];
+      if (!step && part.step_id) {
+        step = steps.find((s) => String(s.id) === String(part.step_id)) || null;
+      }
+    }
+    if (part?.id) usedPartIds.add(String(part.id));
     const partResult = part ? String(part.result || "").toLowerCase() : "";
     const stepStatus = step ? String(step.status || "").toLowerCase() : "pending";
     const stepResult = step ? String(step.result || "").toLowerCase() : "";
@@ -3975,6 +3995,22 @@ async function getDesafioJornada(token, body) {
   ).length;
   const progressPct = Math.round((doneCount / maxEntries) * 100);
   const remaining = Math.max(0, maxEntries - doneCount);
+
+  // Etapa atual pelo circuito do usuário (vitórias + pendente), não só step_index
+  let wonN = 0;
+  let pendingN = 0;
+  for (const p of partList) {
+    const r = String(p.result || "").toLowerCase();
+    if (r === "won" || r === "won_external") wonN += 1;
+    else if (r === "pending" || r === "active" || r === "open") pendingN += 1;
+  }
+  if (pendingN > 0) {
+    currentIndex = Math.min(Math.max(1, wonN + 1), maxEntries);
+  } else if (partList.length) {
+    const lastR = String(partList[partList.length - 1].result || "").toLowerCase();
+    if (lastR === "lost") currentIndex = Math.min(partList.length, maxEntries);
+    else currentIndex = Math.min(Math.max(1, wonN + 1), maxEntries);
+  }
 
   return {
     ok: true,

@@ -6,9 +6,9 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-sem-radar-v1" />
-  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1" />
-  <link rel="stylesheet" href="/v2.css?v=desafio-sem-radar-1" />
+  <meta name="arbishield-build" content="desafio-etapa-contagem-v1" />
+  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-etapa-contagem-v1" />
+  <link rel="stylesheet" href="/v2.css?v=desafio-etapa-contagem-1" />
   <style>
     /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
     .dz-sb-market {
@@ -832,7 +832,7 @@
           var wonN = 0;
           var lostN = 0;
           var pendingN = 0;
-          var entries = ordered.map(function (p) {
+          var entries = ordered.map(function (p, entryIdx) {
             var res = normalizeHistResult(p.result);
             var amt = Number(p.amount_cents) || 0;
             var pr = Number(p.profit_cents) || 0;
@@ -847,10 +847,11 @@
               ? step.match_label ||
                 [step.home_team, step.away_team].filter(Boolean).join(" × ")
               : null;
+            var rawStepIndex = step ? Number(step.step_index) || 0 : 0;
             return {
               id: p.id,
               stepId: p.step_id || null,
-              stepIndex: step ? Number(step.step_index) || null : null,
+              stepIndex: Math.max(rawStepIndex, entryIdx + 1) || null,
               matchLabel: matchLabel,
               result: res,
               amountCents: amt,
@@ -2182,6 +2183,37 @@
             items.push(toCardItem(d, s));
           });
         });
+
+        // Etapa do card = circuito do usuário (vitórias+1), não só step_index do jogo
+        try {
+          var partsRes = await supa
+            .from("desafio_participations")
+            .select("id,desafio_id,result,created_at")
+            .eq("user_id", viewUserId)
+            .eq("side", "arbishield")
+            .order("created_at", { ascending: true })
+            .limit(500);
+          var circuitByDz = {};
+          (partsRes.data || []).forEach(function (p) {
+            var did = String(p.desafio_id || "");
+            if (!did) return;
+            if (!circuitByDz[did]) circuitByDz[did] = { won: 0, pending: 0, total: 0 };
+            var c = circuitByDz[did];
+            c.total += 1;
+            var r = String(p.result || "").toLowerCase();
+            if (r === "won" || r === "won_external" || r === "win") c.won += 1;
+            else if (r === "pending" || r === "active" || r === "open") c.pending += 1;
+          });
+          items.forEach(function (it) {
+            var c = circuitByDz[String(it.desafioId || "")];
+            if (!c || !c.total) return;
+            // Pendente ou próxima entrada = vitórias + 1
+            var entryNum = Math.min(Math.max(1, c.won + 1), Number(it.totalSteps) || 5);
+            it.stepIndex = Math.max(Number(it.stepIndex) || 0, entryNum, 1);
+          });
+        } catch (exParts) {
+          console.warn("[desafio] circuito etapas", exParts);
+        }
 
         // Preferir jogos ainda jogáveis; ao vivo ficam no fim
         items.sort(function (a, b) {
