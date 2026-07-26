@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Jornada do Desafio · ArbiShield</title>
-  <meta name="arbishield-build" content="desafio-jornada-horizontal-v1" />
+  <meta name="arbishield-build" content="desafio-jornada-horizontal-v2" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=desafio-jornada-horizontal-1" />
+  <link rel="stylesheet" href="/v2.css?v=desafio-jornada-horizontal-2" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
   <script src="/v2-shell.js" defer></script>
@@ -84,7 +84,7 @@
     /* Banner fora do mapa — só arte promocional */
     .j-banner-slot {
       width: 100%;
-      margin: 0 0 14px;
+      margin: 0 0 12px;
     }
     .j-banner-slot .dz-banner { margin: 0; }
     .j-banner-slot .dz-banner-link,
@@ -111,22 +111,36 @@
       font-size: 10px;
     }
 
+    /* Painel da jornada: fixo logo abaixo do banner */
+    .j-journey-sticky {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      margin: 0 0 14px;
+      padding-bottom: 2px;
+      background: linear-gradient(180deg, #050505 70%, rgba(5,5,5,0.92) 100%);
+    }
+    body[data-shell="app"] .j-journey-sticky {
+      top: 0;
+    }
+
     /* —— Mapa: stepper horizontal + evento abaixo —— */
     .j-map {
       position: relative;
-      height: 100%;
+      height: auto;
       box-sizing: border-box;
       border: 1px solid rgba(255,255,255,0.06);
       border-radius: 20px;
       background:
         radial-gradient(900px 280px at 50% 0%, rgba(201,242,35,0.07), transparent 55%),
         linear-gradient(180deg, #07140f 0%, #050505 45%, #080808 100%);
-      padding: 20px 16px 24px;
+      padding: 16px 14px 18px;
       overflow: hidden;
       min-height: 0;
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 12px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.45);
     }
     .j-map .j-legend {
       margin-top: 4px;
@@ -230,7 +244,11 @@
     .j-node.is-lost .j-badge {
       border-color: var(--j-red);
       background: radial-gradient(circle at 30% 30%, #3a1515, #1a0808);
+      box-shadow: 0 0 22px rgba(248,113,113,0.4);
+      color: #fff;
     }
+    .j-node.is-lost .j-label,
+    .j-node.is-lost .j-hint { color: var(--j-red); }
     .j-node.is-protected .j-badge {
       border-color: #a78bfa;
       box-shadow: 0 0 20px rgba(167,139,250,0.3);
@@ -287,6 +305,10 @@
     .j-connector.is-lit {
       background: linear-gradient(90deg, var(--j-lime), rgba(201,242,35,0.25));
       box-shadow: 0 0 12px rgba(201,242,35,0.35);
+    }
+    .j-connector.is-fail {
+      background: linear-gradient(90deg, var(--j-red), rgba(248,113,113,0.25));
+      box-shadow: 0 0 10px rgba(248,113,113,0.3);
     }
     .j-connector.is-lit::after {
       content: "";
@@ -651,32 +673,34 @@
     </div>
 
     <div class="j-layout" id="layout" hidden>
-      <section class="j-map" aria-label="Mapa do desafio">
-        <div class="j-map-title" id="mapTitle">Sua jornada</div>
-        <div class="j-map-rule"></div>
-        <div class="j-path" id="mainPath" aria-label="Etapas do cliente"></div>
+      <div class="j-journey-sticky">
+        <section class="j-map" aria-label="Mapa do desafio">
+          <div class="j-map-title" id="mapTitle">Sua jornada</div>
+          <div class="j-map-rule"></div>
+          <div class="j-path" id="mainPath" aria-label="Etapas do cliente"></div>
 
-        <div class="j-event" id="eventCard" hidden>
-          <p class="j-event-kicker">Evento lançado</p>
-          <p class="j-event-match" id="eventMatch">—</p>
-          <p class="j-event-meta" id="eventMeta"></p>
-        </div>
+          <div class="j-event" id="eventCard" hidden>
+            <p class="j-event-kicker">Evento lançado</p>
+            <p class="j-event-match" id="eventMatch">—</p>
+            <p class="j-event-meta" id="eventMeta"></p>
+          </div>
 
-        <div class="j-recovery" id="recoveryBox" aria-live="polite">
-          <div class="j-recovery-title">Circuito de recuperação</div>
-          <div class="j-shield" title="Proteção">🛡</div>
-          <div class="j-path" id="recoveryPath"></div>
-        </div>
+          <div class="j-recovery" id="recoveryBox" aria-live="polite">
+            <div class="j-recovery-title">Circuito de recuperação</div>
+            <div class="j-shield" title="Proteção">🛡</div>
+            <div class="j-path" id="recoveryPath"></div>
+          </div>
 
-        <div class="j-legend">
-          <span><i class="j-dot" style="background:#8b9690"></i> Aguardando</span>
-          <span><i class="j-dot" style="background:#60a5fa"></i> Você está aqui</span>
-          <span><i class="j-dot" style="background:#c9f223"></i> Concluída</span>
-          <span><i class="j-dot" style="background:#f87171"></i> Falhou</span>
-          <span><i class="j-dot" style="background:#a78bfa"></i> Proteção</span>
-          <span><i class="j-dot" style="background:#fbbf24"></i> Final</span>
-        </div>
-      </section>
+          <div class="j-legend">
+            <span><i class="j-dot" style="background:#8b9690"></i> Aguardando</span>
+            <span><i class="j-dot" style="background:#60a5fa"></i> Você está aqui</span>
+            <span><i class="j-dot" style="background:#c9f223"></i> Concluída</span>
+            <span><i class="j-dot" style="background:#f87171"></i> Falhou</span>
+            <span><i class="j-dot" style="background:#a78bfa"></i> Proteção</span>
+            <span><i class="j-dot" style="background:#fbbf24"></i> Final</span>
+          </div>
+        </section>
+      </div>
 
       <aside class="j-progress" id="progressPanel">
         <h2>Progresso</h2>
@@ -769,26 +793,28 @@
         return r;
       }
 
-      /** Ciclo atual = após o último lost (casa bateu). */
+      /**
+       * Ciclo visível do cliente: últimas até 5 entradas.
+       * Perdas (lost) ficam no mapa com X vermelho — não viram “concluída”.
+       */
       function currentCycleParts(parts) {
         var list = (parts || [])
           .filter(function (p) {
-            return String(p.side || "arbishield").toLowerCase() !== "casa";
+            var side = String(p.side || "arbishield").toLowerCase();
+            return side !== "casa" && side !== "exchange" && side !== "external";
           })
           .slice()
           .sort(function (a, b) {
             return String(a.created_at || "").localeCompare(String(b.created_at || ""));
           });
-        var start = 0;
-        for (var i = 0; i < list.length; i++) {
-          if (normPartResult(list[i].result) === "lost") start = i + 1;
-        }
-        return list.slice(start);
+        // Mantém o ciclo aberto até 5; se passou de 5, usa as últimas 5
+        if (list.length > 5) list = list.slice(list.length - 5);
+        return list;
       }
 
       /**
-       * Jornada do CLIENTE: etapa = ordinal no circuito (vitórias/pendente),
-       * mesmo quando cada jogo é um desafio_id diferente com step_index=1.
+       * Jornada do CLIENTE: etapa = ordinal no circuito.
+       * lost → Falhou (X vermelho). Só UMA etapa “Você está aqui”.
        */
       function buildJourneyFromManual(desafio, parts, bal, stepById) {
         stepById = stepById || {};
@@ -810,23 +836,29 @@
         var openStep = activeSteps[0] || null;
 
         var wonN = 0;
+        var lostN = 0;
         var pendingN = 0;
-        cycle.forEach(function (p) {
+        var firstPendingIdx = -1;
+        cycle.forEach(function (p, idx) {
           var r = normPartResult(p.result);
           if (r === "won") wonN += 1;
-          else if (r === "pending") pendingN += 1;
+          else if (r === "lost") lostN += 1;
+          else if (r === "pending") {
+            pendingN += 1;
+            if (firstPendingIdx < 0) firstPendingIdx = idx;
+          }
         });
+        // Etapa atual = índice da 1ª pendente, senão próxima após jogadas
         var currentIndex =
-          pendingN > 0
-            ? Math.min(Math.max(1, wonN + 1), maxEntries)
-            : cycle.length
-              ? Math.min(Math.max(1, wonN + 1), maxEntries)
-              : 1;
+          firstPendingIdx >= 0
+            ? firstPendingIdx + 1
+            : Math.min(Math.max(1, cycle.length + 1), maxEntries);
 
         var stages = [];
         var accumulatedProfit = 0;
         var entradaDefault = Number((desafio && desafio.initial_balance_cents) || 0) || 0;
         var targetPct = Number((desafio && desafio.target_profit_pct) || 5) || 5;
+        var markedCurrent = false;
 
         for (var i = 0; i < maxEntries; i++) {
           var stepIndex = i + 1;
@@ -837,21 +869,27 @@
             (part && part.step_id && stepById[String(part.step_id)]) ||
             (part && part.desafio_steps) ||
             null;
-          // Slot atual sem part ainda → usa o evento lançado ativo
-          if (!step && stepIndex === currentIndex && openStep) step = openStep;
+          // Só a etapa atual sem part usa o evento lançado ativo
+          if (!step && stepIndex === currentIndex && !markedCurrent && openStep) {
+            step = openStep;
+          }
 
           var state = "locked";
           if (partResult === "won") {
             state = "won";
             accumulatedProfit += Number(part.profit_cents) || 0;
           } else if (partResult === "lost") {
-            state = "won_external";
-          } else if (partResult === "pending") {
+            // Perdeu = X vermelho (Falhou), não troféu
+            state = "lost";
+          } else if (partResult === "pending" && !markedCurrent) {
             state = "current";
-          } else if (stepIndex === currentIndex) {
+            markedCurrent = true;
+          } else if (partResult === "pending" && markedCurrent) {
+            // Outra pendente não vira segundo “Você está aqui”
+            state = "waiting";
+          } else if (!part && stepIndex === currentIndex && !markedCurrent) {
             state = step ? "current" : "waiting";
-          } else if (stepIndex < currentIndex) {
-            state = "won";
+            markedCurrent = true;
           } else {
             state = "locked";
           }
@@ -910,22 +948,24 @@
             statusText:
               state === "won"
                 ? "Vitória"
-                : state === "won_external"
-                  ? "Sucesso na casa externa"
-                  : state === "current" || state === "final_ready"
-                    ? partResult === "pending"
-                      ? "Aguardando resultado"
-                      : step
-                        ? "Você está aqui"
-                        : "Aguardando lançamento"
-                    : state === "waiting"
-                      ? "Aguardando lançamento"
-                      : "Bloqueada",
+                : state === "lost"
+                  ? "Falhou"
+                  : state === "won_external"
+                    ? "Sucesso na casa externa"
+                    : state === "current" || state === "final_ready"
+                      ? partResult === "pending"
+                        ? "Aguardando resultado"
+                        : step
+                          ? "Você está aqui"
+                          : "Aguardando lançamento"
+                      : state === "waiting"
+                        ? "Aguardando lançamento"
+                        : "Bloqueada",
           });
         }
 
-        var doneCount = stages.filter(function (s) {
-          return s.state === "won" || s.state === "won_external" || s.state === "protected";
+        var playedCount = stages.filter(function (s) {
+          return s.state === "won" || s.state === "lost" || s.state === "won_external";
         }).length;
 
         return {
@@ -951,15 +991,20 @@
           stages: stages,
           recovery: [],
           inRecovery: false,
-          failedAt: null,
+          failedAt: stages.find(function (s) { return s.state === "lost"; })
+            ? stages.find(function (s) { return s.state === "lost"; }).index
+            : null,
           progress: {
-            percent: Math.round((doneCount / maxEntries) * 100),
+            percent: Math.round((playedCount / maxEntries) * 100),
             currentStage: currentIndex,
             totalStages: maxEntries,
             accumulatedProfitCents: accumulatedProfit,
-            gamesRemaining: Math.max(0, maxEntries - doneCount),
+            gamesRemaining: Math.max(0, maxEntries - playedCount),
             protectionActive: Number(bal) > 0,
             desafioBalanceCents: Number(bal) || 0,
+            wonCount: wonN,
+            lostCount: lostN,
+            pendingCount: pendingN,
           },
         };
       }
@@ -1047,9 +1092,10 @@
       }
 
       function iconFor(stage) {
-        if (stage.isFinal || stage.state === "final_ready") return "👑";
-        if (stage.state === "won" || stage.state === "won_external") return "🏆";
         if (stage.state === "lost") return "❌";
+        if (stage.isFinal || stage.state === "final_ready") return "👑";
+        if (stage.state === "won") return "🏆";
+        if (stage.state === "won_external") return "❌";
         if (stage.state === "protected") return "🛡";
         if (stage.state === "current") return "🔵";
         if (stage.state === "waiting") return "🟡";
@@ -1076,15 +1122,13 @@
               ? "Você está aqui"
               : stage.state === "won"
                 ? "Concluída"
-                : stage.state === "won_external"
-                  ? "Sucesso externo"
-                  : stage.state === "lost"
-                    ? "Falhou aqui"
-                    : stage.state === "waiting"
-                      ? "Aguardando"
-                      : stage.state === "protected"
-                        ? "Protegida"
-                        : "Bloqueada";
+                : stage.state === "lost" || stage.state === "won_external"
+                  ? "Falhou"
+                  : stage.state === "waiting"
+                    ? "Aguardando"
+                    : stage.state === "protected"
+                      ? "Protegida"
+                      : "Bloqueada";
           html +=
             '<button type="button" class="' +
             cls +
@@ -1105,13 +1149,12 @@
             esc(hint) +
             "</div></button>";
           if (i < stages.length - 1) {
-            var lit =
-              stage.state === "won" ||
-              stage.state === "won_external" ||
-              stage.state === "protected";
+            var lit = stage.state === "won" || stage.state === "protected";
+            var litFail = stage.state === "lost" || stage.state === "won_external";
             html +=
               '<div class="j-connector' +
               (lit ? " is-lit" : "") +
+              (litFail ? " is-fail" : "") +
               '" aria-hidden="true"></div>';
           }
         });
