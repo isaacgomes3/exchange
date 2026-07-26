@@ -193,12 +193,19 @@ export function buildDesafioStepInplayPatch(step, inplayByEventId, nowIso) {
     prevHome === (info.homeScore != null ? Number(info.homeScore) : null) &&
     prevAway === (info.awayScore != null ? Number(info.awayScore) : null);
   const finishedChanged = Boolean(prev.finished) !== Boolean(live.finished);
+  // FT já cacheado, mas status ainda "live" → precisa virar "pending" p/ admin encerrar
+  const needsPendingStatus =
+    Boolean(info.finished) &&
+    String(step.status || "").toLowerCase() === "live";
   // Não engolir FT quando o SELECT da etapa não traz metadata
-  if (sameScores && sameMeta && !finishedChanged) return null;
+  if (sameScores && sameMeta && !finishedChanged && !needsPendingStatus) {
+    return null;
+  }
   if (
     sameScores &&
     !step.metadata &&
     !finishedChanged &&
+    !needsPendingStatus &&
     String(prev.elapsed || "") === String(live.elapsed || "")
   ) {
     return null;
@@ -209,7 +216,9 @@ export function buildDesafioStepInplayPatch(step, inplayByEventId, nowIso) {
   };
   if (info.homeScore != null) slimPatch.final_score_home = info.homeScore;
   if (info.awayScore != null) slimPatch.final_score_away = info.awayScore;
-  if (info.live) slimPatch.status = "live";
+  // Ao vivo → live; FT → pending (libera filtro Pendente / botões de encerrar no admin)
+  if (info.finished) slimPatch.status = "pending";
+  else if (info.live) slimPatch.status = "live";
 
   const patch = {
     ...slimPatch,

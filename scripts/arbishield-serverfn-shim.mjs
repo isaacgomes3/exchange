@@ -3294,21 +3294,41 @@ async function settleDesafioStep(token, body) {
       : winningSide === "arbishield"
         ? "zebra_protected"
         : "win";
-  await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: {
-      status: "done",
-      result,
-      settled_at: new Date().toISOString(),
-      settled_by: adminId,
-      final_score_home:
-        body?.homeScore != null ? Number(body.homeScore) : step.final_score_home,
-      final_score_away:
-        body?.awayScore != null ? Number(body.awayScore) : step.final_score_away,
-      updated_at: new Date().toISOString(),
-    },
-  });
+  const settledAt = new Date().toISOString();
+  const stepPatchFull = {
+    status: "done",
+    result,
+    settled_at: settledAt,
+    settled_by: adminId,
+    final_score_home:
+      body?.homeScore != null ? Number(body.homeScore) : step.final_score_home,
+    final_score_away:
+      body?.awayScore != null ? Number(body.awayScore) : step.final_score_away,
+    updated_at: settledAt,
+  };
+  try {
+    await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: stepPatchFull,
+    });
+  } catch (err) {
+    // Schema antigo pode não ter settled_by — tenta patch mínimo
+    console.warn(
+      "[desafio-settle] patch completo falhou, tentando mínimo:",
+      err instanceof Error ? err.message : err
+    );
+    await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        status: "done",
+        result,
+        settled_at: settledAt,
+        updated_at: settledAt,
+      },
+    });
+  }
 
   // Se não restar etapa aberta, tira o desafio da lista "ativos" do cliente
   let desafioDeactivated = false;
@@ -3320,6 +3340,7 @@ async function settleDesafioStep(token, body) {
       );
       const open = (Array.isArray(allSteps) ? allSteps : []).filter((s) => {
         if (s.deleted_at) return false;
+        if (String(s.id) === String(stepId)) return false; // acabou de encerrar
         const st = String(s.status || "").toLowerCase();
         if (st === "done" || st === "settled" || st === "closed" || st === "cancelled") {
           return false;
@@ -3338,16 +3359,28 @@ async function settleDesafioStep(token, body) {
         return true;
       });
       if (!open.length) {
-        await sb(`/rest/v1/desafios?id=eq.${encodeURIComponent(step.desafio_id)}`, {
-          method: "PATCH",
-          token: SERVICE_KEY,
-          body: {
-            is_active: false,
-            status: "completed",
-            completed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-        });
+        try {
+          await sb(`/rest/v1/desafios?id=eq.${encodeURIComponent(step.desafio_id)}`, {
+            method: "PATCH",
+            token: SERVICE_KEY,
+            body: {
+              is_active: false,
+              status: "completed",
+              completed_at: settledAt,
+              updated_at: settledAt,
+            },
+          });
+        } catch {
+          await sb(`/rest/v1/desafios?id=eq.${encodeURIComponent(step.desafio_id)}`, {
+            method: "PATCH",
+            token: SERVICE_KEY,
+            body: {
+              is_active: false,
+              status: "completed",
+              updated_at: settledAt,
+            },
+          });
+        }
         desafioDeactivated = true;
       }
     } catch {
@@ -3359,8 +3392,21 @@ async function settleDesafioStep(token, body) {
   if (winningSide === "arbishield" && step.desafio_id) {
     const userIds = [...new Set(list.map((p) => p.user_id).filter(Boolean))];
     for (const uid of userIds) {
-      const f = await maybeForfeitCircuitToProviders(step.desafio_id, uid);
-      if (f) forfeits.push({ userId: uid, ...f });
+      try {
+        const f = await maybeForfeitCircuitToProviders(step.desafio_id, uid);
+        if (f) forfeits.push({ userId: uid, ...f });
+      } catch (err) {
+        console.warn(
+          "[desafio-settle] forfeit falhou (etapa já encerrada):",
+          uid,
+          err instanceof Error ? err.message : err
+        );
+        forfeits.push({
+          userId: uid,
+          forfeited: false,
+          error: String(err instanceof Error ? err.message : err),
+        });
+      }
     }
   }
 

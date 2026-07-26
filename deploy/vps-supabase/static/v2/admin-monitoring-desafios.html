@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Monitor de Desafios — ArbiShield</title>
-  <meta name="arbishield-build" content="desafio-etapa-contagem-v5" />
+  <meta name="arbishield-build" content="desafio-monitor-mercado-settle-v1" />
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=monitor-desafios-etapa-v3" />
+  <link rel="stylesheet" href="/v2.css?v=monitor-desafios-mercado-v1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=monitor-desafios-etapa-v3"></script>
-  <script src="/v2-shell.js?v=monitor-desafios-etapa-v3" defer></script>
+  <script src="/v2.js?v=monitor-desafios-mercado-v1"></script>
+  <script src="/v2-shell.js?v=monitor-desafios-mercado-v1" defer></script>
   <style>
     .mdz-wrap { display: grid; gap: 16px; padding-bottom: 48px; }
     .mdz-head h1 { margin: 0; font-size: clamp(1.4rem, 3vw, 1.9rem); font-weight: 900; letter-spacing: -0.03em; text-transform: uppercase; }
@@ -69,6 +69,13 @@
     .mdz-client .id { display: block; margin-top: 4px; color: #8b949e; font-size: 11px; font-weight: 600; }
     .mdz-match { color: #e7e7e7; font-weight: 700; }
     .mdz-match .meta { margin-top: 4px; color: #8b949e; font-size: 11px; font-weight: 600; }
+    .mdz-match .mkt {
+      margin-top: 6px; color: #c6ff00; font-size: 11px; font-weight: 700;
+      line-height: 1.35;
+    }
+    .mdz-match .mkt .casa { color: #93c5fd; }
+    .mdz-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .mdz-actions .mdz-btn { padding: 7px 10px; font-size: 9px; }
     .mdz-amt { font-weight: 800; white-space: nowrap; }
     .mdz-amt .sub { display: block; margin-top: 4px; color: #8b949e; font-size: 11px; font-weight: 600; }
     .mdz-badge {
@@ -252,19 +259,43 @@
         step.match_label ||
         [step.home_team, step.away_team].filter(Boolean).join(" × ") ||
         "—";
+      var marketArbi =
+        step.market_name_arbishield || step.market_name || "";
+      var marketCasa = step.market_name_casa || "";
       var dz = (current && current.desafios) || {};
       var active =
         current &&
         (dz.is_active === true ||
           normalizePartResult(current.result) === "pending");
+      var liveMeta =
+        step.metadata && step.metadata.live && typeof step.metadata.live === "object"
+          ? step.metadata.live
+          : null;
+      var feedFinished =
+        !!(liveMeta &&
+          (liveMeta.finished === true ||
+            /^(finished|ended|closed|ft)$/i.test(
+              String(liveMeta.status || liveMeta.match_status || "")
+            )));
+      var scoreHint =
+        step.final_score_home != null && step.final_score_away != null
+          ? String(step.final_score_home) + "-" + String(step.final_score_away)
+          : liveMeta && liveMeta.score
+            ? String(liveMeta.score)
+            : "";
 
       row.stepIndex = Math.min(stepIndex, row.totalSteps || 5);
       row.entriesPlayed = cycle.length;
       row.stepResult = (current && current.result) || "";
       row.stepAmount = current ? Number(current.amount_cents) || 0 : 0;
       row.matchLabel = match;
+      row.marketArbi = marketArbi;
+      row.marketCasa = marketCasa;
       row.league = step.league_name || "";
       row.startsAt = step.starts_at || "";
+      row.stepId = (current && (current.step_id || (step && step.id))) || "";
+      row.feedFinished = feedFinished;
+      row.scoreHint = scoreHint;
       row.inProgress =
         !!active && normalizePartResult(row.stepResult) === "pending";
       row.finishedCycle =
@@ -290,7 +321,16 @@
         if (String(r.stepResult || "").toLowerCase() !== "lost") return false;
       }
       if (q) {
-        var hay = [r.userName, r.userId, r.matchLabel, r.league].join(" ").toLowerCase();
+        var hay = [
+          r.userName,
+          r.userId,
+          r.matchLabel,
+          r.league,
+          r.marketArbi,
+          r.marketCasa,
+        ]
+          .join(" ")
+          .toLowerCase();
         if (hay.indexOf(q) < 0) return false;
       }
       return true;
@@ -343,6 +383,38 @@
         rows
           .map(function (r) {
             var badge = resultLabel(r.stepResult);
+            var marketLine = "";
+            if (r.marketArbi || r.marketCasa) {
+              marketLine =
+                '<div class="mkt">Arbi: ' +
+                esc(r.marketArbi || "—") +
+                (r.marketCasa
+                  ? '<span class="casa"> · Casa: ' + esc(r.marketCasa) + "</span>"
+                  : "") +
+                "</div>";
+            } else {
+              marketLine = '<div class="mkt" style="color:#8b949e">Mercado não informado</div>';
+            }
+            var settleHtml = "";
+            if (r.inProgress && r.stepId) {
+              settleHtml =
+                '<div class="mdz-actions">' +
+                (r.feedFinished || r.scoreHint
+                  ? '<span class="mdz-badge pending">FT ' +
+                    esc(r.scoreHint || "finalizado") +
+                    "</span>"
+                  : "") +
+                '<button type="button" class="mdz-btn" data-settle="' +
+                esc(r.stepId) +
+                '" data-side="arbishield">Bateu Arbi</button>' +
+                '<button type="button" class="mdz-btn ghost" data-settle="' +
+                esc(r.stepId) +
+                '" data-side="casa">Bateu Casa</button>' +
+                '<button type="button" class="mdz-btn ghost" data-settle="' +
+                esc(r.stepId) +
+                '" data-side="empate_anula">Empate Anula</button>' +
+                "</div>";
+            }
             return (
               "<tr>" +
               '<td><div class="mdz-client">' +
@@ -357,7 +429,12 @@
               "</strong></td>" +
               '<td><div class="mdz-match">' +
               esc(r.matchLabel) +
-              '</div><div class="meta">' +
+              (r.scoreHint
+                ? ' · <span style="color:#c6ff00">' + esc(r.scoreHint) + "</span>"
+                : "") +
+              "</div>" +
+              marketLine +
+              '<div class="meta">' +
               esc(r.league || "—") +
               (r.startsAt
                 ? " · " +
@@ -370,7 +447,9 @@
                     })
                   )
                 : "") +
-              "</div></td>" +
+              "</div>" +
+              settleHtml +
+              "</td>" +
               '<td><div class="mdz-amt">' +
               money(r.stepAmount) +
               '<span class="sub">entrada atual · total ciclo ' +
@@ -430,6 +509,56 @@
     }
     var ref = document.getElementById("mdzRefresh");
     if (ref) ref.addEventListener("click", function () { load(true); });
+    root.querySelectorAll("[data-settle]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        settleStep(
+          btn.getAttribute("data-settle"),
+          btn.getAttribute("data-side"),
+          btn
+        );
+      });
+    });
+  }
+
+  async function settleStep(stepId, winningSide, btn) {
+    if (!stepId || !winningSide) return;
+    var msg =
+      winningSide === "arbishield"
+        ? "Encerrar etapa: Bateu ArbiShield (zebra)?"
+        : winningSide === "empate_anula" || winningSide === "void"
+          ? "Encerrar etapa: Empate Anula — devolve o valor apostado?"
+          : "Encerrar etapa: Bateu Casa (objetivo do circuito)?";
+    if (!confirm(msg)) return;
+    if (btn) btn.disabled = true;
+    showErr("");
+    try {
+      var supa = ArbiV2.client();
+      var sess = await supa.auth.getSession();
+      var token =
+        sess && sess.data && sess.data.session && sess.data.session.access_token;
+      if (!token) throw new Error("Sessão expirada — faça login novamente.");
+      var res = await fetch("/api/arbishield/desafio-settle", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + token,
+          "Content-Type": "application/json",
+          accept: "application/json",
+        },
+        body: JSON.stringify({ stepId: stepId, winningSide: winningSide }),
+      });
+      var data = await res.json().catch(function () { return {}; });
+      if (!res.ok) throw new Error(data.error || "Falha ao encerrar");
+      alert(
+        "Etapa encerrada." +
+          (data.desafioDeactivated
+            ? "\nDesafio marcado como Encerrado."
+            : "")
+      );
+      await load(true);
+    } catch (ex) {
+      showErr(ex.message || "Erro ao encerrar");
+      if (btn) btn.disabled = false;
+    }
   }
 
   async function load(manual) {
@@ -450,7 +579,8 @@
           "id,user_id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at," +
             "profiles(full_name)," +
             "desafios(title,number,status,is_active,target_profit_pct,total_steps,deleted_at)," +
-            "desafio_steps(step_index,match_label,status,home_team,away_team,league_name,starts_at,result)"
+            "desafio_steps(id,step_index,match_label,status,home_team,away_team,league_name,starts_at,result," +
+            "market_name,market_name_arbishield,market_name_casa,final_score_home,final_score_away,metadata)"
         )
         .eq("side", "arbishield")
         .order("created_at", { ascending: false })

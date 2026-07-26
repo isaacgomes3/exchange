@@ -230,6 +230,42 @@ describe("betbra-inplay-sync", () => {
     assert.ok(built);
     assert.equal(built.live.finished, true);
     assert.equal(built.live.live, false);
+    assert.equal(built.slimPatch.status, "pending");
+    assert.equal(built.patch.status, "pending");
+  });
+
+  it("FT já cacheado com status live → ainda gera patch pending", () => {
+    const feed = indexInplayFeed([
+      {
+        eventId: "33842537216900023",
+        status: "Finished",
+        score: { home: { score: "2" }, away: { score: "3" } },
+      },
+    ]);
+    const step = {
+      starts_at: "2026-07-25T13:00:00.000Z",
+      status: "live",
+      final_score_home: 2,
+      final_score_away: 3,
+      external_bet_link:
+        "https://betbra.bet.br/b/exchange/sport/soccer/event/33842537216900023/market/1",
+      metadata: {
+        live: {
+          score: "2-3",
+          elapsed: "90",
+          finished: true,
+          live: false,
+          status: "Finished",
+        },
+      },
+    };
+    const built = buildDesafioStepInplayPatch(
+      step,
+      feed,
+      "2026-07-25T15:00:00.000Z"
+    );
+    assert.ok(built, "deve remarcar live→pending para admin encerrar");
+    assert.equal(built.slimPatch.status, "pending");
   });
 
   it("não engole FT quando etapa vem sem metadata no SELECT", () => {
@@ -258,6 +294,7 @@ describe("betbra-inplay-sync", () => {
     );
     assert.ok(built, "deve gerar patch para popular cache FT");
     assert.equal(built.live.finished, true);
+    assert.equal(built.slimPatch.status, "pending");
   });
 
   it("elegibilidade por source BetBra e janela", () => {

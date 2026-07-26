@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Gestão de Desafios — ArbiShield v2</title>
+  <meta name="arbishield-build" content="desafio-finalizar-ft-pending-v1" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
@@ -627,17 +628,6 @@
 
     let draft = emptyDraft();
 
-    function stepState(step) {
-      if (!step?.starts_at) return "upcoming";
-      if (step.status === "done" || step.status === "current") return step.status === "done" ? "done" : "live";
-      const u = new Date(step.starts_at).getTime();
-      const end = u + 9000 * 1000;
-      const now = Date.now();
-      if (now >= end) return "pending";
-      if (now >= u) return "live";
-      return "upcoming";
-    }
-
     function stepIsClosed(e) {
       if (!e) return false;
       const st = String(e.status || "").toLowerCase();
@@ -653,6 +643,34 @@
         res === "void" ||
         res === "empate_anula"
       );
+    }
+
+    function stepIsFinishedFeed(step) {
+      if (!step) return false;
+      const live =
+        step.metadata && step.metadata.live && typeof step.metadata.live === "object"
+          ? step.metadata.live
+          : null;
+      if (!live) return false;
+      if (live.finished === true) return true;
+      const st = String(live.status || live.match_status || "").toLowerCase();
+      return st === "finished" || st === "ended" || st === "closed" || st === "ft";
+    }
+
+    function stepState(step) {
+      if (!step) return "upcoming";
+      if (stepIsClosed(step) || step.status === "done") return "done";
+      // Placar FT / janela encerrada → Pendente (pronto para Bateu Casa / Arbi / Empate)
+      if (stepIsFinishedFeed(step)) return "pending";
+      if (!step.starts_at) {
+        return step.status === "live" || step.status === "current" ? "live" : "upcoming";
+      }
+      const u = new Date(step.starts_at).getTime();
+      const end = u + 9000 * 1000;
+      const now = Date.now();
+      if (now >= end) return "pending";
+      if (step.status === "current" || step.status === "live" || now >= u) return "live";
+      return "upcoming";
     }
 
     function isDesafioCancelled(d) {
@@ -1542,7 +1560,21 @@
                 [s.home_team, s.away_team].filter(Boolean).join(" x ") ||
                 "—";
               const st = stepState(s);
-              const done = st === "done" || s.status === "done";
+              const done = st === "done" || stepIsClosed(s);
+              const scoreHint =
+                s.final_score_home != null && s.final_score_away != null
+                  ? `${s.final_score_home}-${s.final_score_away}`
+                  : "";
+              const ftHint =
+                !done && stepIsFinishedFeed(s)
+                  ? `<div class="tags" style="margin-top:6px"><span class="tag-casa">FT ${esc(
+                      scoreHint || "finalizado"
+                    )} · encerre a etapa abaixo</span></div>`
+                  : !done && st === "pending"
+                    ? `<div class="tags" style="margin-top:6px"><span class="tag-casa">Pendente de encerramento${
+                        scoreHint ? " · " + esc(scoreHint) : ""
+                      }</span></div>`
+                    : "";
               const settle = done
                 ? `<div class="tags"><span class="tag-arbi">Encerrada · ${
                     s.result === "zebra_protected"
@@ -1560,11 +1592,18 @@
                   </div>
                   <p style="margin:6px 0 0;font-size:10px;color:var(--muted)">Circuito: vitórias só na ArbiShield até o fim → ganhos vão aos provedores de liquidez.</p>`;
               return `<div class="step-box">
-                <strong>Etapa ${s.step_index}</strong> · ${label}
+                <strong>Etapa ${s.step_index}</strong> · ${label}${
+                  scoreHint ? ` · <span style="color:var(--lime)">${esc(scoreHint)}</span>` : ""
+                }
                 <div class="tags">
-                  <span class="tag-arbi">Arbi: ${s.market_name_arbishield || s.market_name || "—"} @ ${s.arbi_odd ?? "—"}</span>
-                  <span class="tag-casa">Casa: ${s.market_name_casa || "—"} @ ${s.casa_odd ?? "—"}</span>
+                  <span class="tag-arbi">Arbi: ${esc(
+                    s.market_name_arbishield || s.market_name || "—"
+                  )} @ ${s.arbi_odd ?? "—"}</span>
+                  <span class="tag-casa">Casa: ${esc(s.market_name_casa || "—")} @ ${
+                    s.casa_odd ?? "—"
+                  }</span>
                 </div>
+                ${ftHint}
                 <div class="card-actions" style="margin-top:8px;justify-content:flex-start">
                   <button class="btn btn-lime-outline" type="button" data-parts="${esc(s.id)}" data-step-label="Etapa ${s.step_index} · ${esc(label)}">Ver entradas (cliente / valor)</button>
                 </div>
@@ -1690,14 +1729,13 @@
           }
           btn.disabled = true;
           try {
-            const session = await ArbiV2.client().auth.getSession();
-            const token = session.data.session?.access_token;
+            const headers = await authHeaders();
+            if (!headers.Authorization) {
+              throw new Error("Sessão expirada — faça login novamente no admin.");
+            }
             const res = await fetch("/api/arbishield/desafio-settle", {
               method: "POST",
-              headers: {
-                Authorization: "Bearer " + token,
-                "Content-Type": "application/json",
-              },
+              headers,
               body: JSON.stringify({ stepId, winningSide }),
             });
             const data = await res.json().catch(() => ({}));
