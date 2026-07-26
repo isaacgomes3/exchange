@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Gestão de Desafios — ArbiShield v2</title>
-  <meta name="arbishield-build" content="desafio-finalizar-ft-pending-v1" />
+  <meta name="arbishield-build" content="desafio-editar-placar-link-v1" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
@@ -190,6 +190,42 @@
       margin-top: 8px; background: rgba(0,0,0,0.25);
     }
     .step-box .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .step-edit {
+      margin-top: 10px; padding: 10px; border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.02);
+      display: grid; gap: 8px;
+    }
+    .step-edit .row {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    }
+    .step-edit label {
+      font-size: 9px; font-weight: 800; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--muted);
+      display: block; margin-bottom: 4px;
+    }
+    .step-edit .score-pair {
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .step-edit input[type="number"],
+    .step-edit input[type="url"],
+    .step-edit input[type="text"] {
+      border: 1px solid var(--border); border-radius: 8px;
+      background: #050505; color: var(--text);
+      padding: 8px 10px; font-size: 13px; font-weight: 700;
+    }
+    .step-edit input[type="number"] { width: 56px; text-align: center; }
+    .step-edit input[type="url"],
+    .step-edit input.link { flex: 1; min-width: 180px; }
+    .step-edit .sep { color: var(--muted); font-weight: 900; }
+    .step-box .link-open,
+    .step-edit .link-open {
+      font-size: 11px; font-weight: 700; color: var(--lime);
+      text-decoration: none;
+    }
+    .step-box .link-open:hover,
+    .step-edit .link-open:hover { text-decoration: underline; }
+    .step-edit .btn { padding: 8px 12px; font-size: 10px; }
     .btn-danger {
       background: transparent; color: #fca5a5;
       border: 1px solid rgba(248,113,113,0.45);
@@ -1565,6 +1601,15 @@
                 s.final_score_home != null && s.final_score_away != null
                   ? `${s.final_score_home}-${s.final_score_away}`
                   : "";
+              const linkVal = String(s.external_bet_link || "").trim();
+              const homeScoreVal =
+                s.final_score_home != null && s.final_score_home !== ""
+                  ? String(s.final_score_home)
+                  : "";
+              const awayScoreVal =
+                s.final_score_away != null && s.final_score_away !== ""
+                  ? String(s.final_score_away)
+                  : "";
               const ftHint =
                 !done && stepIsFinishedFeed(s)
                   ? `<div class="tags" style="margin-top:6px"><span class="tag-casa">FT ${esc(
@@ -1591,9 +1636,13 @@
                     <button class="btn btn-ghost" type="button" data-settle="${esc(s.id)}" data-side="empate_anula">Empate Anula</button>
                   </div>
                   <p style="margin:6px 0 0;font-size:10px;color:var(--muted)">Circuito: vitórias só na ArbiShield até o fim → ganhos vão aos provedores de liquidez.</p>`;
-              return `<div class="step-box">
-                <strong>Etapa ${s.step_index}</strong> · ${label}${
+              return `<div class="step-box" data-step-box="${esc(s.id)}">
+                <strong>Etapa ${s.step_index}</strong> · ${esc(label)}${
                   scoreHint ? ` · <span style="color:var(--lime)">${esc(scoreHint)}</span>` : ""
+                }${
+                  linkVal
+                    ? ` · <a class="link-open" href="${esc(linkVal)}" target="_blank" rel="noopener noreferrer">Link do jogo</a>`
+                    : ""
                 }
                 <div class="tags">
                   <span class="tag-arbi">Arbi: ${esc(
@@ -1604,6 +1653,32 @@
                   }</span>
                 </div>
                 ${ftHint}
+                <div class="step-edit" data-step-edit="${esc(s.id)}">
+                  <div class="row">
+                    <div>
+                      <label>Placar</label>
+                      <div class="score-pair">
+                        <input type="number" min="0" step="1" inputmode="numeric" data-score-home value="${esc(homeScoreVal)}" placeholder="0" title="Casa" />
+                        <span class="sep">×</span>
+                        <input type="number" min="0" step="1" inputmode="numeric" data-score-away value="${esc(awayScoreVal)}" placeholder="0" title="Visitante" />
+                      </div>
+                    </div>
+                    <div style="flex:1;min-width:200px">
+                      <label>Link do jogo</label>
+                      <div class="row" style="gap:6px">
+                        <input class="link" type="url" data-step-link value="${esc(linkVal)}" placeholder="https://… (Bet365, Flashscore, etc.)" />
+                        ${
+                          linkVal
+                            ? `<a class="link-open" href="${esc(linkVal)}" target="_blank" rel="noopener noreferrer">Abrir</a>`
+                            : ""
+                        }
+                      </div>
+                    </div>
+                    <div style="align-self:flex-end">
+                      <button class="btn btn-primary" type="button" data-save-step-meta="${esc(s.id)}">Salvar placar / link</button>
+                    </div>
+                  </div>
+                </div>
                 <div class="card-actions" style="margin-top:8px;justify-content:flex-start">
                   <button class="btn btn-lime-outline" type="button" data-parts="${esc(s.id)}" data-step-label="Etapa ${s.step_index} · ${esc(label)}">Ver entradas (cliente / valor)</button>
                 </div>
@@ -1707,6 +1782,99 @@
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             toggle();
+          }
+        });
+      });
+
+      $("list").querySelectorAll("[data-save-step-meta]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const stepId = btn.getAttribute("data-save-step-meta");
+          if (!stepId) return;
+          const box =
+            btn.closest("[data-step-edit]") ||
+            $("list").querySelector(`[data-step-edit="${stepId}"]`);
+          if (!box) return;
+          const homeEl = box.querySelector("[data-score-home]");
+          const awayEl = box.querySelector("[data-score-away]");
+          const linkEl = box.querySelector("[data-step-link]");
+          const homeRaw = homeEl ? String(homeEl.value || "").trim() : "";
+          const awayRaw = awayEl ? String(awayEl.value || "").trim() : "";
+          const link = linkEl ? String(linkEl.value || "").trim() : "";
+          const clearScore = !homeRaw && !awayRaw;
+          let finalScoreHome = null;
+          let finalScoreAway = null;
+          if (!clearScore) {
+            if (homeRaw === "" || awayRaw === "") {
+              alert("Informe os dois lados do placar (ou deixe ambos vazios para limpar).");
+              return;
+            }
+            finalScoreHome = Math.trunc(Number(homeRaw));
+            finalScoreAway = Math.trunc(Number(awayRaw));
+            if (
+              !Number.isFinite(finalScoreHome) ||
+              finalScoreHome < 0 ||
+              !Number.isFinite(finalScoreAway) ||
+              finalScoreAway < 0
+            ) {
+              alert("Placar inválido.");
+              return;
+            }
+          }
+          btn.disabled = true;
+          const prevText = btn.textContent;
+          btn.textContent = "Salvando…";
+          try {
+            const headers = await authHeaders();
+            if (!headers.Authorization) {
+              throw new Error("Sessão expirada — faça login novamente no admin.");
+            }
+            const payload = {
+              stepId,
+              finalScoreHome: clearScore ? null : finalScoreHome,
+              finalScoreAway: clearScore ? null : finalScoreAway,
+              externalBetLink: link || null,
+            };
+            let res = await fetch("/api/arbishield/desafio-step-update", {
+              method: "POST",
+              headers,
+              body: JSON.stringify(payload),
+            });
+            let data = await res.json().catch(() => ({}));
+            // Fallback: update direto no Supabase se nginx ainda não proxiar a rota
+            if (res.status === 404 || res.status === 405 || res.status === 502) {
+              const up = await ArbiV2.client()
+                .from("desafio_steps")
+                .update({
+                  final_score_home: clearScore ? null : finalScoreHome,
+                  final_score_away: clearScore ? null : finalScoreAway,
+                  external_bet_link: link || null,
+                })
+                .eq("id", stepId)
+                .select("id,final_score_home,final_score_away,external_bet_link")
+                .maybeSingle();
+              if (up.error) throw new Error(up.error.message || "Falha ao salvar etapa");
+              data = { ok: true, step: up.data };
+              res = { ok: true, status: 200 };
+            }
+            if (!res.ok || data.ok === false) {
+              throw new Error((data && data.error) || "Falha ao salvar placar/link");
+            }
+            // Atualiza cache local da lista sem esperar reload completo
+            if (Array.isArray(window.__desafioRows)) {
+              for (const d of window.__desafioRows) {
+                for (const s of d.desafio_steps || []) {
+                  if (String(s.id) !== String(stepId)) continue;
+                  s.final_score_home = clearScore ? null : finalScoreHome;
+                  s.final_score_away = clearScore ? null : finalScoreAway;
+                  s.external_bet_link = link || null;
+                }
+              }
+            }
+            await load();
+          } catch (err) {
+            alert(err.message || "Erro ao salvar placar/link");
+            btn.disabled = false;
+            btn.textContent = prevText;
           }
         });
       });
