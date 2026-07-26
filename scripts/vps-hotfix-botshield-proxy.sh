@@ -148,6 +148,8 @@ grep -q 'exchangeFetch' "$SCRIPTS_DIR/lib/betbra-client-api.mjs" || die "betbra-
 grep -q 'priorCookieHeader\|smsCode' "$SCRIPTS_DIR/lib/betbra-client-api.mjs" || die "betbra-client sem fix OTP cookies"
 grep -q 'deviceChallengeAt\|BETBRA_DEVICE_VALIDATION' "$SCRIPTS_DIR/lib/exchange-orders-service.mjs" || die "orders-service sem persistencia do desafio OTP"
 grep -q 'ProxyAgent' "$SCRIPTS_DIR/lib/exchange-proxy-fetch.mjs" || die "exchange-proxy-fetch sem ProxyAgent"
+grep -q 'normalizeProxyUrl\|SUA-URL' "$SCRIPTS_DIR/lib/exchange-proxy-fetch.mjs" || die "exchange-proxy-fetch sem ignore de SUA-URL"
+grep -q 'EXCHANGE_PROXY_DSN' "$SHIM_DIR/scripts/arbishield-serverfn-shim.mjs" || die "shim sem force EXCHANGE_PROXY_DSN"
 grep -q 'exchangeFetch' "$SCRIPTS_DIR/lib/mexchange-offers.mjs" || die "mexchange-offers sem exchangeFetch"
 grep -q 'exchangeFetch' "$SCRIPTS_DIR/lib/exchange-orders-adapter.mjs" || die "adapter sem exchangeFetch"
 
