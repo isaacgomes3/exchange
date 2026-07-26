@@ -824,9 +824,43 @@ export function createExchangeOrdersService(deps) {
             login,
             password,
             validationCode: validationCode || undefined,
+            // Soft2Bet: cookies da 1ª tentativa (validationRequired) vão com o OTP
+            cookies: session.cookies || undefined,
+            cookieHeader: session.cookieHeader || undefined,
           });
         }
       } catch (loginErr) {
+        // Guarda cookies do challenge para o próximo "Enviar código"
+        if (
+          loginErr?.code === "BETBRA_DEVICE_VALIDATION" &&
+          (loginErr.cookieHeader || loginErr.cookies)
+        ) {
+          try {
+            const pending = {
+              ...session,
+              cookies: loginErr.cookies || session.cookies || null,
+              cookieHeader:
+                loginErr.cookieHeader ||
+                cookieHeaderFromJar(loginErr.cookies) ||
+                session.cookieHeader ||
+                null,
+              deviceChallengeAt: new Date().toISOString(),
+            };
+            await sb(
+              `/rest/v1/exchange_connections?id=eq.${encodeURIComponent(conn.id)}`,
+              {
+                method: "PATCH",
+                token: serviceKey,
+                body: {
+                  session_enc: encryptSessionPayload(pending),
+                  updated_at: new Date().toISOString(),
+                },
+              }
+            );
+          } catch {
+            /* best-effort */
+          }
+        }
         // Soft2Bet WAF: tentar saldo/conta via Mexchange com sessão já salva
         if (loginErr?.code !== "BETBRA_API_BLOCKED") throw loginErr;
         let tradeSession = { ...session };

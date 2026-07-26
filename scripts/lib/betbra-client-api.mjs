@@ -136,6 +136,17 @@ function mapBetbraApiError(msg, data, status) {
     err.details = data;
     return err;
   }
+  if (/accountid not found/i.test(m)) {
+    const err = new Error(
+      "AccountId not found — sessão/código não validou. " +
+        "Peça código novo (Atualizar saldo), espere o e-mail, cole e Enviar código " +
+        "na mesma hora (código expira). Confira proxy Sticky BR."
+    );
+    err.status = status || 401;
+    err.code = "BETBRA_ACCOUNT_ID_MISSING";
+    err.details = data;
+    return err;
+  }
   return null;
 }
 
@@ -204,6 +215,8 @@ export async function betbraClientLogin({
   latitude,
   longitude,
   validationCode,
+  cookies: priorCookies,
+  cookieHeader: priorCookieHeader,
 } = {}) {
   const user = String(login || "").trim();
   const pass = String(password || "");
@@ -241,13 +254,25 @@ export async function betbraClientLogin({
     body.otp = code;
     body.loginCode = code;
     body.deviceCode = code;
+    body.smsCode = code;
+    body.emailCode = code;
+    body.twoFactorCode = code;
+    body.authCode = code;
+    body.deviceValidationCode = code;
   }
+
+  const priorHeader =
+    priorCookieHeader || cookieHeaderFromJar(priorCookies) || "";
 
   async function postLogin() {
     try {
+      const headers = { ...defaultHeaders() };
+      // Soft2Bet costuma exigir os cookies da 1ª tentativa (validationRequired)
+      // junto com o código do e-mail na 2ª.
+      if (priorHeader) headers.Cookie = priorHeader;
       return await exchangeFetch(url, {
         method: "POST",
-        headers: defaultHeaders(),
+        headers,
         body: JSON.stringify(body),
         redirect: "manual",
       });
@@ -310,6 +335,11 @@ export async function betbraClientLogin({
   if (msgRaw && /api blocked in server/i.test(String(msgRaw))) {
     throw mapBetbraApiError(msgRaw, data, 403);
   }
+  // Mescla cookies da tentativa anterior + Set-Cookie desta resposta
+  const mergedCookies = mergeCookieJars(priorCookies || {}, cookies);
+  const mergedHeader =
+    cookieHeaderFromJar(mergedCookies) || priorHeader || cookieHeaderFromJar(cookies);
+
   if (data?.validationRequired) {
     const err = new Error(
       code
@@ -321,7 +351,14 @@ export async function betbraClientLogin({
     err.code = "BETBRA_DEVICE_VALIDATION";
     err.details = data;
     err.validationRequired = true;
+    // Importante: guardar cookies desta resposta para o envio do código
+    err.cookies = mergedCookies;
+    err.cookieHeader = mergedHeader;
     throw err;
+  }
+  // Soft2Bet às vezes devolve 200 com AccountId not found
+  if (msgRaw && /accountid not found/i.test(String(msgRaw))) {
+    throw mapBetbraApiError(msgRaw, data, 401);
   }
   const token = String(data?.token || data?.accessToken || "").trim();
   const cashBalance =
@@ -331,8 +368,8 @@ export async function betbraClientLogin({
   return {
     ok: true,
     token: token || null,
-    cookies,
-    cookieHeader: cookieHeaderFromJar(cookies),
+    cookies: mergedCookies,
+    cookieHeader: mergedHeader,
     user: {
       id: data?.id ?? null,
       login: data?.login ?? user,
@@ -442,8 +479,16 @@ export async function betbraLoginAndBalance({
   login,
   password,
   validationCode,
+  cookies,
+  cookieHeader,
 } = {}) {
-  const auth = await betbraClientLogin({ login, password, validationCode });
+  const auth = await betbraClientLogin({
+    login,
+    password,
+    validationCode,
+    cookies,
+    cookieHeader,
+  });
   let bal = null;
   if (auth.cashBalance != null && Number.isFinite(auth.cashBalance)) {
     bal = {

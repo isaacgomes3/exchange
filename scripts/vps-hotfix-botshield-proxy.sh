@@ -114,9 +114,15 @@ if [[ -f "$SHIM_DIR/arbishield-serverfn-shim.mjs" ]] || [[ -L "$SHIM_DIR/arbishi
 fi
 
 grep -q 'exchangeFetch' "$SCRIPTS_DIR/lib/betbra-client-api.mjs" || die "betbra-client sem exchangeFetch"
+grep -q 'priorCookieHeader\|smsCode' "$SCRIPTS_DIR/lib/betbra-client-api.mjs" || die "betbra-client sem fix OTP cookies"
+grep -q 'deviceChallengeAt\|BETBRA_DEVICE_VALIDATION' "$SCRIPTS_DIR/lib/exchange-orders-service.mjs" || die "orders-service sem persistencia do desafio OTP"
 grep -q 'ProxyAgent' "$SCRIPTS_DIR/lib/exchange-proxy-fetch.mjs" || die "exchange-proxy-fetch sem ProxyAgent"
 grep -q 'exchangeFetch' "$SCRIPTS_DIR/lib/mexchange-offers.mjs" || die "mexchange-offers sem exchangeFetch"
 grep -q 'exchangeFetch' "$SCRIPTS_DIR/lib/exchange-orders-adapter.mjs" || die "adapter sem exchangeFetch"
+
+log "2b/4 UI Conta Exchange"
+download_repo_file "deploy/vps-supabase/static/botshield/conta-betbra.html" "$WEB/conta-betbra.html"
+grep -q 'Enviando código' "$WEB/conta-betbra.html" || die "conta-betbra.html sem feedback Enviando código"
 
 log "3/4 env → proxy + BetBra (bridge local OFF)"
 n=0

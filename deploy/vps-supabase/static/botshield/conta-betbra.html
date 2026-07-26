@@ -330,14 +330,23 @@
           });
           const json = await res.json().catch(() => ({}));
           if (!res.ok) {
+            const rawErr = String(json.error || "");
             const needsCode =
               json.code === "BETBRA_DEVICE_VALIDATION" ||
               json.validationRequired === true ||
-              /valida[cç][aã]o|c[oó]digo|dispositivo|device/i.test(
-                String(json.error || "")
-              );
+              /valida[cç][aã]o|c[oó]digo|dispositivo|device/i.test(rawErr);
             if (needsCode) showDeviceCodeBox(true);
-            const err = new Error(json.error || "Falha ao ler saldo");
+            let msg = rawErr || "Falha ao ler saldo";
+            if (
+              json.code === "BETBRA_ACCOUNT_ID_MISSING" ||
+              /AccountId not found/i.test(rawErr)
+            ) {
+              showDeviceCodeBox(true);
+              msg =
+                "AccountId not found — o código expirou ou a sessão do desafio foi perdida. " +
+                "Espere ~1 min, clique Atualizar saldo (gera código novo), cole o código fresco do e-mail e Enviar na hora.";
+            }
+            const err = new Error(msg);
             err.code = json.code;
             err.validationRequired = needsCode;
             throw err;
@@ -498,6 +507,8 @@
 
       document.getElementById("btnDeviceCode")?.addEventListener("click", async () => {
         err.classList.remove("show");
+        ok.style.display = "none";
+        const btn = document.getElementById("btnDeviceCode");
         const code = String(
           document.getElementById("deviceCode")?.value || ""
         )
@@ -510,14 +521,23 @@
           showDeviceCodeBox(true);
           return;
         }
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "Enviando código…";
+        }
         try {
           await refreshBalance(code);
           ok.style.display = "block";
           ok.textContent =
-            "Código aceito · saldo atualizado · dispositivo da VPS autorizado.";
+            "Código aceito · saldo atualizado · dispositivo autorizado.";
         } catch (ex) {
           err.textContent = ex instanceof Error ? ex.message : String(ex);
           err.classList.add("show");
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Enviar código e atualizar saldo";
+          }
         }
       });
 
