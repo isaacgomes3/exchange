@@ -3062,6 +3062,114 @@ async function activateNextDesafioStep(desafioId, currentStepIndex) {
   return { ...next, status: "current", activated: true };
 }
 
+/**
+ * Admin: editar placar e/ou link do jogo de uma etapa do desafio.
+ * Body: { stepId, finalScoreHome?, finalScoreAway?, externalBetLink? }
+ * Placar: envie ambos ou string finalScore "2-3". null limpa.
+ */
+async function updateDesafioStepMeta(token, body) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const stepId = String(body?.stepId || body?.step_id || "").trim();
+  if (!stepId) throw new Error("stepId obrigatório");
+
+  const stepRows = await sb(
+    `/rest/v1/desafio_steps?select=id,final_score_home,final_score_away,external_bet_link,home_team,away_team,match_label,step_index&id=eq.${encodeURIComponent(stepId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const step = Array.isArray(stepRows) ? stepRows[0] : null;
+  if (!step) throw new Error("Etapa não encontrada");
+
+  const patch = { updated_at: new Date().toISOString() };
+  let touchedScore = false;
+  let touchedLink = false;
+
+  const scoreStr = body?.finalScore ?? body?.final_score ?? body?.score;
+  if (scoreStr != null && String(scoreStr).trim() !== "") {
+    const m = String(scoreStr)
+      .trim()
+      .match(/^(\d+)\s*[-x:]\s*(\d+)$/i);
+    if (!m) throw new Error('Placar inválido (use formato "2-3")');
+    patch.final_score_home = Number(m[1]);
+    patch.final_score_away = Number(m[2]);
+    touchedScore = true;
+  } else {
+    const hasHome =
+      body?.finalScoreHome !== undefined ||
+      body?.final_score_home !== undefined ||
+      body?.homeScore !== undefined;
+    const hasAway =
+      body?.finalScoreAway !== undefined ||
+      body?.final_score_away !== undefined ||
+      body?.awayScore !== undefined;
+    if (hasHome || hasAway) {
+      const rawHome =
+        body?.finalScoreHome ?? body?.final_score_home ?? body?.homeScore;
+      const rawAway =
+        body?.finalScoreAway ?? body?.final_score_away ?? body?.awayScore;
+      if (rawHome === null || rawHome === "" || rawAway === null || rawAway === "") {
+        patch.final_score_home = null;
+        patch.final_score_away = null;
+      } else {
+        const home = Math.trunc(Number(rawHome));
+        const away = Math.trunc(Number(rawAway));
+        if (!Number.isFinite(home) || home < 0 || !Number.isFinite(away) || away < 0) {
+          throw new Error("Placar inválido (números ≥ 0)");
+        }
+        patch.final_score_home = home;
+        patch.final_score_away = away;
+      }
+      touchedScore = true;
+    }
+  }
+
+  if (
+    body?.externalBetLink !== undefined ||
+    body?.external_bet_link !== undefined ||
+    body?.betbraLink !== undefined ||
+    body?.link !== undefined
+  ) {
+    const link = String(
+      body?.externalBetLink ??
+        body?.external_bet_link ??
+        body?.betbraLink ??
+        body?.link ??
+        ""
+    ).trim();
+    patch.external_bet_link = link || null;
+    touchedLink = true;
+  }
+
+  if (!touchedScore && !touchedLink) {
+    throw new Error("Nada para atualizar (informe placar e/ou link)");
+  }
+
+  let updated;
+  try {
+    updated = await sb(
+      `/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`,
+      { method: "PATCH", token: SERVICE_KEY, body: patch }
+    );
+  } catch (err) {
+    // Schema antigo sem updated_at
+    const { updated_at: _u, ...slim } = patch;
+    updated = await sb(
+      `/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`,
+      { method: "PATCH", token: SERVICE_KEY, body: slim }
+    );
+  }
+  const row = Array.isArray(updated) ? updated[0] : updated;
+  return {
+    ok: true,
+    stepId,
+    step: row || {
+      ...step,
+      ...patch,
+    },
+    updatedScore: touchedScore,
+    updatedLink: touchedLink,
+  };
+}
+
 async function settleDesafioStep(token, body) {
   if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
   const stepId = String(body?.stepId || body?.step_id || "").trim();
@@ -7462,6 +7570,32 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 200, await settleDesafioStep(token, body.data || body));
     } catch (err) {
       return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (
+    url.pathname === "/api/arbishield/desafio-step-update" &&
+    req.method === "POST"
+  ) {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      return sendJson(
+        res,
+        200,
+        await updateDesafioStepMeta(token, body.data || body)
+      );
+    } catch (err) {
+      return sendJson(res, 400, {
+        ok: false,
         error: err instanceof Error ? err.message : String(err),
       });
     }
