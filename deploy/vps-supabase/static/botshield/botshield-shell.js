@@ -188,12 +188,12 @@
       if (/api blocked|BETBRA_API_BLOCKED|bloqueou o login/i.test(msg)) {
         short = "API bloqueada";
         msg =
-          "API bloqueada (WAF/VPS). Tente de novo em 1–2 min ou use Cookie da exchange no Chrome. · Conta Exchange";
+          "API bloqueada (WAF/VPS). Tente de novo em 1–2 min ou use Cookie da BetBra no Chrome. · Conta BetBra";
       }
       val.textContent = short;
       chip.classList.remove("is-ok");
       chip.classList.add("is-err");
-      chip.title = msg + (msg.includes("Conta Exchange") ? "" : " · abra Conta Exchange");
+      chip.title = msg + (msg.includes("Conta BetBra") ? "" : " · abra Conta BetBra");
       if (hint) {
         hint.hidden = false;
         const tip = /api blocked|bloqueou o login|WAF/i.test(msg)
@@ -244,13 +244,13 @@
           throw new Error(sj.error || "Status da conta indisponível");
         }
         if (!sj.connected) {
-          setChipErr("sem conta", "Nenhuma Conta Exchange salva");
+          setChipErr("sem conta", "Nenhuma Conta BetBra salva");
           return;
         }
         if (!sj.hasPassword) {
           setChipErr(
             "sem senha",
-            "Salve login/senha em Conta Exchange para ler o saldo"
+            "Salve login/senha em Conta BetBra para ler o saldo"
           );
           return;
         }
