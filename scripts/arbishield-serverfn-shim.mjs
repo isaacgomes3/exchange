@@ -2772,9 +2772,16 @@ function normalizeDesafioPartResult(raw) {
     return "won";
   }
   if (
-    ["lost", "lose", "loss", "won_exchange", "won_casa", "casa", "external"].includes(
-      r
-    )
+    [
+      "lost",
+      "lose",
+      "loss",
+      "won_exchange",
+      "won_external",
+      "won_casa",
+      "casa",
+      "external",
+    ].includes(r)
   ) {
     return "lost";
   }
@@ -2942,36 +2949,26 @@ async function listMyDesafioHistory(token) {
     const lastResult = last
       ? normalizeDesafioPartResult(last.result)
       : "";
-    const cycleEndedSuccess = lastResult === "lost";
+    const cycleEndedSuccess = lastResult === "lost" || lostN > 0;
     const cycleEndedMax = wonN >= maxEntries && pendingN === 0;
-    let status = "em_andamento";
-    let statusLabel = "Em andamento";
-    if (cycleEndedSuccess) {
+    // Em andamento = somente se o cliente tem entrada pendente neste desafio.
+    let status = "finalizado";
+    let statusLabel = "Finalizado";
+    if (pendingN > 0) {
+      status = "em_andamento";
+      statusLabel = "Aguardando resultado";
+    } else if (cycleEndedSuccess) {
       status = "sucesso_casa";
       statusLabel = "Sucesso na casa";
     } else if (cycleEndedMax) {
       status = "finalizado";
       statusLabel = "Finalizado";
-    } else if (pendingN > 0) {
-      status = "em_andamento";
-      statusLabel = "Aguardando resultado";
-    } else if (wonN > 0 || lostN > 0) {
-      status = "em_andamento";
-      statusLabel = "Em andamento";
+    } else if (wonN > 0) {
+      status = "pausado";
+      statusLabel = "Sem entrada ativa";
     } else if (ordered.length === 0) {
       status = "vazio";
       statusLabel = "Sem entradas";
-    }
-    // Desafio admin inativo + sem pendência → trata como finalizado
-    if (
-      status === "em_andamento" &&
-      pendingN === 0 &&
-      d &&
-      d.is_active === false &&
-      (wonN > 0 || lostN > 0)
-    ) {
-      status = lostN > 0 ? "sucesso_casa" : "finalizado";
-      statusLabel = lostN > 0 ? "Sucesso na casa" : "Finalizado";
     }
     const firstAt = ordered[0]?.created_at || null;
     const lastAt = last?.created_at || null;
@@ -3813,15 +3810,11 @@ async function getDesafioJornada(token, body) {
       state = "won";
       accumulatedProfit += n(part.profit_cents);
       currentIndex = Math.min(stepIndex + 1, maxEntries);
-    } else if (partResult === "lost") {
-      // Zebra perdeu = green na casa externa = sucesso do ciclo (fora)
-      // Mas no mapa do cliente "derrota" na zebra abre recuperação se for falha de proteção
-      // Wilson: green favorito = sucesso ciclo; green zebra = avança
-      // Aqui part lost no lado arbishield = casa bateu = ciclo sucesso externo
-      state = "won_external"; // sucesso fora
+    } else if (partResult === "lost" || partResult === "won_external") {
+      // Perda do cliente no mapa = X vermelho (Falhou), não troféu/concluída.
+      state = "lost";
       accumulatedProfit += 0;
-      foundCurrent = true;
-      currentIndex = stepIndex;
+      currentIndex = Math.min(stepIndex + 1, maxEntries);
     } else if (partResult === "pending") {
       state = "current";
       foundCurrent = true;
@@ -3991,7 +3984,7 @@ async function getDesafioJornada(token, body) {
   }
 
   const doneCount = stages.filter((s) =>
-    ["won", "won_external", "protected"].includes(s.state)
+    ["won", "lost", "protected"].includes(s.state)
   ).length;
   const progressPct = Math.round((doneCount / maxEntries) * 100);
   const remaining = Math.max(0, maxEntries - doneCount);
@@ -4000,9 +3993,9 @@ async function getDesafioJornada(token, body) {
   let wonN = 0;
   let pendingN = 0;
   for (const p of partList) {
-    const r = String(p.result || "").toLowerCase();
-    if (r === "won" || r === "won_external") wonN += 1;
-    else if (r === "pending" || r === "active" || r === "open") pendingN += 1;
+    const r = normalizeDesafioPartResult(p.result);
+    if (r === "won") wonN += 1;
+    else if (r === "pending") pendingN += 1;
   }
   if (pendingN > 0) {
     currentIndex = Math.min(Math.max(1, wonN + 1), maxEntries);

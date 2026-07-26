@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Monitor de Desafios — ArbiShield</title>
-  <meta name="arbishield-build" content="desafio-etapa-contagem-v3" />
+  <meta name="arbishield-build" content="desafio-etapa-contagem-v4" />
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/v2.css?v=monitor-desafios-etapa-v3" />
@@ -128,21 +128,31 @@
   function resultLabel(r) {
     r = String(r || "").toLowerCase();
     if (r === "pending") return ["pending", "Pendente"];
-    if (r === "won" || r === "won_external") return ["won", "Ganha"];
-    if (r === "lost") return ["lost", "Perdida"];
+    if (r === "won" || r === "won_platform") return ["won", "Ganha"];
+    if (r === "lost" || r === "won_external" || r === "won_exchange" || r === "casa")
+      return ["lost", "Perdida"];
     return ["done", r || "—"];
   }
 
   function normalizePartResult(r) {
     r = String(r || "").toLowerCase().trim();
     if (!r) return "pending";
-    if (r === "win" || r === "won" || r === "won_platform" || r === "won_external") return "won";
-    if (r === "lose" || r === "lost" || r === "won_exchange" || r === "casa") return "lost";
+    if (r === "win" || r === "won" || r === "won_platform") return "won";
+    if (
+      r === "lose" ||
+      r === "lost" ||
+      r === "won_exchange" ||
+      r === "won_external" ||
+      r === "casa" ||
+      r === "external"
+    ) {
+      return "lost";
+    }
     if (r === "pending" || r === "active" || r === "open" || r === "current") return "pending";
     return r;
   }
 
-  /* desafio-etapa-contagem-v3 */
+  /* desafio-etapa-contagem-v4 */
   /**
    * Ciclo atual do cliente = participações após o último "lost" (casa bateu).
    * Cada jogo pode ser um desafio_id diferente — etapa é do CLIENTE, não do evento.

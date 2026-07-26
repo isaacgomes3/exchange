@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Jornada do Desafio · ArbiShield</title>
-  <meta name="arbishield-build" content="desafio-jornada-horizontal-v2" />
+  <meta name="arbishield-build" content="desafio-jornada-horizontal-v3" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=desafio-jornada-horizontal-2" />
+  <link rel="stylesheet" href="/v2.css?v=desafio-jornada-horizontal-3" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
   <script src="/v2-shell.js" defer></script>
@@ -254,9 +254,13 @@
       box-shadow: 0 0 20px rgba(167,139,250,0.3);
     }
     .j-node.is-won_external .j-badge {
-      border-color: var(--j-lime);
-      box-shadow: 0 0 24px rgba(201,242,35,0.45);
+      border-color: var(--j-red);
+      background: radial-gradient(circle at 30% 30%, #3a1515, #1a0808);
+      box-shadow: 0 0 22px rgba(248,113,113,0.4);
+      color: #fff;
     }
+    .j-node.is-won_external .j-label,
+    .j-node.is-won_external .j-hint { color: var(--j-red); }
     .j-node.is-locked .j-badge {
       opacity: 0.45;
       filter: grayscale(0.4);
@@ -787,8 +791,18 @@
       function normPartResult(r) {
         r = String(r || "").toLowerCase().trim();
         if (!r) return "pending";
-        if (r === "win" || r === "won" || r === "won_platform" || r === "won_external") return "won";
-        if (r === "lose" || r === "lost" || r === "won_exchange" || r === "casa") return "lost";
+        // Vitória do cliente = zebra/plataforma. Casa / won_external = falhou (X vermelho).
+        if (r === "win" || r === "won" || r === "won_platform") return "won";
+        if (
+          r === "lose" ||
+          r === "lost" ||
+          r === "won_exchange" ||
+          r === "won_external" ||
+          r === "casa" ||
+          r === "external"
+        ) {
+          return "lost";
+        }
         if (r === "pending" || r === "active" || r === "open" || r === "current") return "pending";
         return r;
       }
@@ -950,22 +964,20 @@
                 ? "Vitória"
                 : state === "lost"
                   ? "Falhou"
-                  : state === "won_external"
-                    ? "Sucesso na casa externa"
-                    : state === "current" || state === "final_ready"
-                      ? partResult === "pending"
-                        ? "Aguardando resultado"
-                        : step
-                          ? "Você está aqui"
-                          : "Aguardando lançamento"
-                      : state === "waiting"
-                        ? "Aguardando lançamento"
-                        : "Bloqueada",
+                  : state === "current" || state === "final_ready"
+                    ? partResult === "pending"
+                      ? "Aguardando resultado"
+                      : step
+                        ? "Você está aqui"
+                        : "Aguardando lançamento"
+                    : state === "waiting"
+                      ? "Aguardando lançamento"
+                      : "Bloqueada",
           });
         }
 
         var playedCount = stages.filter(function (s) {
-          return s.state === "won" || s.state === "lost" || s.state === "won_external";
+          return s.state === "won" || s.state === "lost";
         }).length;
 
         return {
@@ -1092,19 +1104,19 @@
       }
 
       function iconFor(stage) {
-        if (stage.state === "lost") return "❌";
-        if (stage.isFinal || stage.state === "final_ready") return "👑";
+        if (stage.state === "lost" || stage.state === "won_external") return "❌";
         if (stage.state === "won") return "🏆";
-        if (stage.state === "won_external") return "❌";
+        if (stage.state === "final_ready") return "👑";
         if (stage.state === "protected") return "🛡";
-        if (stage.state === "current") return "🔵";
+        if (stage.state === "current") return stage.isFinal ? "👑" : "🔵";
         if (stage.state === "waiting") return "🟡";
+        if (stage.isFinal) return "👑";
         return "⚪";
       }
 
       function statusClass(state) {
-        if (state === "won" || state === "won_external") return "won";
-        if (state === "lost") return "lost";
+        if (state === "won") return "won";
+        if (state === "lost" || state === "won_external") return "lost";
         if (state === "current" || state === "final_ready") return "current";
         if (state === "waiting") return "waiting";
         if (state === "protected") return "protected";
@@ -1115,20 +1127,27 @@
       function renderPath(host, stages, opts) {
         opts = opts || {};
         var html = "";
+        var sawCurrent = false;
         stages.forEach(function (stage, i) {
-          var cls = "j-node is-" + stage.state + (stage.isFinal ? " is-final" : "");
+          var state = stage.state;
+          if (state === "current" || state === "final_ready") {
+            if (sawCurrent) state = "locked";
+            else sawCurrent = true;
+          }
+          var cls = "j-node is-" + state + (stage.isFinal ? " is-final" : "");
           var hint =
-            stage.state === "current" || stage.state === "final_ready"
+            state === "current" || state === "final_ready"
               ? "Você está aqui"
-              : stage.state === "won"
+              : state === "won"
                 ? "Concluída"
-                : stage.state === "lost" || stage.state === "won_external"
+                : state === "lost" || state === "won_external"
                   ? "Falhou"
-                  : stage.state === "waiting"
+                  : state === "waiting"
                     ? "Aguardando"
-                    : stage.state === "protected"
+                    : state === "protected"
                       ? "Protegida"
                       : "Bloqueada";
+          var iconStage = Object.assign({}, stage, { state: state });
           html +=
             '<button type="button" class="' +
             cls +
@@ -1140,7 +1159,7 @@
             (0.05 + i * 0.06) +
             's">' +
             '<div class="j-badge" aria-hidden="true">' +
-            iconFor(stage) +
+            iconFor(iconStage) +
             "</div>" +
             '<div class="j-label">' +
             esc(stage.label) +
@@ -1149,8 +1168,8 @@
             esc(hint) +
             "</div></button>";
           if (i < stages.length - 1) {
-            var lit = stage.state === "won" || stage.state === "protected";
-            var litFail = stage.state === "lost" || stage.state === "won_external";
+            var lit = state === "won" || state === "protected";
+            var litFail = state === "lost" || state === "won_external";
             html +=
               '<div class="j-connector' +
               (lit ? " is-lit" : "") +

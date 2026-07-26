@@ -6,9 +6,9 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-em-andamento-v3" />
-  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-em-andamento-v3" />
-  <link rel="stylesheet" href="/v2.css?v=desafio-em-andamento-3" />
+  <meta name="arbishield-build" content="desafio-em-andamento-v4" />
+  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-em-andamento-v4" />
+  <link rel="stylesheet" href="/v2.css?v=desafio-em-andamento-4" />
   <style>
     /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
     .dz-sb-market {
@@ -440,30 +440,6 @@
     }
     .dz-andamento[hidden] { display: none !important; }
     .dz-andamento .section-label { margin: 0 0 12px; }
-    .dz-andamento-head {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 8px 14px;
-      margin-bottom: 14px;
-    }
-    .dz-andamento-head .etapa-now {
-      font-size: 13px;
-      font-weight: 900;
-      color: #fff;
-      letter-spacing: -0.01em;
-    }
-    .dz-andamento-head .etapa-now b { color: #c6ff00; }
-    .dz-andamento-head a {
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: #c6ff00;
-      text-decoration: none;
-    }
-    .dz-andamento-head a:hover { text-decoration: underline; }
 
     .dz-stepper {
       display: flex;
@@ -631,13 +607,9 @@
     </div>
   </div>
 
-  <!-- Desafio em andamento: stepper horizontal + card atual (acima dos disponíveis) -->
+  <!-- Desafio em andamento: só o desafio com entrada do cliente (stepper + card) -->
   <section class="dz-andamento" id="dzAndamento" hidden aria-label="Desafio em andamento">
     <div class="section-label"><span class="dot" style="background:#c6ff00"></span>Desafio em andamento</div>
-    <div class="dz-andamento-head">
-      <div class="etapa-now" id="dzAndamentoEtapa">Etapa <b>—</b> de 5</div>
-      <a id="dzAndamentoJornada" href="/app-desafio-jornada.html">Ver jornada →</a>
-    </div>
     <div class="dz-stepper" id="dzStepper" aria-label="Progresso das etapas"></div>
     <div id="listAndamento" class="app-desafio-grid"></div>
   </section>
@@ -814,8 +786,18 @@
       function normCircuitResult(r) {
         r = String(r || "").toLowerCase().trim();
         if (!r) return "pending";
-        if (r === "win" || r === "won" || r === "won_platform" || r === "won_external") return "won";
-        if (r === "lose" || r === "lost" || r === "won_exchange" || r === "casa") return "lost";
+        // Vitória só na zebra/plataforma. won_external / casa = perda do cliente (X vermelho).
+        if (r === "win" || r === "won" || r === "won_platform") return "won";
+        if (
+          r === "lose" ||
+          r === "lost" ||
+          r === "won_exchange" ||
+          r === "won_external" ||
+          r === "casa" ||
+          r === "external"
+        ) {
+          return "lost";
+        }
         if (r === "pending" || r === "active" || r === "open" || r === "current") return "pending";
         return r;
       }
@@ -902,10 +884,23 @@
         var cur = circuit.currentStage || 1;
         var states = circuit.stageStates || [];
         var html = "";
+        var markedCurrent = false;
         for (var i = 1; i <= total; i++) {
           var isFinal = i === total;
-          var st = states[i - 1] || (i === cur ? "current" : i < cur ? "locked" : "locked");
-          if (!states[i - 1] && i === cur) st = "current";
+          var st = states[i - 1] || "";
+          if (st === "current") {
+            if (markedCurrent) st = "locked";
+            else markedCurrent = true;
+          } else if (st === "waiting") {
+            st = "locked";
+          } else if (!st) {
+            if (i === cur && !markedCurrent) {
+              st = "current";
+              markedCurrent = true;
+            } else {
+              st = "locked";
+            }
+          }
           var cls = "dz-step";
           if (st === "won") cls += " is-won";
           else if (st === "lost") cls += " is-lost";
@@ -956,30 +951,13 @@
           return !!used[String(it.id)];
         }
 
-        // 1) Entrada pendente do cliente = desafio em andamento
+        // Só o step em que o cliente tem entrada pendente — nunca “todos os lançados”.
         (list || []).forEach(function (it) {
           if (c.pendingStepIds && c.pendingStepIds[String(it.stepId || "")]) {
             andamento.push(it);
             mark(it);
-          } else if (
-            c.pendingDesafioIds &&
-            c.pendingDesafioIds[String(it.desafioId || "")]
-          ) {
-            andamento.push(it);
-            mark(it);
           }
         });
-
-        // 2) Sem pendente, mas com vitórias: próximo jogo jogável = em andamento
-        if (!andamento.length && c.active && (c.wonCount > 0 || c.pendingCount > 0)) {
-          var next = (list || []).find(function (it) {
-            return !it.isFinished && it.isActiveDesafio;
-          });
-          if (next) {
-            andamento.push(next);
-            mark(next);
-          }
-        }
 
         (list || []).forEach(function (it) {
           if (!isUsed(it)) disponiveis.push(it);
@@ -1138,8 +1116,16 @@
         var r = String(raw || "").toLowerCase().trim();
         if (!r) return "pending";
         if (r === "win" || r === "won" || r === "won_platform") return "won";
-        if (r === "lose" || r === "lost" || r === "won_exchange" || r === "casa")
+        if (
+          r === "lose" ||
+          r === "lost" ||
+          r === "won_exchange" ||
+          r === "won_external" ||
+          r === "casa" ||
+          r === "external"
+        ) {
           return "lost";
+        }
         if (r === "pending" || r === "active" || r === "open") return "pending";
         return r;
       }
@@ -1212,16 +1198,21 @@
           });
           var last = ordered[ordered.length - 1];
           var lastRes = last ? normalizeHistResult(last.result) : "";
-          var status = "em_andamento";
-          var statusLabel = "Em andamento";
-          if (lastRes === "lost") {
+          // Em andamento = só com entrada pendente do cliente neste desafio.
+          var status = "finalizado";
+          var statusLabel = "Finalizado";
+          if (pendingN > 0) {
+            status = "em_andamento";
+            statusLabel = "Aguardando resultado";
+          } else if (lastRes === "lost" || lostN > 0) {
             status = "sucesso_casa";
             statusLabel = "Sucesso na casa";
-          } else if (wonN >= maxEntries && pendingN === 0) {
+          } else if (wonN >= maxEntries) {
             status = "finalizado";
             statusLabel = "Finalizado";
-          } else if (pendingN > 0) {
-            statusLabel = "Aguardando resultado";
+          } else if (wonN > 0) {
+            status = "pausado";
+            statusLabel = "Sem entrada ativa";
           }
           return {
             desafioId: desafioId,
@@ -2163,16 +2154,13 @@
         var box = document.getElementById("dzAndamento");
         var stepHost = document.getElementById("dzStepper");
         var listHost = document.getElementById("listAndamento");
-        var etapaEl = document.getElementById("dzAndamentoEtapa");
-        var link = document.getElementById("dzAndamentoJornada");
         if (!box || !stepHost || !listHost) return;
 
+        // Só aparece se o cliente entrou (participação pendente).
         var show =
           desafioBalCents > 0 &&
-          clientCircuit.active &&
-          (andamentoItems.length > 0 ||
-            clientCircuit.wonCount > 0 ||
-            clientCircuit.pendingCount > 0);
+          clientCircuit.pendingCount > 0 &&
+          (andamentoItems.length > 0 || clientCircuit.pendingCount > 0);
         box.hidden = !show;
         if (!show) {
           listHost.innerHTML = "";
@@ -2180,29 +2168,13 @@
           return;
         }
 
-        if (etapaEl) {
-          etapaEl.innerHTML =
-            "Etapa <b>" +
-            esc(String(clientCircuit.currentStage || 1)) +
-            "</b> de " +
-            esc(String(clientCircuit.totalStages || 5));
-        }
-        if (link) {
-          var dzId =
-            (andamentoItems[0] && andamentoItems[0].desafioId) ||
-            (clientCircuit.cycleParts[0] && clientCircuit.cycleParts[0].desafio_id) ||
-            "";
-          link.href =
-            "/app-desafio-jornada.html" +
-            (dzId ? "?desafioId=" + encodeURIComponent(dzId) : "");
-        }
         stepHost.innerHTML = stepperHtml(clientCircuit);
         listHost.innerHTML = andamentoItems.length
           ? andamentoItems.map(function (it) { return cardHtml(it, now); }).join("")
           : '<div class="ops-empty" style="padding:18px 8px"><p>Você está na etapa ' +
             esc(String(clientCircuit.currentStage)) +
-            " — aguarde o próximo evento lançado.</p></div>";
-        bindCardHost(listHost);
+            " — aguarde o resultado ou o próximo evento do seu desafio.</p></div>";
+        if (andamentoItems.length) bindCardHost(listHost);
       }
 
       function render() {
