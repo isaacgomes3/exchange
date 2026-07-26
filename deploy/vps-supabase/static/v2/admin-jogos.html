@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta name="arbishield-vps-page" content="jogos" />
-  <meta name="arbishield-build" content="admin-jogos-lancado-por-v9" />
+  <meta name="arbishield-build" content="admin-jogos-lancado-por-v10" />
   <title>Gestão de Jogos — ArbiShield v2</title>
   <link rel="stylesheet" href="/v2.css" />
   <script src="/v2-shell.js" defer></script>
@@ -1122,8 +1122,138 @@
         return {};
       }
 
-      /** Resolve Lançado por / Encerrado por via API (service role) + fallback profiles. */
+      async function loadProfileNameMap(ids) {
+        var nameMap = {};
+        var list = Array.from(
+          new Set(
+            (ids || [])
+              .map(function (x) {
+                return String(x || "").trim();
+              })
+              .filter(Boolean)
+          )
+        );
+        if (!list.length) return nameMap;
+
+        // 1) API service-role (se o prelive já tiver o mode admin_names)
+        try {
+          var apiNames = await apiPost("/api/arbishield/matches", {
+            mode: "admin_names",
+            ids: list,
+          });
+          if (apiNames && apiNames.names && !apiNames.error) {
+            Object.keys(apiNames.names).forEach(function (k) {
+              var v = apiNames.names[k];
+              if (v) nameMap[String(k)] = String(v);
+            });
+          }
+        } catch (eApi) {}
+
+        var missing = list.filter(function (id) {
+          return !nameMap[id];
+        });
+        // 2) profiles REST (admin)
+        for (var i = 0; i < missing.length; i += 80) {
+          var chunk = missing.slice(i, i + 80);
+          try {
+            var profs = await restAuth(
+              "profiles?select=id,full_name,email&id=in.(" +
+                chunk.map(encodeURIComponent).join(",") +
+                ")"
+            );
+            (profs || []).forEach(function (p) {
+              var label =
+                (p.full_name && String(p.full_name).trim()) ||
+                (p.email && String(p.email).trim()) ||
+                String(p.id).slice(0, 8);
+              nameMap[String(p.id)] = label;
+            });
+          } catch (eProf) {}
+        }
+        return nameMap;
+      }
+
+      /** Busca admin_id em auditoria quando created_by/settled_by estão vazios. */
+      async function enrichAdminIdsFromAudit(rows) {
+        var need = (rows || []).filter(function (m) {
+          var meta = parseMatchMeta(m.metadata);
+          var hasCreator =
+            m.created_by || meta.created_by || meta.created_by_name;
+          var hasCloser =
+            m.settled_by ||
+            meta.settled_by ||
+            meta.settled_by_name ||
+            (m.settled_at && m.updated_by);
+          return !hasCreator || (m.settled_at && !hasCloser);
+        });
+        if (!need.length) return;
+
+        for (var i = 0; i < need.length; i += 40) {
+          var chunk = need.slice(i, i + 40);
+          var ids = chunk.map(function (m) {
+            return m.id;
+          });
+          var byEntity = {};
+          try {
+            var logs = await restAuth(
+              "admin_audit_logs?entity_type=eq.matches&entity_id=in.(" +
+                ids.map(encodeURIComponent).join(",") +
+                ")&select=entity_id,admin_id,action,created_at&order=created_at.asc&limit=1000"
+            );
+            (logs || []).forEach(function (log) {
+              if (!log || !log.entity_id || !log.admin_id) return;
+              var eid = String(log.entity_id);
+              if (!byEntity[eid]) byEntity[eid] = { first: null, settle: null };
+              if (!byEntity[eid].first) byEntity[eid].first = String(log.admin_id);
+              var act = String(log.action || "").toUpperCase();
+              if (act.indexOf("SETTLE") >= 0 || act.indexOf("ENCERR") >= 0) {
+                byEntity[eid].settle = String(log.admin_id);
+              }
+            });
+          } catch (eLogs) {}
+
+          // match_change_logs (melhor esforço — schema pode variar)
+          try {
+            var changes = await restAuth(
+              "match_change_logs?match_id=in.(" +
+                ids.map(encodeURIComponent).join(",") +
+                ")&select=match_id,admin_id,created_at&order=created_at.asc&limit=1000"
+            );
+            (changes || []).forEach(function (ch) {
+              if (!ch || !ch.match_id || !ch.admin_id) return;
+              var eid = String(ch.match_id);
+              if (!byEntity[eid]) byEntity[eid] = { first: null, settle: null };
+              if (!byEntity[eid].first) byEntity[eid].first = String(ch.admin_id);
+            });
+          } catch (eCh) {}
+
+          chunk.forEach(function (m) {
+            var hit = byEntity[String(m.id)];
+            if (!hit) return;
+            var meta = parseMatchMeta(m.metadata);
+            m.metadata = meta;
+            if (!m.created_by && !meta.created_by && hit.first) {
+              m.created_by = hit.first;
+              meta.created_by = hit.first;
+            }
+            if (m.settled_at && !m.settled_by && !meta.settled_by) {
+              var closer = hit.settle || hit.first || m.updated_by || null;
+              if (closer) {
+                m.settled_by = closer;
+                meta.settled_by = closer;
+              }
+            }
+          });
+        }
+      }
+
+      /** Resolve Lançado por / Encerrado por (API + profiles + auditoria). */
       async function attachAdminNames(rows) {
+        (rows || []).forEach(function (m) {
+          m.metadata = parseMatchMeta(m.metadata);
+        });
+        await enrichAdminIdsFromAudit(rows || []);
+
         var adminIds = {};
         (rows || []).forEach(function (m) {
           var meta = parseMatchMeta(m.metadata);
@@ -1137,42 +1267,9 @@
           if (sid) adminIds[String(sid)] = true;
           if (cid) adminIds[String(cid)] = true;
         });
-        var ids = Object.keys(adminIds);
-        var nameMap = {};
-        if (ids.length) {
-          try {
-            var apiNames = await apiPost("/api/arbishield/matches", {
-              mode: "admin_names",
-              ids: ids,
-            });
-            if (apiNames && apiNames.names) {
-              Object.keys(apiNames.names).forEach(function (k) {
-                nameMap[String(k)] = apiNames.names[k];
-              });
-            }
-          } catch (eApi) {
-            /* fallback REST abaixo */
-          }
-          var missing = ids.filter(function (id) {
-            return !nameMap[id];
-          });
-          if (missing.length) {
-            try {
-              var profs = await restAuth(
-                "profiles?select=id,full_name,email&id=in.(" +
-                  missing.map(encodeURIComponent).join(",") +
-                  ")"
-              );
-              (profs || []).forEach(function (p) {
-                var label =
-                  (p.full_name && String(p.full_name).trim()) ||
-                  (p.email && String(p.email).trim()) ||
-                  String(p.id).slice(0, 8);
-                nameMap[String(p.id)] = label;
-              });
-            } catch (eProf) {}
-          }
-        }
+
+        var nameMap = await loadProfileNameMap(Object.keys(adminIds));
+
         (rows || []).forEach(function (m) {
           var meta = parseMatchMeta(m.metadata);
           m.metadata = meta;
