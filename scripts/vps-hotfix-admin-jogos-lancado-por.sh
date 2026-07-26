@@ -216,10 +216,10 @@ systemctl restart arbishield-prelive-events.service 2>/dev/null || true
 systemctl restart arbishield-prelive-events-teste.service 2>/dev/null || true
 
 html="$(curl -fsS -m 8 "https://arbishield.app/admin-jogos.html" 2>/dev/null || true)"
-if echo "$html" | grep -q 'admin-jogos-lancado-por-v11'; then
-  echo "  smoke admin-jogos.html → OK (v11)"
+if echo "$html" | grep -q 'admin-jogos-manual-first-v12'; then
+  echo "  smoke admin-jogos.html → OK (v12 manual primeiro)"
 else
-  echo "  AVISO: build v11 ainda não público"
+  echo "  AVISO: build v12 ainda não público"
 fi
 
 echo
