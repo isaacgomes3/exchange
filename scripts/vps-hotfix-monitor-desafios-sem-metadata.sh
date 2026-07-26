@@ -4,10 +4,10 @@
 # no Monitor de Desafios.
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/aa1f6c6119b8ab3c94f9f46310d071c576ee4f78/scripts/vps-hotfix-monitor-desafios-sem-metadata.sh?$(date +%s)")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-finalizar-monitor-6a41/scripts/vps-hotfix-monitor-desafios-sem-metadata.sh?$(date +%s)")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-aa1f6c6119b8ab3c94f9f46310d071c576ee4f78}"
+REF="${ARBISHIELD_REF:-cursor/desafio-finalizar-monitor-6a41}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"
