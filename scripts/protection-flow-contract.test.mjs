@@ -10,6 +10,7 @@ import { describe, it } from "node:test";
 import {
   PROTECTION_FLOW_CONTRACT_VERSION,
   PROTECTION_FLOW_LOCK,
+  PROTECTION_BILLING_MODEL_DEFAULT,
   calcFeeUpfront,
   calcLay,
   calcBack,
@@ -18,6 +19,7 @@ import {
   creditBucketForSettlement,
   settlementStatusForOutcome,
   isFeeUpfrontProtection,
+  isLockFeeAfterProtection,
   isVoidSettleOutcome,
   normalizeSettleOutcome,
 } from "./lib/protection-flow-contract.mjs";
@@ -27,17 +29,19 @@ const root = resolve(__dirname, "..");
 
 describe("contrato travado — metadados", () => {
   it("mantém versão e lock", () => {
-    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v2");
+    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v3");
     assert.equal(
       PROTECTION_FLOW_LOCK,
       "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST"
     );
+    assert.equal(PROTECTION_BILLING_MODEL_DEFAULT, "lock_fee_after_v1");
   });
 
-  it("AGENTS.md cita o lock do fluxo", () => {
+  it("AGENTS.md cita o lock do fluxo v3", () => {
     const agents = readFileSync(resolve(root, "AGENTS.md"), "utf8");
     assert.match(agents, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
-    assert.match(agents, /protection-flow-contract-v2/);
+    assert.match(agents, /protection-flow-contract-v3/);
+    assert.match(agents, /lock_fee_after_v1/);
     assert.match(agents, /Saldo Reembolso/);
     assert.match(agents, /Empate Anula/);
   });
@@ -64,26 +68,20 @@ describe("contrato travado — metadados", () => {
     assert.match(shim, /protection-flow-contract\.mjs/);
     assert.match(prelive, /PROTECTION_FLOW_LOCK/);
     assert.match(shim, /PROTECTION_FLOW_LOCK/);
-    // Não pode haver redefinição local das regras travadas
-    assert.doesNotMatch(
-      prelive,
-      /function settlementCreditParts\s*\(/
-    );
+    assert.doesNotMatch(prelive, /function settlementCreditParts\s*\(/);
     assert.doesNotMatch(shim, /function settlementCreditParts\s*\(/);
   });
 });
 
-describe("fee_upfront — cálculo", () => {
+describe("cálculo da dedução", () => {
   it("LAY @ 20 resp. R$1000 → dedução conhecida", () => {
-    // back equiv = 20/19 ≈ 1.052631… (só cálculo; odd persistida = 20)
     const c = calcLay(100_000, 20);
     assert.equal(c.input_mode, "responsabilidade");
     assert.equal(c.odd, 20);
     assert.equal(c.marketOdd, 20);
     assert.ok(Math.abs(c.effectiveBackOdd - 20 / 19) < 1e-9);
     assert.equal(c.responsibilityCents, 100_000);
-    assert.equal(c.stakeCents, Math.round(100_000 / 19)); // 5263
-    // lucro bruto ≈ 5263; user 1.5% = 1500; dedução = lucro - 1500
+    assert.equal(c.stakeCents, Math.round(100_000 / 19));
     const backOdd = 20 / 19;
     const gross = Math.round(100_000 * backOdd);
     const profit = gross - 100_000;
@@ -92,14 +90,68 @@ describe("fee_upfront — cálculo", () => {
     assert.equal(c.arbiShieldDeductionCents, 3763);
   });
 
-  it("BACK fee_upfront usa stake direto", () => {
+  it("BACK usa stake direto", () => {
     const c = calcBack(10_000, 2);
     assert.equal(c.input_mode, "stake");
-    assert.equal(c.arbiShieldDeductionCents, calcFeeUpfront(10_000, 2).arbiShieldDeductionCents);
+    assert.equal(
+      c.arbiShieldDeductionCents,
+      calcFeeUpfront(10_000, 2).arbiShieldDeductionCents
+    );
   });
 });
 
-describe("settle — fee_upfront", () => {
+describe("settle — lock_fee_after_v1 (padrão novo)", () => {
+  const row = {
+    amount_cents: 100_000,
+    responsibility_cents: 100_000,
+    platform_deduction_cents: 3763,
+    metadata: {
+      billing_model: "lock_fee_after_v1",
+      lock_fee_after: true,
+      stake_locked: true,
+      fee_pending_cents: 3763,
+    },
+  };
+
+  it("detecta lock_fee_after (não fee_upfront)", () => {
+    assert.equal(isLockFeeAfterProtection(row), true);
+    assert.equal(isFeeUpfrontProtection(row), false);
+    assert.equal(settlementDeductionCents(row), 3763);
+  });
+
+  it("ArbiShield libera só o stake (dedução cobrada à parte)", () => {
+    assert.deepEqual(settlementCreditParts(row, "arbishield"), {
+      stake: 100_000,
+      fee: 0,
+      total: 100_000,
+    });
+  });
+
+  it("Exchange não devolve nada (stake fica com a plataforma)", () => {
+    assert.deepEqual(settlementCreditParts(row, "exchange"), {
+      stake: 0,
+      fee: 0,
+      total: 0,
+    });
+  });
+
+  it("Empate Anula libera o stake travado (sem dedução)", () => {
+    assert.deepEqual(settlementCreditParts(row, "empate_anula"), {
+      stake: 100_000,
+      fee: 0,
+      total: 100_000,
+    });
+  });
+
+  it("status e bucket corretos", () => {
+    assert.equal(settlementStatusForOutcome("arbishield"), "lost_exchange");
+    assert.equal(settlementStatusForOutcome("exchange"), "won_exchange");
+    assert.equal(settlementStatusForOutcome("empate_anula"), "void");
+    assert.equal(creditBucketForSettlement("REAL"), "deduction_balance_cents");
+  });
+});
+
+describe("settle — fee_upfront (legado ativo)", () => {
   const row = {
     amount_cents: 100_000,
     responsibility_cents: 100_000,
@@ -109,12 +161,16 @@ describe("settle — fee_upfront", () => {
 
   it("detecta fee_upfront", () => {
     assert.equal(isFeeUpfrontProtection(row), true);
+    assert.equal(isLockFeeAfterProtection(row), false);
     assert.equal(settlementDeductionCents(row), 3763);
   });
 
   it("ArbiShield devolve stake + dedução", () => {
-    const p = settlementCreditParts(row, "arbishield");
-    assert.deepEqual(p, { stake: 100_000, fee: 3763, total: 103_763 });
+    assert.deepEqual(settlementCreditParts(row, "arbishield"), {
+      stake: 100_000,
+      fee: 3763,
+      total: 103_763,
+    });
   });
 
   it("Exchange não devolve nada", () => {
@@ -133,24 +189,10 @@ describe("settle — fee_upfront", () => {
       fee: 3763,
       total: 3763,
     });
-    assert.deepEqual(settlementCreditParts(row, "void"), {
-      stake: 0,
-      fee: 3763,
-      total: 3763,
-    });
-  });
-
-  it("status e bucket corretos", () => {
-    assert.equal(settlementStatusForOutcome("arbishield"), "lost_exchange");
-    assert.equal(settlementStatusForOutcome("exchange"), "won_exchange");
-    assert.equal(settlementStatusForOutcome("empate_anula"), "void");
-    assert.equal(creditBucketForSettlement("REAL"), "deduction_balance_cents");
-    assert.equal(creditBucketForSettlement("DEMO"), "deduction_balance_cents");
-    assert.equal(creditBucketForSettlement("INVESTOR"), "deduction_balance_cents");
   });
 });
 
-describe("settle — legado", () => {
+describe("settle — legado lock antigo", () => {
   const row = {
     amount_cents: 10_000,
     platform_deduction_cents: 1500,
@@ -173,7 +215,7 @@ describe("settle — legado", () => {
     });
   });
 
-  it("Empate Anula libera stake inteiro (legado)", () => {
+  it("Empate Anula libera stake inteiro", () => {
     assert.deepEqual(settlementCreditParts(row, "void"), {
       stake: 10_000,
       fee: 0,

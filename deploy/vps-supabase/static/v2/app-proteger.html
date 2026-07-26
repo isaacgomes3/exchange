@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <meta name="arbishield-build" content="proteger-sem-radar-v1" />
-  <meta name="arbishield-features" content="proteger-sem-radar-v1 proteger-espelho-readonly-v13" />
+  <meta name="arbishield-build" content="proteger-lock-fee-after-v1" />
+  <meta name="arbishield-features" content="proteger-lock-fee-after-v1 proteger-sem-radar-v1 proteger-espelho-readonly-v13" />
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
@@ -155,7 +155,7 @@
         : user.id;
       var isMirror = String(viewUserId) !== String(user.id);
 
-      /** Sandbox: cobrança fee_upfront via worker :3198. Produção: não misturar eventos de teste. */
+      /** Sandbox/produção: lock_fee_after — trava stake; dedução só após o resultado. */
       var IS_SANDBOX =
         /^\/sandbox(?:\/|$)/.test(location.pathname || "") ||
         document.getElementById("arbishield-sandbox-banner") != null;
@@ -163,8 +163,8 @@
       var hintEl = document.getElementById("billingHint");
       if (hintEl) {
         hintEl.textContent = IS_SANDBOX
-          ? "SANDBOX · dedução ArbiShield cobrada na ativação (stake não trava)"
-          : "Produção · dedução ArbiShield conforme regra do evento";
+          ? "SANDBOX · trava stake/responsabilidade · dedução só após o resultado"
+          : "Trava stake/responsabilidade na ativação · dedução ArbiShield cobrada após o resultado";
       }
 
       var SPORTS = [
@@ -464,7 +464,8 @@
           extraLine +
           "<div><span>Retorno casa externa</span><b>" + money(retorno) + "</b></div>" +
           "<div><span>Seu lucro (1,5%)</span><b>" + money(seuLucro) + "</b></div>" +
-          "<div><span>Dedução ArbiShield</span><b>" + money(deducao) + "</b></div>" +
+          "<div><span>Dedução (após resultado)</span><b>" + money(deducao) + "</b></div>" +
+          "<div><span>Valor travado agora</span><b>" + money(amountCents) + "</b></div>" +
           "<div><span>Saldo disponível</span><b>" + money(avail) + "</b></div>";
       }
 
@@ -584,22 +585,26 @@
           return;
         }
         var balType = document.getElementById("balanceType").value;
-        var feeNeed = calcForMarket(
+        var calc = calcForMarket(
           state.selected.marketType,
           amountCents,
           odd
-        ).feeChargedCents;
-        if (!(available(balType) >= feeNeed)) {
+        );
+        var lockNeed = amountCents; // LAY=responsabilidade · BACK=stake
+        var feePending = calc.feeChargedCents;
+        if (!(available(balType) >= lockNeed)) {
           var modo =
             state.selected.marketType === "LAY"
               ? "responsabilidade"
               : "stake";
           showErr(
-            "Saldo insuficiente para a dedução de " +
-              money(feeNeed) +
+            "Saldo insuficiente para travar " +
+              money(lockNeed) +
               " (" +
               modo +
-              " não é travado). Disponível: " +
+              "). A dedução de " +
+              money(feePending) +
+              " só é cobrada após o resultado. Disponível: " +
               money(available(balType)) +
               "."
           );
@@ -660,17 +665,16 @@
             );
           }
           closeDrawer();
-          var charged =
-            data.feeChargedCents != null ? data.feeChargedCents : feeNeed;
-          if (!(Number(charged) > 0) && IS_SANDBOX) {
-            throw new Error(
-              "API sandbox não cobrou a dedução. Rode o hotfix fee_upfront na VPS e tente de novo."
-            );
-          }
+          var locked =
+            data.lockedStakeCents != null ? data.lockedStakeCents : lockNeed;
+          var pending =
+            data.feePendingCents != null ? data.feePendingCents : feePending;
           showOk(
-            "Proteção ativada · cobrado " +
-              money(charged) +
-              " · " +
+            "Proteção ativada · travado " +
+              money(locked) +
+              " · dedução " +
+              money(pending) +
+              " após resultado · " +
               String(data.protectionId).slice(0, 8) +
               "…"
           );

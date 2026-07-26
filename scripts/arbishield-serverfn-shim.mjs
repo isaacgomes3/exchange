@@ -14,12 +14,14 @@ import { createRequire } from "node:module";
 // Contrato travado — import opcional (se lib faltar na VPS, usa fallback inline
 // para o shim não cair e a rota de saque continuar disponível).
 let PROTECTION_FLOW_LOCK = "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST";
-let PROTECTION_FLOW_CONTRACT_VERSION = "protection-flow-contract-v2";
+let PROTECTION_FLOW_CONTRACT_VERSION = "protection-flow-contract-v3";
+let PROTECTION_BILLING_MODEL_DEFAULT = "lock_fee_after_v1";
 let settlementCreditParts;
 let settlementCreditCents;
 let settlementDeductionCents;
 let settlementStatusForOutcome;
 let isFeeUpfrontProtection;
+let isLockFeeAfterProtection;
 let isVoidSettleOutcome;
 let normalizeSettleOutcome;
 let creditBucketForSettlement = () => "deduction_balance_cents";
@@ -32,11 +34,14 @@ try {
   );
   PROTECTION_FLOW_LOCK = mod.PROTECTION_FLOW_LOCK;
   PROTECTION_FLOW_CONTRACT_VERSION = mod.PROTECTION_FLOW_CONTRACT_VERSION;
+  PROTECTION_BILLING_MODEL_DEFAULT =
+    mod.PROTECTION_BILLING_MODEL_DEFAULT || "lock_fee_after_v1";
   settlementCreditParts = mod.settlementCreditParts;
   settlementCreditCents = mod.settlementCreditCents;
   settlementDeductionCents = mod.settlementDeductionCents;
   settlementStatusForOutcome = mod.settlementStatusForOutcome;
   isFeeUpfrontProtection = mod.isFeeUpfrontProtection;
+  isLockFeeAfterProtection = mod.isLockFeeAfterProtection;
   isVoidSettleOutcome = mod.isVoidSettleOutcome;
   normalizeSettleOutcome = mod.normalizeSettleOutcome;
   creditBucketForSettlement = mod.creditBucketForSettlement;
@@ -69,7 +74,17 @@ try {
     if (isVoidSettleOutcome(o)) return "void";
     return o;
   };
+  isLockFeeAfterProtection = (row) => {
+    const meta = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
+    return (
+      meta.billing_model === "lock_fee_after_v1" ||
+      meta.lock_fee_after === true ||
+      meta.stake_locked === true ||
+      String(meta.source || "").includes("lock_fee_after")
+    );
+  };
   isFeeUpfrontProtection = (row) => {
+    if (isLockFeeAfterProtection(row)) return false;
     const meta = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
     return (
       meta.billing_model === "fee_upfront_v1" ||
@@ -82,6 +97,7 @@ try {
     const raw =
       row?.platform_deduction_cents ??
       row?.platform_profit_cents ??
+      meta.fee_pending_cents ??
       meta.fee_charged_cents ??
       row?.locked_deduction_cents;
     return Math.max(0, Number(raw) || 0);
@@ -95,6 +111,10 @@ try {
     const o = normalizeSettleOutcome(outcome);
     const wonArbi = o === "arbishield";
     const isVoid = o === "void";
+    if (isLockFeeAfterProtection(row)) {
+      if (isVoid || wonArbi) return { stake: amount, fee: 0, total: amount };
+      return { stake: 0, fee: 0, total: 0 };
+    }
     if (isFeeUpfrontProtection(row)) {
       if (isVoid) return { stake: 0, fee, total: fee };
       if (!wonArbi) return { stake: 0, fee: 0, total: 0 };
@@ -6145,6 +6165,11 @@ async function applyProtectionSettlement(row, table, outcome) {
           outcome: String(outcome).toLowerCase(),
           stake_cents: amount,
           cut_cents: cut,
+          billing_model: lockFeeAfter
+            ? "lock_fee_after_v1"
+            : isFeeUpfrontProtection(row)
+              ? "fee_upfront_v1"
+              : "legacy_lock",
         },
       }).catch((e) => {
         console.warn("[treasury] protection settle:", e.message || e);

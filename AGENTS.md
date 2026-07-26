@@ -8,13 +8,14 @@ This version has breaking changes — APIs, conventions, and file structure may 
 # Fluxo de Proteção — CONTRATO TRAVADO
 
 **Marker:** `DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST`  
-**Versão:** `protection-flow-contract-v2`  
+**Versão:** `protection-flow-contract-v3`  
+**Modelo padrão:** `lock_fee_after_v1`  
 **Fonte da verdade:** `scripts/lib/protection-flow-contract.mjs`  
 **Testes CI:** `npm test` → `scripts/protection-flow-contract.test.mjs`
 
 ## Regra para agentes / PRs
 
-**NÃO alterar** o fluxo de proteção (criar, debitar dedução, liquidar, cancelar, buckets de saldo) **sem solicitação explícita do usuário/dono do produto** nesta conversa ou issue.
+**NÃO alterar** o fluxo de proteção (criar, travar stake, debitar dedução, liquidar, cancelar, buckets de saldo) **sem solicitação explícita do usuário/dono do produto** nesta conversa ou issue.
 
 Arquivos cobertos (lista mínima):
 
@@ -26,17 +27,16 @@ Arquivos cobertos (lista mínima):
 
 Se um pedido tangenciar esses arquivos por outro motivo (hotfix de JS, Encerrado por, etc.), **preserve** as regras abaixo; não “aproveite” para mudar crédito/dedução.
 
-## Regras de produto travadas (fee_upfront_v1)
+## Regras de produto travadas (lock_fee_after_v1)
 
-1. **Ativação:** cobra só a **dedução ArbiShield** (lucro bruto − 1,5% da cobertura). Não trava o stake/responsabilidade.
+1. **Ativação:** trava o **stake/responsabilidade** em `locked_balance_cents` (sai da carteira REAL ou DEMO). **Não** cobra a dedução ainda.
 2. **LAY** = responsabilidade; **BACK** = stake. Nunca lançar LAY+BACK no mesmo evento de teste.
-3. **Bateu ArbiShield:** credita **stake/responsabilidade + dedução** automaticamente em
-   `deduction_balance_cents` (UI: **Saldo Reembolso** — usável + sacável), independente
-   da carteira usada na ativação (REAL/DEMO só define de onde a dedução foi cobrada).
-4. **Bateu Exchange:** não devolve nada (dedução já cobrada na entrada).
-5. **Empate Anula / void:** devolve **só a dedução** (Saldo Reembolso). Não é vitória Arbi nem Exchange.
-6. **Cancelar proteção:** estorna a dedução (fee_upfront); cliente não precisa solicitar reembolso no caso ArbiShield.
-7. Cliente **não** precisa pedir reembolso para ver stake/dedução quando o resultado é ArbiShield — o crédito é imediato.
+3. **Após o resultado — cobrança:** cobra só a **dedução ArbiShield** (= lucro bruto − 1,5% da cobertura) da carteira REAL ou DEMO (quando Bateu ArbiShield).
+4. **Bateu ArbiShield:** libera o stake travado e credita em `deduction_balance_cents` (UI: **Saldo Reembolso**); em seguida cobra a dedução da REAL/DEMO.
+5. **Bateu Exchange:** não devolve o stake (fica com a plataforma). Não cobra dedução extra.
+6. **Empate Anula / void:** libera o stake travado → Saldo Reembolso. Não cobra dedução.
+7. **Cancelar proteção:** estorna o stake travado à carteira de origem (REAL/DEMO).
+8. Proteções antigas `fee_upfront_v1` continuam com as regras antigas no settle (compatibilidade).
 
 Alterar qualquer item acima exige pedido explícito + atualização dos testes do contrato.
 <!-- END:protection-flow-lock -->

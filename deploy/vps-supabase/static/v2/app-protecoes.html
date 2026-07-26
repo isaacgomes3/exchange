@@ -240,7 +240,7 @@
         </div>
       </div>
       <div id="panelCancel" style="display:none">
-        <div class="warn">Cancelamento estorna na hora a dedução ArbiShield cobrada na ativação (e o stake travado, no modelo antigo). Não precisa de aprovação do administrador.</div>
+        <div class="warn">Cancelamento estorna na hora o stake/responsabilidade travado na ativação (ou a dedução, em proteções antigas fee_upfront). Não precisa de aprovação do administrador.</div>
         <div class="field">
           <label for="reason">Motivo do cancelamento</label>
           <textarea id="reason" placeholder="Descreva por que deseja cancelar a proteção"></textarea>
@@ -1101,7 +1101,7 @@
             if (reason.length < 5) throw new Error("Informe o motivo do cancelamento");
             if (
               !window.confirm(
-                "Cancelar esta proteção agora?\nA dedução ArbiShield cobrada na ativação será estornada imediatamente."
+                "Cancelar esta proteção agora?\nO valor travado (stake/responsabilidade) será estornado imediatamente."
               )
             ) {
               return;

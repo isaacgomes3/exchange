@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * CONTRATO TRAVADO — Fluxo de Proteção ArbiShield (fee_upfront_v1)
+ * CONTRATO TRAVADO — Fluxo de Proteção ArbiShield
  * ============================================================================
  * NÃO ALTERAR sem solicitação explícita do dono do produto.
  * Qualquer mudança aqui ou nos callers (prelive/shim/create-protection/UI)
@@ -8,17 +8,24 @@
  * de crédito no settle; os testes em protection-flow-contract.test.mjs
  * travam o comportamento no CI.
  *
- * Versão: protection-flow-contract-v2 (2026-07-25)
- *   + Empate Anula / void → devolve só a dedução (fee_upfront)
+ * Versão: protection-flow-contract-v3 (2026-07-26)
+ *   + lock_fee_after_v1 (pedido explícito):
+ *       ativação trava stake/responsabilidade;
+ *       após resultado cobra só a dedução ArbiShield (REAL/DEMO);
+ *       crédito no settle → Saldo Reembolso
+ *   (v2) Empate Anula / void → devolve só a dedução (fee_upfront)
  * ============================================================================
  */
 
 export const PROTECTION_FLOW_CONTRACT_VERSION =
-  "protection-flow-contract-v2";
+  "protection-flow-contract-v3";
 
 /** Marcador exigido pelos testes / hotfixes — não renomear. */
 export const PROTECTION_FLOW_LOCK =
   "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST";
+
+/** Modelo padrão para NOVAS proteções. */
+export const PROTECTION_BILLING_MODEL_DEFAULT = "lock_fee_after_v1";
 
 function n(v) {
   const x = Number(v);
@@ -58,6 +65,8 @@ export function normalizeSettleOutcome(outcome) {
 export function isFeeUpfrontProtection(row) {
   const meta =
     row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  // lock_fee_after tem precedência se marcado explicitamente
+  if (isLockFeeAfterProtection(row)) return false;
   return (
     meta.billing_model === "fee_upfront_v1" ||
     meta.fee_upfront === true ||
@@ -66,7 +75,23 @@ export function isFeeUpfrontProtection(row) {
 }
 
 /**
- * Dedução ArbiShield cobrada na ativação (fee_upfront) ou margem legada.
+ * Novo modelo (v3): stake/responsabilidade travado na ativação;
+ * dedução cobrada só após o resultado.
+ */
+export function isLockFeeAfterProtection(row) {
+  const meta =
+    row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  return (
+    meta.billing_model === "lock_fee_after_v1" ||
+    meta.lock_fee_after === true ||
+    meta.stake_locked === true ||
+    String(meta.source || "").includes("lock_fee_after")
+  );
+}
+
+/**
+ * Dedução ArbiShield (= lucro bruto − 1,5% da cobertura).
+ * Em lock_fee_after ainda não foi cobrada na ativação (fee_pending).
  */
 export function settlementDeductionCents(row) {
   const meta =
@@ -76,11 +101,13 @@ export function settlementDeductionCents(row) {
       ? row.platform_deduction_cents
       : row?.platform_profit_cents != null
         ? row.platform_profit_cents
-        : meta.fee_charged_cents != null
-          ? meta.fee_charged_cents
-          : row?.locked_deduction_cents;
+        : meta.fee_pending_cents != null
+          ? meta.fee_pending_cents
+          : meta.fee_charged_cents != null
+            ? meta.fee_charged_cents
+            : row?.locked_deduction_cents;
   let fee = Math.max(0, n(raw));
-  if (!(fee > 0) && isFeeUpfrontProtection(row)) {
+  if (!(fee > 0) && (isFeeUpfrontProtection(row) || isLockFeeAfterProtection(row))) {
     const stake = n(
       row?.responsibility_cents || row?.amount_cents || meta.stake_cents
     );
@@ -101,7 +128,13 @@ export function settlementDeductionCents(row) {
 /**
  * Regras de crédito no settle (TRAVADAS):
  *
- * fee_upfront_v1:
+ * lock_fee_after_v1 (padrão novo):
+ *   - ArbiShield → libera stake travado → Saldo Reembolso
+ *                 (dedução cobrada à parte da carteira REAL/DEMO)
+ *   - Exchange   → 0 (stake travado fica com a plataforma)
+ *   - Empate Anula / void → libera stake travado → Saldo Reembolso (sem dedução)
+ *
+ * fee_upfront_v1 (proteções antigas):
  *   - ArbiShield → stake/responsabilidade + dedução (total)
  *   - Exchange   → 0 (dedução permanece na plataforma)
  *   - Empate Anula / void → só a dedução (aposta anulada)
@@ -111,7 +144,9 @@ export function settlementDeductionCents(row) {
  *   - Exchange   → stake − taxa
  *   - Empate Anula / void → stake inteiro (libera lock)
  *
- * Cancelamento (fora daqui): estorna só a dedução no fee_upfront.
+ * Cancelamento:
+ *   - lock_fee_after → estorna stake travado à carteira de origem
+ *   - fee_upfront → estorna só a dedução
  */
 export function settlementCreditParts(row, outcome) {
   const amount = n(row?.responsibility_cents || row?.amount_cents);
@@ -119,6 +154,13 @@ export function settlementCreditParts(row, outcome) {
   const o = normalizeSettleOutcome(outcome);
   const wonArbi = o === "arbishield";
   const isVoid = o === "void";
+
+  if (isLockFeeAfterProtection(row)) {
+    // Crédito = só o stake travado. Dedução é cobrada depois, fora daqui.
+    if (isVoid || wonArbi) return { stake: amount, fee: 0, total: amount };
+    return { stake: 0, fee: 0, total: 0 };
+  }
+
   if (isFeeUpfrontProtection(row)) {
     if (isVoid) return { stake: 0, fee, total: fee };
     if (!wonArbi) return { stake: 0, fee: 0, total: 0 };
@@ -151,7 +193,7 @@ export function settlementStatusForOutcome(outcome) {
 }
 
 /**
- * fee_upfront sobre odd BACK efetiva.
+ * fee_upfront / lock_fee_after — cálculo da dedução sobre odd BACK efetiva.
  * amountCents = cobertura (LAY=responsabilidade · BACK=stake).
  */
 export function calcFeeUpfront(amountCents, odd) {
@@ -175,7 +217,7 @@ export function calcFeeUpfront(amountCents, odd) {
     grossProfitCents,
     userProfitCents,
     arbiShieldDeductionCents,
-    billing_model: "fee_upfront_v1",
+    billing_model: PROTECTION_BILLING_MODEL_DEFAULT,
   };
 }
 
@@ -198,7 +240,6 @@ export function calcLay(amountCents, odd) {
   return {
     ...c,
     // Persistência/UI: odd LAY do mercado (não a back equivalente).
-    // A conversão L/(L−1) fica só em effectiveBackOdd p/ cálculo de fee.
     odd: marketOdd,
     stakeCents: houseStakeCents,
     responsibilityCents: liability,
