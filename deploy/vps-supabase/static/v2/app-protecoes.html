@@ -1,0 +1,1205 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Gestão de Proteções — ArbiShield</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <meta name="arbishield-build" content="protecoes-ocultar-erro-v3" />
+  <link rel="stylesheet" href="/v2.css?v=protecoes-ocultar-erro-3" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js?v=protecoes-ocultar-erro-3"></script>
+  <script src="/v2-shell.js?v=protecoes-ocultar-erro-3" defer></script>
+  <style>
+    .prot-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 16px; align-items: start; }
+    @media (max-width: 960px) {
+      .prot-layout { grid-template-columns: 1fr; }
+      .prot-detail { position: static; }
+    }
+    @media (max-width: 560px) {
+      .prot-kv, .type-grid { grid-template-columns: 1fr; }
+    }
+    /* Mesmo padrão visual de Proteger Aposta — Mercado priorizado */
+    .prot-term-panel { background: transparent; border: 0; overflow: visible; }
+      .prot-term-panel .term-table-head {
+      display: grid;
+      grid-template-columns: 72px minmax(120px, 0.9fr) minmax(88px, 0.5fr) 84px minmax(160px, 1.35fr) 100px minmax(140px, 1.1fr);
+      gap: 10px;
+    }
+    .prot-list.term-list { gap: 12px; padding: 2px 2px 8px; min-height: 180px; }
+    .prot-list .term-row {
+      grid-template-columns: 72px minmax(120px, 0.9fr) minmax(88px, 0.5fr) 84px minmax(160px, 1.35fr) 100px minmax(140px, 1.1fr);
+      gap: 10px;
+      cursor: pointer;
+    }
+    .prot-list .term-row.prot-active {
+      border-color: rgba(201, 242, 35, 0.5);
+      box-shadow:
+        0 18px 40px rgba(0, 0, 0, 0.55),
+        0 0 0 1px rgba(201, 242, 35, 0.16),
+        0 0 28px rgba(201, 242, 35, 0.12);
+    }
+    .prot-list .term-col-match strong { font-size: 15px; }
+    .prot-list .term-col-market {
+      justify-content: flex-start;
+      min-width: 0;
+      width: 100%;
+    }
+    .prot-list .term-market {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      min-width: 0;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.35;
+      letter-spacing: 0.01em;
+      text-align: left;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      color: #fff;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .prot-list .term-col-valor { text-align: right; }
+    .prot-list .term-col-valor strong {
+      display: block;
+      font-size: 15px;
+      font-weight: 800;
+      color: #fff;
+      font-variant-numeric: tabular-nums;
+    }
+    .prot-list .term-col-valor small {
+      display: block;
+      margin-top: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.4);
+    }
+    .prot-list .term-col-status {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 6px 10px;
+      text-align: right;
+    }
+    .prot-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-height: 28px; padding: 6px 10px; border-radius: 8px;
+      font-size: 10px; font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase;
+      border: 1px solid rgba(255,255,255,0.12); color: #cfe8a8;
+      background: rgba(255,255,255,0.04); text-align: center; line-height: 1.2;
+    }
+    .prot-badge.review { border-color: rgba(251,191,36,0.45); color: #fbbf24; background: rgba(251,191,36,0.08); }
+    .prot-badge.active { border-color: rgba(201,242,35,0.4); color: #c9f223; background: rgba(201,242,35,0.08); }
+    .prot-badge.cancelled {
+      border-color: rgba(248,113,113,0.45); color: #fff;
+      background: rgba(220, 50, 50, 0.88);
+    }
+    .prot-badge.settled { border-color: rgba(201,242,35,0.35); color: #c9f223; }
+    .prot-badge.won { border-color: rgba(201,242,35,0.55); color: #c9f223; background: rgba(201,242,35,0.1); }
+    .prot-badge.lost { border-color: rgba(248,113,113,0.4); color: #fca5a5; background: rgba(248,113,113,0.08); }
+    .prot-result-meta {
+      display: grid;
+      gap: 2px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.55);
+      line-height: 1.25;
+    }
+    .prot-result-meta .is-won { color: #c9f223; }
+    .prot-result-meta .is-lost { color: #fca5a5; }
+    .prot-result-meta .is-refund { color: #e8ff8a; }
+    @media (max-width: 1100px) {
+      .prot-term-panel .term-table-head { display: none; }
+      .prot-list .term-row {
+        grid-template-columns: 72px 1fr;
+        grid-template-areas:
+          "time match"
+          "time sides"
+          "comp comp"
+          "market market"
+          "valor status";
+        gap: 10px 12px;
+      }
+      .prot-list .term-col-time { grid-area: time; }
+      .prot-list .term-col-match { grid-area: match; }
+      .prot-list .term-col-comp { grid-area: comp; }
+      .prot-list .term-col-sides { grid-area: sides; justify-content: flex-start; }
+      .prot-list .term-col-market { grid-area: market; justify-content: stretch; }
+      .prot-list .term-col-valor { grid-area: valor; text-align: left; }
+      .prot-list .term-col-status { grid-area: status; justify-content: flex-end; }
+      .prot-list .term-comp { white-space: normal; }
+      .prot-list .term-market { font-size: 14px; padding: 12px 14px; }
+    }
+    .prot-detail {
+      border: 1px solid rgba(255,255,255,0.08); border-radius: 16px;
+      background: rgba(4,26,20,0.92); padding: 16px; position: sticky; top: 12px;
+    }
+    .prot-detail h2 { margin: 0 0 4px; font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; }
+    .prot-detail .sub { color: var(--muted); font-size: 12px; margin: 0 0 14px; }
+    .prot-kv { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+    .prot-kv div { border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 10px; }
+    .prot-kv span { display: block; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+    .prot-kv strong { font-size: 14px; font-variant-numeric: tabular-nums; }
+    .prot-actions { display: flex; flex-direction: column; gap: 8px; }
+    .prot-actions .btn { width: 100%; }
+    .prot-actions .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .modal-back {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.72); z-index: 80;
+      display: none; align-items: center; justify-content: center; padding: 16px;
+    }
+    .modal-back.show { display: flex; }
+    .modal {
+      width: min(460px, 100%); background: #041a14; border: 1px solid rgba(201,242,35,0.25);
+      border-radius: 16px; padding: 18px; max-height: 90vh; overflow: auto;
+    }
+    .modal h3 { margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.08em; font-size: 14px; }
+    .modal .hint { color: var(--muted); font-size: 12px; line-height: 1.45; margin: 0 0 14px; }
+    .type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+    .type-grid button {
+      border: 1px solid rgba(255,255,255,0.1); background: transparent; color: #cfe8a8;
+      border-radius: 12px; padding: 12px 10px; cursor: pointer; font-weight: 800; font-size: 11px;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .type-grid button.active { border-color: rgba(201,242,35,0.55); background: rgba(201,242,35,0.1); color: #c9f223; }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+    .field input, .field textarea {
+      width: 100%; border-radius: 10px; border: 1px solid rgba(255,255,255,0.12);
+      background: #06251d; color: #fff; padding: 10px 12px; font: inherit;
+    }
+    .field textarea { min-height: 90px; resize: vertical; }
+    .warn {
+      border: 1px solid rgba(201,242,35,0.3); background: rgba(201,242,35,0.08);
+      color: #d7ff1f; border-radius: 10px; padding: 10px 12px; font-size: 12px; margin-bottom: 12px;
+    }
+    .modal-actions { display: flex; gap: 8px; margin-top: 8px; }
+    .modal-actions .btn { flex: 1; }
+    .empty { color: var(--muted); padding: 28px; text-align: center; border: 1px dashed rgba(255,255,255,0.1); border-radius: 14px; }
+  </style>
+</head>
+<body data-shell="app" data-active="protecoes">
+  <div class="page-head">
+    <div>
+      <h1>Gestão de <span>Proteções</span></h1>
+      <p class="sub">Ancoragens ativas · contestação até 5 min antes do jogo</p>
+    </div>
+  </div>
+  <div id="err" class="err"></div>
+  <div id="ok" class="ok-msg" style="display:none"></div>
+
+  <div class="prot-layout">
+    <div class="prot-term-panel term-panel">
+      <div class="term-table-head" aria-hidden="true">
+        <span>Horário</span>
+        <span>Confronto</span>
+        <span>Competição</span>
+        <span class="c">LAY/BACK</span>
+        <span class="c">Mercado</span>
+        <span class="r">Valor</span>
+        <span class="r">Status / Resultado</span>
+      </div>
+      <div id="list" class="prot-list term-list"><div class="empty">Carregando…</div></div>
+    </div>
+    <aside id="detail" class="prot-detail">
+      <h2>Protocolo de auditoria</h2>
+      <p class="sub">Selecione uma proteção para ver detalhes e ações.</p>
+    </aside>
+  </div>
+
+  <div class="modal-back" id="modal" aria-hidden="true">
+    <div class="modal" role="dialog" aria-labelledby="modalTitle">
+      <h3 id="modalTitle">Contestar proteção</h3>
+      <p class="hint">Ajuste de Odd vai para auditoria do ADM. Cancelamento estorna o saldo na hora (sem aprovação).</p>
+      <div class="type-grid">
+        <button type="button" class="active" data-type="odd_adjustment">Ajuste de Odd</button>
+        <button type="button" data-type="cancellation">Cancelar proteção</button>
+      </div>
+      <div id="panelOdd">
+        <div class="warn">Se aprovado, liquidez, responsabilidade e taxas serão recalculados com a nova odd.</div>
+        <div class="field">
+          <label for="newOdd">Nova odd obtida na Exchange</label>
+          <input id="newOdd" type="number" min="1.01" step="0.01" inputmode="decimal" placeholder="Ex: 2.10" />
+        </div>
+        <div class="field">
+          <label for="proof">Upload do print do bilhete/aposta na Exchange</label>
+          <input id="proof" type="file" accept="image/*,.pdf,image/heic" />
+        </div>
+      </div>
+      <div id="panelCancel" style="display:none">
+        <div class="warn">Cancelamento estorna na hora a dedução ArbiShield cobrada na ativação (e o stake travado, no modelo antigo). Não precisa de aprovação do administrador.</div>
+        <div class="field">
+          <label for="reason">Motivo do cancelamento</label>
+          <textarea id="reason" placeholder="Descreva por que deseja cancelar a proteção"></textarea>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="btnClose">Fechar</button>
+        <button type="button" class="btn btn-primary" id="btnSend">Enviar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (async function () {
+      var LOCK_MS = 5 * 60 * 1000;
+      var money = ArbiV2.money;
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+      // Modo espelho: dados do cliente espelhado (não do admin logado)
+      var viewUserId = ArbiV2.getEffectiveUserId
+        ? ArbiV2.getEffectiveUserId(user)
+        : user.id;
+      if (!viewUserId) return;
+      var isMirror = String(viewUserId) !== String(user.id);
+      console.info(
+        "[protecoes] auth=",
+        String(user.id).slice(0, 8),
+        "view=",
+        String(viewUserId).slice(0, 8),
+        "mirror=",
+        isMirror
+      );
+
+      var items = [];
+      var selectedId = null;
+      var contestType = "odd_adjustment";
+      var sending = false;
+
+      var listEl = document.getElementById("list");
+      var detailEl = document.getElementById("detail");
+      var errEl = document.getElementById("err");
+      var okEl = document.getElementById("ok");
+      var modal = document.getElementById("modal");
+
+      function showErr(msg) {
+        errEl.textContent = msg || "";
+        errEl.classList.toggle("show", !!msg);
+      }
+      function showOk(msg) {
+        okEl.textContent = msg || "";
+        okEl.style.display = msg ? "block" : "none";
+        if (msg) setTimeout(function () { okEl.style.display = "none"; }, 4000);
+      }
+
+      function statusLabel(st) {
+        st = String(st || "").toLowerCase();
+        if (st === "review_odd") return "Em Contestação";
+        if (st === "active") return "Ativa";
+        if (st === "cancelled") return "Cancelada";
+        if (st === "settled" || st === "won_exchange" || st === "lost_exchange") return "Encerrada";
+        return st || "—";
+      }
+      function statusClass(st) {
+        st = String(st || "").toLowerCase();
+        if (st === "review_odd") return "review";
+        if (st === "active") return "active";
+        if (st === "cancelled") return "cancelled";
+        if (st === "settled" || st === "won_exchange" || st === "lost_exchange") return "settled";
+        return "";
+      }
+      function nCents(v) {
+        var x = Number(v);
+        return Number.isFinite(x) ? Math.trunc(x) : 0;
+      }
+      function metaOf(row) {
+        var m = row && row.metadata;
+        if (!m) return {};
+        if (typeof m === "string") {
+          try {
+            m = JSON.parse(m);
+          } catch (e) {
+            return {};
+          }
+        }
+        return typeof m === "object" && m ? m : {};
+      }
+      function isFeeUpfront(row) {
+        var meta = metaOf(row);
+        return (
+          meta.billing_model === "fee_upfront_v1" ||
+          meta.fee_upfront === true ||
+          String(meta.source || "").indexOf("fee_upfront") >= 0 ||
+          String(meta.source || "").indexOf("v2_create_protection") >= 0
+        );
+      }
+      function deductionCentsOf(row) {
+        var meta = metaOf(row);
+        var raw =
+          row.platform_deduction_cents != null
+            ? row.platform_deduction_cents
+            : row.platform_profit_cents != null
+              ? row.platform_profit_cents
+              : meta.fee_charged_cents != null
+                ? meta.fee_charged_cents
+                : row.locked_deduction_cents;
+        return Math.max(0, nCents(raw));
+      }
+      /** outcome do settle: arbishield = usuário ganhou a proteção; exchange = perdeu. */
+      function settleOutcomeOf(row) {
+        var o = String(row && row.settled_outcome || "").toLowerCase();
+        if (o === "arbishield" || o === "won" || o === "win" || o === "user_won") {
+          return "arbishield";
+        }
+        if (o === "exchange" || o === "lost" || o === "loss") return "exchange";
+        var st = String(row && row.status || "").toLowerCase();
+        // Contrato: arbishield → lost_exchange; exchange → won_exchange
+        if (st === "lost_exchange") return "arbishield";
+        if (st === "won_exchange") return "exchange";
+        return "";
+      }
+      function resultInfo(row) {
+        var outcome = settleOutcomeOf(row);
+        if (outcome !== "arbishield" && outcome !== "exchange") {
+          return { label: "", kind: "", refundCents: null };
+        }
+        var amount = nCents(row.responsibility_cents || row.amount_cents);
+        var fee = deductionCentsOf(row);
+        var won = outcome === "arbishield";
+        var refund = 0;
+        if (isFeeUpfront(row)) {
+          refund = won ? amount + fee : 0;
+        } else if (won) {
+          refund = amount;
+        } else {
+          refund = Math.max(0, amount - Math.min(fee, amount));
+        }
+        return {
+          label: won ? "Ganhou" : "Perdeu",
+          kind: won ? "won" : "lost",
+          refundCents: refund,
+        };
+      }
+      function esc(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+      function marketLabelOf(it) {
+        var meta = metaOf(it);
+        var name = meta.market_name || meta.marketName || meta.runner_name || "";
+        if (name && String(name).trim()) return String(name).trim();
+        var odd = displayOddOf(it);
+        return odd > 0 ? odd.toFixed(2) : "—";
+      }
+      /** Odd do mercado lançado (LAY 30 → 30), nunca a back-equivalente. */
+      function displayOddOf(it) {
+        var meta = metaOf(it);
+        var calc =
+          meta.calculations && typeof meta.calculations === "object"
+            ? meta.calculations
+            : {};
+        var match = it.matches || {};
+        var markets = Array.isArray(match.markets) ? match.markets : [];
+        var mid = meta.market_id || meta.marketId || null;
+        var mk =
+          (mid &&
+            markets.find(function (x) {
+              return String(x.id) === String(mid);
+            })) ||
+          markets[0] ||
+          null;
+        var candidates = [
+          mk && mk.odd,
+          meta.market_odd,
+          calc.marketOdd,
+          calc.market_odd,
+        ];
+        var marketOdd = null;
+        for (var i = 0; i < candidates.length; i++) {
+          var n = Number(candidates[i]);
+          if (n > 1.01) {
+            marketOdd = n;
+            break;
+          }
+        }
+        var stored = Number(it && it.odd);
+        if (marketOdd != null) {
+          if (stored > 1.01) {
+            var equiv = marketOdd / (marketOdd - 1);
+            if (Math.abs(stored - equiv) <= 0.08) return marketOdd;
+            if (stored < 2 && marketOdd >= 2) return marketOdd;
+          }
+          return marketOdd;
+        }
+        var mt = String(it.side || it.market_category || "LAY").toUpperCase();
+        if (mt !== "BACK" && stored > 1.01 && stored < 2) {
+          var reversed = stored / (stored - 1);
+          if (reversed >= 2) return Math.round(reversed * 100) / 100;
+        }
+        return stored > 0 ? stored : 0;
+      }
+      function teamsOf(it) {
+        var meta = metaOf(it);
+        var m = it.matches || {};
+        return {
+          home: meta.home_team || meta.homeTeam || m.home_team || "?",
+          away: meta.away_team || meta.awayTeam || m.away_team || "?",
+          competition:
+            String(
+              meta.league ||
+                meta.competition ||
+                m.league ||
+                m.competition ||
+                ""
+            ).trim() || "—",
+        };
+      }
+      function whenHtmlOf(it) {
+        var starts = it.matches && it.matches.starts_at;
+        if (!starts) {
+          var c = it.created_at ? new Date(it.created_at) : null;
+          if (!c || Number.isNaN(c.getTime())) return "—";
+          return (
+            '<span class="term-time">' +
+            c.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) +
+            '</span><span class="term-date">' +
+            c.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) +
+            "</span>"
+          );
+        }
+        var d = new Date(starts);
+        if (Number.isNaN(d.getTime())) return "—";
+        var now = Date.now();
+        if (now >= d.getTime() && String(it.status || "").toLowerCase() === "active") {
+          return '<span class="term-live">AO VIVO</span>';
+        }
+        return (
+          '<span class="term-time">' +
+          d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) +
+          '</span><span class="term-date">' +
+          d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) +
+          "</span>"
+        );
+      }
+      function canContest(item) {
+        var st = String(item.status || "").toLowerCase();
+        if (st !== "active") return { ok: false, why: st === "review_odd" ? "Já em contestação" : "Indisponível para este status" };
+        var starts = item.matches && item.matches.starts_at;
+        if (!starts) return { ok: true };
+        var t = new Date(starts).getTime();
+        if (Number.isNaN(t)) return { ok: true };
+        if (Date.now() > t - LOCK_MS) {
+          return { ok: false, why: "Bloqueado: faltam menos de 5 min para o início (ou o jogo já começou)" };
+        }
+        return { ok: true };
+      }
+
+      function isVisibleProtection(row) {
+        var meta = metaOf(row);
+        if (meta.hidden_from_client === true || meta.admin_hide === true) {
+          return false;
+        }
+        var st = String((row && row.status) || "")
+          .toLowerCase()
+          .trim();
+        // Canceladas saem da lista "Minhas Proteções"
+        if (!st) return true;
+        if (st.indexOf("cancel") >= 0) return false;
+        if (st === "void" || st === "refunded" || st === "estornada") return false;
+        return true;
+      }
+
+      async function load() {
+        showErr("");
+        var selectFull =
+          "id,user_id,status,amount_cents,responsibility_cents,odd,match_id,created_at,metadata,user_profit_cents,settled_at,settled_outcome,platform_deduction_cents,locked_deduction_cents,platform_profit_cents,refunded_at";
+        var selectBasic =
+          "id,user_id,status,amount_cents,responsibility_cents,odd,match_id,created_at,metadata,user_profit_cents";
+        var selectBackFull =
+          "id,user_id,status,amount_cents,odd,match_id,created_at,metadata,user_profit_cents,settled_at,settled_outcome,platform_deduction_cents,locked_deduction_cents,platform_profit_cents,refunded_at";
+        var selectBackBasic =
+          "id,user_id,status,amount_cents,odd,match_id,created_at,metadata,user_profit_cents";
+        async function fetchSide(table, full, basic) {
+          var first = await supa
+            .from(table)
+            .select(full)
+            .eq("user_id", viewUserId)
+            .order("created_at", { ascending: false })
+            .limit(200);
+          if (!first.error) return first;
+          console.warn("[protecoes] select completo falhou em " + table + ", tentando básico", first.error);
+          return supa
+            .from(table)
+            .select(basic)
+            .eq("user_id", viewUserId)
+            .order("created_at", { ascending: false })
+            .limit(200);
+        }
+        var [lay, back] = await Promise.all([
+          fetchSide("protections", selectFull, selectBasic),
+          fetchSide("back_protections", selectBackFull, selectBackBasic),
+        ]);
+        if (lay.error) throw lay.error;
+        if (back.error) throw back.error;
+        // Filtro no cliente (não depende de .neq no PostgREST / cache)
+        var merged = []
+          .concat(
+            (lay.data || []).map(function (r) {
+              return Object.assign({}, r, { market_category: "LAY" });
+            })
+          )
+          .concat(
+            (back.data || []).map(function (r) {
+              return Object.assign({}, r, { market_category: "BACK" });
+            })
+          );
+        var foreign = merged.filter(function (r) {
+          return r.user_id != null && String(r.user_id) !== String(viewUserId);
+        });
+        if (foreign.length) {
+          console.error(
+            "[protecoes] ignorando",
+            foreign.length,
+            "linha(s) com user_id diferente do espelho/cliente",
+            foreign.map(function (r) {
+              return { id: r.id, user_id: r.user_id };
+            })
+          );
+        }
+        items = merged
+          .filter(function (r) {
+            if (r.user_id == null || r.user_id === "") return false;
+            return String(r.user_id) === String(viewUserId);
+          })
+          .filter(isVisibleProtection)
+          .sort(function (a, b) {
+            return String(b.created_at).localeCompare(String(a.created_at));
+          });
+        console.info(
+          "[protecoes] carregadas=",
+          items.length,
+          "lay=",
+          (lay.data || []).length,
+          "back=",
+          (back.data || []).length,
+          "descartadas_user=",
+          foreign.length
+        );
+
+        if (selectedId && !items.some(function (i) { return i.id === selectedId; })) {
+          selectedId = null;
+        }
+
+        var matchIds = Array.from(
+          new Set(items.map(function (i) { return i.match_id; }).filter(Boolean))
+        );
+        var matchMap = {};
+        if (matchIds.length) {
+          var mres = await supa
+            .from("matches")
+            .select("id,home_team,away_team,league,starts_at,markets")
+            .in("id", matchIds);
+          if (!mres.error) {
+            (mres.data || []).forEach(function (m) {
+              matchMap[m.id] = m;
+            });
+          }
+        }
+        items.forEach(function (i) {
+          i.matches = matchMap[i.match_id] || null;
+        });
+
+        // Cruza cobranças reais (protection_fee) desta conta
+        var feeByRef = {};
+        try {
+          var feeRes = await supa
+            .from("wallet_transactions")
+            .select("id,ref,type,amount_cents,created_at")
+            .eq("user_id", viewUserId)
+            .in("type", ["protection_fee", "protection_settlement", "protection_refund", "protection_release"])
+            .order("created_at", { ascending: false })
+            .limit(500);
+          if (!feeRes.error) {
+            (feeRes.data || []).forEach(function (t) {
+              if (!t.ref) return;
+              if (!feeByRef[t.ref]) feeByRef[t.ref] = [];
+              feeByRef[t.ref].push(t);
+            });
+          }
+        } catch (feeErr) {
+          console.warn("[protecoes] wallet_transactions:", feeErr);
+        }
+        items.forEach(function (i) {
+          var txs = feeByRef[i.id] || [];
+          i._walletTxs = txs;
+          i._hasFeeCharge = txs.some(function (t) {
+            return String(t.type) === "protection_fee";
+          });
+        });
+
+        renderList();
+        renderDetail();
+      }
+
+      function matchName(item) {
+        var t = teamsOf(item);
+        if (t.home !== "?" && t.away !== "?") return t.home + " × " + t.away;
+        return "Partida";
+      }
+
+      function renderList() {
+        if (!items.length) {
+          listEl.innerHTML = '<div class="empty">Nenhuma proteção encontrada.</div>';
+          return;
+        }
+        listEl.innerHTML = items.map(function (it) {
+          var amount = it.responsibility_cents || it.amount_cents || 0;
+          var side = String(it.market_category || "LAY").toUpperCase() === "BACK" ? "BACK" : "LAY";
+          var teams = teamsOf(it);
+          var competition = teams.competition;
+          var home = teams.home;
+          var away = teams.away;
+          var res = resultInfo(it);
+          var badgeCls = statusClass(it.status);
+          if (res.kind === "won") badgeCls = "won";
+          if (res.kind === "lost") badgeCls = "lost";
+          var metaHtml = "";
+          if (res.label) {
+            metaHtml =
+              '<div class="prot-result-meta">' +
+              '<span class="' +
+              (res.kind === "won" ? "is-won" : res.kind === "lost" ? "is-lost" : "") +
+              '">Resultado: ' +
+              esc(res.label) +
+              "</span>" +
+              (res.refundCents != null
+                ? '<span class="' +
+                  (res.refundCents > 0 ? "is-refund" : "") +
+                  '">Reembolso: ' +
+                  money(res.refundCents) +
+                  "</span>"
+                : "") +
+              "</div>";
+          }
+          return (
+            '<article class="term-row' + (selectedId === it.id ? " prot-active" : "") + '" data-id="' + esc(it.id) + '">' +
+              '<div class="term-col-time">' + whenHtmlOf(it) + "</div>" +
+              '<div class="term-col-match"><strong>' + esc(home) + " <span>×</span> " + esc(away) + "</strong></div>" +
+              '<div class="term-col-comp"><span class="term-comp">' + esc(competition) + "</span></div>" +
+              '<div class="term-col-sides"><span class="term-side ' + side.toLowerCase() + '">' + side + "</span></div>" +
+              '<div class="term-col-market"><span class="term-market">' + esc(marketLabelOf(it)) + "</span></div>" +
+              '<div class="term-col-valor"><strong>' + money(amount) + '</strong><small>protegido</small></div>' +
+              '<div class="term-col-status"><span class="prot-badge ' + badgeCls + '">' + esc(statusLabel(it.status)) + "</span>" +
+              metaHtml +
+              "</div>" +
+            "</article>"
+          );
+        }).join("");
+        listEl.querySelectorAll(".term-row").forEach(function (el) {
+          el.addEventListener("click", function () {
+            selectedId = el.getAttribute("data-id");
+            renderList();
+            renderDetail();
+          });
+        });
+      }
+
+      function selected() {
+        return items.find(function (i) { return i.id === selectedId; }) || null;
+      }
+
+      function renderDetail() {
+        var it = selected();
+        if (!it) {
+          detailEl.innerHTML = "<h2>Protocolo de auditoria</h2><p class=\"sub\">Selecione uma proteção para ver detalhes e ações.</p>";
+          return;
+        }
+        var gate = canContest(it);
+        var amount = it.responsibility_cents || it.amount_cents || 0;
+        var starts = it.matches && it.matches.starts_at
+          ? new Date(it.matches.starts_at).toLocaleString("pt-BR")
+          : "—";
+        var res = resultInfo(it);
+        var created = it.created_at
+          ? new Date(it.created_at).toLocaleString("pt-BR")
+          : "—";
+        var meta = metaOf(it);
+        detailEl.innerHTML =
+          "<h2>Protocolo de auditoria</h2>" +
+          '<p class="sub">' + matchName(it) + "</p>" +
+          '<div class="prot-kv">' +
+            "<div><span>Status</span><strong>" + statusLabel(it.status) + "</strong></div>" +
+            "<div><span>Resultado</span><strong>" +
+            esc(res.label || "—") +
+            "</strong></div>" +
+            "<div><span>Reembolso</span><strong>" +
+            (res.refundCents != null ? money(res.refundCents) : "—") +
+            "</strong></div>" +
+            "<div><span>Odd alvo</span><strong>" + Number(displayOddOf(it) || 0).toFixed(2) + "</strong></div>" +
+            "<div><span>Valor protegido</span><strong>" + money(amount) + "</strong></div>" +
+            "<div><span>Início</span><strong>" + starts + "</strong></div>" +
+            "<div><span>Criada em</span><strong>" + esc(created) + "</strong></div>" +
+            "<div><span>ID proteção</span><strong>" + esc(String(it.id || "").slice(0, 8)) + "…</strong></div>" +
+            "<div><span>Conta (user)</span><strong>" + esc(String(it.user_id || viewUserId).slice(0, 8)) + "…</strong></div>" +
+            "<div><span>Origem</span><strong>" + esc(meta.source || meta.billing_model || "—") + "</strong></div>" +
+            "<div><span>Cobrança na conta</span><strong>" +
+            (it._hasFeeCharge
+              ? "Sim (protection_fee)"
+              : "Não encontrada") +
+            "</strong></div>" +
+          "</div>" +
+          '<div class="prot-actions" style="display:flex;flex-direction:column;gap:10px">' +
+            '<button type="button" class="btn btn-primary" id="btnContest"' +
+            (gate.ok ? "" : " disabled") +
+            ">Contestar proteção</button>" +
+            '<button type="button" class="btn btn-ghost" id="btnCancelProt"' +
+            (gate.ok ? "" : " disabled") +
+            ">Cancelar proteção</button>" +
+            (isMirror
+              ? '<button type="button" class="btn btn-ghost" id="btnHideErr" style="border-color:rgba(248,113,113,0.45);color:#fecaca">Ocultar da lista (erro de lançamento)</button>' +
+                '<p class="sub" style="margin:0">Espelho: oculta só na UI do cliente. Não estorna saldo. Use se a entrada não foi dele.</p>'
+              : "") +
+            (gate.ok
+              ? '<p class="sub" style="margin:0">Cancelar estorna a dedução ArbiShield na hora.</p>'
+              : '<p class="sub" style="margin:0">' + gate.why + "</p>") +
+          "</div>";
+        var btn = document.getElementById("btnContest");
+        if (btn && gate.ok) {
+          btn.addEventListener("click", function () {
+            openModal("odd_adjustment");
+          });
+        }
+        var btnCancel = document.getElementById("btnCancelProt");
+        if (btnCancel && gate.ok) {
+          btnCancel.addEventListener("click", function () {
+            openModal("cancellation");
+          });
+        }
+        var btnHide = document.getElementById("btnHideErr");
+        if (btnHide) {
+          btnHide.addEventListener("click", function () {
+            hideProtectionEntry(it);
+          });
+        }
+      }
+
+      async function hideProtectionEntry(it) {
+        if (!it || !it.id) return;
+        if (
+          !confirm(
+            "Ocultar esta proteção da lista do cliente?\n\n" +
+              matchName(it) +
+              "\n" +
+              marketLabelOf(it) +
+              " · " +
+              money(it.responsibility_cents || it.amount_cents || 0) +
+              "\n\nNão estorna saldo. Só some da Gestão de Proteções."
+          )
+        ) {
+          return;
+        }
+        try {
+          showErr("");
+          var table =
+            String(it.market_category || "LAY").toUpperCase() === "BACK"
+              ? "back_protections"
+              : "protections";
+          var meta = Object.assign({}, metaOf(it), {
+            hidden_from_client: true,
+            admin_hide: true,
+            hidden_at: new Date().toISOString(),
+            hidden_by: user.id,
+            hidden_reason: "erro_lancamento_espelho",
+          });
+          var up = await supa
+            .from(table)
+            .update({ metadata: meta })
+            .eq("id", it.id)
+            .eq("user_id", viewUserId)
+            .select("id");
+          if (up.error) throw up.error;
+          if (!up.data || !up.data.length) {
+            throw new Error("Falha ao ocultar (permissão/RLS).");
+          }
+          showOk("Entrada ocultada da lista do cliente.");
+          selectedId = null;
+          await load();
+        } catch (e) {
+          showErr(e.message || "Falha ao ocultar");
+        }
+      }
+
+      function openModal(initialType) {
+        var it = selected();
+        if (!it) return;
+        contestType =
+          initialType === "cancellation" ? "cancellation" : "odd_adjustment";
+        document.querySelectorAll(".type-grid button").forEach(function (b) {
+          b.classList.toggle("active", b.getAttribute("data-type") === contestType);
+        });
+        document.getElementById("panelOdd").style.display =
+          contestType === "odd_adjustment" ? "" : "none";
+        document.getElementById("panelCancel").style.display =
+          contestType === "cancellation" ? "" : "none";
+        document.getElementById("newOdd").value = "";
+        document.getElementById("proof").value = "";
+        document.getElementById("reason").value = "";
+        document.getElementById("modalTitle").textContent =
+          contestType === "cancellation"
+            ? "Cancelar proteção"
+            : "Contestar proteção";
+        modal.classList.add("show");
+        modal.setAttribute("aria-hidden", "false");
+      }
+      function closeModal() {
+        modal.classList.remove("show");
+        modal.setAttribute("aria-hidden", "true");
+      }
+
+      document.querySelectorAll(".type-grid button").forEach(function (b) {
+        b.addEventListener("click", function () {
+          contestType = b.getAttribute("data-type");
+          document.querySelectorAll(".type-grid button").forEach(function (x) {
+            x.classList.toggle("active", x === b);
+          });
+          document.getElementById("panelOdd").style.display = contestType === "odd_adjustment" ? "" : "none";
+          document.getElementById("panelCancel").style.display = contestType === "cancellation" ? "" : "none";
+        });
+      });
+      document.getElementById("btnClose").addEventListener("click", closeModal);
+      modal.addEventListener("click", function (e) { if (e.target === modal) closeModal(); });
+
+      async function uploadProof(file, protectionId) {
+        var ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+        var path = "contestations/contestation-" + protectionId + "-" + Date.now() + "-" + Math.random().toString(36).slice(2) + "." + ext;
+        var up = await supa.storage.from("bet-proofs").upload(path, file, { contentType: file.type || "image/jpeg", upsert: false });
+        if (up.error) throw up.error;
+        var signed = await supa.storage.from("bet-proofs").createSignedUrl(path, 3600 * 24 * 365);
+        if (signed.error || !signed.data || !signed.data.signedUrl) throw signed.error || new Error("Falha ao gerar URL do comprovante");
+        return signed.data.signedUrl;
+      }
+
+      var FN_SUBMIT = "2a6aef91a48eaa19a2fd107fe580b1c6edf54fd10f1962c1d5d3e40f5c38d120";
+      var LOCK_MS_SUBMIT = 5 * 60 * 1000;
+
+      /** Grava direto no banco (não depende do prelive/shim). Espelha o legado: status=review_odd */
+      async function submitViaSupabase(payload) {
+        var table = String(payload.category || "LAY").toUpperCase() === "BACK"
+          ? "back_protections"
+          : "protections";
+        var got = await supa
+          .from(table)
+          .select("*")
+          .eq("id", payload.protectionId)
+          .eq("user_id", viewUserId)
+          .maybeSingle();
+        if (got.error) throw got.error;
+        var row = got.data;
+        if (!row) throw new Error("Proteção não encontrada");
+        var st = String(row.status || "").toLowerCase();
+        if (st === "review_odd") return { ok: true, alreadyExists: true };
+        if (st !== "active" && st !== "pending") {
+          throw new Error("Só é possível contestar proteções ativas");
+        }
+        if (row.match_id) {
+          var mres = await supa
+            .from("matches")
+            .select("starts_at")
+            .eq("id", row.match_id)
+            .maybeSingle();
+          var starts = mres.data && mres.data.starts_at;
+          if (starts) {
+            var t = new Date(starts).getTime();
+            if (!Number.isNaN(t) && Date.now() > t - LOCK_MS_SUBMIT) {
+              throw new Error(
+                "Contestação bloqueada: faltam menos de 5 minutos para o início da partida (ou o jogo já começou)."
+              );
+            }
+          }
+        }
+        var contestation = {
+          type: payload.contestType,
+          original_odd: Number(displayOddOf(row) || row.odd),
+          requested_odd: payload.newOdd != null ? Number(payload.newOdd) : null,
+          proof_url: payload.proofUrl || null,
+          reason: payload.reason || null,
+          requested_at: new Date().toISOString(),
+          requested_by: user.id, // admin autenticado (auditoria)
+          impersonated_user_id:
+            viewUserId !== user.id ? viewUserId : undefined,
+        };
+        var meta = Object.assign({}, row.metadata || {});
+        meta.contestation = contestation;
+        var patch = { status: "review_odd", metadata: meta };
+        if (table === "back_protections") {
+          var calc = Object.assign({}, row.calculations || meta.calculations || {});
+          calc.contestation = contestation;
+          patch.calculations = calc;
+          meta.calculations = calc;
+          patch.metadata = meta;
+        }
+        var up = await supa
+          .from(table)
+          .update(patch)
+          .eq("id", row.id)
+          .eq("user_id", viewUserId)
+          .select("id,status");
+        if (up.error) throw up.error;
+        if (!up.data || !up.data.length) {
+          throw new Error(
+            "Não foi possível marcar a proteção como Em Contestação (permissão/RLS). Rode o hotfix v6 na VPS."
+          );
+        }
+        try {
+          await supa.from("odd_contestations").insert({
+            user_id: viewUserId,
+            protection_id: row.id,
+            status: "pending",
+            contest_type: payload.contestType,
+            original_odd: contestation.original_odd,
+            requested_odd: contestation.requested_odd,
+            proof_url: contestation.proof_url,
+            reason: contestation.reason,
+          });
+        } catch (eIns) { /* tabela/colunas podem diferir */ }
+        return {
+          ok: true,
+          alreadyExists: false,
+          status: "review_odd",
+          via: "supabase-direct",
+        };
+      }
+
+      async function cancelViaApi(payload, token) {
+        async function readBody(res) {
+          var text = await res.text();
+          var data = {};
+          try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 180) }; }
+          return data;
+        }
+        var res = await fetch("/api/arbishield/protections", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify(Object.assign({ action: "contest_cancel_auto" }, payload)),
+        });
+        var data = await readBody(res);
+        if (res.ok && data && data.ok === true) return data;
+        // Fallback: contest_submit com type cancellation (backend v8 redireciona para auto)
+        var res2 = await fetch("/api/arbishield/protections", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify(Object.assign({ action: "contest_submit", contestType: "cancellation" }, payload)),
+        });
+        var data2 = await readBody(res2);
+        if (res2.ok && data2 && (data2.ok === true || data2.status === "cancelled")) return data2;
+        throw new Error(
+          data.error || data2.error ||
+          "Falha ao cancelar. Rode o hotfix v8 na VPS (cancelamento automático)."
+        );
+      }
+
+      async function submitContest(payload, token) {
+        async function readBody(res) {
+          var text = await res.text();
+          var data = {};
+          try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 180) }; }
+          return data;
+        }
+
+        // 1) Direto no Supabase — funciona mesmo com prelive antigo
+        try {
+          var direct = await submitViaSupabase(payload);
+          if (direct && direct.ok) return direct;
+        } catch (eDirect) {
+          console.warn("[contest] supabase-direct", eDirect);
+          var directErr = eDirect;
+        }
+
+        // 2) Prelive :3098 (após hotfix v5/v6)
+        var res = await fetch("/api/arbishield/protections", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify(Object.assign({ action: "contest_submit" }, payload)),
+        });
+        var data = await readBody(res);
+        if (res.ok && data && data.ok === true) return data;
+        // prelive antigo ignora action e responde matchId obrigatório
+        var preliveOld =
+          String(data.error || "").indexOf("matchId") >= 0 ||
+          String(data.error || "").indexOf("Valor inválido") >= 0;
+
+        // 3) REST dedicado
+        if (!preliveOld) {
+          var resB = await fetch("/api/arbishield/contestations/submit", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + token,
+            },
+            body: JSON.stringify(payload),
+          });
+          var dataB = await readBody(resB);
+          if (resB.ok && dataB && dataB.ok === true) return dataB;
+        }
+
+        // 4) /_serverFn
+        var res2 = await fetch("/_serverFn/" + FN_SUBMIT, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-arbishield-plain": "1",
+            "x-tsr-serverFn": "true",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify({ data: payload }),
+        });
+        var data2 = await readBody(res2);
+        if (res2.ok && data2 && data2.ok === true) return data2;
+
+        throw new Error(
+          (directErr && directErr.message) ||
+          data.error ||
+          (typeof dataB !== "undefined" && dataB.error) ||
+          data2.error ||
+          "Erro ao enviar contestação. Rode o hotfix v8 na VPS."
+        );
+      }
+
+      document.getElementById("btnSend").addEventListener("click", async function () {
+        var it = selected();
+        if (!it || sending) return;
+        var btn = document.getElementById("btnSend");
+        sending = true;
+        btn.disabled = true;
+        btn.textContent = "Enviando...";
+        showErr("");
+        try {
+          var gate = canContest(it);
+          if (!gate.ok) throw new Error(gate.why);
+          var session = await supa.auth.getSession();
+          var token = session.data.session && session.data.session.access_token;
+          if (!token) throw new Error("Sessão expirada");
+
+          if (contestType === "cancellation") {
+            var reason = String(document.getElementById("reason").value || "").trim();
+            if (reason.length < 5) throw new Error("Informe o motivo do cancelamento");
+            if (
+              !window.confirm(
+                "Cancelar esta proteção agora?\nA dedução ArbiShield cobrada na ativação será estornada imediatamente."
+              )
+            ) {
+              return;
+            }
+            var cancelData = await cancelViaApi({
+              protectionId: it.id,
+              category: it.market_category || "LAY",
+              reason: reason,
+            }, token);
+            var refunded =
+              cancelData && cancelData.refundedCents != null
+                ? cancelData.refundedCents
+                : null;
+            showOk(
+              cancelData.alreadyCancelled
+                ? "Proteção já estava cancelada."
+                : refunded != null
+                  ? "Proteção cancelada. Dedução estornada: " + money(refunded) + "."
+                  : "Proteção cancelada. Dedução ArbiShield estornada."
+            );
+            closeModal();
+            await load();
+            return;
+          }
+
+          var payload = {
+            protectionId: it.id,
+            category: it.market_category || "LAY",
+            contestType: "odd_adjustment",
+          };
+          var odd = parseFloat(String(document.getElementById("newOdd").value || "").replace(",", "."));
+          if (!(odd > 1)) throw new Error("Informe a nova odd obtida na Exchange");
+          var file = document.getElementById("proof").files[0];
+          if (!file) throw new Error("Anexe o print do bilhete/aposta");
+          payload.newOdd = odd;
+          payload.proofUrl = await uploadProof(file, it.id);
+          var data = await submitContest(payload, token);
+          if (data.alreadyExists) showOk("Já existe uma contestação em análise para esta proteção.");
+          else showOk("Contestação enviada! Status: Em Contestação (Pendente).");
+          closeModal();
+          await load();
+          selectedId = it.id;
+          renderList();
+          renderDetail();
+        } catch (ex) {
+          showErr(ex.message || "Erro ao enviar");
+          window.alert(ex.message || "Erro ao enviar");
+        } finally {
+          sending = false;
+          btn.disabled = false;
+          btn.textContent = "Enviar";
+        }
+      });
+
+      try {
+        await load();
+        if (items[0]) {
+          selectedId = items[0].id;
+          renderList();
+          renderDetail();
+        }
+      } catch (ex) {
+        showErr(ex.message || String(ex));
+        listEl.innerHTML = '<div class="empty">Falha ao carregar proteções.</div>';
+      }
+    })();
+  </script>
+  <script id="arbishield-hide-cancelled-protections">
+    (function () {
+      function hide() {
+        try {
+          document
+            .querySelectorAll(".prot-list .term-row, #list .term-row")
+            .forEach(function (row) {
+              var badge = row.querySelector(".prot-badge, .term-col-status");
+              var txt = (
+                (badge && badge.textContent) ||
+                row.textContent ||
+                ""
+              ).toLowerCase();
+              if (txt.indexOf("cancelad") >= 0) {
+                row.style.display = "none";
+                row.setAttribute("data-hidden-cancelled", "1");
+              }
+            });
+        } catch (e) {}
+      }
+      var obs = new MutationObserver(hide);
+      function boot() {
+        var list = document.getElementById("list");
+        if (list) obs.observe(list, { childList: true, subtree: true });
+        hide();
+        setInterval(hide, 600);
+      }
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", boot);
+      } else boot();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+[Unit]
+Description=ArbiShield TESTE admin API (jogos/settle) :3198
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/arbishield-teste
+EnvironmentFile=-/opt/arbishield/deploy/vps-supabase/.env
+EnvironmentFile=-/opt/arbishield/.arbishield-odds-sync.env
+EnvironmentFile=-/opt/arbishield-teste/.env
+Environment=ARBISHIELD_ENV=teste
+Environment=ARBISHIELD_SITE=teste
+Environment=ARBISHIELD_SANDBOX=1
+Environment=PRELIVE_LISTEN=127.0.0.1:3198
+Environment=ARBISHIELD_SUPABASE_URL=http://127.0.0.1:8000
+ExecStart=/usr/bin/node /opt/arbishield-teste/scripts/arbishield-prelive-events.mjs --serve
+Restart=always
+RestartSec=3
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

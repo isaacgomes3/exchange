@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Criar bot — BotShield</title>
+  <link rel="stylesheet" href="/botshield.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/botshield.js"></script>
+  <script src="/botshield-shell.js" defer></script>
+</head>
+<body data-active="criar">
+  <div id="page" hidden>
+    <div class="page-head">
+      <div>
+        <h1>Criar bot</h1>
+        <p class="sub">Defina nome, lado e regra. A execução live usa integração da exchange.</p>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Novo bot</h2>
+      <p>Salvo neste painel (local). Integração de ordens vem no próximo passo.</p>
+      <div id="err" class="err"></div>
+      <form id="form" class="form-grid">
+        <label>
+          Nome
+          <input name="name" required placeholder="Ex.: lay 3x3" maxlength="80" />
+        </label>
+        <label>
+          Descrição
+          <textarea name="description" rows="3" placeholder="Ex.: entrada contra o placar 3x3"></textarea>
+        </label>
+        <label>
+          Lado
+          <select name="side">
+            <option value="Lay">Lay</option>
+            <option value="Back">Back</option>
+          </select>
+        </label>
+        <label>
+          Estilo
+          <select name="style">
+            <option value="Punter">Punter</option>
+            <option value="Trader">Trader</option>
+          </select>
+        </label>
+        <label>
+          Mercado / regra
+          <input name="market" placeholder="Ex.: Placar Exato 3-3" maxlength="80" />
+        </label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" type="submit">Salvar bot</button>
+          <a class="btn btn-secondary" href="/bots.html">Cancelar</a>
+        </div>
+      </form>
+    </div>
+  </div>
+  <script>
+    document.addEventListener("botshield:ready", () => {
+      const err = document.getElementById("err");
+      document.getElementById("form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        err.classList.remove("show");
+        const fd = new FormData(e.target);
+        const name = String(fd.get("name") || "").trim();
+        if (!name) {
+          err.textContent = "Informe o nome";
+          err.classList.add("show");
+          return;
+        }
+        const side = String(fd.get("side") || "Lay");
+        const style = String(fd.get("style") || "Punter");
+        const market = String(fd.get("market") || "").trim();
+        const tags = [style, side];
+        if (market) tags.push(market);
+        BotShield.upsertBot({
+          id: "b_" + Date.now().toString(36),
+          name,
+          description: String(fd.get("description") || "").trim(),
+          tags,
+          active: false,
+          wins: 0,
+          losses: 0,
+          pnlCents: 0,
+          roi: 0,
+          flatRoi: 0,
+          winRate: 0,
+          integrations: 0,
+        });
+        location.href = "/bots.html";
+      });
+    });
+  </script>
+</body>
+</html>
