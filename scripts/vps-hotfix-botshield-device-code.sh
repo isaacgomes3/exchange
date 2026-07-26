@@ -67,6 +67,8 @@ grep -q 'external_app' "$SCRIPTS_DIR/lib/exchange-orders-service.mjs" || die "se
 grep -q 'external_app' "$SCRIPTS_DIR/lib/mexchange-offers.mjs" || die "mexchange-offers sem external_app"
 grep -q 'btnDeviceCode' "$WEB/conta-betbra.html" || die "UI sem btnDeviceCode"
 grep -q 'btnSaveAppToken' "$WEB/conta-betbra.html" || die "UI sem btnSaveAppToken"
+grep -q 'accountId vazio' "$WEB/conta-betbra.html" || die "UI Testar sessão sem exigir accountId"
+grep -q 'Sessão NÃO autenticada' "$SCRIPTS_DIR/lib/exchange-orders-service.mjs" || die "service sem erro accountId vazio"
 grep -q 'validationCode' "$SHIM_DIR/scripts/arbishield-serverfn-shim.mjs" || die "shim sem validationCode no balance"
 
 log "2/2 restart shim"
