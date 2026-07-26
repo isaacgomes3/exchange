@@ -85,10 +85,15 @@ fi
 
 grep -q 'fulltbet' "$SCRIPTS_DIR/lib/betbra-client-api.mjs" || die "betbra-client-api sem fulltbet"
 grep -q 'BETBRA_API_BLOCKED' "$SCRIPTS_DIR/lib/betbra-client-api.mjs" || die "betbra-client-api sem mapa API blocked"
+grep -q 'resolveLoginPublicIp' "$SCRIPTS_DIR/lib/betbra-client-api.mjs" || die "betbra-client-api sem IP público"
 grep -q 'Chrome/' "$SCRIPTS_DIR/lib/betbra-client-api.mjs" || die "betbra-client-api sem Chrome UA"
 if grep -q 'ArbiShieldBotShield' "$SCRIPTS_DIR/lib/betbra-client-api.mjs"; then
   die "UA de bot ainda presente (causa API blocked)"
 fi
+if grep -qE 'BETBRA_LOGIN_IP", "0\.0\.0\.0"' "$SCRIPTS_DIR/lib/betbra-client-api.mjs"; then
+  die "login ainda manda ip 0.0.0.0 (causa API blocked)"
+fi
+grep -q 'mexchange/account/info' "$SCRIPTS_DIR/lib/exchange-orders-service.mjs" || die "service sem fallback saldo Mexchange"
 grep -q 'exchangeBrandDefaults' "$SCRIPTS_DIR/lib/mexchange-offers.mjs" || die "mexchange-offers sem brand defaults"
 grep -q 'fulltbet' "$WEB/conta-betbra.html" || die "UI sem mencao Fulltbet"
 grep -q 'Saldo Exchange' "$WEB/botshield-shell.js" || die "shell sem label Saldo Exchange"

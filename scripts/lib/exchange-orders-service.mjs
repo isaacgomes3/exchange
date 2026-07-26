@@ -798,11 +798,63 @@ export function createExchangeOrdersService(deps) {
         throw err;
       }
 
-      const result = await betbraLoginAndBalance({
-        login,
-        password,
-        validationCode: validationCode || undefined,
-      });
+      let result;
+      try {
+        result = await betbraLoginAndBalance({
+          login,
+          password,
+          validationCode: validationCode || undefined,
+        });
+      } catch (loginErr) {
+        // Soft2Bet WAF: tentar saldo/conta via Mexchange com sessão já salva
+        if (loginErr?.code !== "BETBRA_API_BLOCKED") throw loginErr;
+        let tradeSession = { ...session };
+        if (tradeSession.cookieHeader) {
+          tradeSession = {
+            ...tradeSession,
+            cookieHeader: sanitizeTradingCookieHeader(tradeSession.cookieHeader),
+          };
+        }
+        if (!hasTradingSession(tradeSession)) {
+          throw loginErr;
+        }
+        const acc = await fetchMexchangeAccountInfo(tradeSession);
+        const balRaw =
+          acc.raw?.balance ??
+          acc.raw?.availableBalance ??
+          acc.raw?.cashBalance ??
+          acc.raw?.available ??
+          null;
+        const balance = balRaw != null ? Number(balRaw) : null;
+        if (!acc.ok || !acc.accountId || !Number.isFinite(balance)) {
+          const err = new Error(
+            (loginErr.message || "API blocked") +
+              " Fallback Mexchange sem saldo/accountId. " +
+              "Cole Cookie/cURL da exchange no Chrome e Testar sessão."
+          );
+          err.status = 403;
+          err.code = "BETBRA_API_BLOCKED";
+          err.details = {
+            mexchangeHttp: acc.status,
+            accountId: acc.accountId || null,
+            rawKeys:
+              acc.raw && typeof acc.raw === "object" ? Object.keys(acc.raw) : [],
+          };
+          throw err;
+        }
+        result = {
+          ok: true,
+          balance,
+          balanceCents: Math.round(balance * 100),
+          currency: acc.currency || "BRL",
+          source: "mexchange/account/info",
+          houseToken: session.houseToken || session.accessToken || null,
+          cookies: session.cookies || null,
+          accountStatus: null,
+          warning:
+            "Saldo via Mexchange (Soft2Bet client/api bloqueado na VPS).",
+        };
+      }
 
       // Persiste token/cookies da casa (mantém login+senha)
       try {
@@ -829,6 +881,7 @@ export function createExchangeOrdersService(deps) {
           last_balance: result.balance,
           last_balance_at: next.lastBalanceAt,
           has_house_token: !!result.houseToken,
+          balance_source: result.source || null,
         };
         await sb(
           `/rest/v1/exchange_connections?id=eq.${encodeURIComponent(conn.id)}`,
@@ -853,6 +906,7 @@ export function createExchangeOrdersService(deps) {
         balanceCents: result.balanceCents,
         currency: result.currency || "BRL",
         source: result.source || "clients/balance",
+        warning: result.warning || undefined,
         loginMasked: maskLogin(login),
         accountStatus: result.accountStatus || null,
         fetchedAt: new Date().toISOString(),

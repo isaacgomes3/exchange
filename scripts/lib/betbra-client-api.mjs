@@ -53,7 +53,43 @@ export function resolveBetbraClientApiBase() {
 }
 
 const CHROME_UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36";
+
+let cachedPublicIp = "";
+let cachedPublicIpAt = 0;
+
+/** IP público da VPS — Soft2Bet rejeita login com ip 0.0.0.0 ("API blocked"). */
+export async function resolveLoginPublicIp() {
+  const forced = envStr("BETBRA_LOGIN_IP", "").trim();
+  if (forced && forced !== "0.0.0.0") return forced;
+  if (cachedPublicIp && Date.now() - cachedPublicIpAt < 30 * 60 * 1000) {
+    return cachedPublicIp;
+  }
+  const urls = [
+    "https://api.ipify.org",
+    "https://ifconfig.me/ip",
+    "https://icanhazip.com",
+  ];
+  for (const u of urls) {
+    try {
+      const r = await fetch(u, {
+        headers: { Accept: "text/plain" },
+        signal: AbortSignal.timeout(4000),
+      });
+      const t = String(await r.text() || "")
+        .trim()
+        .split(/\s+/)[0];
+      if (/^\d{1,3}(\.\d{1,3}){3}$/.test(t)) {
+        cachedPublicIp = t;
+        cachedPublicIpAt = Date.now();
+        return t;
+      }
+    } catch {
+      /* tenta próximo */
+    }
+  }
+  return "";
+}
 
 function defaultHeaders() {
   const d = exchangeBrandDefaults();
@@ -65,9 +101,13 @@ function defaultHeaders() {
     Origin: envStr("BETBRA_ORIGIN", d.origin),
     // Soft2Bet bloqueia UA de bot com "API blocked in server"
     "User-Agent": envStr("BETBRA_USER_AGENT", CHROME_UA),
-    "sec-ch-ua": '"Chromium";v="150", "Not A(Brand";v="24", "Google Chrome";v="150"',
+    "sec-ch-ua":
+      '"Not)A;Brand";v="8", "Chromium";v="138", "Google Chrome";v="138"',
     "sec-ch-ua-mobile": "?0",
     "sec-ch-ua-platform": '"Windows"',
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
   };
 }
 
@@ -76,8 +116,8 @@ function mapBetbraApiError(msg, data, status) {
   if (/api blocked in server/i.test(m)) {
     const err = new Error(
       "Exchange bloqueou o login da VPS (API blocked). " +
-        "Geralmente é anti-bot/WAF: tente de novo em 1–2 min, confira IP BR, " +
-        "ou use Cookie/cURL da Fulltbet logada no Chrome."
+        "Confira IP BR, evite spam de Atualizar saldo, " +
+        "ou use Cookie/cURL da exchange logada no Chrome (Testar sessão → accountId)."
     );
     err.status = status || 403;
     err.code = "BETBRA_API_BLOCKED";
@@ -85,6 +125,10 @@ function mapBetbraApiError(msg, data, status) {
     return err;
   }
   return null;
+}
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 /** Extrai cookies de Set-Cookie (Node fetch getSetCookie ou header concatenado). */
@@ -162,19 +206,22 @@ export async function betbraClientLogin({
   const url = `${base}/auth/login`;
   const lat = latitude == null || latitude === "" ? null : Number(latitude);
   const lng = longitude == null || longitude === "" ? null : Number(longitude);
+  const publicIp = await resolveLoginPublicIp();
   const body = {
     login: user,
     password: pass,
-    latitude: lat,
-    longitude: lng,
+    latitude: Number.isFinite(lat) ? lat : null,
+    longitude: Number.isFinite(lng) ? lng : null,
     ipDto: {
-      ip: envStr("BETBRA_LOGIN_IP", "0.0.0.0"),
-      colo: envStr("BETBRA_LOGIN_COLO", "non"),
+      // Nunca enviar 0.0.0.0 — Soft2Bet responde "API blocked in server"
+      ip: publicIp || undefined,
+      colo: envStr("BETBRA_LOGIN_COLO", "gru"),
       loc: envStr("BETBRA_LOGIN_LOC", "br"),
-      latitude: lat,
-      longitude: lng,
+      latitude: Number.isFinite(lat) ? lat : null,
+      longitude: Number.isFinite(lng) ? lng : null,
     },
   };
+  if (!body.ipDto.ip) delete body.ipDto.ip;
   // Soft2Bet / BetBra: campos comuns do código de novo dispositivo
   if (code) {
     body.validationCode = code;
@@ -183,25 +230,52 @@ export async function betbraClientLogin({
     body.loginCode = code;
     body.deviceCode = code;
   }
-  let res;
-  try {
-    res = await fetch(url, {
-      method: "POST",
-      headers: defaultHeaders(),
-      body: JSON.stringify(body),
-      redirect: "manual",
-    });
-  } catch (e) {
-    const err = new Error(
-      `Falha de rede no login BetBra: ${e instanceof Error ? e.message : e}`
-    );
-    err.status = 502;
-    err.code = "BETBRA_LOGIN_NETWORK";
-    throw err;
+
+  async function postLogin() {
+    try {
+      return await fetch(url, {
+        method: "POST",
+        headers: defaultHeaders(),
+        body: JSON.stringify(body),
+        redirect: "manual",
+      });
+    } catch (e) {
+      const err = new Error(
+        `Falha de rede no login BetBra: ${e instanceof Error ? e.message : e}`
+      );
+      err.status = 502;
+      err.code = "BETBRA_LOGIN_NETWORK";
+      throw err;
+    }
   }
-  const cookies = parseSetCookieHeaders(res);
-  const { data, text } = await readJson(res);
-  const loc = res.headers.get("location") || "";
+
+  let res = await postLogin();
+  let cookies = parseSetCookieHeaders(res);
+  let { data, text } = await readJson(res);
+  let loc = res.headers.get("location") || "";
+  let msgRaw =
+    (data && (data.errorMessage || data.message || data.error)) ||
+    (typeof data === "string" ? data : null) ||
+    text?.slice(0, 200) ||
+    "";
+
+  // Um retry curto: WAF Soft2Bet às vezes bloqueia o 1º hit da VPS
+  if (
+    /api blocked in server/i.test(String(msgRaw)) ||
+    (res.status === 403 && /blocked/i.test(String(msgRaw || text || "")))
+  ) {
+    await sleep(1800);
+    res = await postLogin();
+    cookies = parseSetCookieHeaders(res);
+    ({ data, text } = await readJson(res));
+    loc = res.headers.get("location") || "";
+    msgRaw =
+      (data && (data.errorMessage || data.message || data.error)) ||
+      (typeof data === "string" ? data : null) ||
+      text?.slice(0, 200) ||
+      "";
+  }
+
   if (res.status >= 300 && res.status < 400 && /countryblock/i.test(loc)) {
     const err = new Error(
       "BetBra bloqueou por país (countryblock). Rode o login/saldo na VPS com IP BR."
@@ -211,11 +285,6 @@ export async function betbraClientLogin({
     err.details = { location: loc };
     throw err;
   }
-  const msgRaw =
-    (data && (data.errorMessage || data.message || data.error)) ||
-    (typeof data === "string" ? data : null) ||
-    text?.slice(0, 200) ||
-    "";
   if (!res.ok) {
     const mapped = mapBetbraApiError(msgRaw, data, res.status);
     if (mapped) throw mapped;
