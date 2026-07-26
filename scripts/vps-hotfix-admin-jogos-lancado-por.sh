@@ -116,19 +116,15 @@ JOIN public.profiles p ON p.id = a.admin_id
 WHERE m.deleted_at IS NULL
   AND m.settled_at IS NOT NULL
   AND m.settled_by IS NULL
-  AND (
-    a.entity_id = m.id::text
-    OR a.entity_id = m.id::uuid::text
-  );
+  AND a.entity_id::text = m.id::text;
 
 -- Lançado por: primeiro admin que tocou o jogo na auditoria
 UPDATE public.matches m
 SET
-  created_by = coalesce(m.created_by, a.admin_id),
+  created_by = a.admin_id,
   metadata = coalesce(m.metadata, '{}'::jsonb) || jsonb_build_object(
-    'created_by', coalesce(m.created_by, a.admin_id)::text,
+    'created_by', a.admin_id::text,
     'created_by_name', coalesce(
-      nullif(m.metadata->>'created_by_name', ''),
       nullif(btrim(p.full_name), ''),
       nullif(btrim(p.email), ''),
       left(a.admin_id::text, 8)
@@ -147,10 +143,7 @@ JOIN public.profiles p ON p.id = a.admin_id
 WHERE m.deleted_at IS NULL
   AND m.created_by IS NULL
   AND coalesce(m.metadata->>'created_by_name', '') = ''
-  AND (
-    a.entity_id = m.id::text
-    OR a.entity_id = m.id::uuid::text
-  );
+  AND a.entity_id::text = m.id::text;
 SQL
 )"
 if run_sql "$SQL"; then
