@@ -119,11 +119,20 @@ function mapBetbraApiError(msg, data, status) {
   if (/api blocked in server/i.test(m)) {
     const err = new Error(
       "Exchange bloqueou o login da VPS (API blocked). " +
-        "Confira IP BR, evite spam de Atualizar saldo, " +
+        "Confira IP BR / proxy Sticky, evite spam de Atualizar saldo, " +
         "ou use Cookie/cURL da exchange logada no Chrome (Testar sessão → accountId)."
     );
     err.status = status || 403;
     err.code = "BETBRA_API_BLOCKED";
+    err.details = data;
+    return err;
+  }
+  if (/too many requests/i.test(m) || status === 429) {
+    const err = new Error(
+      "Muitas tentativas de login/saldo. Espere 10–15 min sem clicar Atualizar saldo, depois tente 1 vez."
+    );
+    err.status = status || 429;
+    err.code = "BETBRA_RATE_LIMIT";
     err.details = data;
     return err;
   }

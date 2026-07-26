@@ -151,43 +151,40 @@ for f in "${ENV_FILES[@]}"; do
 done
 [[ "$n" -gt 0 ]] || die "nenhum .env"
 
-log "4/4 restart shim + teste IP via proxy"
-systemctl restart arbishield-serverfn-shim.service || die "restart shim falhou"
-sleep 1
-systemctl is-active --quiet arbishield-serverfn-shim.service || die "shim nao active"
-
-# smoke: IP de saida pelo proxy
-SMOKE_ENV=""
-[[ -n "$PROXY_DSN" ]] && SMOKE_ENV="EXCHANGE_PROXY_DSN=$PROXY_DSN"
-[[ -n "$PROXY_URL" ]] && SMOKE_ENV="EXCHANGE_PROXY=$PROXY_URL"
-if [[ -f "$SCRIPTS_DIR/lib/exchange-proxy-fetch.mjs" ]]; then
-  (
-    export NODE_PATH="/opt/arbishield/node_modules${NODE_PATH:+:$NODE_PATH}"
-    cd "$SCRIPTS_DIR/lib"
-    # shellcheck disable=SC2086
-    env $SMOKE_ENV EXCHANGE_PROXY_ENABLED=1 NODE_PATH="$NODE_PATH" \
-      node --input-type=module -e '
-      import { exchangeFetch, proxyPublicInfo } from "./exchange-proxy-fetch.mjs";
-      const info = proxyPublicInfo();
-      console.log("proxy", JSON.stringify(info));
-      const r = await exchangeFetch("https://api.ipify.org", { signal: AbortSignal.timeout(20000) });
-      const ip = (await r.text()).trim();
-      console.log("egress_ip", ip);
-      if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) process.exit(2);
-    '
-  ) && echo "  smoke OK" || echo "  AVISO: smoke IP falhou — confira DSN/credencial Sticky BR"
-fi
-
-# garante NODE_PATH no unit do shim (se existir drop-in simples)
+log "4/4 systemd NODE_PATH + restart + smoke IP"
 DROP_IN=/etc/systemd/system/arbishield-serverfn-shim.service.d/proxy.conf
 mkdir -p "$(dirname "$DROP_IN")"
 cat >"$DROP_IN" <<EOF
 [Service]
 Environment=NODE_PATH=/opt/arbishield/node_modules
 Environment=EXCHANGE_PROXY_ENABLED=1
+Environment=EXCHANGE_LOCAL_BRIDGE=0
 EOF
-systemctl daemon-reload || true
-systemctl restart arbishield-serverfn-shim.service || true
+systemctl daemon-reload || die "daemon-reload falhou"
+systemctl restart arbishield-serverfn-shim.service || die "restart shim falhou"
+sleep 1
+systemctl is-active --quiet arbishield-serverfn-shim.service || die "shim nao active"
+
+SMOKE_ENV=""
+[[ -n "$PROXY_DSN" ]] && SMOKE_ENV="EXCHANGE_PROXY_DSN=$PROXY_DSN"
+[[ -n "$PROXY_URL" ]] && SMOKE_ENV="EXCHANGE_PROXY=$PROXY_URL"
+if [[ -f "$SCRIPTS_DIR/lib/exchange-proxy-fetch.mjs" ]]; then
+  (
+    export NODE_PATH="/opt/arbishield/node_modules"
+    cd /opt/arbishield
+    # shellcheck disable=SC2086
+    env $SMOKE_ENV EXCHANGE_PROXY_ENABLED=1 NODE_PATH=/opt/arbishield/node_modules \
+      node --input-type=module -e "
+      import { exchangeFetch, proxyPublicInfo } from '${SCRIPTS_DIR}/lib/exchange-proxy-fetch.mjs';
+      const info = proxyPublicInfo();
+      console.log('proxy', JSON.stringify(info));
+      const r = await exchangeFetch('https://api.ipify.org', { signal: AbortSignal.timeout(20000) });
+      const ip = (await r.text()).trim();
+      console.log('egress_ip', ip);
+      if (!/^\\d+\\.\\d+\\.\\d+\\.\\d+\$/.test(ip)) process.exit(2);
+    "
+  ) && echo "  smoke OK" || echo "  AVISO: smoke IP falhou — confira DSN/credencial Sticky BR"
+fi
 
 echo "OK — BotShield via proxy residencial (bridge local desligado)"
 echo "  Conta: https://botshield.arbishield.app/conta-betbra.html  (Ctrl+Shift+R)"
