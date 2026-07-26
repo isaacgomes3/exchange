@@ -129,7 +129,7 @@ rm -f "$tmp_shim"
 
 log "4/5 admin UIs"
 for pair in \
-  "deploy/vps-supabase/static/v2/admin-jogos.html:admin-jogos.html:admin-jogos-lancado-por-v11" \
+  "deploy/vps-supabase/static/v2/admin-jogos.html:admin-jogos.html:admin-jogos-manual-first-v12" \
   "deploy/vps-supabase/static/v2/admin-desafios.html:admin-desafios.html:Lançado por:"; do
   IFS=: read -r rel name marker <<<"$pair"
   tmp="$(mktemp)"
@@ -299,10 +299,10 @@ else
 fi
 
 echo ""
-if curl -fsS -m 8 "https://arbishield.app/admin-jogos.html" 2>/dev/null | grep -q 'admin-jogos-lancado-por-v11'; then
-  echo "  smoke admin-jogos.html → OK (build v11)"
+if curl -fsS -m 8 "https://arbishield.app/admin-jogos.html" 2>/dev/null | grep -q 'admin-jogos-manual-first-v12'; then
+  echo "  smoke admin-jogos.html → OK (build v12)"
 else
-  echo "  AVISO: admin-jogos.html público ainda sem build v11"
+  echo "  AVISO: admin-jogos.html público ainda sem build v12"
 fi
 echo "OK. Confira Gestão de Jogos: 'Lançado por: <admin>'."
 echo "Hard refresh (Ctrl+Shift+R) em https://arbishield.app/admin-jogos.html"
