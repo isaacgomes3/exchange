@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Corrige contagem da etapa do desafio (monitor / jornada / cards / histórico).
-# Etapa = circuito do usuário (vitórias + pendente), não só step_index do jogo.
+# Corrige contagem da etapa do desafio (monitor / jornada / histórico do cliente).
+# Etapa = circuito do USUÁRIO (vitórias + pendente). Evento/jogo NÃO mostra "Etapa".
 #
 # Na VPS (root):
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-etapa-contagem-8f4a/scripts/vps-hotfix-desafio-etapa-contagem.sh?$(date +%s)")
@@ -64,13 +64,18 @@ log "1/4 UI — monitor + jornada + cards"
 for pair in \
   "deploy/vps-supabase/static/v2/admin-monitoring-desafios.html|resolveEtapaAtual|desafio-etapa-contagem-v1" \
   "deploy/vps-supabase/static/v2/app-desafio-jornada.html|indexesUnique|desafio-etapa-contagem-v1" \
-  "deploy/vps-supabase/static/v2/app-desafio.html|circuitByDz|desafio-etapa-contagem-v1"
+  "deploy/vps-supabase/static/v2/app-desafio.html|desafio-etapa-contagem-v2|dz-v2-brand"
 do
   IFS='|' read -r rel needle marker <<<"$pair"
   tmp="$(mktemp)"
   download_repo_file "$rel" "$tmp"
   grep -q "$needle" "$tmp" || die "$(basename "$rel") sem $needle"
   grep -q "$marker" "$tmp" || die "$(basename "$rel") sem $marker"
+  if [[ "$rel" == *app-desafio.html ]]; then
+    if grep -q 'dz-v2-etapa' "$tmp"; then
+      die "app-desafio.html ainda mostra Etapa no evento (dz-v2-etapa)"
+    fi
+  fi
   rm -f "$tmp"
   publish_named "$rel"
 done
