@@ -873,8 +873,13 @@
 
       async function refreshBridgeStatus() {
         const line = document.getElementById("bridgeLine");
+        const btn = document.getElementById("btnBridgeStatus");
         if (!line) return;
-        line.textContent = "Consultando bridge local…";
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "Testando…";
+        }
+        line.textContent = "Consultando bridge…";
         try {
           const res = await fetch(
             "/api/arbishield/exchange-session/local-bridge",
@@ -885,7 +890,17 @@
               },
             }
           );
-          const json = await res.json().catch(() => ({}));
+          const raw = await res.text();
+          let json = {};
+          try {
+            json = raw ? JSON.parse(raw) : {};
+          } catch {
+            line.textContent =
+              "Botao OK, mas Nginx bloqueia /local-bridge (HTTP " +
+              res.status +
+              ", nao-JSON). Na VPS rode vps-patch-nginx-local-bridge.sh";
+            return;
+          }
           if (json.enabled && json.ok) {
             line.textContent =
               "Bridge OK · IP do PC " +
@@ -901,13 +916,27 @@
               (json.error || "PC/túnel inacessível");
             return;
           }
+          if (typeof json.enabled === "undefined") {
+            line.textContent =
+              "API bridge HTTP " +
+              res.status +
+              ": " +
+              (json.error || raw.slice(0, 100) || "sem detalhe") +
+              " — patch nginx + restart shim na VPS.";
+            return;
+          }
           line.textContent =
             json.error ||
-            "Bridge desligado. No PC: start-botshield-local-bridge.ps1 + cloudflared; na VPS rode o hotfix local-bridge.";
+            "Bridge desligado (env sem URL). Na VPS: export URL+SECRET e hotfix.";
         } catch (ex) {
           line.textContent =
             "Falha ao consultar bridge: " +
             (ex instanceof Error ? ex.message : String(ex));
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Testar bridge";
+          }
         }
       }
 
