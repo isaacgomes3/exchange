@@ -307,18 +307,22 @@ export async function betbraClientBalance({ cookies, cookieHeader, token } = {})
     throw err;
   }
   const { data, text } = await readJson(res);
+  const msgRaw =
+    (data && (data.errorMessage || data.message || data.error)) ||
+    (typeof data === "string" ? data : null) ||
+    text?.slice(0, 200) ||
+    "";
   if (!res.ok) {
-    const msg =
-      (data && (data.errorMessage || data.message || data.error)) ||
-      text?.slice(0, 200) ||
-      `Saldo exchange HTTP ${res.status}`;
-    const mapped = mapBetbraApiError(msg, data, res.status);
+    const mapped = mapBetbraApiError(msgRaw, data, res.status);
     if (mapped) throw mapped;
-    const err = new Error(String(msg));
+    const err = new Error(String(msgRaw || `Saldo exchange HTTP ${res.status}`));
     err.status = res.status;
     err.code = "BETBRA_BALANCE_FAILED";
     err.details = data;
     throw err;
+  }
+  if (msgRaw && /api blocked in server/i.test(String(msgRaw))) {
+    throw mapBetbraApiError(msgRaw, data, 403);
   }
   // resposta típica: { balance: 123.45 } ou número direto
   let balance = null;
