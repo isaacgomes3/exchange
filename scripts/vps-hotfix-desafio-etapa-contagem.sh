@@ -62,9 +62,9 @@ publish_named() {
 
 log "1/4 UI — monitor + jornada + cards"
 for pair in \
-  "deploy/vps-supabase/static/v2/admin-monitoring-desafios.html|currentCycleParts|desafio-etapa-contagem-v4" \
-  "deploy/vps-supabase/static/v2/app-desafio-jornada.html|j-journey-sticky|desafio-jornada-horizontal-v3" \
-  "deploy/vps-supabase/static/v2/app-desafio.html|dzAndamento|desafio-em-andamento-v4"
+  "deploy/vps-supabase/static/v2/admin-monitoring-desafios.html|currentCycleParts|desafio-etapa-contagem-v5" \
+  "deploy/vps-supabase/static/v2/app-desafio-jornada.html|j-journey-sticky|desafio-jornada-horizontal-v4" \
+  "deploy/vps-supabase/static/v2/app-desafio.html|dzAndamento|desafio-em-andamento-v5"
 do
   IFS='|' read -r rel needle marker <<<"$pair"
   tmp="$(mktemp)"
@@ -86,12 +86,16 @@ do
     if grep -q 'won_external") return "won"' "$tmp"; then
       die "jornada ainda mapeia won_external como vitória"
     fi
+    grep -q 'resolveClientOutcome' "$tmp" || die "jornada sem resolveClientOutcome"
   fi
   if [[ "$rel" == *app-desafio.html ]]; then
-    grep -q 'dz-stepper' "$tmp" || die "app-desafio sem stepper horizontal"
     grep -q 'Desafio em andamento' "$tmp" || die "app-desafio sem seção em andamento"
     grep -q 'loadClientCircuit' "$tmp" || die "app-desafio sem loadClientCircuit"
     grep -q 'pendingStepIds' "$tmp" || die "app-desafio sem pendingStepIds"
+    grep -q 'resolveClientOutcome' "$tmp" || die "app-desafio sem resolveClientOutcome"
+    if grep -q 'dz-stepper' "$tmp"; then
+      die "app-desafio ainda tem stepper redundante (usar só jornada)"
+    fi
     if grep -q 'dz-andamento-head' "$tmp"; then
       die "app-desafio ainda tem cabeçalho redundante Etapa/VER JORNADA"
     fi
@@ -128,7 +132,7 @@ systemctl restart arbishield-serverfn-shim.service 2>/dev/null || \
 
 log "3/4 smoke UI"
 html="$(curl -fsS -m 8 "https://arbishield.app/admin-monitoring-desafios.html" 2>/dev/null || true)"
-if echo "$html" | grep -q 'currentCycleParts' && echo "$html" | grep -q 'desafio-etapa-contagem-v4' && ! echo "$html" | grep -q '<th>Desafio</th>'; then
+if echo "$html" | grep -q 'currentCycleParts' && echo "$html" | grep -q 'desafio-etapa-contagem-v5' && ! echo "$html" | grep -q '<th>Desafio</th>'; then
   echo "  smoke monitor → OK (cliente + etapa, sem coluna Desafio)"
 else
   echo "  AVISO: monitor público ainda desatualizado (cache/path?)"

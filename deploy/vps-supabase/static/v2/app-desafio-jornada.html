@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Jornada do Desafio · ArbiShield</title>
-  <meta name="arbishield-build" content="desafio-jornada-horizontal-v3" />
+  <meta name="arbishield-build" content="desafio-jornada-horizontal-v4" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=desafio-jornada-horizontal-3" />
+  <link rel="stylesheet" href="/v2.css?v=desafio-jornada-horizontal-4" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
   <script src="/v2-shell.js" defer></script>
@@ -791,9 +791,10 @@
       function normPartResult(r) {
         r = String(r || "").toLowerCase().trim();
         if (!r) return "pending";
-        // Vitória do cliente = zebra/plataforma. Casa / won_external = falhou (X vermelho).
-        if (r === "win" || r === "won" || r === "won_platform") return "won";
+        // won/won_platform = vitória na zebra. "win" = Bateu Casa (step) → perda do cliente.
+        if (r === "won" || r === "won_platform") return "won";
         if (
+          r === "win" ||
           r === "lose" ||
           r === "lost" ||
           r === "won_exchange" ||
@@ -805,6 +806,24 @@
         }
         if (r === "pending" || r === "active" || r === "open" || r === "current") return "pending";
         return r;
+      }
+
+      /** step.result manda: win (Bateu Casa) = lost; zebra_protected = won. */
+      function resolveClientOutcome(part, step) {
+        step = step || (part && part.desafio_steps) || null;
+        var stepRes = String((step && step.result) || "").toLowerCase().trim();
+        if (
+          stepRes === "win" ||
+          stepRes === "casa" ||
+          stepRes === "bateu_casa"
+        ) {
+          return "lost";
+        }
+        if (stepRes === "zebra_protected" || stepRes === "arbishield") {
+          return "won";
+        }
+        if (stepRes === "void" || stepRes === "empate_anula") return "void";
+        return normPartResult(part && part.result);
       }
 
       /**
@@ -854,7 +873,9 @@
         var pendingN = 0;
         var firstPendingIdx = -1;
         cycle.forEach(function (p, idx) {
-          var r = normPartResult(p.result);
+          var stepHint =
+            (p.step_id && stepById[String(p.step_id)]) || p.desafio_steps || null;
+          var r = resolveClientOutcome(p, stepHint);
           if (r === "won") wonN += 1;
           else if (r === "lost") lostN += 1;
           else if (r === "pending") {
@@ -878,7 +899,6 @@
           var stepIndex = i + 1;
           var isFinal = stepIndex === maxEntries;
           var part = cycle[i] || null;
-          var partResult = part ? normPartResult(part.result) : "";
           var step =
             (part && part.step_id && stepById[String(part.step_id)]) ||
             (part && part.desafio_steps) ||
@@ -887,6 +907,7 @@
           if (!step && stepIndex === currentIndex && !markedCurrent && openStep) {
             step = openStep;
           }
+          var partResult = part ? resolveClientOutcome(part, step) : "";
 
           var state = "locked";
           if (partResult === "won") {
@@ -1084,7 +1105,7 @@
             .from("desafio_participations")
             .select(
               "id,user_id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at," +
-                "desafio_steps(id,step_index,match_label,home_team,away_team,starts_at,status,arbi_odd,casa_odd,home_odd,away_odd,external_bet_link,arbi_team_name,casa_team_name)"
+                "desafio_steps(id,step_index,match_label,home_team,away_team,starts_at,status,result,settled_at,arbi_odd,casa_odd,home_odd,away_odd,external_bet_link,arbi_team_name,casa_team_name)"
             )
             .eq("user_id", viewUserId)
             .eq("side", "arbishield")

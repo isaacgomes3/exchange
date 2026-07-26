@@ -2768,11 +2768,13 @@ async function getDesafioCircuitForUser(desafioId, userId) {
 function normalizeDesafioPartResult(raw) {
   const r = String(raw || "").toLowerCase().trim();
   if (!r || r === "null" || r === "undefined") return "pending";
-  if (["won", "win", "won_platform", "victory", "vitoria", "vitória"].includes(r)) {
+  // won/won_platform = vitória na zebra. "win" = Bateu Casa (step) → perda do cliente.
+  if (["won", "won_platform", "victory", "vitoria", "vitória"].includes(r)) {
     return "won";
   }
   if (
     [
+      "win",
       "lost",
       "lose",
       "loss",

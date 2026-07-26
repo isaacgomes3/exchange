@@ -6,9 +6,9 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-em-andamento-v4" />
-  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-em-andamento-v4" />
-  <link rel="stylesheet" href="/v2.css?v=desafio-em-andamento-4" />
+  <meta name="arbishield-build" content="desafio-em-andamento-v5" />
+  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-em-andamento-v5" />
+  <link rel="stylesheet" href="/v2.css?v=desafio-em-andamento-5" />
   <style>
     /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
     .dz-sb-market {
@@ -428,7 +428,7 @@
       .dz-hist-entries li { grid-template-columns: 1fr; gap: 4px; }
     }
 
-    /* Desafio em andamento — stepper horizontal acima do card */
+    /* Desafio em andamento — só o card com entrada do cliente */
     .dz-andamento {
       margin: 0 0 18px;
       padding: 16px 14px 18px;
@@ -440,116 +440,19 @@
     }
     .dz-andamento[hidden] { display: none !important; }
     .dz-andamento .section-label { margin: 0 0 12px; }
-
-    .dz-stepper {
-      display: flex;
-      flex-direction: row;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 0;
-      width: 100%;
-      margin: 0 0 16px;
-      padding: 4px 2px 2px;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    .dz-step {
-      flex: 1 1 0;
-      min-width: 56px;
-      max-width: 100px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-      padding: 0 2px;
-    }
-    .dz-step-dot {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      display: grid;
-      place-items: center;
+    .dz-andamento-note {
+      margin: 0 0 12px;
       font-size: 12px;
-      font-weight: 900;
-      border: 2px solid rgba(255, 255, 255, 0.14);
-      background: #141a18;
+      font-weight: 700;
       color: #8b9690;
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+      line-height: 1.4;
     }
-    .dz-step.is-won .dz-step-dot {
-      border-color: #c6ff00;
-      background: radial-gradient(circle at 30% 30%, #1a2e14, #0c160c);
+    .dz-andamento-note a {
       color: #c6ff00;
-      box-shadow: 0 0 16px rgba(198, 255, 0, 0.3);
-    }
-    .dz-step.is-current .dz-step-dot {
-      border-color: #60a5fa;
-      background: radial-gradient(circle at 30% 30%, #16304a, #0a1420);
-      color: #60a5fa;
-      box-shadow: 0 0 20px rgba(96, 165, 250, 0.4);
-      animation: dz-step-pulse 1.8s ease-in-out infinite;
-    }
-    .dz-step.is-lost .dz-step-dot {
-      border-color: #f87171;
-      background: radial-gradient(circle at 30% 30%, #3a1515, #1a0808);
-      color: #f87171;
-      box-shadow: 0 0 16px rgba(248, 113, 113, 0.35);
-    }
-    .dz-step.is-lost .dz-step-label { color: #f87171; }
-    .dz-step-conn.is-fail {
-      background: linear-gradient(90deg, #f87171, rgba(248, 113, 113, 0.25));
-      box-shadow: 0 0 8px rgba(248, 113, 113, 0.3);
-    }
-    .dz-step.is-final.is-current .dz-step-dot {
-      border-color: #fbbf24;
-      color: #fbbf24;
-      background: radial-gradient(circle at 30% 30%, #3a2a0a, #1a1408);
-      box-shadow: 0 0 20px rgba(251, 191, 36, 0.35);
-    }
-    .dz-step.is-locked .dz-step-dot { opacity: 0.45; }
-    .dz-step-label {
-      margin-top: 6px;
-      font-size: 9px;
       font-weight: 800;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: #8b9690;
-      line-height: 1.2;
+      text-decoration: none;
     }
-    .dz-step.is-current .dz-step-label { color: #60a5fa; }
-    .dz-step.is-won .dz-step-label { color: #c6ff00; }
-    .dz-step-conn {
-      flex: 0 0 auto;
-      align-self: center;
-      width: clamp(14px, 3.5vw, 32px);
-      height: 3px;
-      margin-top: 16px;
-      border-radius: 99px;
-      background: rgba(255, 255, 255, 0.08);
-      position: relative;
-      overflow: hidden;
-    }
-    .dz-step-conn.is-lit {
-      background: linear-gradient(90deg, #c6ff00, rgba(198, 255, 0, 0.25));
-      box-shadow: 0 0 10px rgba(198, 255, 0, 0.3);
-    }
-    .dz-step-conn.is-lit::after {
-      content: "";
-      position: absolute;
-      top: 0; bottom: 0;
-      width: 40%;
-      background: linear-gradient(90deg, transparent, #fff, transparent);
-      animation: dz-step-flow 1.6s linear infinite;
-      opacity: 0.5;
-    }
-    @keyframes dz-step-pulse {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.08); }
-    }
-    @keyframes dz-step-flow {
-      0% { left: -40%; }
-      100% { left: 100%; }
-    }
+    .dz-andamento-note a:hover { text-decoration: underline; }
     #listAndamento.app-desafio-grid { margin: 0; }
   </style>
 </head>
@@ -607,10 +510,10 @@
     </div>
   </div>
 
-  <!-- Desafio em andamento: só o desafio com entrada do cliente (stepper + card) -->
+  <!-- Só o card do desafio em que o cliente entrou (jornada completa fica em /app-desafio-jornada.html) -->
   <section class="dz-andamento" id="dzAndamento" hidden aria-label="Desafio em andamento">
     <div class="section-label"><span class="dot" style="background:#c6ff00"></span>Desafio em andamento</div>
-    <div class="dz-stepper" id="dzStepper" aria-label="Progresso das etapas"></div>
+    <p class="dz-andamento-note" id="dzAndamentoNote" hidden></p>
     <div id="listAndamento" class="app-desafio-grid"></div>
   </section>
 
@@ -786,9 +689,10 @@
       function normCircuitResult(r) {
         r = String(r || "").toLowerCase().trim();
         if (!r) return "pending";
-        // Vitória só na zebra/plataforma. won_external / casa = perda do cliente (X vermelho).
-        if (r === "win" || r === "won" || r === "won_platform") return "won";
+        // won/won_platform = vitória na zebra. "win" = vocabulário do STEP (Bateu Casa) → perda.
+        if (r === "won" || r === "won_platform") return "won";
         if (
+          r === "win" ||
           r === "lose" ||
           r === "lost" ||
           r === "won_exchange" ||
@@ -800,6 +704,24 @@
         }
         if (r === "pending" || r === "active" || r === "open" || r === "current") return "pending";
         return r;
+      }
+
+      /** Fonte da verdade: step.result (win=Bateu Casa→lost, zebra_protected→won). */
+      function resolveClientOutcome(part) {
+        var step = (part && part.desafio_steps) || null;
+        var stepRes = String((step && step.result) || "").toLowerCase().trim();
+        if (
+          stepRes === "win" ||
+          stepRes === "casa" ||
+          stepRes === "bateu_casa"
+        ) {
+          return "lost";
+        }
+        if (stepRes === "zebra_protected" || stepRes === "arbishield") {
+          return "won";
+        }
+        if (stepRes === "void" || stepRes === "empate_anula") return "void";
+        return normCircuitResult(part && part.result);
       }
 
       function currentCycleParts(parts) {
@@ -827,7 +749,10 @@
         try {
           var pr = await supa
             .from("desafio_participations")
-            .select("id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at")
+            .select(
+              "id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at," +
+                "desafio_steps(id,result,status,settled_at)"
+            )
             .eq("user_id", viewUserId)
             .eq("side", "arbishield")
             .order("created_at", { ascending: true })
@@ -842,7 +767,7 @@
           var pendingDesafioIds = {};
           var stageStates = [];
           cycle.forEach(function (p, idx) {
-            var res = normCircuitResult(p.result);
+            var res = resolveClientOutcome(p);
             if (res === "won") {
               won += 1;
               stageStates[idx] = "won";
@@ -879,65 +804,6 @@
         return clientCircuit;
       }
 
-      function stepperHtml(circuit) {
-        var total = circuit.totalStages || 5;
-        var cur = circuit.currentStage || 1;
-        var states = circuit.stageStates || [];
-        var html = "";
-        var markedCurrent = false;
-        for (var i = 1; i <= total; i++) {
-          var isFinal = i === total;
-          var st = states[i - 1] || "";
-          if (st === "current") {
-            if (markedCurrent) st = "locked";
-            else markedCurrent = true;
-          } else if (st === "waiting") {
-            st = "locked";
-          } else if (!st) {
-            if (i === cur && !markedCurrent) {
-              st = "current";
-              markedCurrent = true;
-            } else {
-              st = "locked";
-            }
-          }
-          var cls = "dz-step";
-          if (st === "won") cls += " is-won";
-          else if (st === "lost") cls += " is-lost";
-          else if (st === "current") cls += " is-current";
-          else cls += " is-locked";
-          if (isFinal) cls += " is-final";
-          var mark =
-            st === "won" ? "✓" : st === "lost" ? "✕" : isFinal ? "👑" : String(i);
-          var label = isFinal ? "Final" : "Etapa " + i;
-          var hint =
-            st === "won"
-              ? "Concluída"
-              : st === "lost"
-                ? "Falhou"
-                : st === "current"
-                  ? "Você está aqui"
-                  : "Bloqueada";
-          html +=
-            '<div class="' +
-            cls +
-            '"><div class="dz-step-dot" aria-hidden="true">' +
-            mark +
-            '</div><div class="dz-step-label">' +
-            label +
-            "<br/>" +
-            hint +
-            "</div></div>";
-          if (i < total) {
-            html +=
-              '<div class="dz-step-conn' +
-              (st === "won" ? " is-lit" : "") +
-              (st === "lost" ? " is-fail" : "") +
-              '" aria-hidden="true"></div>';
-          }
-        }
-        return html;
-      }
 
       function splitItemsByCircuit(list) {
         var andamento = [];
@@ -1115,8 +981,9 @@
       function normalizeHistResult(raw) {
         var r = String(raw || "").toLowerCase().trim();
         if (!r) return "pending";
-        if (r === "win" || r === "won" || r === "won_platform") return "won";
+        if (r === "won" || r === "won_platform") return "won";
         if (
+          r === "win" ||
           r === "lose" ||
           r === "lost" ||
           r === "won_exchange" ||
@@ -2152,29 +2019,44 @@
 
       function paintAndamentoSection(andamentoItems, now) {
         var box = document.getElementById("dzAndamento");
-        var stepHost = document.getElementById("dzStepper");
         var listHost = document.getElementById("listAndamento");
-        if (!box || !stepHost || !listHost) return;
+        var note = document.getElementById("dzAndamentoNote");
+        if (!box || !listHost) return;
 
-        // Só aparece se o cliente entrou (participação pendente).
+        // Só o desafio em que o cliente tem entrada pendente (sem stepper — jornada tem o mapa).
         var show =
           desafioBalCents > 0 &&
           clientCircuit.pendingCount > 0 &&
-          (andamentoItems.length > 0 || clientCircuit.pendingCount > 0);
+          andamentoItems.length > 0;
         box.hidden = !show;
         if (!show) {
           listHost.innerHTML = "";
-          stepHost.innerHTML = "";
+          if (note) {
+            note.hidden = true;
+            note.innerHTML = "";
+          }
           return;
         }
 
-        stepHost.innerHTML = stepperHtml(clientCircuit);
-        listHost.innerHTML = andamentoItems.length
-          ? andamentoItems.map(function (it) { return cardHtml(it, now); }).join("")
-          : '<div class="ops-empty" style="padding:18px 8px"><p>Você está na etapa ' +
-            esc(String(clientCircuit.currentStage)) +
-            " — aguarde o resultado ou o próximo evento do seu desafio.</p></div>";
-        if (andamentoItems.length) bindCardHost(listHost);
+        var dzId =
+          (andamentoItems[0] && andamentoItems[0].desafioId) ||
+          (clientCircuit.cycleParts[0] && clientCircuit.cycleParts[0].desafio_id) ||
+          "";
+        if (note) {
+          note.hidden = false;
+          note.innerHTML =
+            "Etapa <b style="color:#c6ff00">" +
+            esc(String(clientCircuit.currentStage || 1)) +
+            "</b> de " +
+            esc(String(clientCircuit.totalStages || 5)) +
+            ' · <a href="/app-desafio-jornada.html' +
+            (dzId ? "?desafioId=" + encodeURIComponent(dzId) : "") +
+            '">Ver jornada →</a>';
+        }
+        listHost.innerHTML = andamentoItems
+          .map(function (it) { return cardHtml(it, now); })
+          .join("");
+        bindCardHost(listHost);
       }
 
       function render() {
