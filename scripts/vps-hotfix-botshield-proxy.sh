@@ -80,14 +80,15 @@ PY
 echo "==> vps-hotfix-botshield-proxy.sh ($(date -Is)) ref=$REF"
 
 log "1/4 undici (ProxyAgent)"
-if [[ -f "$SHIM_DIR/package.json" ]]; then
-  (cd "$SHIM_DIR" && npm install undici@7 --no-audit --no-fund 2>/dev/null) || true
+mkdir -p /opt/arbishield
+if [[ ! -f /opt/arbishield/package.json ]]; then
+  printf '%s\n' '{"name":"arbishield","private":true,"type":"module"}' >/opt/arbishield/package.json
 fi
-if [[ -f /opt/arbishield/package.json ]]; then
-  (cd /opt/arbishield && npm install undici@7 --no-audit --no-fund 2>/dev/null) || true
-fi
-node -e "import('undici').then(u=>console.log('undici',!!u.ProxyAgent)).catch(e=>{console.error(e); process.exit(1)})" \
-  || die "undici indisponivel — npm install undici@7 em /opt/arbishield"
+(cd /opt/arbishield && npm install undici@7 --no-audit --no-fund) || die "npm install undici falhou"
+# NODE_PATH: o smoke/shim resolvem undici mesmo rodando de /root ou scripts/lib
+export NODE_PATH="/opt/arbishield/node_modules${NODE_PATH:+:$NODE_PATH}"
+(cd /opt/arbishield && node -e "const u=require('undici'); if(!u.ProxyAgent) process.exit(1); console.log('undici OK', !!u.ProxyAgent)") \
+  || die "undici indisponivel em /opt/arbishield/node_modules"
 
 log "2/4 baixar libs + shim"
 for pair in \
@@ -161,19 +162,32 @@ SMOKE_ENV=""
 [[ -n "$PROXY_URL" ]] && SMOKE_ENV="EXCHANGE_PROXY=$PROXY_URL"
 if [[ -f "$SCRIPTS_DIR/lib/exchange-proxy-fetch.mjs" ]]; then
   (
+    export NODE_PATH="/opt/arbishield/node_modules${NODE_PATH:+:$NODE_PATH}"
     cd "$SCRIPTS_DIR/lib"
     # shellcheck disable=SC2086
-    env $SMOKE_ENV EXCHANGE_PROXY_ENABLED=1 node --input-type=module -e '
+    env $SMOKE_ENV EXCHANGE_PROXY_ENABLED=1 NODE_PATH="$NODE_PATH" \
+      node --input-type=module -e '
       import { exchangeFetch, proxyPublicInfo } from "./exchange-proxy-fetch.mjs";
       const info = proxyPublicInfo();
       console.log("proxy", JSON.stringify(info));
-      const r = await exchangeFetch("https://api.ipify.org", { signal: AbortSignal.timeout(15000) });
+      const r = await exchangeFetch("https://api.ipify.org", { signal: AbortSignal.timeout(20000) });
       const ip = (await r.text()).trim();
       console.log("egress_ip", ip);
       if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) process.exit(2);
     '
   ) && echo "  smoke OK" || echo "  AVISO: smoke IP falhou — confira DSN/credencial Sticky BR"
 fi
+
+# garante NODE_PATH no unit do shim (se existir drop-in simples)
+DROP_IN=/etc/systemd/system/arbishield-serverfn-shim.service.d/proxy.conf
+mkdir -p "$(dirname "$DROP_IN")"
+cat >"$DROP_IN" <<EOF
+[Service]
+Environment=NODE_PATH=/opt/arbishield/node_modules
+Environment=EXCHANGE_PROXY_ENABLED=1
+EOF
+systemctl daemon-reload || true
+systemctl restart arbishield-serverfn-shim.service || true
 
 echo "OK — BotShield via proxy residencial (bridge local desligado)"
 echo "  Conta: https://botshield.arbishield.app/conta-betbra.html  (Ctrl+Shift+R)"

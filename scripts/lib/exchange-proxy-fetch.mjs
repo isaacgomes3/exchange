@@ -9,7 +9,44 @@
  * Sticky BR: use user com country-br e sessão sticky do provedor.
  */
 
-import { ProxyAgent, fetch as undiciFetch } from "undici";
+import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+
+function loadUndici() {
+  const candidates = [
+    "undici",
+    resolve(__dirname, "../../node_modules/undici"),
+    resolve(__dirname, "../../../node_modules/undici"),
+    "/opt/arbishield/node_modules/undici",
+    "/opt/arbishield/scripts/node_modules/undici",
+  ];
+  let lastErr;
+  for (const id of candidates) {
+    try {
+      if (id !== "undici" && !existsSync(id) && !existsSync(id + ".js")) {
+        continue;
+      }
+      return require(id);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  const err = new Error(
+    "Pacote undici nao encontrado. Na VPS: cd /opt/arbishield && npm install undici@7"
+  );
+  err.cause = lastErr;
+  err.code = "UNDICI_MISSING";
+  throw err;
+}
+
+const undici = loadUndici();
+const ProxyAgent = undici.ProxyAgent;
+const undiciFetch = undici.fetch;
 
 function envStr(name, fallback = "") {
   const v = process.env[name];
