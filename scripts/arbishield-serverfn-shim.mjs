@@ -143,7 +143,7 @@ try {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
 
-function loadEnvFile(path) {
+function loadEnvFile(path, { overrideKeys = null } = {}) {
   if (!existsSync(path)) return;
   for (const line of readFileSync(path, "utf8").split("\n")) {
     const t = line.trim();
@@ -151,14 +151,24 @@ function loadEnvFile(path) {
     const i = t.indexOf("=");
     const k = t.slice(0, i).trim();
     let v = t.slice(i + 1).trim().replace(/^['"]|['"]$/g, "");
-    if (!(k in process.env)) process.env[k] = v;
+    const force =
+      typeof overrideKeys === "function" ? overrideKeys(k) : !!overrideKeys;
+    if (force || !(k in process.env)) process.env[k] = v;
   }
 }
 
+const forceBridgeEnv = (k) =>
+  /^(EXCHANGE_LOCAL_BRIDGE|BOTSHIELD_LOCAL_BRIDGE)/i.test(k);
+
 loadEnvFile(resolve(root, ".env.local"));
 loadEnvFile(resolve(root, ".env"));
-loadEnvFile("/opt/arbishield/deploy/vps-supabase/.env");
-loadEnvFile("/opt/arbishield/.arbishield-odds-sync.env");
+loadEnvFile("/opt/arbishield/deploy/vps-supabase/.env", {
+  overrideKeys: forceBridgeEnv,
+});
+loadEnvFile("/opt/arbishield/.arbishield-odds-sync.env", {
+  overrideKeys: forceBridgeEnv,
+});
+loadEnvFile("/opt/arbishield/.env", { overrideKeys: forceBridgeEnv });
 
 const LISTEN = process.env.SERVERFN_LISTEN || "127.0.0.1:3101";
 const SUPABASE_URL = (
