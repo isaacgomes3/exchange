@@ -189,6 +189,10 @@
         short = "API bloqueada";
         msg =
           "API bloqueada (WAF/VPS). Tente de novo em 1–2 min ou use Cookie da BetBra no Chrome. · Conta BetBra";
+      } else if (/too many requests|BETBRA_RATE_LIMIT|Muitas tentativas/i.test(msg)) {
+        short = "aguarde…";
+        msg =
+          "Muitas tentativas — espere 10–15 min sem Atualizar saldo. · Conta BetBra";
       }
       val.textContent = short;
       chip.classList.remove("is-ok");
@@ -196,9 +200,11 @@
       chip.title = msg + (msg.includes("Conta BetBra") ? "" : " · abra Conta BetBra");
       if (hint) {
         hint.hidden = false;
-        const tip = /api blocked|bloqueou o login|WAF/i.test(msg)
-          ? "API bloqueada (WAF/VPS)"
-          : msg;
+        const tip = /too many requests|Muitas tentativas|RATE_LIMIT/i.test(msg)
+          ? "Aguarde 10–15 min (rate limit)"
+          : /api blocked|bloqueou o login|WAF/i.test(msg)
+            ? "API bloqueada (WAF/VPS)"
+            : msg;
         hint.textContent = tip.length > 42 ? tip.slice(0, 40) + "…" : tip;
       }
     }
