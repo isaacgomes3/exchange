@@ -1339,6 +1339,45 @@ async function resolveAdminDisplayName(adminId) {
   return name;
 }
 
+/** Resolve vários admins de uma vez (service role — ignora RLS do browser). */
+async function resolveAdminNamesMap(ids) {
+  const list = Array.from(
+    new Set(
+      (Array.isArray(ids) ? ids : [])
+        .map((x) => String(x || "").trim())
+        .filter(Boolean)
+    )
+  );
+  const out = {};
+  if (!list.length || !SERVICE_KEY) return out;
+  for (let i = 0; i < list.length; i += 80) {
+    const chunk = list.slice(i, i + 80);
+    try {
+      const profs = await sb(
+        `/rest/v1/profiles?select=id,full_name,email&id=in.(${chunk
+          .map((id) => encodeURIComponent(id))
+          .join(",")})`,
+        { token: SERVICE_KEY }
+      );
+      for (const p of Array.isArray(profs) ? profs : []) {
+        const label =
+          (p.full_name && String(p.full_name).trim()) ||
+          (p.email && String(p.email).trim()) ||
+          String(p.id).slice(0, 8);
+        out[String(p.id)] = label;
+      }
+    } catch {
+      for (const id of chunk) {
+        if (!out[id]) out[id] = await resolveAdminDisplayName(id);
+      }
+    }
+  }
+  for (const id of list) {
+    if (!out[id]) out[id] = id.slice(0, 8);
+  }
+  return out;
+}
+
 function creatorMetaPatch(prevMeta, adminId, adminName) {
   const meta =
     prevMeta && typeof prevMeta === "object" ? { ...prevMeta } : {};
@@ -4249,9 +4288,14 @@ async function handleApi(req, res) {
     try {
       const body = await parseBody(req);
       const token = bearerFromReq(req);
+      const mode = String(body.mode || body.action || "").toLowerCase();
+      if (mode === "admin_names" || mode === "resolve_admin_names") {
+        await requireAdminToken(token);
+        const names = await resolveAdminNamesMap(body.ids || body.adminIds || []);
+        return sendJson(res, 200, { ok: true, names });
+      }
       const looksLikeSettle =
-        body.mode === "settle" ||
-        body.action === "settle" ||
+        mode === "settle" ||
         Boolean(
           body.matchId &&
             body.outcome &&
@@ -4265,7 +4309,7 @@ async function handleApi(req, res) {
         return sendJson(res, 200, result);
       }
       const manual =
-        body.mode === "manual" ||
+        mode === "manual" ||
         Array.isArray(body.markets) ||
         (!body.marketId && (body.home_team || body.homeTeam));
       const result = manual

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta name="arbishield-vps-page" content="jogos" />
-  <meta name="arbishield-build" content="admin-jogos-unpublish-finalizados-v8" />
+  <meta name="arbishield-build" content="admin-jogos-lancado-por-v9" />
   <title>Gestão de Jogos — ArbiShield v2</title>
   <link rel="stylesheet" href="/v2.css" />
   <script src="/v2-shell.js" defer></script>
@@ -1108,6 +1108,94 @@
         return data;
       }
 
+      function parseMatchMeta(raw) {
+        if (!raw) return {};
+        if (typeof raw === "object" && !Array.isArray(raw)) return raw;
+        if (typeof raw === "string") {
+          try {
+            var parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+              return parsed;
+            }
+          } catch (e) {}
+        }
+        return {};
+      }
+
+      /** Resolve Lançado por / Encerrado por via API (service role) + fallback profiles. */
+      async function attachAdminNames(rows) {
+        var adminIds = {};
+        (rows || []).forEach(function (m) {
+          var meta = parseMatchMeta(m.metadata);
+          m.metadata = meta;
+          var sid =
+            m.settled_by ||
+            meta.settled_by ||
+            (m.settled_at ? m.updated_by : null) ||
+            null;
+          var cid = m.created_by || meta.created_by || null;
+          if (sid) adminIds[String(sid)] = true;
+          if (cid) adminIds[String(cid)] = true;
+        });
+        var ids = Object.keys(adminIds);
+        var nameMap = {};
+        if (ids.length) {
+          try {
+            var apiNames = await apiPost("/api/arbishield/matches", {
+              mode: "admin_names",
+              ids: ids,
+            });
+            if (apiNames && apiNames.names) {
+              Object.keys(apiNames.names).forEach(function (k) {
+                nameMap[String(k)] = apiNames.names[k];
+              });
+            }
+          } catch (eApi) {
+            /* fallback REST abaixo */
+          }
+          var missing = ids.filter(function (id) {
+            return !nameMap[id];
+          });
+          if (missing.length) {
+            try {
+              var profs = await restAuth(
+                "profiles?select=id,full_name,email&id=in.(" +
+                  missing.map(encodeURIComponent).join(",") +
+                  ")"
+              );
+              (profs || []).forEach(function (p) {
+                var label =
+                  (p.full_name && String(p.full_name).trim()) ||
+                  (p.email && String(p.email).trim()) ||
+                  String(p.id).slice(0, 8);
+                nameMap[String(p.id)] = label;
+              });
+            } catch (eProf) {}
+          }
+        }
+        (rows || []).forEach(function (m) {
+          var meta = parseMatchMeta(m.metadata);
+          m.metadata = meta;
+          var sid =
+            m.settled_by ||
+            meta.settled_by ||
+            (m.settled_at ? m.updated_by : null) ||
+            null;
+          m._settledById = sid;
+          m._settledByName =
+            (meta.settled_by_name && String(meta.settled_by_name).trim()) ||
+            (sid && nameMap[String(sid)]) ||
+            null;
+          var cid = m.created_by || meta.created_by || null;
+          m._createdById = cid;
+          m._createdByName =
+            (meta.created_by_name && String(meta.created_by_name).trim()) ||
+            (cid && nameMap[String(cid)]) ||
+            null;
+        });
+        return rows;
+      }
+
       function escHtml(value) {
         return String(value == null ? "" : value)
           .replace(/&/g, "&amp;")
@@ -2004,15 +2092,56 @@
             alert("Sessão expirada. Faça login admin de novo e clique em Publicar.");
             return;
           }
+          var row = platformMatches.find(function (m) { return m.id === matchId; });
+          var meta = parseMatchMeta(row && row.metadata);
+          var body = {
+            is_published: true,
+            updated_at: new Date().toISOString(),
+            updated_by: a.user.id,
+          };
+          // Se o evento ainda não tem autor, grava quem publicou como "Lançado por"
+          if (!(row && (row.created_by || meta.created_by || meta.created_by_name))) {
+            var pubName = null;
+            try {
+              var nm = await apiPost("/api/arbishield/matches", {
+                mode: "admin_names",
+                ids: [a.user.id],
+              });
+              pubName = nm && nm.names && nm.names[a.user.id];
+            } catch (eName) {}
+            if (!pubName) {
+              try {
+                var me = await restAuth(
+                  "profiles?select=full_name,email&id=eq." +
+                    encodeURIComponent(a.user.id) +
+                    "&limit=1"
+                );
+                pubName =
+                  (me && me[0] && (me[0].full_name || me[0].email)) ||
+                  String(a.user.id).slice(0, 8);
+              } catch (eProf) {
+                pubName = String(a.user.id).slice(0, 8);
+              }
+            }
+            body.created_by = a.user.id;
+            body.metadata = Object.assign({}, meta, {
+              created_by: a.user.id,
+              created_by_name: String(pubName || "").trim() || String(a.user.id).slice(0, 8),
+            });
+          }
           await restAuth("matches?id=eq." + encodeURIComponent(matchId), {
             method: "PATCH",
-            body: {
-              is_published: true,
-              updated_at: new Date().toISOString(),
-            },
+            body: body,
           });
-          var row = platformMatches.find(function (m) { return m.id === matchId; });
-          if (row) row.is_published = true;
+          if (row) {
+            row.is_published = true;
+            if (body.created_by) {
+              row.created_by = body.created_by;
+              row.metadata = body.metadata;
+              row._createdById = body.created_by;
+              row._createdByName = body.metadata.created_by_name;
+            }
+          }
           alert("Publicado! O jogo já aparece em Proteger Aposta para o cliente.");
           renderPlatformList();
           renderStats();
@@ -2079,56 +2208,9 @@
           );
           // Resolve nomes dos admins (lançou / encerrou)
           try {
-            var adminIds = {};
-            (platformMatches || []).forEach(function (m) {
-              var meta =
-                m.metadata && typeof m.metadata === "object" ? m.metadata : {};
-              var sid =
-                m.settled_by ||
-                m.updated_by ||
-                meta.settled_by ||
-                null;
-              var cid = m.created_by || meta.created_by || null;
-              if (sid) adminIds[String(sid)] = true;
-              if (cid) adminIds[String(cid)] = true;
-            });
-            var ids = Object.keys(adminIds);
-            var nameMap = {};
-            if (ids.length) {
-              var profs = await restAuth(
-                "profiles?select=id,full_name,email&id=in.(" +
-                  ids.map(encodeURIComponent).join(",") +
-                  ")"
-              );
-              (profs || []).forEach(function (p) {
-                var label =
-                  (p.full_name && String(p.full_name).trim()) ||
-                  (p.email && String(p.email).trim()) ||
-                  String(p.id).slice(0, 8);
-                nameMap[String(p.id)] = label;
-              });
-            }
-            (platformMatches || []).forEach(function (m) {
-              var meta = m.metadata && typeof m.metadata === "object" ? m.metadata : {};
-              var sid =
-                m.settled_by ||
-                meta.settled_by ||
-                (m.settled_at ? m.updated_by : null) ||
-                null;
-              m._settledById = sid;
-              m._settledByName =
-                (meta.settled_by_name && String(meta.settled_by_name).trim()) ||
-                (sid && nameMap[String(sid)]) ||
-                null;
-              var cid = m.created_by || meta.created_by || null;
-              m._createdById = cid;
-              m._createdByName =
-                (meta.created_by_name && String(meta.created_by_name).trim()) ||
-                (cid && nameMap[String(cid)]) ||
-                null;
-            });
+            await attachAdminNames(platformMatches || []);
           } catch (nameErr) {
-            /* nomes são opcionais */
+            console.warn("[jogos] nomes admin", nameErr);
           }
           // Marca jogos com proteção ainda aberta (LAY + BACK)
           var openByMatch = {};
@@ -2552,8 +2634,7 @@
         }
         var published = !!($("editPublish") && $("editPublish").checked);
         var hide = !!($("editHide") && $("editHide").checked);
-        var prevMeta =
-          m.metadata && typeof m.metadata === "object" ? m.metadata : {};
+        var prevMeta = parseMatchMeta(m.metadata);
         var betLink = String($("editBetLink").value || "").trim();
         var nextMeta = Object.assign({}, prevMeta, {
           hide_from_site: hide,
@@ -2564,6 +2645,19 @@
             ? prevMeta.external_bet_name || "BetBra"
             : prevMeta.external_bet_name || null,
         });
+        // Nunca apagar autor do lançamento ao editar
+        if (m.created_by || prevMeta.created_by) {
+          nextMeta.created_by = prevMeta.created_by || m.created_by;
+        }
+        if (prevMeta.created_by_name) {
+          nextMeta.created_by_name = prevMeta.created_by_name;
+        }
+        if (prevMeta.settled_by_name) {
+          nextMeta.settled_by_name = prevMeta.settled_by_name;
+        }
+        if (prevMeta.settled_by) {
+          nextMeta.settled_by = prevMeta.settled_by;
+        }
         if (!betLink) {
           nextMeta.external_bet_link = null;
           nextMeta.betbra_link = null;
