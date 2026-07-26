@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta name="arbishield-vps-page" content="jogos" />
-  <meta name="arbishield-build" content="admin-jogos-manual-first-v12" />
+  <meta name="arbishield-build" content="admin-jogos-manual-no-odds-v13" />
   <title>Gestão de Jogos — ArbiShield v2</title>
   <link rel="stylesheet" href="/v2.css" />
   <script src="/v2-shell.js" defer></script>
@@ -749,20 +749,7 @@
       <h3>Lançar evento <span>manual</span></h3>
       <p class="hint">Página completa · mesmo formulário do site antigo · Gestão de Jogos (não é Desafio)</p>
 
-      <div class="betbra-assist" id="manBetbraAssist">
-        <h4>Autocomplete BetBra (opcional)</h4>
-        <p class="hint" style="margin:0 0 10px">
-          Busca jogo na API, puxa mercado, odd LAY/BACK e o link direto.
-          Continua salvando como <strong>evento manual</strong> — não mistura com o cadastro BetBra.
-        </p>
-        <div class="field" style="margin:0;position:relative">
-          <label for="manBetbraSearch">Buscar jogo na BetBra</label>
-          <input id="manBetbraSearch" type="search" placeholder="Ex: Flamengo, Serie B…" autocomplete="off" />
-          <div class="team-suggest" id="manBetbraSuggest" role="listbox" hidden></div>
-        </div>
-        <p class="assist-status" id="manBetbraStatus">Digite para buscar jogos pré-live de hoje.</p>
-        <div class="assist-markets" id="manBetbraMarkets" hidden></div>
-      </div>
+      <!-- Manual não usa atualização de odd BetBra — odd digitada no formulário -->
 
       <div class="toggle-row">
         <div>
@@ -876,7 +863,7 @@
         <span>Mercados de proteção</span>
         <button type="button" class="btn btn-primary btn-sm" id="btnAddMarket">+ Adicionar mercado</button>
       </div>
-      <p class="hint" style="margin:0 0 12px">Busque o mercado pelo nome ou use o autocomplete BetBra acima (odd + LAY/BACK + link). Se remover todos, ao salvar cria LAY HOME @ 2.00 com R$ 2.000.</p>
+      <p class="hint" style="margin:0 0 12px">Informe o nome do mercado, a odd e a liquidez. Se remover todos, ao salvar cria LAY HOME @ 2.00 com R$ 2.000.</p>
       <div id="manMarkets"></div>
 
       <div class="drawer-actions">
@@ -3503,7 +3490,6 @@
         $("manStatus").value = "open";
         $("manStarts").value = "";
         if ($("manReleaseMinutes")) $("manReleaseMinutes").value = "0";
-        resetManualBetbraAssist();
         ["manLiberarProtecao", "manLiberarLive", "manEsconder"].forEach(function (id) {
           var el = $(id);
           if (!el) return;
@@ -3969,7 +3955,7 @@
         bindSwitch("manLiberarProtecao");
         bindSwitch("manLiberarLive");
         bindSwitch("manEsconder");
-        bindManualBetbraAssist();
+        // Manual: sem autocomplete BetBra / sem pull de odd (odd só no formulário)
         $("btnAddMatch").addEventListener("click", openNormalLaunch);
         if ($("btnManualMatch")) {
           $("btnManualMatch").addEventListener("click", openManualDrawer);
