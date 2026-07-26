@@ -37,16 +37,13 @@ publish deploy/vps-supabase/static/v2/v2.css
 publish deploy/vps-supabase/static/v2/v2-pages.js
 publish deploy/vps-supabase/static/v2/admin-approvals.html
 
-if curl -fsS -m 8 "https://arbishield.app/admin-approvals.html" 2>/dev/null | grep -q 'carteiraLabel'; then
-  echo "  smoke admin-approvals.html → OK (carteira)"
+html="$(curl -fsS -m 8 "https://arbishield.app/admin-approvals.html" 2>/dev/null || true)"
+if echo "$html" | grep -q 'carteiraLabel' && echo "$html" | grep -q 'font-weight: 800' && echo "$html" | grep -q 'user_name", "id"'; then
+  echo "  smoke admin-approvals.html → OK (nome antes do id + carteira + negrito)"
 else
-  echo "  AVISO: admin-approvals.html público ainda sem carteira (cache/path?)"
-fi
-if curl -fsS -m 8 "https://arbishield.app/v2.css?v=aprovacoes-emphasis-1" 2>/dev/null | grep -q 'ops-cell-emphasis'; then
-  echo "  smoke v2.css → OK (emphasis)"
-else
-  echo "  AVISO: v2.css público ainda sem ops-cell-emphasis (cache/path?)"
+  echo "  AVISO: admin-approvals.html público ainda desatualizado (cache/path?)"
+  echo "$html" | tr '\n' ' ' | head -c 240; echo
 fi
 
 echo
-echo "OK — Ctrl+Shift+R em https://arbishield.app/admin-approvals.html"
+echo "OK — Ctrl+Shift+R (hard refresh) em https://arbishield.app/admin-approvals.html"

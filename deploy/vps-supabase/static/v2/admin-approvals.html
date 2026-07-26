@@ -6,12 +6,22 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Aprovações — ArbiShield v2</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=aprovacoes-emphasis-1" />
+  <link rel="stylesheet" href="/v2.css?v=aprovacoes-emphasis-2" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/finance-admins.js?v=fin-acl-2"></script>
   <script src="/v2.js?v=fin-acl-2"></script>
-  <script src="/v2-pages.js?v=aprovacoes-emphasis-1"></script>
+  <script src="/v2-pages.js?v=aprovacoes-emphasis-2"></script>
   <script src="/v2-shell.js?v=fin-acl-2" defer></script>
+  <style>
+    /* NOME (1), CARTEIRA (3), VALOR (4) — branco + negrito, sem depender do v2.css */
+    body[data-active="approvals"] #tableHost .ops-table tbody td:nth-child(1),
+    body[data-active="approvals"] #tableHost .ops-table tbody td:nth-child(3),
+    body[data-active="approvals"] #tableHost .ops-table tbody td:nth-child(4),
+    body[data-active="approvals"] #tableHost .ops-table td.ops-cell-emphasis {
+      color: #ffffff !important;
+      font-weight: 800 !important;
+    }
+  </style>
 </head>
 <body data-shell="admin" data-active="approvals">
   <div class="page-head">
