@@ -513,6 +513,17 @@
       box-shadow: 0 0 20px rgba(96, 165, 250, 0.4);
       animation: dz-step-pulse 1.8s ease-in-out infinite;
     }
+    .dz-step.is-lost .dz-step-dot {
+      border-color: #f87171;
+      background: radial-gradient(circle at 30% 30%, #3a1515, #1a0808);
+      color: #f87171;
+      box-shadow: 0 0 16px rgba(248, 113, 113, 0.35);
+    }
+    .dz-step.is-lost .dz-step-label { color: #f87171; }
+    .dz-step-conn.is-fail {
+      background: linear-gradient(90deg, #f87171, rgba(248, 113, 113, 0.25));
+      box-shadow: 0 0 8px rgba(248, 113, 113, 0.3);
+    }
     .dz-step.is-final.is-current .dz-step-dot {
       border-color: #fbbf24;
       color: #fbbf24;
@@ -671,7 +682,9 @@
         currentStage: 1,
         totalStages: 5,
         wonCount: 0,
+        lostCount: 0,
         pendingCount: 0,
+        stageStates: [],
         pendingStepIds: {},
         pendingDesafioIds: {},
         cycleParts: [],
@@ -811,11 +824,9 @@
         var list = (parts || []).slice().sort(function (a, b) {
           return String(a.created_at || "").localeCompare(String(b.created_at || ""));
         });
-        var start = 0;
-        for (var i = 0; i < list.length; i++) {
-          if (normCircuitResult(list[i].result) === "lost") start = i + 1;
-        }
-        return list.slice(start);
+        // Mantém perdas no mapa (X vermelho); usa as últimas 5
+        if (list.length > 5) list = list.slice(list.length - 5);
+        return list;
       }
 
       async function loadClientCircuit() {
@@ -824,7 +835,9 @@
           currentStage: 1,
           totalStages: 5,
           wonCount: 0,
+          lostCount: 0,
           pendingCount: 0,
+          stageStates: [],
           pendingStepIds: {},
           pendingDesafioIds: {},
           cycleParts: [],
@@ -840,26 +853,40 @@
           if (pr.error || !Array.isArray(pr.data)) return clientCircuit;
           var cycle = currentCycleParts(pr.data);
           var won = 0;
+          var lost = 0;
           var pending = 0;
+          var firstPendingIdx = -1;
           var pendingStepIds = {};
           var pendingDesafioIds = {};
-          cycle.forEach(function (p) {
+          var stageStates = [];
+          cycle.forEach(function (p, idx) {
             var res = normCircuitResult(p.result);
-            if (res === "won") won += 1;
-            else if (res === "pending") {
+            if (res === "won") {
+              won += 1;
+              stageStates[idx] = "won";
+            } else if (res === "lost") {
+              lost += 1;
+              stageStates[idx] = "lost";
+            } else if (res === "pending") {
               pending += 1;
+              stageStates[idx] = firstPendingIdx < 0 ? "current" : "waiting";
+              if (firstPendingIdx < 0) firstPendingIdx = idx;
               if (p.step_id) pendingStepIds[String(p.step_id)] = true;
               if (p.desafio_id) pendingDesafioIds[String(p.desafio_id)] = true;
             }
           });
-          var stage = pending > 0 ? won + 1 : cycle.length ? won + 1 : 1;
-          stage = Math.min(Math.max(1, stage), 5);
+          var stage =
+            firstPendingIdx >= 0
+              ? firstPendingIdx + 1
+              : Math.min(Math.max(1, cycle.length + 1), 5);
           clientCircuit = {
-            active: cycle.length > 0 || pending > 0 || won > 0,
+            active: cycle.length > 0 || pending > 0 || won > 0 || lost > 0,
             currentStage: stage,
             totalStages: 5,
             wonCount: won,
+            lostCount: lost,
             pendingCount: pending,
+            stageStates: stageStates,
             pendingStepIds: pendingStepIds,
             pendingDesafioIds: pendingDesafioIds,
             cycleParts: cycle,
@@ -873,19 +900,29 @@
       function stepperHtml(circuit) {
         var total = circuit.totalStages || 5;
         var cur = circuit.currentStage || 1;
-        var won = circuit.wonCount || 0;
+        var states = circuit.stageStates || [];
         var html = "";
         for (var i = 1; i <= total; i++) {
           var isFinal = i === total;
+          var st = states[i - 1] || (i === cur ? "current" : i < cur ? "locked" : "locked");
+          if (!states[i - 1] && i === cur) st = "current";
           var cls = "dz-step";
-          if (i <= won) cls += " is-won";
-          else if (i === cur) cls += " is-current";
+          if (st === "won") cls += " is-won";
+          else if (st === "lost") cls += " is-lost";
+          else if (st === "current") cls += " is-current";
           else cls += " is-locked";
           if (isFinal) cls += " is-final";
-          var mark = i <= won ? "✓" : isFinal ? "👑" : String(i);
+          var mark =
+            st === "won" ? "✓" : st === "lost" ? "✕" : isFinal ? "👑" : String(i);
           var label = isFinal ? "Final" : "Etapa " + i;
           var hint =
-            i <= won ? "Concluída" : i === cur ? "Você está aqui" : "Bloqueada";
+            st === "won"
+              ? "Concluída"
+              : st === "lost"
+                ? "Falhou"
+                : st === "current"
+                  ? "Você está aqui"
+                  : "Bloqueada";
           html +=
             '<div class="' +
             cls +
@@ -899,7 +936,8 @@
           if (i < total) {
             html +=
               '<div class="dz-step-conn' +
-              (i <= won ? " is-lit" : "") +
+              (st === "won" ? " is-lit" : "") +
+              (st === "lost" ? " is-fail" : "") +
               '" aria-hidden="true"></div>';
           }
         }

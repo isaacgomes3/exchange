@@ -63,7 +63,7 @@ publish_named() {
 log "1/4 UI — monitor + jornada + cards"
 for pair in \
   "deploy/vps-supabase/static/v2/admin-monitoring-desafios.html|currentCycleParts|desafio-etapa-contagem-v3" \
-  "deploy/vps-supabase/static/v2/app-desafio-jornada.html|j-flow-h|desafio-jornada-horizontal-v1" \
+  "deploy/vps-supabase/static/v2/app-desafio-jornada.html|j-journey-sticky|desafio-jornada-horizontal-v2" \
   "deploy/vps-supabase/static/v2/app-desafio.html|dzAndamento|desafio-em-andamento-v3"
 do
   IFS='|' read -r rel needle marker <<<"$pair"
