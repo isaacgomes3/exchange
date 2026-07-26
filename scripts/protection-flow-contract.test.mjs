@@ -17,6 +17,8 @@ import {
   settlementCreditParts,
   settlementDeductionCents,
   creditBucketForSettlement,
+  settlementCreditDestination,
+  shouldChargeFeeAfterResult,
   settlementStatusForOutcome,
   isFeeUpfrontProtection,
   isLockFeeAfterProtection,
@@ -29,7 +31,7 @@ const root = resolve(__dirname, "..");
 
 describe("contrato travado — metadados", () => {
   it("mantém versão e lock", () => {
-    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v3");
+    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v4");
     assert.equal(
       PROTECTION_FLOW_LOCK,
       "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST"
@@ -37,13 +39,14 @@ describe("contrato travado — metadados", () => {
     assert.equal(PROTECTION_BILLING_MODEL_DEFAULT, "lock_fee_after_v1");
   });
 
-  it("AGENTS.md cita o lock do fluxo v3", () => {
+  it("AGENTS.md cita o lock do fluxo v4", () => {
     const agents = readFileSync(resolve(root, "AGENTS.md"), "utf8");
     assert.match(agents, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
-    assert.match(agents, /protection-flow-contract-v3/);
+    assert.match(agents, /protection-flow-contract-v4/);
     assert.match(agents, /lock_fee_after_v1/);
     assert.match(agents, /Saldo Reembolso/);
     assert.match(agents, /Empate Anula/);
+    assert.match(agents, /Bateu Exchange/);
   });
 
   it("carteira do cliente exibe Saldo Reembolso (não Saldo Dedução)", () => {
@@ -110,6 +113,7 @@ describe("settle — lock_fee_after_v1 (padrão novo)", () => {
       lock_fee_after: true,
       stake_locked: true,
       fee_pending_cents: 3763,
+      balance_type: "REAL",
     },
   };
 
@@ -119,31 +123,50 @@ describe("settle — lock_fee_after_v1 (padrão novo)", () => {
     assert.equal(settlementDeductionCents(row), 3763);
   });
 
-  it("ArbiShield libera só o stake (dedução cobrada à parte)", () => {
+  it("ArbiShield libera stake → Reembolso (sem dedução)", () => {
     assert.deepEqual(settlementCreditParts(row, "arbishield"), {
       stake: 100_000,
       fee: 0,
       total: 100_000,
     });
+    assert.equal(
+      settlementCreditDestination(row, "arbishield", "REAL"),
+      "deduction_balance_cents"
+    );
+    assert.equal(shouldChargeFeeAfterResult(row, "arbishield"), false);
   });
 
-  it("Exchange não devolve nada (stake fica com a plataforma)", () => {
+  it("Exchange libera stake à origem e cobra dedução", () => {
     assert.deepEqual(settlementCreditParts(row, "exchange"), {
-      stake: 0,
+      stake: 100_000,
       fee: 0,
-      total: 0,
+      total: 100_000,
     });
+    assert.equal(
+      settlementCreditDestination(row, "exchange", "REAL"),
+      "balance_cents"
+    );
+    assert.equal(
+      settlementCreditDestination(row, "exchange", "DEMO"),
+      "demo_balance_cents"
+    );
+    assert.equal(shouldChargeFeeAfterResult(row, "exchange"), true);
   });
 
-  it("Empate Anula libera o stake travado (sem dedução)", () => {
+  it("Empate Anula libera o stake à origem (sem dedução)", () => {
     assert.deepEqual(settlementCreditParts(row, "empate_anula"), {
       stake: 100_000,
       fee: 0,
       total: 100_000,
     });
+    assert.equal(
+      settlementCreditDestination(row, "empate_anula", "REAL"),
+      "balance_cents"
+    );
+    assert.equal(shouldChargeFeeAfterResult(row, "empate_anula"), false);
   });
 
-  it("status e bucket corretos", () => {
+  it("status e bucket padrão", () => {
     assert.equal(settlementStatusForOutcome("arbishield"), "lost_exchange");
     assert.equal(settlementStatusForOutcome("exchange"), "won_exchange");
     assert.equal(settlementStatusForOutcome("empate_anula"), "void");

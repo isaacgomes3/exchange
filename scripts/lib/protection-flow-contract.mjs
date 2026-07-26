@@ -8,17 +8,19 @@
  * de crédito no settle; os testes em protection-flow-contract.test.mjs
  * travam o comportamento no CI.
  *
- * Versão: protection-flow-contract-v3 (2026-07-26)
- *   + lock_fee_after_v1 (pedido explícito):
- *       ativação trava stake/responsabilidade;
- *       após resultado cobra só a dedução ArbiShield (REAL/DEMO);
- *       crédito no settle → Saldo Reembolso
+ * Versão: protection-flow-contract-v4 (2026-07-26)
+ *   + lock_fee_after_v1 settle revisado (pedido explícito):
+ *       ativação trava stake/responsabilidade (sem dedução);
+ *       Bateu Exchange → cobra dedução (REAL/DEMO) e libera stake à origem;
+ *       Bateu ArbiShield → libera stake → Saldo Reembolso (sem dedução);
+ *       Empate Anula → libera stake; Cancelar → devolve travado
+ *   (v3) lock_fee_after inicial
  *   (v2) Empate Anula / void → devolve só a dedução (fee_upfront)
  * ============================================================================
  */
 
 export const PROTECTION_FLOW_CONTRACT_VERSION =
-  "protection-flow-contract-v3";
+  "protection-flow-contract-v4";
 
 /** Marcador exigido pelos testes / hotfixes — não renomear. */
 export const PROTECTION_FLOW_LOCK =
@@ -75,8 +77,8 @@ export function isFeeUpfrontProtection(row) {
 }
 
 /**
- * Novo modelo (v3): stake/responsabilidade travado na ativação;
- * dedução cobrada só após o resultado.
+ * Modelo padrão (v4): stake/responsabilidade travado na ativação;
+ * dedução cobrada só se Bateu Exchange.
  */
 export function isLockFeeAfterProtection(row) {
   const meta =
@@ -129,10 +131,11 @@ export function settlementDeductionCents(row) {
  * Regras de crédito no settle (TRAVADAS):
  *
  * lock_fee_after_v1 (padrão novo):
- *   - ArbiShield → libera stake travado → Saldo Reembolso
- *                 (dedução cobrada à parte da carteira REAL/DEMO)
- *   - Exchange   → 0 (stake travado fica com a plataforma)
- *   - Empate Anula / void → libera stake travado → Saldo Reembolso (sem dedução)
+ *   - Ativação → trava stake/responsabilidade (sem dedução)
+ *   - Bateu Exchange → libera stake à carteira de origem + cobra dedução (REAL/DEMO)
+ *   - Bateu ArbiShield → libera stake → Saldo Reembolso (sem dedução)
+ *   - Empate Anula / void → libera stake à carteira de origem (sem dedução)
+ *   - Cancelar → devolve stake travado à origem
  *
  * fee_upfront_v1 (proteções antigas):
  *   - ArbiShield → stake/responsabilidade + dedução (total)
@@ -143,10 +146,6 @@ export function settlementDeductionCents(row) {
  *   - ArbiShield → stake inteiro
  *   - Exchange   → stake − taxa
  *   - Empate Anula / void → stake inteiro (libera lock)
- *
- * Cancelamento:
- *   - lock_fee_after → estorna stake travado à carteira de origem
- *   - fee_upfront → estorna só a dedução
  */
 export function settlementCreditParts(row, outcome) {
   const amount = n(row?.responsibility_cents || row?.amount_cents);
@@ -156,9 +155,8 @@ export function settlementCreditParts(row, outcome) {
   const isVoid = o === "void";
 
   if (isLockFeeAfterProtection(row)) {
-    // Crédito = só o stake travado. Dedução é cobrada depois, fora daqui.
-    if (isVoid || wonArbi) return { stake: amount, fee: 0, total: amount };
-    return { stake: 0, fee: 0, total: 0 };
+    // Sempre libera o stake travado. Dedução (se houver) é cobrada fora, só no Exchange.
+    return { stake: amount, fee: 0, total: amount };
   }
 
   if (isFeeUpfrontProtection(row)) {
@@ -177,8 +175,33 @@ export function settlementCreditCents(row, outcome) {
 }
 
 /**
- * Bucket de crédito após settle ArbiShield / Empate Anula:
- * Sempre `deduction_balance_cents` (UI: **Saldo Reembolso** — usável + sacável).
+ * Destino do crédito ao liberar stake (lock_fee_after):
+ * - ArbiShield → Saldo Reembolso
+ * - Exchange / Empate Anula / demais → carteira de origem (REAL/DEMO/INVESTOR)
+ *
+ * fee_upfront / legado: sempre Saldo Reembolso (comportamento anterior).
+ */
+export function settlementCreditDestination(row, outcome, balanceType) {
+  const o = normalizeSettleOutcome(outcome);
+  if (isLockFeeAfterProtection(row)) {
+    if (o === "arbishield") return "deduction_balance_cents";
+    const bt = String(balanceType || "REAL").toUpperCase();
+    if (bt === "DEMO") return "demo_balance_cents";
+    if (bt === "INVESTOR") return "investor_balance_cents";
+    return "balance_cents";
+  }
+  return creditBucketForSettlement(balanceType);
+}
+
+/** lock_fee_after: dedução só é cobrada quando Bateu Exchange. */
+export function shouldChargeFeeAfterResult(row, outcome) {
+  if (!isLockFeeAfterProtection(row)) return false;
+  return normalizeSettleOutcome(outcome) === "exchange";
+}
+
+/**
+ * Bucket padrão (fee_upfront / legado / ArbiShield lock_fee_after):
+ * `deduction_balance_cents` = UI **Saldo Reembolso**.
  */
 export function creditBucketForSettlement(_balanceType) {
   return "deduction_balance_cents";

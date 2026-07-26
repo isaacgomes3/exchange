@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <meta name="arbishield-build" content="proteger-lock-fee-after-v1" />
-  <meta name="arbishield-features" content="proteger-lock-fee-after-v1 proteger-sem-radar-v1 proteger-espelho-readonly-v13" />
+  <meta name="arbishield-build" content="proteger-lock-fee-after-v4" />
+  <meta name="arbishield-features" content="proteger-lock-fee-after-v4 proteger-sem-radar-v1 proteger-espelho-readonly-v13" />
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
@@ -155,7 +155,7 @@
         : user.id;
       var isMirror = String(viewUserId) !== String(user.id);
 
-      /** Sandbox/produção: lock_fee_after — trava stake; dedução só após o resultado. */
+      /** Sandbox/produção: lock_fee_after — trava stake; dedução só se Bateu Exchange. */
       var IS_SANDBOX =
         /^\/sandbox(?:\/|$)/.test(location.pathname || "") ||
         document.getElementById("arbishield-sandbox-banner") != null;
@@ -163,8 +163,8 @@
       var hintEl = document.getElementById("billingHint");
       if (hintEl) {
         hintEl.textContent = IS_SANDBOX
-          ? "SANDBOX · trava stake/responsabilidade · dedução só após o resultado"
-          : "Trava stake/responsabilidade na ativação · dedução ArbiShield cobrada após o resultado";
+          ? "SANDBOX · trava stake/responsabilidade · dedução só se Bateu Exchange"
+          : "Trava stake/responsabilidade na ativação · dedução só se Bateu Exchange · ArbiShield → Saldo Reembolso";
       }
 
       var SPORTS = [
@@ -464,7 +464,7 @@
           extraLine +
           "<div><span>Retorno casa externa</span><b>" + money(retorno) + "</b></div>" +
           "<div><span>Seu lucro (1,5%)</span><b>" + money(seuLucro) + "</b></div>" +
-          "<div><span>Dedução (após resultado)</span><b>" + money(deducao) + "</b></div>" +
+          "<div><span>Dedução (se Bateu Exchange)</span><b>" + money(deducao) + "</b></div>" +
           "<div><span>Valor travado agora</span><b>" + money(amountCents) + "</b></div>" +
           "<div><span>Saldo disponível</span><b>" + money(avail) + "</b></div>";
       }
@@ -604,7 +604,7 @@
               modo +
               "). A dedução de " +
               money(feePending) +
-              " só é cobrada após o resultado. Disponível: " +
+              " só é cobrada se Bateu Exchange. Disponível: " +
               money(available(balType)) +
               "."
           );
@@ -674,7 +674,7 @@
               money(locked) +
               " · dedução " +
               money(pending) +
-              " após resultado · " +
+              " só se Bateu Exchange · " +
               String(data.protectionId).slice(0, 8) +
               "…"
           );

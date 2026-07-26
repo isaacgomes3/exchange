@@ -633,19 +633,19 @@
         <div id="settleOutcomeBox" style="display:grid;gap:10px;margin-top:8px">
           <button type="button" class="btn btn-ghost" id="btnOutcomeArbi" data-outcome="arbishield" style="justify-content:flex-start;text-align:left;padding:14px 16px;border-color:rgba(201,242,35,0.45)">
             <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU ARBISHIELD</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção válida · devolve stake/responsabilidade + dedução (Saldo Reembolso)</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Libera stake/responsabilidade → Saldo Reembolso (sem dedução)</span>
             <span id="settleRefundHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">A creditar: —</span>
           </button>
           <button type="button" class="btn btn-ghost" id="btnOutcomeExch" data-outcome="exchange" style="justify-content:flex-start;text-align:left;padding:14px 16px">
             <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU CASA EXTERNA (EXCHANGE)</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção perde · sem reembolso ao usuário</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Libera stake à origem e cobra a dedução da REAL/DEMO</span>
             <span id="settleDeductHint" style="display:block;margin-top:8px;color:var(--amber);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Dedução / margem ArbiShield: —</span>
             <span id="settleStakeKeepHint" style="display:block;margin-top:4px;color:var(--muted);font-size:11px;font-weight:600;text-transform:none;letter-spacing:0"></span>
           </button>
           <button type="button" class="btn btn-ghost" id="btnOutcomeVoid" data-outcome="empate_anula" style="justify-content:flex-start;text-align:left;padding:14px 16px">
             <span style="display:block;font-size:11px;letter-spacing:0.08em">EMPATE ANULA</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Aposta anulada · devolve só a dedução (Saldo Reembolso)</span>
-            <span id="settleVoidHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Dedução a devolver: —</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Aposta anulada · libera stake à carteira de origem (sem dedução)</span>
+            <span id="settleVoidHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Stake a liberar: —</span>
           </button>
         </div>
         <input type="hidden" id="settleOutcome" value="arbishield" />
@@ -3702,26 +3702,22 @@
         if ($("settleRefundHint")) {
           $("settleRefundHint").textContent =
             "A creditar no Saldo Reembolso: " +
-            money(refund + margin) +
-            "  ·  stake " +
             money(refund) +
-            (margin > 0 ? " + dedução " + money(margin) : "");
+            " (stake/responsabilidade; sem dedução)";
         }
         if ($("settleDeductHint")) {
           $("settleDeductHint").textContent =
             margin > 0
-              ? "Dedução / margem ArbiShield retida: " + money(margin)
-              : "Dedução / margem ArbiShield: — (sem platform_deduction nesta proteção)";
+              ? "Dedução a cobrar da REAL/DEMO: " + money(margin)
+              : "Dedução a cobrar: — (sem platform_deduction nesta proteção)";
         }
         if ($("settleStakeKeepHint")) {
           $("settleStakeKeepHint").textContent =
-            "No modelo atual (lock_fee_after): stake fica travado; ao bater Exchange o stake fica com a plataforma. Proteções antigas fee_upfront: dedução já cobrada na entrada.";
+            "lock_fee_after: libera stake à origem e cobra dedução. Proteções antigas fee_upfront: dedução já cobrada na entrada (Exchange sem crédito).";
         }
         if ($("settleVoidHint")) {
           $("settleVoidHint").textContent =
-            margin > 0
-              ? "Dedução a devolver no Saldo Reembolso: " + money(margin)
-              : "Dedução a devolver: — (sem platform_deduction nesta proteção)";
+            "Stake a liberar à origem: " + money(refund) + " (sem dedução)";
         }
         var liveInfo = matchLiveInfo(m);
         if (
@@ -3842,13 +3838,13 @@
               Number(data.settledCount || 0) +
               " proteção(ões) · " +
               (outcome === "arbishield"
-                ? "reembolso " + money(data.refundedCents || 0)
+                ? "stake → Saldo Reembolso " + money(data.refundedCents || 0)
                 : outcome === "void" ||
                     outcome === "empate_anula" ||
                     outcome === "anula"
-                  ? "Empate Anula · dedução devolvida " +
+                  ? "Empate Anula · stake liberado " +
                     money(data.refundedCents || 0)
-                  : "sem reembolso (casa externa)")
+                  : "Exchange · stake liberado + dedução cobrada")
           );
           $("settleModal").classList.remove("show");
           platformLoaded = false;

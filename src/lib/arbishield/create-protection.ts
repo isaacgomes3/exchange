@@ -3,7 +3,7 @@
  *
  * TRAVADO — DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST
  * Fonte da verdade das regras: scripts/lib/protection-flow-contract.mjs
- * (protection-flow-contract-v3 / lock_fee_after_v1).
+ * (protection-flow-contract-v4 / lock_fee_after_v1).
  * Não alterar sem solicitação explícita do produto.
  */
 
@@ -47,7 +47,7 @@ export function layToBackOdd(layOdd: number) {
 
 /**
  * Cálculo da dedução (= lucro bruto − 1,5% da cobertura) sobre odd BACK efetiva.
- * Em lock_fee_after a dedução NÃO é cobrada na ativação — só após o resultado.
+ * Em lock_fee_after a dedução NÃO é cobrada na ativação — só se Bateu Exchange.
  */
 export function calcFeeUpfront(amountCents: number, odd: number) {
   const coverage =
@@ -256,7 +256,7 @@ export async function createProtection(
   if (lockCents > available) {
     throw Object.assign(
       new Error(
-        `Saldo insuficiente para travar ${(lockCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} (${marketType === "LAY" ? "responsabilidade" : "stake"}). A dedução só é cobrada após o resultado.`
+        `Saldo insuficiente para travar ${(lockCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} (${marketType === "LAY" ? "responsabilidade" : "stake"}). A dedução só é cobrada se Bateu Exchange.`
       ),
       { status: 400 }
     );
@@ -430,7 +430,7 @@ export async function createProtection(
       locked_stake_cents: lockCents,
       fee_pending_cents: feeCents,
       fee_charged_cents: 0,
-      note: "stake/responsabilidade travado — dedução só após o resultado",
+      note: "stake/responsabilidade travado — sem dedução na ativação",
     },
   });
 

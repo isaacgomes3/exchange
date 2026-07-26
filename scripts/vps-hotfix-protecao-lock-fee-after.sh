@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Hotfix: proteção lock_fee_after_v1
-# - Ativação: trava stake/responsabilidade
-# - Após resultado: cobra só a dedução ArbiShield (REAL/DEMO)
-# - Crédito no settle → Saldo Reembolso
+# Hotfix: proteção lock_fee_after_v1 (contrato v4)
+# - Ativação: trava stake/responsabilidade (sem dedução)
+# - Bateu Exchange: libera stake à origem + cobra dedução (REAL/DEMO)
+# - Bateu ArbiShield: libera stake → Saldo Reembolso (sem dedução)
+# - Empate Anula: libera stake à origem
+# - Cancelar: devolve valor travado
 #
 # Na VPS (root):
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-lock-fee-apos-6a41/scripts/vps-hotfix-protecao-lock-fee-after.sh?$(date +%s)")
@@ -16,7 +18,7 @@ WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
 SHIM_DIR="${ARBISHIELD_SHIM_DIR:-/opt/arbishield}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-$SHIM_DIR/scripts}"
-MARKER="proteger-lock-fee-after-v1"
+MARKER="proteger-lock-fee-after-v4"
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
@@ -61,24 +63,31 @@ publish_html() {
   rm -f "$tmp"
 }
 
-log "1/5 contrato v3"
+log "1/5 contrato v4"
 download_repo_file "scripts/lib/protection-flow-contract.mjs" "$SCRIPTS_DIR/lib/protection-flow-contract.mjs"
 chmod 0644 "$SCRIPTS_DIR/lib/protection-flow-contract.mjs"
 grep -q 'lock_fee_after_v1' "$SCRIPTS_DIR/lib/protection-flow-contract.mjs" || die "contrato sem lock_fee_after_v1"
-grep -q 'protection-flow-contract-v3' "$SCRIPTS_DIR/lib/protection-flow-contract.mjs" || die "contrato sem v3"
+grep -q 'protection-flow-contract-v4' "$SCRIPTS_DIR/lib/protection-flow-contract.mjs" || die "contrato sem v4"
+grep -q 'shouldChargeFeeAfterResult' "$SCRIPTS_DIR/lib/protection-flow-contract.mjs" || die "contrato sem shouldChargeFeeAfterResult"
+grep -q 'settlementCreditDestination' "$SCRIPTS_DIR/lib/protection-flow-contract.mjs" || die "contrato sem settlementCreditDestination"
 
 log "2/5 prelive create/settle/cancel"
 download_repo_file "scripts/arbishield-prelive-events.mjs" "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
 chmod 0644 "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
 grep -q 'lock_fee_after' "$SCRIPTS_DIR/arbishield-prelive-events.mjs" || die "prelive sem lock_fee_after"
 grep -q 'chargeFeeAfterResult' "$SCRIPTS_DIR/arbishield-prelive-events.mjs" || die "prelive sem chargeFeeAfterResult"
+grep -q 'shouldChargeFeeAfterResult' "$SCRIPTS_DIR/arbishield-prelive-events.mjs" || die "prelive sem shouldChargeFeeAfterResult"
+grep -q 'settlementCreditDestination' "$SCRIPTS_DIR/arbishield-prelive-events.mjs" || die "prelive sem settlementCreditDestination"
 grep -q 'protection_lock' "$SCRIPTS_DIR/arbishield-prelive-events.mjs" || die "prelive sem protection_lock"
+grep -q 'Bateu Exchange' "$SCRIPTS_DIR/arbishield-prelive-events.mjs" || die "prelive sem Bateu Exchange"
 
 log "3/5 shim settle"
 download_repo_file "scripts/arbishield-serverfn-shim.mjs" "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs"
 chmod 0644 "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs"
 grep -q 'chargeFeeAfterResult' "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs" || die "shim sem chargeFeeAfterResult"
-grep -q 'isLockFeeAfterProtection' "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs" || die "shim sem isLockFeeAfterProtection"
+grep -q 'shouldChargeFeeAfterResult' "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs" || die "shim sem shouldChargeFeeAfterResult"
+grep -q 'settlementCreditDestination' "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs" || die "shim sem settlementCreditDestination"
+grep -q 'settle-lock-fee-after-v4' "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs" || die "shim sem settle v4"
 
 # Espelha sob /opt/arbishield se necessário
 if [[ -d "$SHIM_DIR" ]]; then
@@ -110,6 +119,6 @@ if command -v nginx >/dev/null 2>&1; then
   nginx -s reload 2>/dev/null || true
 fi
 
-log "OK — Ctrl+Shift+R em /app-proteger.html"
+log "OK — Ctrl+Shift+R em /app-proteger.html e /admin-jogos.html"
 echo "Marker: $MARKER"
-echo "Nova proteção deve travar stake; dedução só no encerramento (Bateu ArbiShield)."
+echo "Ativação trava stake; dedução só em Bateu Exchange; ArbiShield → Saldo Reembolso."
