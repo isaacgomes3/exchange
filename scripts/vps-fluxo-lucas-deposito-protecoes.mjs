@@ -8,7 +8,7 @@
  * Aplicar correção (Reembolso→Real do crédito Exchange indevido):
  *   FIX=1 node scripts/vps-fluxo-lucas-deposito-protecoes.mjs
  *
- * Marker: vps-fluxo-lucas-deposito-protecoes-v1
+ * Marker: vps-fluxo-lucas-deposito-protecoes-v2
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -162,7 +162,7 @@ async function sbTry(paths, { optional = false } = {}) {
 
 async function main() {
   console.log("==> Fluxo Lucas — depósito + 2 proteções");
-  console.log("    marker: vps-fluxo-lucas-deposito-protecoes-v1");
+  console.log("    marker: vps-fluxo-lucas-deposito-protecoes-v2");
   console.log("    FIX:", FIX ? "SIM" : "não (só relatório)");
   console.log("    user:", USER_ID, NAME);
   console.log("    depósito esperado:", money(EXPECTED_DEPOSIT_CENTS));
@@ -256,10 +256,13 @@ async function main() {
   );
 
   // --- Proteções ---
-  const prots = await sbTry([
-    `/rest/v1/protections?select=id,status,side,odd,amount_cents,responsibility_cents,platform_deduction_cents,locked_deduction_cents,user_profit_cents,settled_outcome,settled_at,refunded_at,created_at,updated_at,metadata,match_id&user_id=eq.${encodeURIComponent(USER_ID)}&order=created_at.asc&limit=50`,
-    `/rest/v1/protections?select=id,status,amount_cents,responsibility_cents,settled_outcome,settled_at,created_at,metadata&user_id=eq.${encodeURIComponent(USER_ID)}&order=created_at.asc&limit=50`,
-  ]);
+  const prots = await sbTry(
+    [
+      `/rest/v1/protections?select=id,status,side,odd,amount_cents,responsibility_cents,platform_deduction_cents,locked_deduction_cents,user_profit_cents,settled_outcome,settled_at,refunded_at,created_at,updated_at,metadata,match_id&user_id=eq.${encodeURIComponent(USER_ID)}&order=created_at.asc&limit=50`,
+      `/rest/v1/protections?select=id,status,amount_cents,responsibility_cents,settled_outcome,settled_at,created_at,metadata&user_id=eq.${encodeURIComponent(USER_ID)}&order=created_at.asc&limit=50`,
+    ],
+    { optional: false }
+  );
   const protections = Array.isArray(prots) ? prots : [];
   console.log("\n==> Proteções (", protections.length, ")");
 

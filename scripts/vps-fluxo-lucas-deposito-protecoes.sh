@@ -34,7 +34,7 @@ if ! curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
     "$RAW/scripts/vps-fluxo-lucas-deposito-protecoes.mjs?t=$(date +%s%N)" -o "$OUT"
 fi
 [[ -s "$OUT" ]] || die "download vazio"
-grep -q 'vps-fluxo-lucas-deposito-protecoes-v1' "$OUT" || die "script inválido"
+grep -q 'vps-fluxo-lucas-deposito-protecoes-v2' "$OUT" || die "script inválido"
 chmod 0644 "$OUT"
 
 export FIX
