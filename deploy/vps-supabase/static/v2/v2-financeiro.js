@@ -1769,6 +1769,16 @@
         }
       );
     }
+    if (!state.walletTx.length) {
+      state.walletTx = await safeQuery(
+        supa,
+        "wallet_transactions",
+        "id,type,amount_cents,created_at",
+        function (q) {
+          return q.eq("user_id", userId).order("created_at", { ascending: false }).limit(500);
+        }
+      );
+    }
   }
 
   document.addEventListener("DOMContentLoaded", async function () {
