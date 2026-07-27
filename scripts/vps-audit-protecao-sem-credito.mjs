@@ -107,6 +107,10 @@ function creditFor(row, outcome) {
   const amount = n(row.responsibility_cents || row.amount_cents);
   if (FORCE_REFUND) return amount;
   if (String(outcome).toLowerCase() === "arbishield") return amount;
+  // BLOQUEADO: Exchange/PERDEU NUNCA credita (stake−taxa legado).
+  // Regra vigente: R$ 0 Reembolso · cobra só dedução · destrava sem devolver.
+  // Marker: settle-exchange-cobra-deducao-v6
+  if (String(outcome).toLowerCase() === "exchange") return 0;
   const fee = Math.min(feeOf(row), amount);
   return Math.max(0, amount - fee);
 }

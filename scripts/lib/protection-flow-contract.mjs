@@ -82,6 +82,16 @@ export const PROTECTION_FLOW_SPEC = Object.freeze({
 /** Marker da regra vigente. */
 export const STAKE_LOCK_RULE = "stake-lock-v1";
 
+/**
+ * Guarda Exchange/PERDEU: R$ 0 Reembolso · cobra só dedução · destrava sem devolver.
+ * Hotfix / health / CI devem conter esta string.
+ */
+export const EXCHANGE_CHARGE_DEDUCTION_RULE =
+  "settle-exchange-cobra-deducao-v6";
+
+/** Alias histórico (anti-crédito Reembolso). */
+export const EXCHANGE_NO_CREDIT_RULE = "settle-exchange-nunca-reembolso-v1";
+
 /** Fração máxima do saldo Apostador que pode ser travada na ativação. */
 export const MAX_STAKE_FRACTION_OF_APOSTADOR = 0.5;
 
@@ -226,6 +236,29 @@ export function cancelRefundCents(row) {
     return fee;
   }
   return stake;
+}
+
+/**
+ * Exchange/PERDEU wallet completo?
+ * - fee_upfront: só auditoria (taxa já cobrada na criação)
+ * - stake_lock: precisa destravar (se havia stake) E cobrir a dedução
+ *   (feeCharged + feeShortfall >= feeExpected)
+ * Marker: settle-exchange-cobra-deducao-v6
+ */
+export function isExchangeWalletComplete({
+  feeUpfront = false,
+  feeExpected = 0,
+  feeCharged = 0,
+  feeShortfall = 0,
+  unlocked = false,
+  needsUnlock = false,
+} = {}) {
+  void EXCHANGE_CHARGE_DEDUCTION_RULE;
+  if (feeUpfront) return true;
+  if (needsUnlock && !unlocked) return false;
+  const fee = Math.max(0, n(feeExpected));
+  if (!(fee > 0)) return true;
+  return Math.max(0, n(feeCharged)) + Math.max(0, n(feeShortfall)) >= fee;
 }
 
 /**

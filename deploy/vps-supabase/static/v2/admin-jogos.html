@@ -3484,27 +3484,25 @@
           money(stake);
         if ($("settleRefundHint")) {
           $("settleRefundHint").textContent =
-            "A creditar no Saldo Reembolso: " +
-            money(refund + margin) +
-            "  ·  stake " +
+            "Ganhou ArbiShield → credita stake no Saldo Reembolso: " +
             money(refund) +
-            (margin > 0 ? " + dedução " + money(margin) : "");
+            " (stake_lock; dedução NÃO entra no Reembolso)";
         }
         if ($("settleDeductHint")) {
           $("settleDeductHint").textContent =
             margin > 0
-              ? "Dedução / margem ArbiShield retida: " + money(margin)
-              : "Dedução / margem ArbiShield: — (sem platform_deduction nesta proteção)";
+              ? "Exchange/PERDEU → cobra dedução agora: " +
+                money(margin) +
+                " · R$ 0 Reembolso · destrava sem devolver"
+              : "Exchange/PERDEU → R$ 0 Reembolso · cobra só dedução (sem platform_deduction nesta linha)";
         }
         if ($("settleStakeKeepHint")) {
           $("settleStakeKeepHint").textContent =
-            "No fee_upfront a dedução já foi cobrada na entrada; ao bater Exchange ela permanece na plataforma.";
+            "Regra stake_lock: Exchange = R$ 0 Reembolso · cobra só a dedução · destrava sem devolver o stake. Histórico fee_upfront: dedução já cobrada na entrada.";
         }
         if ($("settleVoidHint")) {
           $("settleVoidHint").textContent =
-            margin > 0
-              ? "Dedução a devolver no Saldo Reembolso: " + money(margin)
-              : "Dedução a devolver: — (sem platform_deduction nesta proteção)";
+            "Empate Anula → destrava e devolve o stake à origem (não vai para Reembolso).";
         }
         var liveInfo = matchLiveInfo(m);
         if (

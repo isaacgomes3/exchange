@@ -32,6 +32,8 @@ import {
   normalizeSettleOutcome,
   cancelRefundCents,
   CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+  EXCHANGE_CHARGE_DEDUCTION_RULE,
+  isExchangeWalletComplete,
 } from "./lib/protection-flow-contract.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -384,5 +386,104 @@ describe("cancel — fee_upfront nunca devolve stake", () => {
       metadata: { billing_model: "stake_lock_v1", stake_lock: true },
     };
     assert.equal(cancelRefundCents(row), 100_000);
+  });
+});
+
+describe("Exchange/PERDEU — cobra dedução · R$ 0 Reembolso · destrava", () => {
+  it("guarda settle-exchange-cobra-deducao-v6", () => {
+    assert.equal(
+      EXCHANGE_CHARGE_DEDUCTION_RULE,
+      "settle-exchange-cobra-deducao-v6"
+    );
+  });
+
+  it("crédito Exchange sempre 0 (stake_lock e fee_upfront)", () => {
+    const lock = {
+      amount_cents: 100_000,
+      platform_deduction_cents: 9611,
+      metadata: { billing_model: "stake_lock_v1", stake_lock: true },
+    };
+    const feeUp = {
+      amount_cents: 100_000,
+      platform_deduction_cents: 9611,
+      metadata: { billing_model: "fee_upfront_v1", fee_upfront: true },
+    };
+    assert.equal(settlementCreditParts(lock, "exchange").total, 0);
+    assert.equal(settlementCreditParts(feeUp, "exchange").total, 0);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.chargeDeductionOnly, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.unlockWithoutReturn, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.creditReembolso, false);
+  });
+
+  it("isExchangeWalletComplete exige fee cobrada no stake_lock", () => {
+    assert.equal(
+      isExchangeWalletComplete({
+        feeUpfront: false,
+        feeExpected: 9611,
+        feeCharged: 0,
+        unlocked: true,
+        needsUnlock: true,
+      }),
+      false
+    );
+    assert.equal(
+      isExchangeWalletComplete({
+        feeUpfront: false,
+        feeExpected: 9611,
+        feeCharged: 9611,
+        unlocked: true,
+        needsUnlock: true,
+      }),
+      true
+    );
+    assert.equal(
+      isExchangeWalletComplete({
+        feeUpfront: false,
+        feeExpected: 9611,
+        feeCharged: 5000,
+        feeShortfall: 4611,
+        unlocked: true,
+        needsUnlock: true,
+      }),
+      true
+    );
+    assert.equal(
+      isExchangeWalletComplete({
+        feeUpfront: true,
+        feeExpected: 9611,
+        feeCharged: 0,
+        unlocked: false,
+        needsUnlock: false,
+      }),
+      true
+    );
+  });
+
+  it("prelive/shim cobram dedução no Exchange (não engolem PATCH)", () => {
+    const prelive = readFileSync(
+      resolve(root, "scripts/arbishield-prelive-events.mjs"),
+      "utf8"
+    );
+    const shim = readFileSync(
+      resolve(root, "scripts/arbishield-serverfn-shim.mjs"),
+      "utf8"
+    );
+    assert.match(prelive, /settle-exchange-cobra-deducao-v6/);
+    assert.match(shim, /settle-exchange-cobra-deducao-v6/);
+    assert.match(prelive, /isExchangeWalletComplete/);
+    assert.match(shim, /isExchangeWalletComplete/);
+    assert.match(prelive, /loadExchangeSettlementPrior/);
+    assert.match(shim, /loadExchangeSettlementPrior/);
+    assert.match(
+      prelive,
+      /não encontrado para settle Exchange \(cobrar dedução\)/
+    );
+    assert.match(
+      shim,
+      /não encontrado para settle Exchange \(cobrar dedução\)/
+    );
+    // não pode engolir erro do PATCH Exchange com catch vazio antes do tx
+    assert.match(prelive, /Exchange incompleto/);
+    assert.match(shim, /Exchange incompleto/);
   });
 });

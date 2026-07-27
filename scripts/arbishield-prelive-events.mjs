@@ -31,6 +31,8 @@ import {
   isCancelledProtectionStatus,
   cancelRefundCents,
   CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+  isExchangeWalletComplete,
+  EXCHANGE_CHARGE_DEDUCTION_RULE,
 } from "./lib/protection-flow-contract.mjs";
 import {
   BETBRA_INPLAY_SYNC_VERSION,
@@ -60,6 +62,7 @@ import {
 void PROTECTION_FLOW_LOCK;
 void PROTECTION_FLOW_CONTRACT_VERSION;
 void CANCEL_FEE_UPFRONT_NO_STAKE_REFUND;
+void EXCHANGE_CHARGE_DEDUCTION_RULE;
 void settlementCreditCents;
 void calcFeeUpfront;
 void layToBackOdd;
@@ -1434,8 +1437,47 @@ async function protectionAlreadyCredited(protectionId) {
   }
 }
 
+/** Prior de Exchange: fee cobrada / unlock — tx zerada NÃO bloqueia cobrança. */
+async function loadExchangeSettlementPrior(protectionId) {
+  const empty = {
+    feeCharged: 0,
+    feeShortfall: 0,
+    unlocked: false,
+    hasTx: false,
+  };
+  if (!protectionId) return empty;
+  try {
+    const rows = await sb(
+      `/rest/v1/wallet_transactions?ref=eq.${encodeURIComponent(protectionId)}&type=eq.protection_settlement&select=id,amount_cents,metadata&order=created_at.desc&limit=20`,
+      { token: SERVICE_KEY }
+    );
+    const list = Array.isArray(rows) ? rows : [];
+    let feeCharged = 0;
+    let feeShortfall = 0;
+    let unlocked = false;
+    let hasTx = false;
+    for (const t of list) {
+      const meta =
+        t.metadata && typeof t.metadata === "object" ? t.metadata : {};
+      if (meta.outcome && String(meta.outcome).toLowerCase() !== "exchange") {
+        continue;
+      }
+      hasTx = true;
+      feeCharged += Math.max(0, nCents(meta.fee_charged_cents));
+      if (!(nCents(meta.fee_charged_cents) > 0) && nCents(t.amount_cents) < 0) {
+        feeCharged += Math.abs(nCents(t.amount_cents));
+      }
+      feeShortfall = Math.max(feeShortfall, nCents(meta.fee_shortfall_cents));
+      if (meta.unlocked_locked === true) unlocked = true;
+    }
+    return { feeCharged, feeShortfall, unlocked, hasTx };
+  } catch {
+    return empty;
+  }
+}
+
 async function creditWalletForSettlement(row, outcome, now) {
-  // Marker: settle-exchange-nunca-reembolso-v1
+  // Marker: settle-exchange-cobra-deducao-v6 · settle-exchange-nunca-reembolso-v1
   const amount = nCents(row.responsibility_cents || row.amount_cents);
   const parts = settlementCreditParts(row, outcome);
   const outcomeNorm = normalizeSettleOutcome(outcome);
@@ -1462,82 +1504,129 @@ async function creditWalletForSettlement(row, outcome, now) {
   if (!row.user_id) {
     return { refunded: 0, credited: 0, skipped: true };
   }
-  // Exchange: processa mesmo com credit=0 (libera locked legado + auditoria)
+  // Exchange: processa mesmo com credit=0 (libera locked + cobra dedução)
   if ((wonArbi || isVoid) && amount <= 0 && credit <= 0) {
     return { refunded: 0, credited: 0, skipped: true };
   }
-  if (await protectionAlreadyCredited(row.id)) {
+  // alreadyCredited genérico NÃO vale para Exchange (tx R$0 não pode bloquear fee)
+  if ((wonArbi || isVoid) && (await protectionAlreadyCredited(row.id))) {
     return { refunded: 0, credited: 0, alreadyCredited: true };
   }
 
   // Ganhou na Exchange: R$ 0 Reembolso; stake_lock cobra só a dedução; destrava sem devolver.
   // fee_upfront: dedução já cobrada na criação — só audita.
+  // Guarda: settle-exchange-cobra-deducao-v6
   if (!wonArbi && !isVoid) {
     const fee = settlementDeductionCents(row);
     const stakeLock = isStakeLockProtection(row);
-    let unlocked = false;
-    let feeCharged = 0;
-    let feeShortfall = 0;
-    try {
-      const prof = await sb(
-        `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents,demo_balance_cents,investor_balance_cents,deduction_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
-        { token: SERVICE_KEY }
-      );
-      const p = Array.isArray(prof) ? prof[0] : null;
-      if (p) {
-        const patch = { updated_at: now };
-        if ((stakeLock || !feeUpfront) && amount > 0) {
-          patch.locked_balance_cents = Math.max(
-            0,
-            nCents(p.locked_balance_cents) - amount
-          );
-          unlocked = true;
-        }
-        // stake_lock: cobra dedução agora (fee_upfront já cobrou na ativação)
-        if (stakeLock && !feeUpfront && fee > 0) {
-          let left = fee;
-          if (balanceType === "DEMO") {
-            const cur = nCents(p.demo_balance_cents);
-            const take = Math.min(cur, left);
-            patch.demo_balance_cents = cur - take;
-            feeCharged = take;
-            left -= take;
-          } else if (balanceType === "INVESTOR") {
-            const cur = nCents(p.investor_balance_cents);
-            const take = Math.min(cur, left);
-            patch.investor_balance_cents = cur - take;
-            feeCharged = take;
-            left -= take;
-          } else {
-            let bal =
-              nCents(p.balance_cents) + nCents(p.reusable_balance_cents);
-            let ded = nCents(p.deduction_balance_cents);
-            patch.reusable_balance_cents = 0;
-            if (bal >= left) {
-              patch.balance_cents = bal - left;
-              patch.deduction_balance_cents = ded;
-              feeCharged = left;
-              left = 0;
-            } else {
-              left -= bal;
-              const takeDed = Math.min(ded, left);
-              patch.balance_cents = 0;
-              patch.deduction_balance_cents = ded - takeDed;
-              feeCharged = bal + takeDed;
-              left -= takeDed;
-            }
-          }
-          feeShortfall = Math.max(0, left);
-        }
-        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
-          method: "PATCH",
-          token: SERVICE_KEY,
-          body: patch,
-        });
-      }
-    } catch (e) {
-      console.warn("[settle] exchange stake_lock:", e?.message || e);
+    const needsUnlock = (stakeLock || !feeUpfront) && amount > 0;
+    const prior = await loadExchangeSettlementPrior(row.id);
+    if (
+      prior.hasTx &&
+      isExchangeWalletComplete({
+        feeUpfront,
+        feeExpected: fee,
+        feeCharged: prior.feeCharged,
+        feeShortfall: prior.feeShortfall,
+        unlocked: prior.unlocked || !needsUnlock,
+        needsUnlock,
+      })
+    ) {
+      return {
+        refunded: 0,
+        credited: 0,
+        alreadyCredited: true,
+        exchangeNoCredit: true,
+        feeChargedCents: prior.feeCharged,
+        feeShortfallCents: prior.feeShortfall,
+        unlocked: prior.unlocked,
+      };
     }
+
+    let unlocked = prior.unlocked;
+    let feeCharged = prior.feeCharged;
+    let feeShortfall = prior.feeShortfall;
+    const feeStillDue = Math.max(0, fee - feeCharged - feeShortfall);
+
+    const prof = await sb(
+      `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents,demo_balance_cents,investor_balance_cents,deduction_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    const p = Array.isArray(prof) ? prof[0] : null;
+    if (!p) {
+      throw new Error(
+        `Perfil ${row.user_id} não encontrado para settle Exchange (cobrar dedução)`
+      );
+    }
+
+    const patch = { updated_at: now };
+    if (needsUnlock && !unlocked) {
+      patch.locked_balance_cents = Math.max(
+        0,
+        nCents(p.locked_balance_cents) - amount
+      );
+      unlocked = true;
+    }
+
+    let chargedNow = 0;
+    // stake_lock: cobra dedução agora (fee_upfront já cobrou na ativação)
+    if (stakeLock && !feeUpfront && feeStillDue > 0) {
+      let left = feeStillDue;
+      if (balanceType === "DEMO") {
+        const cur = nCents(p.demo_balance_cents);
+        const take = Math.min(cur, left);
+        patch.demo_balance_cents = cur - take;
+        chargedNow = take;
+        left -= take;
+      } else if (balanceType === "INVESTOR") {
+        const cur = nCents(p.investor_balance_cents);
+        const take = Math.min(cur, left);
+        patch.investor_balance_cents = cur - take;
+        chargedNow = take;
+        left -= take;
+      } else {
+        let bal = nCents(p.balance_cents) + nCents(p.reusable_balance_cents);
+        let ded = nCents(p.deduction_balance_cents);
+        patch.reusable_balance_cents = 0;
+        if (bal >= left) {
+          patch.balance_cents = bal - left;
+          patch.deduction_balance_cents = ded;
+          chargedNow = left;
+          left = 0;
+        } else {
+          left -= bal;
+          const takeDed = Math.min(ded, left);
+          patch.balance_cents = 0;
+          patch.deduction_balance_cents = ded - takeDed;
+          chargedNow = bal + takeDed;
+          left -= takeDed;
+        }
+      }
+      feeCharged += chargedNow;
+      feeShortfall = Math.max(0, left);
+    }
+
+    // PATCH obrigatório — falha NÃO marca won_exchange
+    await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: patch,
+    });
+
+    const complete = isExchangeWalletComplete({
+      feeUpfront,
+      feeExpected: fee,
+      feeCharged,
+      feeShortfall,
+      unlocked,
+      needsUnlock,
+    });
+    if (!complete) {
+      throw new Error(
+        `Exchange incompleto (proteção ${row.id}): feeExpected=${fee} feeCharged=${feeCharged} shortfall=${feeShortfall} unlocked=${unlocked}`
+      );
+    }
+
     try {
       await sb("/rest/v1/wallet_transactions", {
         method: "POST",
@@ -1545,7 +1634,7 @@ async function creditWalletForSettlement(row, outcome, now) {
         body: {
           user_id: row.user_id,
           type: "protection_settlement",
-          amount_cents: feeCharged > 0 ? -feeCharged : 0,
+          amount_cents: chargedNow > 0 ? -chargedNow : 0,
           ref: row.id,
           metadata: {
             protection_id: row.id,
@@ -1554,13 +1643,14 @@ async function creditWalletForSettlement(row, outcome, now) {
             stake_cents: amount,
             fee_cents: fee,
             fee_charged_cents: feeCharged,
+            fee_charged_now_cents: chargedNow,
             fee_shortfall_cents: feeShortfall,
             billing_model: feeUpfront
               ? "fee_upfront_v1"
               : stakeLock
                 ? "stake_lock_v1"
                 : "legacy_lock",
-            fix: "settle-exchange-nunca-reembolso-v1",
+            fix: EXCHANGE_CHARGE_DEDUCTION_RULE,
             unlocked_locked: unlocked,
             note: feeUpfront
               ? "Ganhou Exchange: taxa já cobrada na criação — sem crédito Reembolso"
@@ -4191,6 +4281,7 @@ async function handleApi(req, res) {
       fix: "create-protection-stake-lock-v6",
       createProtectionModel: "stake_lock_v1",
       cancelRefundGuard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+      exchangeChargeGuard: EXCHANGE_CHARGE_DEDUCTION_RULE,
       protectionFlowContract: PROTECTION_FLOW_CONTRACT_VERSION,
       protectionFlowLock: PROTECTION_FLOW_LOCK,
       inplaySync: BETBRA_INPLAY_SYNC_VERSION,
