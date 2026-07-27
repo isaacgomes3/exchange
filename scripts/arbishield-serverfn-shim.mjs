@@ -106,28 +106,34 @@ try {
   };
   settlementDeductionCents = (row) => {
     const meta = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
-    const raw =
-      row?.platform_deduction_cents ??
-      row?.platform_profit_cents ??
-      meta.fee_charged_cents ??
-      row?.locked_deduction_cents;
-    let fee = Math.max(0, Number(raw) || 0);
-    if (!(fee > 0)) {
-      const stake = Math.max(
-        0,
-        Math.trunc(Number(row?.responsibility_cents || row?.amount_cents || meta.stake_cents) || 0)
-      );
-      let odd = Number(meta.market_odd);
-      if (!(odd > 1.01)) odd = Number(row?.odd || 0);
-      const mt = String(meta.market_type || "").toUpperCase();
-      if (mt === "LAY" && odd > 1.01) odd = odd / (odd - 1);
-      if (stake > 0 && odd > 1.01) {
-        const profit = Math.max(0, Math.round(stake * odd) - stake);
-        const userProfit = Math.round(stake * 0.015);
-        fee = Math.max(0, profit - userProfit);
-      }
-    }
-    return fee;
+    const stake = Math.max(
+      0,
+      Math.trunc(Number(row?.responsibility_cents || row?.amount_cents || meta.stake_cents) || 0)
+    );
+    let odd = Number(meta.market_odd);
+    if (!(odd > 1.01)) odd = Number(row?.odd || 0);
+    const mt = String(meta.market_type || "").toUpperCase();
+    if (mt === "LAY" && odd > 1.01) odd = odd / (odd - 1);
+    const compute = () => {
+      if (!(stake > 0) || !(odd > 1.01)) return 0;
+      const profit = Math.max(0, Math.round(stake * odd) - stake);
+      const commission = Math.round(profit * EXCHANGE_COMMISSION_RATE);
+      const userProfit = Math.round(stake * 0.015);
+      return Math.max(0, profit - commission - userProfit);
+    };
+    const stored = Math.max(
+      0,
+      Number(
+        row?.platform_deduction_cents ??
+          row?.platform_profit_cents ??
+          meta.fee_charged_cents ??
+          row?.locked_deduction_cents
+      ) || 0
+    );
+    // fee_upfront: stored; stake_lock: fórmula vigente (lucro − 4,5% − 1,5%)
+    if (isFeeUpfrontProtection(row)) return stored > 0 ? stored : compute();
+    const computed = compute();
+    return computed > 0 ? computed : stored;
   };
   isStakeLockProtection = (row) => {
     const meta = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
@@ -5965,8 +5971,10 @@ async function creditWalletForSettlement(row, outcome, now) {
         : 0) ||
       parts.fee ||
       0;
-    const commission =
-      typeof settlementExchangeCommissionCents === "function"
+    // Comissão 4,5% só no stake_lock (fee_upfront histórico já pagou fee “cheia”).
+    const commission = feeUpfront
+      ? 0
+      : typeof settlementExchangeCommissionCents === "function"
         ? settlementExchangeCommissionCents(row)
         : 0;
     const stakeLock =

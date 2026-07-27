@@ -7,11 +7,11 @@
   <title>Gestão de Proteções — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="protecoes-exchange-comissao-45-v6e" />
-  <link rel="stylesheet" href="/v2.css?v=protecoes-cancel-stake-lock-v6" />
+  <meta name="arbishield-build" content="protecoes-deducao-menos-45-15-v6f" />
+  <link rel="stylesheet" href="/v2.css?v=protecoes-deducao-menos-45-15-v6f" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=protecoes-cancel-stake-lock-v6"></script>
-  <script src="/v2-shell.js?v=protecoes-cancel-stake-lock-v6" defer></script>
+  <script src="/v2.js?v=protecoes-deducao-menos-45-15-v6f"></script>
+  <script src="/v2-shell.js?v=protecoes-deducao-menos-45-15-v6f" defer></script>
   <style>
     .prot-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 16px; align-items: start; }
     @media (max-width: 960px) {
@@ -414,6 +414,26 @@
       }
       function deductionCentsOf(row) {
         var meta = metaOf(row);
+        // stake_lock ativo: sempre mostra fórmula vigente (lucro − 4,5% − 1,5%)
+        // para não exibir stored antigo (ex.: 96,11 em vez de 91,11).
+        if (!isFeeUpfront(row)) {
+          var stakeLive = nCents(row.responsibility_cents || row.amount_cents);
+          var oddLive = Number(meta.market_odd);
+          if (!(oddLive > 1.01)) oddLive = Number(row.odd || 0);
+          var mtLive = String(meta.market_type || "").toUpperCase();
+          if (mtLive === "LAY" && oddLive > 1.01) {
+            oddLive = oddLive / (oddLive - 1);
+          }
+          if (stakeLive > 0 && oddLive > 1.01) {
+            var profitLive = Math.max(
+              0,
+              Math.round(stakeLive * oddLive) - stakeLive
+            );
+            var commissionLive = Math.round(profitLive * 0.045);
+            var userLive = Math.round(stakeLive * 0.015);
+            return Math.max(0, profitLive - commissionLive - userLive);
+          }
+        }
         var raw =
           row.platform_deduction_cents != null
             ? row.platform_deduction_cents
@@ -433,6 +453,27 @@
           return Math.max(0, nCents(calc.arbiShieldDeductionCents));
         }
         return 0;
+      }
+      function exchangeCommissionCentsOf(row) {
+        var meta = metaOf(row);
+        var raw =
+          row.exchange_fee_cents != null
+            ? row.exchange_fee_cents
+            : meta.exchange_commission_cents != null
+              ? meta.exchange_commission_cents
+              : meta.exchange_fee_cents;
+        if (Number(raw) > 0) return Math.max(0, nCents(raw));
+        var stake = nCents(row.responsibility_cents || row.amount_cents);
+        var odd = Number(meta.market_odd);
+        if (!(odd > 1.01)) odd = Number(row.odd || 0);
+        var mt = String(meta.market_type || "").toUpperCase();
+        if (mt === "LAY" && odd > 1.01) odd = odd / (odd - 1);
+        if (stake > 0 && odd > 1.01) {
+          var profit = Math.max(0, Math.round(stake * odd) - stake);
+          return Math.max(0, Math.round(profit * 0.045));
+        }
+        var gross = Number(meta.gross_profit_cents || 0);
+        return gross > 0 ? Math.max(0, Math.round(gross * 0.045)) : 0;
       }
       function userProfitCentsOf(row) {
         var meta = metaOf(row);
@@ -863,23 +904,7 @@
                 money(lucroUser) +
                 "</b></div>" +
                 '<div class="prot-kv-line"><span>Comissão Exchange (4,5% do lucro)</span><b>' +
-                money(
-                  (function () {
-                    var m = meta;
-                    var raw =
-                      it.exchange_fee_cents != null
-                        ? it.exchange_fee_cents
-                        : m.exchange_commission_cents != null
-                          ? m.exchange_commission_cents
-                          : m.exchange_fee_cents;
-                    if (Number(raw) > 0) return Math.max(0, Number(raw) || 0);
-                    var gross = Number(m.gross_profit_cents || 0);
-                    if (!(gross > 0) && deducao > 0 && lucroUser >= 0) {
-                      gross = deducao + lucroUser;
-                    }
-                    return Math.max(0, Math.round(gross * 0.045));
-                  })()
-                ) +
+                money(exchangeCommissionCentsOf(it)) +
                 "</b></div>" +
               "</div>" +
             "</div>" +

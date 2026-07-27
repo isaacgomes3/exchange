@@ -59,11 +59,15 @@ export function calcFeeUpfront(amountCents: number, odd: number) {
   const o = Number.isFinite(odd) && odd > 1.01 ? odd : 1.01;
   const grossReturnCents = Math.round(coverage * o);
   const grossProfitCents = Math.max(0, grossReturnCents - coverage);
-  const userProfitCents = Math.round(coverage * 0.015);
-  const arbiShieldDeductionCents = Math.max(0, grossProfitCents - userProfitCents);
   const exchangeCommissionCents = Math.max(
     0,
     Math.round(grossProfitCents * 0.045)
+  );
+  const userProfitCents = Math.round(coverage * 0.015);
+  // lucro − 4,5% − 1,5% = dedução
+  const arbiShieldDeductionCents = Math.max(
+    0,
+    grossProfitCents - exchangeCommissionCents - userProfitCents
   );
   return {
     stakeCents: coverage,

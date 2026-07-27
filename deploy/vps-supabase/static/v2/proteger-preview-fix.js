@@ -1,7 +1,8 @@
 /**
  * Override externo do preview Proteger.
  * Roda FORA do IIFE — regrava #preview depois do updatePreview legado.
- * LAY odd L → back L/(L-1); retorno = stake*back; dedução = lucro − 1,5%.
+ * LAY odd L → back L/(L-1); retorno = stake*back;
+ * dedução = lucro − 4,5% − 1,5%.
  */
 (function () {
   function money(cents) {
@@ -42,7 +43,8 @@
     var retorno = Math.round(amountCents * effOdd);
     var lucroBruto = Math.max(0, retorno - amountCents);
     var seuLucro = Math.round(amountCents * 0.015);
-    var deducao = Math.max(0, lucroBruto - seuLucro);
+    var comissaoEx = Math.round(Math.max(0, lucroBruto) * 0.045);
+    var deducao = Math.max(0, lucroBruto - comissaoEx - seuLucro);
 
     var availTxt = "—";
     try {
@@ -83,6 +85,9 @@
       "</b></div>" +
       "<div><span>Retorno casa externa</span><b>" +
       money(retorno) +
+      "</b></div>" +
+      "<div><span>Comissão Exchange (4,5% do lucro)</span><b>" +
+      money(comissaoEx) +
       "</b></div>" +
       "<div><span>Seu lucro (1,5%)</span><b>" +
       money(seuLucro) +

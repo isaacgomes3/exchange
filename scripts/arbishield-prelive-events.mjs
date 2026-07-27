@@ -1531,7 +1531,10 @@ async function creditWalletForSettlement(row, outcome, now) {
   // Guarda: settle-exchange-cobra-deducao-v6
   if (!wonArbi && !isVoid) {
     const fee = settlementDeductionCents(row);
-    const commission = settlementExchangeCommissionCents(row);
+    // Comissão 4,5% só no stake_lock (fee_upfront histórico já pagou fee “cheia”).
+    const commission = feeUpfront
+      ? 0
+      : settlementExchangeCommissionCents(row);
     const stakeLock = isStakeLockProtection(row);
     const needsUnlock = (stakeLock || !feeUpfront) && amount > 0;
     const prior = await loadExchangeSettlementPrior(row.id);

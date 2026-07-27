@@ -262,9 +262,27 @@ export function isExchangeWalletComplete({
 }
 
 /**
- * Dedução ArbiShield (cobrada no PERDEU; calculada/armazenada na criação).
+ * Recalcula dedução vigente a partir de stake/odd:
+ * lucro bruto − comissão 4,5% − lucro usuário 1,5%.
  */
-export function settlementDeductionCents(row) {
+export function computeArbiShieldDeductionCents(row) {
+  const meta =
+    row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  const stake = n(
+    row?.responsibility_cents || row?.amount_cents || meta.stake_cents
+  );
+  let odd = Number(meta.market_odd);
+  if (!(odd > 1.01)) odd = Number(row?.odd || 0);
+  const mt = String(meta.market_type || "").toUpperCase();
+  if (mt === "LAY" && odd > 1.01) odd = odd / (odd - 1);
+  if (!(stake > 0) || !(odd > 1.01)) return 0;
+  const profit = Math.max(0, Math.round(stake * odd) - stake);
+  const commission = exchangeCommissionCentsFromProfit(profit);
+  const userProfit = Math.round(stake * 0.015);
+  return Math.max(0, profit - commission - userProfit);
+}
+
+function storedPlatformDeductionCents(row) {
   const meta =
     row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
   const raw =
@@ -275,22 +293,24 @@ export function settlementDeductionCents(row) {
         : meta.fee_charged_cents != null
           ? meta.fee_charged_cents
           : row?.locked_deduction_cents;
-  let fee = Math.max(0, n(raw));
-  if (!(fee > 0)) {
-    const stake = n(
-      row?.responsibility_cents || row?.amount_cents || meta.stake_cents
-    );
-    let odd = Number(meta.market_odd);
-    if (!(odd > 1.01)) odd = Number(row?.odd || 0);
-    const mt = String(meta.market_type || "").toUpperCase();
-    if (mt === "LAY" && odd > 1.01) odd = odd / (odd - 1);
-    if (stake > 0 && odd > 1.01) {
-      const profit = Math.max(0, Math.round(stake * odd) - stake);
-      const userProfit = Math.round(stake * 0.015);
-      fee = Math.max(0, profit - userProfit);
-    }
+  return Math.max(0, n(raw));
+}
+
+/**
+ * Dedução ArbiShield (cobrada no PERDEU).
+ * - fee_upfront histórico: respeita stored (já cobrado na criação).
+ * - stake_lock: sempre fórmula vigente lucro − 4,5% − 1,5%
+ *   (ignora stored antigo 9611 para não somar comissão em dobro).
+ */
+export function settlementDeductionCents(row) {
+  if (isFeeUpfrontProtection(row)) {
+    const stored = storedPlatformDeductionCents(row);
+    if (stored > 0) return stored;
+    return computeArbiShieldDeductionCents(row);
   }
-  return fee;
+  const computed = computeArbiShieldDeductionCents(row);
+  if (computed > 0) return computed;
+  return storedPlatformDeductionCents(row);
 }
 
 /**
@@ -372,8 +392,13 @@ export function settlementStatusForOutcome(outcome) {
  * fee_upfront / dedução sobre odd BACK efetiva.
  * amountCents = cobertura (LAY=responsabilidade · BACK=stake).
  *
- * Comissão Exchange (INSERT): 4,5% sobre o lucro bruto da aposta.
- * Não altera a fórmula da dedução ArbiShield (lucro − 1,5%).
+ * Fórmula (confirmada):
+ *   lucro bruto
+ *   − comissão Exchange 4,5% do lucro
+ *   − lucro usuário 1,5% da cobertura
+ *   = dedução ArbiShield
+ *
+ * Ex.: lucro 111,11 → comissão 5,00 → usuário 15,00 → dedução 91,11
  */
 export const EXCHANGE_COMMISSION_RATE = 0.045;
 
@@ -424,13 +449,14 @@ export function calcFeeUpfront(amountCents, odd) {
   const o = Number.isFinite(odd) && odd > 1.01 ? odd : 1.01;
   const grossReturnCents = Math.round(coverage * o);
   const grossProfitCents = Math.max(0, grossReturnCents - coverage);
-  const userProfitCents = Math.round(coverage * 0.015);
-  const arbiShieldDeductionCents = Math.max(
-    0,
-    grossProfitCents - userProfitCents
-  );
   const exchangeCommissionCents =
     exchangeCommissionCentsFromProfit(grossProfitCents);
+  const userProfitCents = Math.round(coverage * 0.015);
+  // lucro − 4,5% − 1,5% = dedução
+  const arbiShieldDeductionCents = Math.max(
+    0,
+    grossProfitCents - exchangeCommissionCents - userProfitCents
+  );
   return {
     stakeCents: coverage,
     responsibilityCents: coverage,

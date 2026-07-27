@@ -210,12 +210,14 @@ describe("ativação — 1 op/evento e antes do kickoff", () => {
 });
 
 describe("cálculo dedução", () => {
-  it("LAY @ 20 resp. R$1000 → dedução conhecida", () => {
+  it("LAY @ 20 resp. R$1000 → dedução = lucro − 4,5% − 1,5%", () => {
     const c = calcLay(100_000, 20);
     assert.equal(c.input_mode, "responsabilidade");
     assert.equal(c.odd, 20);
     assert.equal(c.billing_model, "stake_lock_v1");
-    assert.equal(c.arbiShieldDeductionCents, 3763);
+    // lucro 5263 − comissão 237 − usuário 1500 = 3526
+    assert.equal(c.arbiShieldDeductionCents, 3526);
+    assert.equal(c.exchangeCommissionCents, 237);
   });
 
   it("BACK usa stake direto", () => {
@@ -225,6 +227,8 @@ describe("cálculo dedução", () => {
       c.arbiShieldDeductionCents,
       calcFeeUpfront(10_000, 2).arbiShieldDeductionCents
     );
+    // lucro 10000 − 450 − 150 = 9400
+    assert.equal(c.arbiShieldDeductionCents, 9400);
   });
 });
 
@@ -232,14 +236,15 @@ describe("settle — stake_lock vigente", () => {
   const row = {
     amount_cents: 100_000,
     responsibility_cents: 100_000,
-    platform_deduction_cents: 3763,
+    platform_deduction_cents: 3526,
     metadata: { billing_model: "stake_lock_v1", stake_lock: true },
   };
 
   it("detecta stake_lock (não fee_upfront)", () => {
     assert.equal(isStakeLockProtection(row), true);
     assert.equal(isFeeUpfrontProtection(row), false);
-    assert.equal(settlementDeductionCents(row), 3763);
+    // sem odd → cai no stored
+    assert.equal(settlementDeductionCents(row), 3526);
   });
 
   it("Ganhou na ArbiShield credita só o stake → Reembolso", () => {
@@ -351,23 +356,23 @@ describe("cancel — fee_upfront nunca devolve stake", () => {
   });
 
   it("fee_upfront explícito → só dedução (caso Carlos LAY 1000 @10)", () => {
-    const fee = calcLay(100_000, 10).arbiShieldDeductionCents;
-    assert.equal(fee, 9611);
+    // Histórico: stored 9611 (fórmula antiga lucro−1,5%). Cancel devolve o stored.
+    const feeStored = 9611;
     const row = {
       amount_cents: 100_000,
       responsibility_cents: 100_000,
-      platform_deduction_cents: fee,
+      platform_deduction_cents: feeStored,
       odd: 10,
       metadata: {
         billing_model: "fee_upfront_v1",
         fee_upfront: true,
         market_type: "LAY",
-        fee_charged_cents: fee,
+        fee_charged_cents: feeStored,
       },
     };
     assert.equal(isFeeUpfrontProtection(row), true);
     assert.equal(isStakeLockProtection(row), false);
-    assert.equal(cancelRefundCents(row), fee);
+    assert.equal(cancelRefundCents(row), feeStored);
   });
 
   it("só fee_charged_cents (sem billing_model) → ainda fee, não stake", () => {
@@ -393,26 +398,44 @@ describe("cancel — fee_upfront nunca devolve stake", () => {
 });
 
 describe("Comissão Exchange 4,5% do lucro", () => {
-  it("taxa 4,5% e não altera dedução (lucro − 1,5%)", () => {
+  it("dedução = lucro − 4,5% − 1,5% (ex.: 111,11 → 91,11)", () => {
     assert.equal(EXCHANGE_COMMISSION_RATE, 0.045);
     const c = calcLay(100_000, 10);
     // lucro bruto LAY 1000 @10 → backOdd 1.111… → profit 11111
     assert.equal(c.grossProfitCents, 11111);
     assert.equal(c.userProfitCents, 1500);
-    assert.equal(c.arbiShieldDeductionCents, 9611); // inalterado
     assert.equal(c.exchangeCommissionCents, Math.round(11111 * 0.045)); // 500
     assert.equal(c.exchangeFeeCents, c.exchangeCommissionCents);
+    // 11111 − 500 − 1500 = 9111
+    assert.equal(c.arbiShieldDeductionCents, 9111);
     assert.equal(
       exchangeCommissionCentsFromProfit(11111),
       c.exchangeCommissionCents
     );
   });
 
+  it("stake_lock com stored antigo 9611 recalcula 9111 no settle", () => {
+    const row = {
+      amount_cents: 100_000,
+      responsibility_cents: 100_000,
+      platform_deduction_cents: 9611,
+      odd: 10,
+      metadata: {
+        billing_model: "stake_lock_v1",
+        stake_lock: true,
+        market_type: "LAY",
+        market_odd: 10,
+      },
+    };
+    assert.equal(settlementDeductionCents(row), 9111);
+    assert.equal(settlementExchangeCommissionCents(row), 500);
+  });
+
   it("settlementExchangeCommissionCents lê exchange_fee_cents / meta", () => {
     assert.equal(
       settlementExchangeCommissionCents({
         exchange_fee_cents: 500,
-        platform_deduction_cents: 9611,
+        platform_deduction_cents: 9111,
         metadata: { billing_model: "stake_lock_v1" },
       }),
       500
