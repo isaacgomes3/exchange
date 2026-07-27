@@ -134,6 +134,9 @@ describe("contrato travado — metadados", () => {
     assert.match(ui, /isMatchKickoffPassed/);
     assert.match(ui, /occupiedMatchIds/);
     assert.match(ui, /1 proteção por evento/);
+    assert.match(ui, /btnAmountMax/);
+    assert.match(ui, /applyMaxAmount/);
+    assert.match(ui, /currentEventMaxCents/);
   });
 
   it("carteira do cliente exibe Saldo Reembolso", () => {

@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <meta name="arbishield-build" content="proteger-1op-antes-kickoff-v6" />
-  <meta name="arbishield-features" content="proteger-stake-lock-v6-1op-kickoff proteger-espelho-readonly-v13" />
+  <meta name="arbishield-build" content="proteger-max-50-campo-v6" />
+  <meta name="arbishield-features" content="proteger-stake-lock-v6-max-btn proteger-espelho-readonly-v13" />
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=proteger-1op-antes-kickoff-v6" />
+  <link rel="stylesheet" href="/v2.css?v=proteger-max-50-campo-v6" />
   <style>
     .term-score {
       display: inline-flex;
@@ -34,10 +34,40 @@
       color: rgba(255, 255, 255, 0.7);
       letter-spacing: 0.04em;
     }
+    .amount-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: stretch;
+    }
+    .amount-row input {
+      width: 100%;
+      min-width: 0;
+    }
+    .btn-amount-max {
+      border: 1px solid rgba(201, 242, 35, 0.55);
+      background: rgba(201, 242, 35, 0.12);
+      color: #c9f223;
+      font-weight: 800;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      border-radius: 10px;
+      padding: 0 12px;
+      white-space: nowrap;
+      cursor: pointer;
+      min-width: 4.5rem;
+    }
+    .btn-amount-max:hover {
+      background: rgba(201, 242, 35, 0.22);
+    }
+    .btn-amount-max:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=proteger-1op-antes-kickoff-v6"></script>
-  <script src="/v2-shell.js?v=proteger-1op-antes-kickoff-v6" defer></script>
+  <script src="/v2.js?v=proteger-max-50-campo-v6"></script>
+  <script src="/v2-shell.js?v=proteger-max-50-campo-v6" defer></script>
 </head>
 <body data-shell="app" data-active="proteger">
   <div class="page-head term-head">
@@ -121,7 +151,12 @@
       <p class="hint" id="drawerBetLink" hidden style="margin-top:8px"></p>
       <div class="field">
         <label for="amount" id="amountLabel">Valor (R$)</label>
-        <input id="amount" type="number" min="1" step="0.01" inputmode="decimal" placeholder="0,00" />
+        <div class="amount-row">
+          <input id="amount" type="number" min="1" step="0.01" inputmode="decimal" placeholder="0,00" />
+          <button type="button" class="btn-amount-max" id="btnAmountMax" title="Preenche o máximo permitido neste evento (50% do saldo restante)">
+            MAX
+          </button>
+        </div>
         <p class="hint" id="amountHint" style="margin:6px 0 0">LAY = responsabilidade · BACK = stake</p>
       </div>
       <div class="field">
@@ -271,6 +306,44 @@
       /** Máx. 50% do restante da carteira Apostador (contrato stake_lock_v1). */
       function maxStakeLockCents(avail) {
         return Math.floor(Math.max(0, Number(avail) || 0) * 0.5);
+      }
+      /** Teto efetivo neste drawer: 50% do saldo, limitado pela liquidez do mercado/jogo. */
+      function currentEventMaxCents() {
+        var balTypeEl = document.getElementById("balanceType");
+        var avail = available(balTypeEl ? balTypeEl.value : "REAL");
+        var maxLock = maxStakeLockCents(avail);
+        var liqCap = Infinity;
+        if (state.selected && state.selected.match) {
+          var left = liqLeft(state.selected.match);
+          if (Number.isFinite(left) && left >= 0) liqCap = left;
+        }
+        var capped = Math.min(maxLock, liqCap);
+        return Math.max(0, Math.floor(capped));
+      }
+      function syncMaxButton() {
+        var btn = document.getElementById("btnAmountMax");
+        if (!btn) return;
+        var maxCents = currentEventMaxCents();
+        var label = maxCents > 0 ? "MAX · " + money(maxCents) : "MAX";
+        btn.textContent = label;
+        btn.disabled = !(maxCents > 0);
+        btn.title =
+          maxCents > 0
+            ? "Máximo neste evento (50% do Apostador restante): " + money(maxCents)
+            : "Sem saldo disponível para travar";
+      }
+      function applyMaxAmount() {
+        showErr("");
+        var maxCents = currentEventMaxCents();
+        if (!(maxCents > 0)) {
+          showErr("Sem saldo disponível para o máximo neste evento.");
+          return;
+        }
+        var inp = document.getElementById("amount");
+        if (!inp) return;
+        // input type=number usa ponto decimal
+        inp.value = (maxCents / 100).toFixed(2);
+        updatePreview();
       }
       function liqLeft(m) {
         // Legado Ye: soma liquidez restante dos mercados; senão max−used da partida
@@ -422,15 +495,21 @@
         var lab = document.getElementById("amountLabel");
         var hint = document.getElementById("amountHint");
         var inp = document.getElementById("amount");
+        var maxCents = currentEventMaxCents();
         if (lab) {
           lab.textContent = isLay
             ? "Responsabilidade (R$)"
             : "Stake (R$)";
         }
         if (hint) {
-          hint.textContent = isLay
+          var base = isLay
             ? "LAY · informe a responsabilidade da casa (não o stake)"
             : "BACK · informe o stake da casa";
+          hint.textContent =
+            base +
+            " · máx. neste evento: " +
+            money(maxCents) +
+            " (50% do restante)";
         }
         if (inp) {
           inp.placeholder = isLay ? "Responsabilidade 0,00" : "Stake 0,00";
@@ -440,7 +519,10 @@
               ? "No LAY usamos responsabilidade (= stake × (odd − 1))"
               : "No BACK usamos o stake da aposta a favor"
           );
+          if (maxCents > 0) inp.max = String(maxCents / 100);
+          else inp.removeAttribute("max");
         }
+        syncMaxButton();
       }
 
       function updatePreview() {
@@ -602,6 +684,13 @@
         document.getElementById(id).addEventListener("input", updatePreview);
         document.getElementById(id).addEventListener("change", updatePreview);
       });
+      var btnMax = document.getElementById("btnAmountMax");
+      if (btnMax) {
+        btnMax.onclick = function (e) {
+          e.preventDefault();
+          applyMaxAmount();
+        };
+      }
       document.getElementById("odd").addEventListener("keydown", function (e) {
         e.preventDefault();
       });
