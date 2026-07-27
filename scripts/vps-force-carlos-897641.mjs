@@ -1,21 +1,27 @@
 #!/usr/bin/env node
 /**
- * FORCE reparo Carlos — stake do último jogo não voltou.
+ * ⛔ SUPERSEDED — NÃO USE para o bilhete Sport×Cuiabá (odd 32).
  *
- * Sempre deixa:
- *   Apostador = R$ 8.976,41  (8.067,52 + 1.000 − 91,11)
- *   Congelado = R$ 0,00
- *   Reembolso = R$ 0,00 (Exchange)
+ * Esse alvo R$ 8.976,41 (= +1000 − 91,11) era do caso @odd 10.
+ * Bilhete atual: LAY 1000 @32 → fee R$15,81 → Apostador R$ 9.051,71.
  *
- * Fingerprint do print: Desafio R$ 2.272,11
+ * Use:
+ *   FIX=1 node scripts/vps-force-carlos-905171.mjs
+ *   bash scripts/vps-force-carlos-905171.sh
  *
- * Na VPS:
- *   node scripts/vps-force-carlos-897641.mjs
- *   FIX=1 node scripts/vps-force-carlos-897641.mjs
- *   USER_ID=... FIX=1 node scripts/vps-force-carlos-897641.mjs
+ * Override só se souber o que está fazendo:
+ *   ALLOW_ODD10_TARGET=1 FIX=1 node scripts/vps-force-carlos-897641.mjs
  */
 import fs from "node:fs";
 import path from "node:path";
+
+if (process.env.ALLOW_ODD10_TARGET !== "1") {
+  console.error("⛔ BLOQUEADO: vps-force-carlos-897641 está supersedido.");
+  console.error("   Sport×Cuiabá é odd 32 → use vps-force-carlos-905171 (R$ 9.051,71).");
+  console.error("   curl .../vps-force-carlos-905171.sh → bash");
+  console.error("   (override: ALLOW_ODD10_TARGET=1)");
+  process.exit(2);
+}
 
 const FIX = process.env.FIX === "1" || process.env.FIX === "true";
 const USER_ID_ENV = String(process.env.USER_ID || "").trim();

@@ -275,13 +275,21 @@ async function main() {
   const locked = n(user.locked_balance_cents);
   const BASE_HINT = 806_752; // print histórico pré-jogo
   const CORRECT_FROM_BASE = BASE_HINT + stake - fee; // 905171
+  const WRONG_ODD10_TARGETS = [897_641, 898_252, 897_141];
 
   let nextBal = bal;
   let nextLocked = locked;
   let delta = 0;
   let note = "";
 
-  if (locked > 0) {
+  // Print atual: Congelado 0 + Apostador 8.976,41 (fee odd10 aplicada por engano)
+  // Sempre corrige para 9.051,71 antes de qualquer outro ramo.
+  if (locked === 0 && WRONG_ODD10_TARGETS.includes(bal) && bal !== CORRECT_FROM_BASE) {
+    nextBal = CORRECT_FROM_BASE;
+    nextLocked = 0;
+    delta = nextBal - bal;
+    note = `corrige overcharge odd10→odd32: ${money(bal)} → ${money(CORRECT_FROM_BASE)} (+${money(delta)})`;
+  } else if (locked > 0) {
     const take = Math.min(locked, stake);
     const feeTake = take === stake ? fee : Math.round((fee * take) / stake);
     nextBal = bal + take - feeTake;
