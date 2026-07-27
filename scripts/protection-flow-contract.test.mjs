@@ -137,6 +137,8 @@ describe("contrato travado — metadados", () => {
     assert.match(ui, /btnAmountMax/);
     assert.match(ui, /applyMaxAmount/);
     assert.match(ui, /currentEventMaxCents/);
+    assert.match(ui, /Máx\. efetivo neste evento/);
+    assert.match(ui, /limitado pela liquidez/);
   });
 
   it("carteira do cliente exibe Saldo Reembolso", () => {

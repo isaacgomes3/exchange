@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <meta name="arbishield-build" content="proteger-max-50-btn-v6b" />
+  <meta name="arbishield-build" content="proteger-max-efetivo-v6c" />
   <meta name="arbishield-features" content="proteger-stake-lock-v6-max-btn-lime proteger-espelho-readonly-v13" />
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=proteger-max-50-btn-v6b" />
+  <link rel="stylesheet" href="/v2.css?v=proteger-max-efetivo-v6c" />
   <style>
     .term-score {
       display: inline-flex;
@@ -68,8 +68,8 @@
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=proteger-max-50-btn-v6b"></script>
-  <script src="/v2-shell.js?v=proteger-max-50-btn-v6b" defer></script>
+  <script src="/v2.js?v=proteger-max-efetivo-v6c"></script>
+  <script src="/v2-shell.js?v=proteger-max-efetivo-v6c" defer></script>
 </head>
 <body data-shell="app" data-active="proteger">
   <div class="page-head term-head">
@@ -155,7 +155,7 @@
         <label for="amount" id="amountLabel">Valor (R$)</label>
         <div class="amount-row">
           <input id="amount" type="number" min="1" step="0.01" inputmode="decimal" placeholder="0,00" />
-          <button type="button" class="btn-amount-max" id="btnAmountMax" title="Preenche o máximo permitido neste evento (50% do saldo restante)">
+          <button type="button" class="btn-amount-max" id="btnAmountMax" title="Preenche o máximo efetivo neste evento (50% do Apostador ∩ liquidez)">
             MAX
           </button>
         </div>
@@ -331,7 +331,8 @@
         btn.disabled = !(maxCents > 0);
         btn.title =
           maxCents > 0
-            ? "Máximo neste evento (50% do Apostador restante): " + money(maxCents)
+            ? "Máximo efetivo neste evento (50% do Apostador ∩ liquidez): " +
+              money(maxCents)
             : "Sem saldo disponível para travar";
       }
       function applyMaxAmount() {
@@ -507,11 +508,18 @@
           var base = isLay
             ? "LAY · informe a responsabilidade da casa (não o stake)"
             : "BACK · informe o stake da casa";
+          var availHint = available(
+            document.getElementById("balanceType")
+              ? document.getElementById("balanceType").value
+              : "REAL"
+          );
+          var max50 = maxStakeLockCents(availHint);
+          var limTxt =
+            maxCents > 0 && maxCents < max50
+              ? " (limitado pela liquidez)"
+              : " (50% do restante)";
           hint.textContent =
-            base +
-            " · máx. neste evento: " +
-            money(maxCents) +
-            " (50% do restante)";
+            base + " · máx. neste evento: " + money(maxCents) + limTxt;
         }
         if (inp) {
           inp.placeholder = isLay ? "Responsabilidade 0,00" : "Stake 0,00";
@@ -548,6 +556,7 @@
         var deducao = Math.max(0, lucroBruto - seuLucro);
         var avail = available(document.getElementById("balanceType").value);
         var maxLock = maxStakeLockCents(avail);
+        var maxEff = currentEventMaxCents();
         var valorLabel = mt === "LAY" ? "Responsabilidade" : "Stake";
         var extraLine = "";
         if (mt === "LAY" && amountCents > 0 && layOdd > 1.01) {
@@ -564,6 +573,17 @@
           extraLine =
             "<div><span>Lucro bruto (casa)</span><b>" + money(lucroBruto) + "</b></div>";
         }
+        var maxLines =
+          "<div><span>Máx. 50% do Apostador restante</span><b>" +
+          money(maxLock) +
+          "</b></div>" +
+          "<div><span>Máx. efetivo neste evento</span><b>" +
+          money(maxEff) +
+          "</b></div>";
+        if (maxEff < maxLock) {
+          maxLines +=
+            "<div><span>Limitado por</span><b>liquidez do mercado</b></div>";
+        }
         document.getElementById("preview").innerHTML =
           "<div><span>Tipo</span><b>" + mt + "</b></div>" +
           "<div><span>" + valorLabel + " (trava)</span><b>" + money(amountCents) + "</b></div>" +
@@ -572,7 +592,7 @@
           "<div><span>Seu lucro (1,5%)</span><b>" + money(seuLucro) + "</b></div>" +
           "<div><span>Dedução se ganhar Exchange</span><b>" + money(deducao) + "</b></div>" +
           "<div><span>Saldo disponível agora</span><b>" + money(avail) + "</b></div>" +
-          "<div><span>Máx. neste evento (50% do restante)</span><b>" + money(maxLock) + "</b></div>";
+          maxLines;
       }
 
       function marketBetLink(match, market) {
