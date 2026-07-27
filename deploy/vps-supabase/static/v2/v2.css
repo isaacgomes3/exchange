@@ -617,10 +617,12 @@ th {
 }
 td strong { display: block; }
 td small { color: var(--muted); font-size: 11px; }
-/* Nome / valor em listas admin (ex.: Transações) */
+/* Nome / valor em listas admin (ex.: Transações) — vence .ops-table td muted */
+.ops-table td.ops-cell-emphasis,
+.ops-table td.ops-cell-emphasis strong,
 td.ops-cell-emphasis,
 td.ops-cell-emphasis strong {
-  color: #ffffff;
+  color: #ffffff !important;
   font-weight: 800;
   letter-spacing: 0.01em;
 }
