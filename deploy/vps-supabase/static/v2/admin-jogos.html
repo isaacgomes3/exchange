@@ -2095,15 +2095,15 @@
             var ids = Object.keys(adminIds);
             var nameMap = {};
             if (ids.length) {
+              // profiles-sem-coluna-email-v1 — email só em auth.users
               var profs = await restAuth(
-                "profiles?select=id,full_name,email&id=in.(" +
+                "profiles?select=id,full_name&id=in.(" +
                   ids.map(encodeURIComponent).join(",") +
                   ")"
               );
               (profs || []).forEach(function (p) {
                 var label =
                   (p.full_name && String(p.full_name).trim()) ||
-                  (p.email && String(p.email).trim()) ||
                   String(p.id).slice(0, 8);
                 nameMap[String(p.id)] = label;
               });

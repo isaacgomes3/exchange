@@ -43,3 +43,17 @@ Arquivos cobertos (lista mínima):
 
 Alterar qualquer item acima exige pedido explícito + atualização dos testes do contrato.
 <!-- END:protection-flow-lock -->
+
+<!-- BEGIN:profiles-schema-lock -->
+# Schema `profiles` — sem coluna `email`
+
+**Marker:** `profiles-sem-coluna-email-v1`  
+**Fato:** a tabela `profiles` **não** tem `email` (fica em `auth.users`).  
+**Erro clássico:** `column profiles.email does not exist` (42703) — quebra scripts de repair/hotfix antes de qualquer PATCH.
+
+**Regras:**
+- Nunca `select=...email` nem `email=eq.` em `/rest/v1/profiles`.
+- Nunca embed `profiles(...,email)`.
+- Buscar usuário por `id`, `full_name` + saldo, ou `auth/v1/admin/users` (email).
+- Helpers: `scripts/lib/profiles-schema.mjs` · teste: `scripts/profiles-schema.test.mjs` (incluído em `npm test`).
+<!-- END:profiles-schema-lock -->

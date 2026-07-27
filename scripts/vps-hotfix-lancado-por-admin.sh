@@ -183,9 +183,10 @@ for m in matches:
 name_map = {}
 if admin_ids:
     ids = ",".join(urllib.request.quote(i, safe="") for i in admin_ids)
-    profs = get(f"/rest/v1/profiles?select=id,full_name,email&id=in.({ids})")
+    # profiles-sem-coluna-email-v1
+    profs = get(f"/rest/v1/profiles?select=id,full_name&id=in.({ids})")
     for p in profs or []:
-        label = (p.get("full_name") or "").strip() or (p.get("email") or "").strip() or str(p.get("id"))[:8]
+        label = (p.get("full_name") or "").strip() or str(p.get("id"))[:8]
         name_map[str(p["id"])] = label
 
 updated = 0
@@ -224,10 +225,11 @@ for d in desafios:
     d_ids.add(str(cid))
 for i in d_ids - set(name_map):
     try:
-        profs = get(f"/rest/v1/profiles?select=id,full_name,email&id=eq.{urllib.request.quote(i, safe='')}&limit=1")
+        # profiles-sem-coluna-email-v1
+        profs = get(f"/rest/v1/profiles?select=id,full_name&id=eq.{urllib.request.quote(i, safe='')}&limit=1")
         p = (profs or [None])[0]
         if p:
-            name_map[str(p["id"])] = (p.get("full_name") or "").strip() or (p.get("email") or "").strip() or i[:8]
+            name_map[str(p["id"])] = (p.get("full_name") or "").strip() or i[:8]
     except Exception:
         name_map[i] = i[:8]
 d_upd = 0

@@ -936,8 +936,9 @@ async function enrichDesafiosWithCreatorNames(rows) {
   const nameMap = {};
   if (idList.length && SERVICE_KEY) {
     try {
+      // profiles-sem-coluna-email-v1 — email só em auth.users
       const profs = await sb(
-        `/rest/v1/profiles?select=id,full_name,email&id=in.(${idList
+        `/rest/v1/profiles?select=id,full_name&id=in.(${idList
           .map(encodeURIComponent)
           .join(",")})`,
         { token: SERVICE_KEY }
@@ -945,7 +946,6 @@ async function enrichDesafiosWithCreatorNames(rows) {
       for (const p of Array.isArray(profs) ? profs : []) {
         nameMap[String(p.id)] =
           (p.full_name && String(p.full_name).trim()) ||
-          (p.email && String(p.email).trim()) ||
           String(p.id).slice(0, 8);
       }
     } catch {
@@ -1328,21 +1328,20 @@ async function requireAdminToken(token) {
   return userId;
 }
 
-/** Nome amigável do admin (full_name → email → id curto). */
+/** Nome amigável do admin (full_name → id curto). profiles-sem-coluna-email-v1 */
 async function resolveAdminDisplayName(adminId) {
   const id = String(adminId || "").trim();
   if (!id) return null;
   let name = id.slice(0, 8);
   try {
     const profRows = await sb(
-      `/rest/v1/profiles?select=full_name,email&id=eq.${encodeURIComponent(id)}&limit=1`,
+      `/rest/v1/profiles?select=full_name&id=eq.${encodeURIComponent(id)}&limit=1`,
       { token: SERVICE_KEY }
     );
     const prof = Array.isArray(profRows) ? profRows[0] : null;
     if (prof) {
       name =
         (prof.full_name && String(prof.full_name).trim()) ||
-        (prof.email && String(prof.email).trim()) ||
         name;
     }
   } catch {

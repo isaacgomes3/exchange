@@ -637,20 +637,20 @@ async function sb(path, { token, method = "GET", body } = {}) {
 }
 
 /** Nome amigável do admin (full_name → email → id curto). */
+/** profiles-sem-coluna-email-v1 — email só em auth.users */
 async function resolveAdminDisplayName(adminId) {
   const id = String(adminId || "").trim();
   if (!id) return null;
   let name = id.slice(0, 8);
   try {
     const profRows = await sb(
-      `/rest/v1/profiles?select=full_name,email&id=eq.${encodeURIComponent(id)}&limit=1`,
+      `/rest/v1/profiles?select=full_name&id=eq.${encodeURIComponent(id)}&limit=1`,
       { token: SERVICE_KEY }
     );
     const prof = Array.isArray(profRows) ? profRows[0] : null;
     if (prof) {
       name =
         (prof.full_name && String(prof.full_name).trim()) ||
-        (prof.email && String(prof.email).trim()) ||
         name;
     }
   } catch {
@@ -680,8 +680,9 @@ async function enrichDesafiosWithCreatorNames(rows) {
   const nameMap = {};
   if (idList.length) {
     try {
+      // profiles-sem-coluna-email-v1
       const profs = await sb(
-        `/rest/v1/profiles?select=id,full_name,email&id=in.(${idList
+        `/rest/v1/profiles?select=id,full_name&id=in.(${idList
           .map(encodeURIComponent)
           .join(",")})`,
         { token: SERVICE_KEY }
@@ -689,7 +690,6 @@ async function enrichDesafiosWithCreatorNames(rows) {
       for (const p of Array.isArray(profs) ? profs : []) {
         nameMap[String(p.id)] =
           (p.full_name && String(p.full_name).trim()) ||
-          (p.email && String(p.email).trim()) ||
           String(p.id).slice(0, 8);
       }
     } catch {
@@ -4197,8 +4197,9 @@ async function previewDesafioSinal(token, body) {
 async function listActivePartnerRounds(token) {
 
   await requireFinanceAdmin(token);
+  // profiles-sem-coluna-email-v1 — embed sem email
   const rounds = await sb(
-    `/rest/v1/partner_rounds?select=*,profiles(full_name,email)&status=eq.active&order=created_at.desc&limit=500`,
+    `/rest/v1/partner_rounds?select=*,profiles(full_name)&status=eq.active&order=created_at.desc&limit=500`,
     { token: SERVICE_KEY }
   ).catch(() =>
     sb(
@@ -6771,17 +6772,17 @@ async function settleMatch(token, body) {
   }
 
   const adminId = requireUserId(token);
+  // profiles-sem-coluna-email-v1
   let settledByName = String(adminId).slice(0, 8);
   try {
     const profRows = await sb(
-      `/rest/v1/profiles?select=full_name,email&id=eq.${encodeURIComponent(adminId)}&limit=1`,
+      `/rest/v1/profiles?select=full_name&id=eq.${encodeURIComponent(adminId)}&limit=1`,
       { token: SERVICE_KEY }
     );
     const prof = Array.isArray(profRows) ? profRows[0] : null;
     if (prof) {
       settledByName =
         (prof.full_name && String(prof.full_name).trim()) ||
-        (prof.email && String(prof.email).trim()) ||
         settledByName;
     }
   } catch {

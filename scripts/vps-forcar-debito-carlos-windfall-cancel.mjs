@@ -121,17 +121,7 @@ async function findUser() {
     return p;
   }
 
-  // 1) profiles.email (se a coluna existir)
-  try {
-    const byEmail = await sb(
-      `/rest/v1/profiles?email=eq.${encodeURIComponent(EMAIL)}&select=id,full_name,email,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents,desafio_balance_cents&limit=3`
-    );
-    if (Array.isArray(byEmail) && byEmail[0]) return byEmail[0];
-  } catch {
-    /* coluna email pode não existir */
-  }
-
-  // 2) auth.users → id
+  // profiles-sem-coluna-email-v1 — email só em auth.users
   try {
     const auth = await sb(
       `/auth/v1/admin/users?page=1&per_page=200`,
@@ -151,7 +141,7 @@ async function findUser() {
     console.warn("  auth admin users:", e.message || e);
   }
 
-  // 3) nome + saldo esperado (espelho mostra Carlos Roberto com R$ 10.971,41)
+  // 2) nome + saldo esperado (espelho mostra Carlos Roberto com R$ 10.971,41)
   const byName = await sb(
     `/rest/v1/profiles?full_name=ilike.*${encodeURIComponent(NAME)}*&select=id,full_name,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents,desafio_balance_cents&limit=20`
   );

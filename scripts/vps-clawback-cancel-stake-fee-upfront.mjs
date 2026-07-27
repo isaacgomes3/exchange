@@ -154,21 +154,31 @@ function feeExpected(row, txs) {
 
 async function resolveUserId() {
   if (USER_ID_ENV) return USER_ID_ENV;
-  // auth.users via profiles email se existir
-  const byEmail = await sb(
-    `/rest/v1/profiles?select=id,full_name,balance_cents,locked_balance_cents,deduction_balance_cents&email=eq.${encodeURIComponent(EMAIL)}&limit=3`
-  ).catch(() => null);
-  if (Array.isArray(byEmail) && byEmail[0]) return String(byEmail[0].id);
+
+  // profiles-sem-coluna-email-v1 — email só em auth.users
+  try {
+    const auth = await sb(
+      `/auth/v1/admin/users?page=1&per_page=200`,
+      { headers: { Authorization: `Bearer ${SERVICE_KEY}` } }
+    );
+    const users = auth?.users || (Array.isArray(auth) ? auth : []);
+    const hit = users.find(
+      (u) => String(u.email || "").toLowerCase() === String(EMAIL || "").toLowerCase()
+    );
+    if (hit?.id) return String(hit.id);
+  } catch (e) {
+    console.warn("  auth admin users:", e.message || e);
+  }
 
   // fallback: ilike no nome Carlos Roberto
   const byName = await sb(
-    `/rest/v1/profiles?select=id,full_name,email,balance_cents,locked_balance_cents&full_name=ilike.*Carlos%20Roberto*&limit=5`
+    `/rest/v1/profiles?select=id,full_name,balance_cents,locked_balance_cents&full_name=ilike.*Carlos%20Roberto*&limit=5`
   ).catch(() => []);
   if (Array.isArray(byName) && byName.length === 1) return String(byName[0].id);
   if (Array.isArray(byName) && byName.length > 1) {
     console.log("Vários Carlos Roberto — use USER_ID=");
     for (const p of byName) {
-      console.log(" ", p.id, p.full_name, p.email || "-", money(p.balance_cents));
+      console.log(" ", p.id, p.full_name, money(p.balance_cents));
     }
     process.exit(2);
   }
@@ -181,14 +191,14 @@ async function main() {
 
   const userId = await resolveUserId();
   const profRows = await sb(
-    `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=id,full_name,email,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents&limit=1`
+    `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=id,full_name,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents&limit=1`
   );
   const prof = Array.isArray(profRows) ? profRows[0] : null;
   if (!prof) throw new Error("perfil ausente");
   console.log(
     "    user:",
     prof.full_name || "-",
-    prof.email || EMAIL,
+    EMAIL || "-",
     "Real",
     money(prof.balance_cents),
     "Congelado",

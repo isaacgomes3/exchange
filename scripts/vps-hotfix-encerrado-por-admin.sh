@@ -109,9 +109,10 @@ for m in matches:
 name_map = {}
 if admin_ids:
     ids = ",".join(admin_ids)
-    profs = get(f"/rest/v1/profiles?select=id,full_name,email&id=in.({ids})")
+    # profiles-sem-coluna-email-v1
+    profs = get(f"/rest/v1/profiles?select=id,full_name&id=in.({ids})")
     for p in profs or []:
-        label = (p.get("full_name") or "").strip() or (p.get("email") or "").strip() or str(p.get("id", ""))[:8]
+        label = (p.get("full_name") or "").strip() or str(p.get("id", ""))[:8]
         name_map[str(p["id"])] = label
 
 updated = 0

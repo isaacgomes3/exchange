@@ -1970,7 +1970,7 @@
         host.innerHTML = rows
           .map((r) => {
             const name =
-              (r.profiles && (r.profiles.full_name || r.profiles.email)) ||
+              (r.profiles && r.profiles.full_name) ||
               "Cliente";
             const uid = String(r.user_id || "").slice(0, 8);
             const side = String(r.side || "arbishield").toLowerCase();
