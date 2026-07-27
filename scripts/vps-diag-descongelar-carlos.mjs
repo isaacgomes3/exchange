@@ -189,10 +189,10 @@ async function patchUnlock(user) {
     nextBal = bal + locked;
     nextLocked = 0;
   } else {
-    // v7: devolve + cobra fees (proporcional se locked != 1000)
+    // v9: devolve stake + cobra SÓ dedução (sem comissão extra)
     const scale = locked === 100000 ? 1 : locked / 100000;
     fee = Math.round(FEE * scale);
-    comm = Math.round(COMM * scale);
+    comm = Math.round(COMM * scale); // COMM default 0
     nextBal = bal + locked - fee - comm;
     nextLocked = 0;
   }
