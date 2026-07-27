@@ -201,11 +201,12 @@ async function main() {
 
   const newDed = keepArbi;
   const newBal = n(p.balance_cents) + move;
+  const newReal = real + move; // Real = balance + reusable; só balance sobe
 
   console.log("\n==> PLANO");
-  console.log("    Real     :", money(real), "→", money(real - n(p.reusable_balance_cents) + newBal));
+  console.log("    Real     :", money(real), "→", money(newReal));
   console.log("    Reembolso:", money(reembolso), "→", money(newDed));
-  console.log("    Apostador:", money(apostador), "(igual)");
+  console.log("    Apostador:", money(apostador), "→", money(newReal + newDed + n(p.demo_balance_cents)), "(igual)");
 
   if (!FIX) {
     console.log("\n(dry-run) Exporte FIX=1 para aplicar.");

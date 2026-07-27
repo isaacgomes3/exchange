@@ -198,7 +198,7 @@ async function main() {
 
   console.log("\n==> PLANO (mover Reembolso → Real, net Apostador igual)");
   console.log("    mover                :", money(move));
-  console.log("    Real depois          :", money(real - n(p.reusable_balance_cents) + newBal));
+  console.log("    Real depois          :", money(real + move));
   console.log("    Reembolso depois     :", money(newDed));
   console.log("    Apostador depois     :", money(apostador), "(igual)");
 
