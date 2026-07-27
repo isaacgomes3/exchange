@@ -40,7 +40,7 @@ Arquivos cobertos (lista mínima):
 6. **Ganhou na Exchange** (`outcome: exchange` → `won_exchange`): **R$ 0** (não credita Reembolso); **destrava e devolve** o stake à origem; **cobra só a dedução ArbiShield** (ex. LAY 1000@10 → R$ 91,11). A fatia Exchange 4,5% já entra no cálculo da dedução — **não** debita de novo.
 7. **Empate Anula / void:** **destrava o stake** (devolve à origem — Real/Demo/Investidor).
 8. **Cancelar proteção:** **destrava o stake** (devolve à origem).
-9. **LAY lucro (fees):** `resp/(odd−1)` — ex. R$1000 @10 = R$111,11 → Exchange R$5 · cliente R$15 · ArbiShield R$91,11. Carteira: `+stake − 91,11` (ex. 8.067,52+1.000−91,11=**8.976,41**). Marker: `settle-exchange-cobra-so-deducao-v9`.
+9. **LAY lucro (fees):** `resp/(odd−1)` — ex. R$1000 @10 = R$111,11 → Exchange R$5 · cliente R$15 · ArbiShield R$91,11. Carteira: `+stake − 91,11` (ex. 8.067,52+1.000−91,11=**8.976,41**). Marker: `settle-exchange-cobra-so-deducao-v9`. Helper anti-duplo: `settlementExchangeCommissionWalletCents()` sempre **0**.
 
 Alterar qualquer item acima exige pedido explícito + atualização dos testes do contrato.
 <!-- END:protection-flow-lock -->
