@@ -2290,6 +2290,9 @@ async function transferRealToDesafio(_token, _body) {
 /**
  * Transferência interna: Saldo Reembolso → Desafio (100% do disponível, sem teto 50%).
  * Banca Real → Desafio continua bloqueada.
+ *
+ * Marker: transfer-reembolso-desafio-atomic-v1
+ * Update condicional em deduction_balance_cents (evita race / TX sem débito).
  */
 async function transferDeductionToDesafio(token, body) {
   const userId = requireUserId(token);
@@ -2324,15 +2327,39 @@ async function transferDeductionToDesafio(token, body) {
 
   const dedAfter = dedBefore - amountCents;
   const desAfter = desBefore + amountCents;
-  await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: {
-      deduction_balance_cents: dedAfter,
-      desafio_balance_cents: desAfter,
-      updated_at: new Date().toISOString(),
-    },
-  });
+  const now = new Date().toISOString();
+
+  // Update atômico: só aplica se Reembolso ainda for exatamente dedBefore
+  // (bloqueia race com correção admin / duplo clique).
+  let patched = null;
+  try {
+    patched = await sb(
+      `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&deduction_balance_cents=eq.${dedBefore}`,
+      {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          deduction_balance_cents: dedAfter,
+          desafio_balance_cents: desAfter,
+          updated_at: now,
+        },
+      }
+    );
+  } catch (e) {
+    const err = new Error(
+      e instanceof Error ? e.message : "Falha ao debitar Saldo Reembolso"
+    );
+    err.status = 500;
+    throw err;
+  }
+  const row = Array.isArray(patched) ? patched[0] : patched;
+  if (!row || n(row.deduction_balance_cents) !== dedAfter) {
+    const err = new Error(
+      "Saldo Reembolso mudou durante a transferência — tente de novo"
+    );
+    err.status = 409;
+    throw err;
+  }
 
   const verify = await sb(
     `/rest/v1/profiles?select=deduction_balance_cents,desafio_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`,
@@ -2349,6 +2376,7 @@ async function transferDeductionToDesafio(token, body) {
     throw err;
   }
 
+  // Só grava extrato DEPOIS do débito confirmado
   try {
     await sb("/rest/v1/wallet_transactions", {
       method: "POST",
@@ -2364,8 +2392,11 @@ async function transferDeductionToDesafio(token, body) {
           to_bucket: "desafio_balance_cents",
           label: "Saldo Reembolso → Desafio",
           source: "transfer_reembolso_desafio_v1",
+          fix: "transfer-reembolso-desafio-atomic-v1",
           desafio_before_cents: desBefore,
           desafio_after_cents: desAfter,
+          deduction_before_cents: dedBefore,
+          deduction_after_cents: dedAfter,
         },
       },
     });

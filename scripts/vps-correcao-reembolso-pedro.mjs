@@ -148,7 +148,10 @@ async function main() {
   );
   if (
     (Array.isArray(already) ? already : []).some(
-      (t) => metaOf(t).kind === "correcao_reembolso_pedro_v2" || metaOf(t).kind === "correcao_reembolso_pedro_v1"
+      (t) =>
+        metaOf(t).kind === "correcao_reembolso_pedro_v3" ||
+        metaOf(t).kind === "correcao_reembolso_pedro_v2" ||
+        metaOf(t).kind === "correcao_reembolso_pedro_v1"
     )
   ) {
     console.log("\n✓ Correção já aplicada. Abortando.");
@@ -184,14 +187,30 @@ async function main() {
     }
   }
 
-  const keepArbi = FORCE_ALL ? 0 : Math.max(0, sumArbi - wdReemb);
+  // Transferências já saídas do Reembolso (não podem ser "restauradas" pelo keepArbi)
+  const xferRows = await sb(
+    `/rest/v1/wallet_transactions?select=amount_cents,metadata&user_id=eq.${encodeURIComponent(uid)}&type=eq.internal_transfer&limit=200`
+  );
+  let xferOut = 0;
+  for (const t of Array.isArray(xferRows) ? xferRows : []) {
+    const m = metaOf(t);
+    const from = String(m.from_bucket || m.from || "");
+    if (from === "deduction_balance_cents" || String(m.source || "").includes("reembolso_desafio")) {
+      xferOut += n(t.amount_cents);
+    }
+  }
+
+  const keepArbiRaw = FORCE_ALL ? 0 : Math.max(0, sumArbi - wdReemb);
+  // Nunca apontar keep acima do que ainda está no bucket (após xfers)
+  const keepArbi = Math.min(keepArbiRaw, Math.max(0, reembolso));
   const move = Math.max(0, reembolso - keepArbi);
 
   console.log("\n==> Contas");
   console.log("    settles Arbi hist :", money(sumArbi));
   console.log("    settles Exch hist :", money(sumEx));
   console.log("    saques Reembolso  :", money(wdReemb));
-  console.log("    preservar Arbi    :", money(keepArbi));
+  console.log("    xfer → Desafio    :", money(xferOut));
+  console.log("    preservar Arbi    :", money(keepArbi), keepArbi !== keepArbiRaw ? `(capado de ${money(keepArbiRaw)})` : "");
   console.log("    mover → Real      :", money(move));
 
   if (move <= 0) {
@@ -199,9 +218,10 @@ async function main() {
     return;
   }
 
-  const newDed = keepArbi;
+  // Só DEBITA Reembolso (nunca aumenta via set absoluto acima do atual)
+  const newDed = reembolso - move;
   const newBal = n(p.balance_cents) + move;
-  const newReal = real + move; // Real = balance + reusable; só balance sobe
+  const newReal = real + move;
 
   console.log("\n==> PLANO");
   console.log("    Real     :", money(real), "→", money(newReal));
@@ -230,13 +250,14 @@ async function main() {
       amount_cents: 0,
       ref: p.id,
       metadata: {
-        kind: "correcao_reembolso_pedro_v2",
+        kind: "correcao_reembolso_pedro_v3",
         from_bucket: "deduction_balance_cents",
         to_bucket: "balance_cents",
         amount_cents: move,
         keep_arbi_cents: keepArbi,
+        xfer_out_cents: xferOut,
         reason:
-          "Pedro Iuri: mesmo bug Lucas/Augusto — crédito Exchange/legado no Saldo Reembolso; mover excesso → Real",
+          "Pedro Iuri: mesmo bug Lucas/Augusto — crédito Exchange/legado no Saldo Reembolso; mover excesso → Real (respeita xfer→Desafio)",
         name: NAME,
         settle_arbi_cents: sumArbi,
         settle_exchange_cents: sumEx,
