@@ -58,7 +58,7 @@ rm -f "$TMP"
 log "2) estorno Saldo Reembolso Lucas"
 OUT="$SCRIPTS_DIR/vps-estorno-reembolso-lucas-perdeu.mjs"
 fetch "scripts/vps-estorno-reembolso-lucas-perdeu.mjs" "$OUT"
-grep -q 'vps-estorno-reembolso-lucas-perdeu-v1' "$OUT" || die "script inválido"
+grep -q 'vps-estorno-reembolso-lucas-perdeu-v2' "$OUT" || die "script inválido"
 chmod 0644 "$OUT"
 export FIX
 node "$OUT"
