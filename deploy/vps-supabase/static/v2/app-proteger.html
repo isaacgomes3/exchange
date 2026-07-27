@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <meta name="arbishield-build" content="proteger-max-efetivo-v6c" />
+  <meta name="arbishield-build" content="proteger-stake-lock-toast-v6d" />
   <meta name="arbishield-features" content="proteger-stake-lock-v6-max-btn-lime proteger-espelho-readonly-v13" />
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=proteger-max-efetivo-v6c" />
+  <link rel="stylesheet" href="/v2.css?v=proteger-stake-lock-toast-v6d" />
   <style>
     .term-score {
       display: inline-flex;
@@ -68,8 +68,8 @@
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=proteger-max-efetivo-v6c"></script>
-  <script src="/v2-shell.js?v=proteger-max-efetivo-v6c" defer></script>
+  <script src="/v2.js?v=proteger-stake-lock-toast-v6d"></script>
+  <script src="/v2-shell.js?v=proteger-stake-lock-toast-v6d" defer></script>
 </head>
 <body data-shell="app" data-active="proteger">
   <div class="page-head term-head">
@@ -822,12 +822,30 @@
             );
           }
           closeDrawer();
+          // Toast usa a resposta da API (não o input) — evita mentir se a VPS
+          // ainda estiver em fee_upfront (só debita a dedução ~R$96 em odd 10).
+          var lockedApi = Number(data.lockedCents);
+          var feeApi = Number(data.feeChargedCents) || 0;
+          var billingApi = String(data.billingModel || "");
+          var toastMsg;
+          if (
+            billingApi.indexOf("fee_upfront") >= 0 ||
+            (feeApi > 0 && !(lockedApi > 0))
+          ) {
+            toastMsg =
+              "Proteção ativada · cobrada só a dedução " +
+              money(feeApi) +
+              " (API antiga fee_upfront — deploy stake_lock pendente)";
+          } else {
+            var lockedShow =
+              Number.isFinite(lockedApi) && lockedApi > 0
+                ? lockedApi
+                : amountCents;
+            toastMsg =
+              "Proteção ativada · stake travado " + money(lockedShow);
+          }
           showOk(
-            "Proteção ativada · stake travado " +
-              money(amountCents) +
-              " · " +
-              String(data.protectionId).slice(0, 8) +
-              "…"
+            toastMsg + " · " + String(data.protectionId).slice(0, 8) + "…"
           );
           await syncGrade(false);
           refreshHeaderBalances(state.profile);

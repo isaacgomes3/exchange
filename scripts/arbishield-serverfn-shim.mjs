@@ -7869,7 +7869,8 @@ const server = createServer(async (req, res) => {
     const base = {
       ok: true,
       service: "serverfn-shim",
-      fix: "settle-exchange-nunca-reembolso-v1",
+      fix: "create-protection-stake-lock-v6",
+      createProtectionModel: "stake_lock_v1",
       protectionFlowContract: PROTECTION_FLOW_CONTRACT_VERSION,
       env: process.env.ARBISHIELD_ENV || "production",
       listen: LISTEN,

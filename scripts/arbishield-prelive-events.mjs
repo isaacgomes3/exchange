@@ -4179,7 +4179,8 @@ async function handleApi(req, res) {
     return sendJson(res, 200, {
       ok: true,
       service: "arbishield-matches",
-      fix: "settle-exchange-nunca-reembolso-v1",
+      fix: "create-protection-stake-lock-v6",
+      createProtectionModel: "stake_lock_v1",
       protectionFlowContract: PROTECTION_FLOW_CONTRACT_VERSION,
       protectionFlowLock: PROTECTION_FLOW_LOCK,
       inplaySync: BETBRA_INPLAY_SYNC_VERSION,
