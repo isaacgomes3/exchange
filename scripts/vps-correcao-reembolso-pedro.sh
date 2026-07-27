@@ -14,6 +14,6 @@ if ! curl -fsSL --retry 5 -H "Accept: application/vnd.github.raw" -H "Cache-Cont
   "$API/scripts/vps-correcao-reembolso-pedro.mjs?ref=${REF}&t=$(date +%s%N)" -o "$OUT" || [[ ! -s "$OUT" ]]; then
   curl -fsSL --retry 5 "$RAW/scripts/vps-correcao-reembolso-pedro.mjs?t=$(date +%s%N)" -o "$OUT"
 fi
-grep -q 'vps-correcao-reembolso-pedro-v1' "$OUT" || { echo "ERRO script"; exit 1; }
+grep -q 'vps-correcao-reembolso-pedro-v2' "$OUT" || { echo "ERRO script"; exit 1; }
 export FIX FORCE_ALL ID_PREFIX="${ID_PREFIX:-24037bdf}"
 node "$OUT"

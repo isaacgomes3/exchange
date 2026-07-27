@@ -5,7 +5,7 @@
  * MOVE Reembolso → Real (net Apostador igual), sem apagar dinheiro.
  * Se existir residual Arbi legítimo (settle Arbi − saques), preserva.
  *
- * Marker: vps-correcao-reembolso-pedro-v1
+ * Marker: vps-correcao-reembolso-pedro-v2
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -112,7 +112,7 @@ async function sb(p, { method = "GET", body } = {}) {
 
 async function main() {
   console.log("==> Correção Reembolso Pedro Iuri");
-  console.log("    marker: vps-correcao-reembolso-pedro-v1");
+  console.log("    marker: vps-correcao-reembolso-pedro-v2");
   console.log("    FIX:", FIX ? "SIM" : "não (só relatório)");
   console.log("    FORCE_ALL:", FORCE_ALL ? "SIM (zera todo Reembolso)" : "não (preserva Arbi legítimo)");
 
@@ -148,7 +148,7 @@ async function main() {
   );
   if (
     (Array.isArray(already) ? already : []).some(
-      (t) => metaOf(t).kind === "correcao_reembolso_pedro_v1"
+      (t) => metaOf(t).kind === "correcao_reembolso_pedro_v2" || metaOf(t).kind === "correcao_reembolso_pedro_v1"
     )
   ) {
     console.log("\n✓ Correção já aplicada. Abortando.");
@@ -230,7 +230,7 @@ async function main() {
       amount_cents: 0,
       ref: p.id,
       metadata: {
-        kind: "correcao_reembolso_pedro_v1",
+        kind: "correcao_reembolso_pedro_v2",
         from_bucket: "deduction_balance_cents",
         to_bucket: "balance_cents",
         amount_cents: move,
