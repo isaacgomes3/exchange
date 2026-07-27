@@ -6,11 +6,12 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Transações — ArbiShield v2</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css" />
+  <meta name="arbishield-build" content="admin-tx-cols-criado-nome-valor-v1" />
+  <link rel="stylesheet" href="/v2.css?v=admin-tx-cols-1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/finance-admins.js?v=fin-acl-2"></script>
   <script src="/v2.js?v=fin-acl-2"></script>
-  <script src="/v2-pages.js?v=reembolso-saque-1"></script>
+  <script src="/v2-pages.js?v=admin-tx-cols-1"></script>
   <script src="/v2-shell.js?v=fin-acl-2" defer></script>
 </head>
 <body data-shell="admin" data-active="transactions">
@@ -25,7 +26,7 @@
   <script>
     ArbiV2Page.mountAdmin({
       sources: [{ table: "wallet_transactions", limit: 200 }],
-      cols: ["id", "user_name", "type", "amount_cents", "created_at"],
+      cols: ["created_at", "user_name", "amount_cents", "type", "id"],
       enrichUserNames: true,
       searchPlaceholder: "Buscar por nome, tipo, id…",
     });

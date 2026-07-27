@@ -91,6 +91,10 @@
     return COL_LABELS[c] || c.replace(/_/g, " ");
   }
 
+  function isEmphasisCol(c) {
+    return c === "user_name" || c === "amount_cents" || c === "full_name";
+  }
+
   function renderTable(cols, rows) {
     var head =
       "<tr>" +
@@ -113,6 +117,14 @@
                 '">' +
                 val +
                 "</span></td>"
+              );
+            }
+            // Nome / valor: negrito + branco (Gestão de Transações)
+            if (isEmphasisCol(c)) {
+              return (
+                '<td class="ops-cell-emphasis"><strong>' +
+                val +
+                "</strong></td>"
               );
             }
             return "<td>" + val + "</td>";
