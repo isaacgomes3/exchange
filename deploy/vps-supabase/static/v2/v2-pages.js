@@ -69,7 +69,80 @@
     amount_cents: "valor",
     created_at: "criado em",
     origem: "origem",
+    type: "descrição",
+    description: "descrição",
   };
+
+  var BUCKET_LABELS = {
+    deduction_balance_cents: "Saldo Reembolso",
+    balance_cents: "Saldo Real",
+    reusable_balance_cents: "Saldo Reutilizável",
+    desafio_balance_cents: "Carteira Desafio",
+    demo_balance_cents: "Demo",
+    locked_balance_cents: "Locked",
+    investor_balance_cents: "Investidor",
+  };
+
+  var TX_TYPE_LABELS = {
+    internal_transfer: "Transferência interna",
+    protection_settlement: "Liquidação de proteção",
+    protection_lock: "Travamento de proteção",
+    protection_fee: "Taxa de proteção",
+    protection_refund: "Estorno de proteção",
+    protection_release: "Liberação de proteção",
+    admin_adjustment: "Ajuste administrativo",
+    desafio_deposit: "Depósito Desafio",
+    deposit: "Depósito",
+    withdrawal: "Saque",
+  };
+
+  function metaOf(row) {
+    var m = row && row.metadata;
+    if (!m) return {};
+    if (typeof m === "string") {
+      try {
+        return JSON.parse(m) || {};
+      } catch (e) {
+        return {};
+      }
+    }
+    return typeof m === "object" && m ? m : {};
+  }
+
+  function bucketLabel(key) {
+    if (!key) return "";
+    return BUCKET_LABELS[key] || String(key).replace(/_/g, " ");
+  }
+
+  /** Descrição legível da linha do extrato / wallet_transactions */
+  function describeWalletTx(row) {
+    var t = String((row && row.type) || "").toLowerCase();
+    var meta = metaOf(row);
+    if (meta.label && String(meta.label).trim()) return String(meta.label).trim();
+    if (meta.note && String(meta.note).trim() && t === "admin_adjustment") {
+      return String(meta.note).trim();
+    }
+    if (meta.reason && String(meta.reason).trim() && t === "admin_adjustment") {
+      return String(meta.reason).trim();
+    }
+    var from = meta.from_bucket || meta.from || meta.source_bucket;
+    var to = meta.to_bucket || meta.to || meta.dest_bucket || meta.destination_bucket;
+    if (from || to) {
+      var a = bucketLabel(from) || "?";
+      var b = bucketLabel(to) || "?";
+      if (t === "internal_transfer") return "Transferência " + a + " → " + b;
+      return a + " → " + b;
+    }
+    if (t === "internal_transfer") return "Transferência interna";
+    if (t === "protection_settlement") {
+      var o = String(meta.outcome || "").toLowerCase();
+      if (o === "arbishield" || o === "lost_exchange") return "Liquidação · Bateu ArbiShield";
+      if (o === "exchange" || o === "won_exchange") return "Liquidação · Bateu Exchange";
+      if (o === "void" || o === "empate_anula") return "Liquidação · Empate Anula";
+      return "Liquidação de proteção";
+    }
+    return TX_TYPE_LABELS[t] || (row && row.type) || "—";
+  }
 
   var SALDO_REEMBOLSO_ORIGINS = {
     SALDO_REEMBOLSO_WITHDRAWAL: 1,
@@ -109,6 +182,9 @@
         var cells = cols
           .map(function (c) {
             var val = moneyMaybe(c, r[c]);
+            if (c === "type" || c === "description") {
+              val = esc(describeWalletTx(r));
+            }
             if (/status/i.test(c)) {
               var sc = statusClass(r[c]);
               return (
@@ -126,6 +202,9 @@
                 val +
                 "</strong></td>"
               );
+            }
+            if (c === "type" || c === "description") {
+              return '<td class="ops-cell-desc">' + val + "</td>";
             }
             return "<td>" + val + "</td>";
           })
@@ -357,8 +436,10 @@
         var hay = norm(
           cols
             .map(function (c) {
+              if (c === "type" || c === "description") return describeWalletTx(r);
               return r[c];
             })
+            .concat([r.type, r.user_name, JSON.stringify(metaOf(r))])
             .join(" ")
         );
         return parts.every(function (p) {
@@ -532,6 +613,7 @@
     mountApp: mountApp,
     moneyMaybe: moneyMaybe,
     esc: esc,
+    describeWalletTx: describeWalletTx,
     isSaldoReembolsoWithdrawal: isSaldoReembolsoWithdrawal,
     withdrawalOrigin: withdrawalOrigin,
   };

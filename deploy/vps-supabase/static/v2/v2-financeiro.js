@@ -19,6 +19,7 @@
     saque: "Saque",
     afiliado: "Afiliado",
     provedor: "Provedor",
+    transferencia: "Transferência",
   };
   var AFF_OK = { approved: 1, available: 1, pending_payout: 1 };
   var WD_OPEN = { pending: 1, approved: 1, paid: 1, processing: 1 };
@@ -615,6 +616,53 @@
         status: Je,
         valueCents: re,
         credit: Ne,
+      });
+    });
+
+    // Transferências internas (ex.: Saldo Reembolso → Carteira Desafio)
+    var bucketLbl = {
+      deduction_balance_cents: "Saldo Reembolso",
+      balance_cents: "Saldo Real",
+      reusable_balance_cents: "Saldo Reutilizável",
+      desafio_balance_cents: "Carteira Desafio",
+      demo_balance_cents: "Demo",
+      investor_balance_cents: "Investidor",
+    };
+    function metaTx(row) {
+      var m = row && row.metadata;
+      if (!m) return {};
+      if (typeof m === "string") {
+        try {
+          return JSON.parse(m) || {};
+        } catch (e) {
+          return {};
+        }
+      }
+      return typeof m === "object" && m ? m : {};
+    }
+    (state.walletTx || []).forEach(function (se) {
+      var t = String(se.type || "").toLowerCase();
+      if (t !== "internal_transfer") return;
+      var m = metaTx(se);
+      var from = m.from_bucket || m.from || "";
+      var to = m.to_bucket || m.to || "";
+      var label =
+        (m.label && String(m.label).trim()) ||
+        (from || to
+          ? "Transferência " +
+            (bucketLbl[from] || from || "?") +
+            " → " +
+            (bucketLbl[to] || to || "?")
+          : "Transferência interna");
+      G.push({
+        id: "xfer-" + se.id,
+        ts: se.created_at,
+        group: "transferencia",
+        action: "Transferência interna",
+        status: "Concluída",
+        valueCents: Number(se.amount_cents || 0),
+        credit: undefined,
+        origin: label,
       });
     });
 
@@ -1706,7 +1754,7 @@
     state.walletTx = await safeQuery(
       supa,
       "unified_wallet_transactions",
-      "id,type,amount_cents,created_at",
+      "id,type,amount_cents,created_at,metadata",
       function (q) {
         return q.eq("user_id", userId).order("created_at", { ascending: false }).limit(500);
       }
@@ -1715,7 +1763,7 @@
       state.walletTx = await safeQuery(
         supa,
         "wallet_transactions",
-        "id,type,amount_cents,created_at",
+        "id,type,amount_cents,created_at,metadata",
         function (q) {
           return q.eq("user_id", userId).order("created_at", { ascending: false }).limit(500);
         }
