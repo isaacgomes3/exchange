@@ -73,6 +73,24 @@
     return "";
   }
 
+  function refundProtectionId(row) {
+    if (row && row.protection_id) return String(row.protection_id);
+    var meta = row && row.metadata;
+    if (typeof meta === "string") {
+      try {
+        meta = JSON.parse(meta);
+      } catch (e) {
+        meta = {};
+      }
+    }
+    if (meta && meta.protection_id) return String(meta.protection_id);
+    var text = String(
+      (row && (row.admin_notes || row.notes || row.note)) || ""
+    );
+    var match = text.match(/protection_id=([^|\s]+)/i);
+    return match ? match[1] : "";
+  }
+
   function canApprove(r) {
     var st = String(r.status || "").toUpperCase();
     if (r._source_table === "refund_requests") {
@@ -369,6 +387,55 @@
     showOk("");
     try {
       var table = r._source_table;
+      var apiFailure = "";
+      var protectionId = refundProtectionId(r);
+      if (
+        (table === "refund_requests" || table === "back_refund_requests") &&
+        protectionId
+      ) {
+        try {
+          var session = await state.supa.auth.getSession();
+          var token =
+            session.data.session && session.data.session.access_token;
+          if (!token) throw new Error("Sessão administrativa expirada");
+          var response = await fetch("/api/arbishield/refund-proof/approve", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + token,
+            },
+            body: JSON.stringify({
+              requestId: r.id,
+              table: table,
+              protectionId: protectionId,
+            }),
+          });
+          var data = await response.json().catch(function () {
+            return {};
+          });
+          if (!response.ok || !data.ok) {
+            throw new Error(
+              data.error || "API não confirmou o crédito do Saldo Reembolso"
+            );
+          }
+          showOk(
+            data.alreadyCredited
+              ? "Reembolso já estava creditado: " + label
+              : "Aprovado e creditado no Saldo Reembolso: " +
+                  money(Number(data.creditedCents || 0)) +
+                  (data.finalizePending
+                    ? " · crédito confirmado; status será reconciliado na próxima tentativa."
+                    : "")
+          );
+          await reload();
+          return;
+        } catch (apiError) {
+          apiFailure =
+            (apiError && apiError.message) ||
+            "Falha desconhecida na API de crédito";
+          console.error("[admin-refunds] refund-proof/approve:", apiError);
+        }
+      }
       var patch = { updated_at: new Date().toISOString() };
       if (table === "refund_requests") {
         patch.status = "CONCLUÍDO";
@@ -383,8 +450,18 @@
       }
       var up = await state.supa.from(table).update(patch).eq("id", r.id);
       if (up.error) throw up.error;
-      showOk("Aprovado: " + label);
-      await reload();
+      if (apiFailure) {
+        await reload();
+        showErr(
+          "API de crédito falhou; o status foi atualizado pelo fallback legado. " +
+            "Crédito NÃO confirmado: " +
+            apiFailure
+        );
+        showOk("Status aprovado via fallback: " + label);
+      } else {
+        showOk("Aprovado: " + label);
+        await reload();
+      }
     } catch (ex) {
       showErr((ex && ex.message) || "Falha ao aprovar");
     }

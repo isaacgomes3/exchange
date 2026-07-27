@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <meta name="arbishield-build" content="comprovantes-fee-upfront-v11" />
+  <title>Comprovantes — ArbiShield</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css?v=comprovantes-v11" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js?v=comprovantes-v11"></script>
+  <script src="/v2-shell.js?v=comprovantes-v11" defer></script>
+  <style>
+    .proof-banner {
+      margin: 0 0 18px; padding: 18px; border-radius: 16px;
+      border: 1px solid rgba(201,242,35,.35);
+      background: linear-gradient(135deg, rgba(201,242,35,.13), rgba(4,26,20,.9));
+    }
+    .proof-banner strong { display:block; color:#d7ff1f; font-size:18px; margin-bottom:5px; }
+    .proof-banner p { margin:0; color:rgba(255,255,255,.76); line-height:1.5; }
+    .proof-grid { display:grid; gap:14px; }
+    .proof-card {
+      padding:18px; border-radius:16px; border:1px solid rgba(255,255,255,.09);
+      background:rgba(4,26,20,.92);
+    }
+    .proof-card-head { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }
+    .proof-card h2 { margin:0 0 5px; font-size:16px; }
+    .proof-meta { margin:0; color:var(--muted); font-size:12px; line-height:1.5; }
+    .proof-amount { color:#d7ff1f; font-size:17px; font-weight:900; white-space:nowrap; }
+    .proof-status {
+      display:inline-flex; margin-top:12px; padding:6px 9px; border-radius:8px;
+      border:1px solid rgba(201,242,35,.32); color:#d7ff1f;
+      background:rgba(201,242,35,.08); font-size:10px; font-weight:900;
+      letter-spacing:.06em; text-transform:uppercase;
+    }
+    .proof-status.review { border-color:rgba(251,191,36,.4); color:#fbbf24; background:rgba(251,191,36,.08); }
+    .proof-form { display:grid; grid-template-columns:minmax(180px,1fr) minmax(180px,.65fr); gap:12px; margin-top:16px; }
+    .proof-field { display:grid; gap:6px; }
+    .proof-field.wide { grid-column:1/-1; }
+    .proof-field label { color:var(--muted); font-size:10px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }
+    .proof-field input, .proof-field select, .proof-field textarea {
+      width:100%; box-sizing:border-box; border-radius:10px; border:1px solid rgba(255,255,255,.12);
+      background:#06251d; color:#fff; padding:11px 12px; font:inherit;
+    }
+    .proof-field textarea { min-height:72px; resize:vertical; }
+    .proof-actions { grid-column:1/-1; display:flex; justify-content:flex-end; }
+    .proof-actions .btn { min-width:190px; }
+    .proof-empty { padding:34px; text-align:center; color:var(--muted); border:1px dashed rgba(255,255,255,.12); border-radius:16px; }
+    @media (max-width:680px) {
+      .proof-form { grid-template-columns:1fr; }
+      .proof-field.wide, .proof-actions { grid-column:auto; }
+      .proof-card-head { flex-direction:column; gap:8px; }
+      .proof-actions .btn { width:100%; }
+    }
+  </style>
+</head>
+<body data-shell="app" data-active="comprovantes">
+  <header class="page-head">
+    <div>
+      <h1>Meus <span>Comprovantes</span></h1>
+      <p class="sub">Envie o print da aposta vencedora para análise do reembolso.</p>
+    </div>
+  </header>
+
+  <div id="proofErr" class="err"></div>
+  <div id="proofOk" class="ok-msg" style="display:none"></div>
+  <section class="proof-banner" id="eligibleBanner" hidden>
+    <strong>Reembolso Elegível</strong>
+    <p>Sua proteção foi validada. Envie seu comprovante para solicitar o reembolso.</p>
+  </section>
+  <main id="proofList" class="proof-grid">
+    <div class="proof-empty">Carregando proteções…</div>
+  </main>
+
+  <script>
+    (async function () {
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+      var listEl = document.getElementById("proofList");
+      var errEl = document.getElementById("proofErr");
+      var okEl = document.getElementById("proofOk");
+      var bannerEl = document.getElementById("eligibleBanner");
+      var rows = [];
+
+      function esc(value) {
+        return String(value == null ? "" : value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+      function showErr(message) {
+        errEl.textContent = message || "";
+        errEl.classList.toggle("show", !!message);
+      }
+      function showOk(message) {
+        okEl.textContent = message || "";
+        okEl.style.display = message ? "block" : "none";
+      }
+      function metaOf(row) {
+        var meta = row && row.metadata;
+        if (typeof meta === "string") {
+          try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
+        }
+        return meta && typeof meta === "object" ? meta : {};
+      }
+      function isFeeUpfront(row) {
+        var meta = metaOf(row);
+        return meta.billing_model === "fee_upfront_v1" ||
+          meta.fee_upfront === true ||
+          String(meta.source || "").indexOf("fee_upfront") >= 0 ||
+          Number(meta.fee_charged_cents || 0) > 0;
+      }
+      function feeOf(row) {
+        var meta = metaOf(row);
+        return Math.max(0, Math.trunc(Number(
+          row.platform_deduction_cents != null ? row.platform_deduction_cents :
+          row.platform_profit_cents != null ? row.platform_profit_cents :
+          meta.fee_charged_cents != null ? meta.fee_charged_cents :
+          row.locked_deduction_cents || 0
+        ) || 0));
+      }
+      function amountOf(row) {
+        return Math.max(0, Math.trunc(Number(row.responsibility_cents || row.amount_cents || 0) || 0));
+      }
+      function refundOf(row) {
+        return amountOf(row) + feeOf(row);
+      }
+      function matchName(row) {
+        var match = row.matches || {};
+        var meta = metaOf(row);
+        var home = match.home_team || meta.home_team || meta.homeTeam || "Partida";
+        var away = match.away_team || meta.away_team || meta.awayTeam || "";
+        return away ? home + " × " + away : home;
+      }
+      function statusLabel(status) {
+        status = String(status || "").toLowerCase();
+        if (status === "refund_requested") return "Em Análise";
+        return "Reembolso Elegível";
+      }
+      function canSubmit(row) {
+        var status = String(row.status || "").toLowerCase();
+        return status === "pending_refund" || (status === "won_platform" && isFeeUpfront(row));
+      }
+
+      function render() {
+        bannerEl.hidden = !rows.some(canSubmit);
+        if (!rows.length) {
+          listEl.innerHTML = '<div class="proof-empty">Nenhuma proteção aguardando comprovante.</div>';
+          return;
+        }
+        listEl.innerHTML = rows.map(function (row) {
+          var submit = canSubmit(row);
+          var created = row.created_at ? new Date(row.created_at).toLocaleString("pt-BR") : "—";
+          var reviewMessage =
+            String(row.status || "").toLowerCase() === "refund_requested"
+              ? "Seu comprovante foi recebido e está aguardando aprovação."
+              : "Esta proteção histórica precisa de validação do suporte para liberar o envio.";
+          var form = submit
+            ? '<form class="proof-form" data-proof-form="' + esc(row.id) + '">' +
+                '<div class="proof-field"><label>Print/comprovante</label><input name="proof" type="file" accept="image/*,.pdf,image/heic" required /></div>' +
+                '<div class="proof-field"><label>Método de reembolso</label><select name="refundMethod"><option value="SALDO_INTEGRAL">Saldo integral</option></select></div>' +
+                '<div class="proof-field wide"><label>Observação (opcional)</label><textarea name="note" maxlength="1000" placeholder="Informação adicional para a análise"></textarea></div>' +
+                '<div class="proof-actions"><button class="btn btn-primary" type="submit">Enviar comprovante</button></div>' +
+              '</form>'
+            : '<p class="proof-meta" style="margin-top:14px">' + esc(reviewMessage) + '</p>';
+          return '<article class="proof-card">' +
+            '<div class="proof-card-head"><div><h2>' + esc(matchName(row)) + '</h2>' +
+            '<p class="proof-meta">' + esc(row.market_category) + ' · Proteção ' + esc(String(row.id).slice(0, 8)) + '… · ' + esc(created) + '</p></div>' +
+            '<div class="proof-amount">' + ArbiV2.money(refundOf(row)) + '</div></div>' +
+            '<span class="proof-status' + (submit ? "" : " review") + '">' + esc(statusLabel(row.status)) + '</span>' +
+            form + '</article>';
+        }).join("");
+        listEl.querySelectorAll("[data-proof-form]").forEach(function (form) {
+          form.addEventListener("submit", submitForm);
+        });
+      }
+
+      async function load() {
+        showErr("");
+        var statuses = ["pending_refund", "refund_requested", "won_platform"];
+        var results = await Promise.all([
+          supa.from("protections").select("*").eq("user_id", user.id).in("status", statuses).order("created_at", { ascending: false }).limit(200),
+          supa.from("back_protections").select("*").eq("user_id", user.id).in("status", statuses).order("created_at", { ascending: false }).limit(200)
+        ]);
+        if (results[0].error) throw results[0].error;
+        if (results[1].error) throw results[1].error;
+        rows = (results[0].data || []).map(function (row) {
+          return Object.assign({}, row, { market_category: "LAY" });
+        }).concat((results[1].data || []).map(function (row) {
+          return Object.assign({}, row, { market_category: "BACK" });
+        })).sort(function (a, b) {
+          return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+        });
+
+        var matchIds = Array.from(new Set(rows.map(function (row) { return row.match_id; }).filter(Boolean)));
+        if (matchIds.length) {
+          var matchRes = await supa.from("matches").select("id,home_team,away_team").in("id", matchIds);
+          var matchMap = {};
+          (matchRes.data || []).forEach(function (match) { matchMap[match.id] = match; });
+          rows.forEach(function (row) { row.matches = matchMap[row.match_id] || null; });
+        }
+        render();
+      }
+
+      async function uploadProof(file, protectionId) {
+        if (file.size > 10 * 1024 * 1024) throw new Error("O arquivo deve ter no máximo 10 MB");
+        var ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
+        var path = "refunds/refund-" + user.id + "-" + protectionId + "-" + Date.now() + "." + (ext || "jpg");
+        var uploaded = await supa.storage.from("bet-proofs").upload(path, file, {
+          contentType: file.type || "image/jpeg",
+          upsert: false
+        });
+        if (uploaded.error) throw uploaded.error;
+        var signed = await supa.storage.from("bet-proofs").createSignedUrl(path, 3600 * 24 * 365);
+        if (signed.error || !signed.data || !signed.data.signedUrl) {
+          throw signed.error || new Error("Falha ao gerar URL do comprovante");
+        }
+        return signed.data.signedUrl;
+      }
+
+      async function submitForm(event) {
+        event.preventDefault();
+        var form = event.currentTarget;
+        var row = rows.find(function (item) {
+          return String(item.id) === String(form.getAttribute("data-proof-form"));
+        });
+        if (!row || !canSubmit(row)) return;
+        var button = form.querySelector("button[type=submit]");
+        var file = form.elements.proof.files && form.elements.proof.files[0];
+        if (!file) {
+          showErr("Selecione o print/comprovante.");
+          return;
+        }
+        button.disabled = true;
+        button.textContent = "Enviando…";
+        showErr("");
+        showOk("");
+        try {
+          var session = await supa.auth.getSession();
+          var token = session.data.session && session.data.session.access_token;
+          if (!token) throw new Error("Sessão expirada");
+          var proofUrl = await uploadProof(file, row.id);
+          var response = await fetch("/api/arbishield/refund-proof/submit", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + token
+            },
+            body: JSON.stringify({
+              protectionId: row.id,
+              marketType: row.market_category,
+              proofUrl: proofUrl,
+              refundMethod: form.elements.refundMethod.value,
+              note: form.elements.note.value
+            })
+          });
+          var data = await response.json().catch(function () { return {}; });
+          if (!response.ok || !data.ok) throw new Error(data.error || "Falha ao enviar comprovante");
+          showOk(data.alreadyExists ? "Este comprovante já está em análise." : "Comprovante enviado. Seu reembolso está Em Análise.");
+          await load();
+        } catch (error) {
+          showErr(error.message || "Falha ao enviar comprovante");
+        } finally {
+          button.disabled = false;
+          button.textContent = "Enviar comprovante";
+        }
+      }
+
+      try {
+        await load();
+      } catch (error) {
+        showErr(error.message || "Falha ao carregar proteções");
+        listEl.innerHTML = '<div class="proof-empty">Não foi possível carregar seus comprovantes.</div>';
+      }
+    })();
+  </script>
+</body>
+</html>
