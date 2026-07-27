@@ -7,11 +7,11 @@
   <title>Gestão de Proteções — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="protecoes-ocultar-erro-v3" />
-  <link rel="stylesheet" href="/v2.css?v=protecoes-ocultar-erro-3" />
+  <meta name="arbishield-build" content="protecoes-col-odd-valor-v1" />
+  <link rel="stylesheet" href="/v2.css?v=protecoes-col-odd-valor-1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=protecoes-ocultar-erro-3"></script>
-  <script src="/v2-shell.js?v=protecoes-ocultar-erro-3" defer></script>
+  <script src="/v2.js?v=protecoes-col-odd-valor-1"></script>
+  <script src="/v2-shell.js?v=protecoes-col-odd-valor-1" defer></script>
   <style>
     .prot-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 16px; align-items: start; }
     @media (max-width: 960px) {
@@ -25,12 +25,12 @@
     .prot-term-panel { background: transparent; border: 0; overflow: visible; }
       .prot-term-panel .term-table-head {
       display: grid;
-      grid-template-columns: 72px minmax(120px, 0.9fr) minmax(88px, 0.5fr) 84px minmax(160px, 1.35fr) 100px minmax(140px, 1.1fr);
+      grid-template-columns: 72px minmax(120px, 1fr) 84px minmax(160px, 1.35fr) minmax(108px, 0.85fr) minmax(140px, 1.1fr);
       gap: 10px;
     }
     .prot-list.term-list { gap: 12px; padding: 2px 2px 8px; min-height: 180px; }
     .prot-list .term-row {
-      grid-template-columns: 72px minmax(120px, 0.9fr) minmax(88px, 0.5fr) 84px minmax(160px, 1.35fr) 100px minmax(140px, 1.1fr);
+      grid-template-columns: 72px minmax(120px, 1fr) 84px minmax(160px, 1.35fr) minmax(108px, 0.85fr) minmax(140px, 1.1fr);
       gap: 10px;
       cursor: pointer;
     }
@@ -69,11 +69,20 @@
     }
     .prot-list .term-col-valor { text-align: right; }
     .prot-list .term-col-valor strong {
-      display: block;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 2px;
       font-size: 15px;
       font-weight: 800;
       color: #fff;
       font-variant-numeric: tabular-nums;
+    }
+    .prot-list .term-col-valor .term-odd {
+      font-size: 12px;
+      font-weight: 700;
+      color: rgba(201, 242, 35, 0.92);
+      letter-spacing: 0.02em;
     }
     .prot-list .term-col-valor small {
       display: block;
@@ -206,10 +215,9 @@
       <div class="term-table-head" aria-hidden="true">
         <span>Horário</span>
         <span>Confronto</span>
-        <span>Competição</span>
         <span class="c">LAY/BACK</span>
         <span class="c">Mercado</span>
-        <span class="r">Valor</span>
+        <span class="r">Valor / Odd</span>
         <span class="r">Status / Resultado</span>
       </div>
       <div id="list" class="prot-list term-list"><div class="empty">Carregando…</div></div>
@@ -666,9 +674,10 @@
           var amount = it.responsibility_cents || it.amount_cents || 0;
           var side = String(it.market_category || "LAY").toUpperCase() === "BACK" ? "BACK" : "LAY";
           var teams = teamsOf(it);
-          var competition = teams.competition;
           var home = teams.home;
           var away = teams.away;
+          var oddN = displayOddOf(it);
+          var oddTxt = oddN > 1.01 ? oddN.toFixed(2) : "—";
           var res = resultInfo(it);
           var badgeCls = statusClass(it.status);
           if (res.kind === "won") badgeCls = "won";
@@ -695,10 +704,9 @@
             '<article class="term-row' + (selectedId === it.id ? " prot-active" : "") + '" data-id="' + esc(it.id) + '">' +
               '<div class="term-col-time">' + whenHtmlOf(it) + "</div>" +
               '<div class="term-col-match"><strong>' + esc(home) + " <span>×</span> " + esc(away) + "</strong></div>" +
-              '<div class="term-col-comp"><span class="term-comp">' + esc(competition) + "</span></div>" +
               '<div class="term-col-sides"><span class="term-side ' + side.toLowerCase() + '">' + side + "</span></div>" +
               '<div class="term-col-market"><span class="term-market">' + esc(marketLabelOf(it)) + "</span></div>" +
-              '<div class="term-col-valor"><strong>' + money(amount) + '</strong><small>protegido</small></div>' +
+              '<div class="term-col-valor"><strong><span>' + money(amount) + '</span><span class="term-odd">@ ' + esc(oddTxt) + "</span></strong><small>protegido</small></div>" +
               '<div class="term-col-status"><span class="prot-badge ' + badgeCls + '">' + esc(statusLabel(it.status)) + "</span>" +
               metaHtml +
               "</div>" +
