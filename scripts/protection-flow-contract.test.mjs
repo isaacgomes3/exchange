@@ -38,6 +38,7 @@ import {
   exchangeCommissionCentsFromProfit,
   settlementExchangeCommissionCents,
   settlementExchangeCommissionWalletCents,
+  exchangeWalletChargeCents,
   LAY_PROFIT_OVER_ODD_RULE,
   EXCHANGE_NO_DOUBLE_COMMISSION_RULE,
   grossProfitCentsForFees,
@@ -450,6 +451,30 @@ describe("Comissão Exchange 4,5% do lucro", () => {
     );
   });
 
+  it("carteira PERDEU nunca soma comissão Em cima da dedução (anti 8.982,52)", () => {
+    const row = {
+      amount_cents: 100_000,
+      responsibility_cents: 100_000,
+      odd: 10,
+      metadata: {
+        billing_model: "stake_lock_v1",
+        stake_lock: true,
+        market_type: "LAY",
+        market_odd: 10,
+      },
+    };
+    const fee = settlementDeductionCents(row);
+    const info = settlementExchangeCommissionCents(row);
+    const wallet = settlementExchangeCommissionWalletCents(row);
+    assert.equal(fee, 9111);
+    assert.equal(info, 500); // informativa
+    assert.equal(wallet, 0); // NÃO sai da carteira
+    assert.equal(exchangeWalletChargeCents(row), 9111);
+    // Erro antigo: fee+info = 9611 → 8.971,41 ou fee+450=8.982,52
+    assert.notEqual(fee + info, exchangeWalletChargeCents(row));
+    assert.equal(806_752 + 100_000 - exchangeWalletChargeCents(row), 897_641);
+  });
+
   it("stake_lock com stored antigo 8050/9611 recalcula 9111 no settle", () => {
     const row = {
       amount_cents: 100_000,
@@ -584,7 +609,7 @@ describe("Exchange/PERDEU — devolve stake · cobra SÓ dedução · R$ 0 Reemb
     );
   });
 
-  it("prelive/shim cobram SÓ dedução e devolvem stake no Exchange", () => {
+  it("prelive/shim NÃO reintroduzem débito de comissão na carteira", () => {
     const prelive = readFileSync(
       resolve(root, "scripts/arbishield-prelive-events.mjs"),
       "utf8"
@@ -595,12 +620,25 @@ describe("Exchange/PERDEU — devolve stake · cobra SÓ dedução · R$ 0 Reemb
     );
     assert.match(prelive, /settle-exchange-cobra-so-deducao-v9/);
     assert.match(shim, /settle-exchange-cobra-so-deducao-v9/);
+    assert.match(prelive, /settle-exchange-sem-comissao-extra-v9/);
+    assert.match(shim, /settle-exchange-sem-comissao-extra-v9/);
+    assert.match(prelive, /settlementExchangeCommissionWalletCents/);
+    assert.match(shim, /settlementExchangeCommissionWalletCents/);
+    assert.match(prelive, /BLOQUEADO débito de comissão Exchange/);
+    assert.match(shim, /BLOQUEADO débito de comissão Exchange/);
     assert.match(prelive, /needsReturn/);
     assert.match(shim, /needsReturn/);
     assert.match(prelive, /stake_returned/);
     assert.match(shim, /stake_returned/);
-    assert.match(prelive, /const commission = 0/);
-    assert.match(shim, /const commission = 0/);
+    // Regressão clássica: voltar a debitar settlementExchangeCommissionCents
+    assert.doesNotMatch(
+      prelive,
+      /const commission = feeUpfront\s*\?\s*0\s*:\s*settlementExchangeCommissionCents/
+    );
+    assert.doesNotMatch(
+      shim,
+      /commission = feeUpfront\s*\?\s*0\s*:/
+    );
     assert.match(prelive, /Exchange incompleto/);
     assert.match(shim, /Exchange incompleto/);
   });

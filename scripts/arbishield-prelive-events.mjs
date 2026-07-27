@@ -34,6 +34,7 @@ import {
   isExchangeWalletComplete,
   EXCHANGE_CHARGE_DEDUCTION_RULE,
   settlementExchangeCommissionCents,
+  settlementExchangeCommissionWalletCents,
   EXCHANGE_COMMISSION_RATE,
 } from "./lib/protection-flow-contract.mjs";
 import {
@@ -1544,11 +1545,19 @@ async function creditWalletForSettlement(row, outcome, now) {
   // Ganhou na Exchange: R$ 0 Reembolso; stake_lock DEVOLVE stake à origem;
   // cobra SÓ dedução ArbiShield (4,5% já líquido nela — sem débito extra).
   // fee_upfront: dedução já cobrada na criação — só audita.
-  // Guarda: settle-exchange-cobra-so-deducao-v9
+  // Guarda: settle-exchange-cobra-so-deducao-v9 · settle-exchange-sem-comissao-extra-v9
   if (!wonArbi && !isVoid) {
     const fee = settlementDeductionCents(row);
-    // v9: comissão NÃO debita carteira (já na fórmula da dedução)
-    const commission = 0;
+    // v9: comissão informativa existe, mas carteira SEMPRE 0
+    let commission = settlementExchangeCommissionWalletCents(row);
+    if (commission > 0) {
+      console.warn(
+        "[settle] BLOQUEADO débito de comissão Exchange na carteira — forçando 0",
+        row.id,
+        commission
+      );
+      commission = 0;
+    }
     const stakeLock = isStakeLockProtection(row);
     const needsUnlock = (stakeLock || !feeUpfront) && amount > 0;
     const needsReturn = stakeLock && !feeUpfront && amount > 0;

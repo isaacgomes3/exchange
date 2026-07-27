@@ -30,6 +30,7 @@ let CANCEL_FEE_UPFRONT_NO_STAKE_REFUND =
 let isExchangeWalletComplete;
 let EXCHANGE_CHARGE_DEDUCTION_RULE = "settle-exchange-cobra-so-deducao-v9";
 let settlementExchangeCommissionCents;
+let settlementExchangeCommissionWalletCents = () => 0;
 let EXCHANGE_COMMISSION_RATE = 0.045;
 
 try {
@@ -58,6 +59,10 @@ try {
     EXCHANGE_CHARGE_DEDUCTION_RULE = mod.EXCHANGE_CHARGE_DEDUCTION_RULE;
   }
   settlementExchangeCommissionCents = mod.settlementExchangeCommissionCents;
+  if (typeof mod.settlementExchangeCommissionWalletCents === "function") {
+    settlementExchangeCommissionWalletCents =
+      mod.settlementExchangeCommissionWalletCents;
+  }
   if (mod.EXCHANGE_COMMISSION_RATE != null) {
     EXCHANGE_COMMISSION_RATE = mod.EXCHANGE_COMMISSION_RATE;
   }
@@ -6089,7 +6094,7 @@ async function creditWalletForSettlement(row, outcome, now) {
   }
 
   // Ganhou na Exchange: R$ 0 Reembolso; stake_lock DEVOLVE stake; cobra SÓ dedução.
-  // Guarda: settle-exchange-cobra-so-deducao-v9
+  // Guarda: settle-exchange-cobra-so-deducao-v9 · settle-exchange-sem-comissao-extra-v9
   if (!wonArbi && !isVoid) {
     const fee =
       (typeof settlementDeductionCents === "function"
@@ -6097,8 +6102,19 @@ async function creditWalletForSettlement(row, outcome, now) {
         : 0) ||
       parts.fee ||
       0;
-    // v9: comissão NÃO debita carteira (já na fórmula da dedução)
-    const commission = 0;
+    // v9: comissão informativa existe, mas carteira SEMPRE 0
+    let commission =
+      typeof settlementExchangeCommissionWalletCents === "function"
+        ? settlementExchangeCommissionWalletCents(row)
+        : 0;
+    if (commission > 0) {
+      console.warn(
+        "[settle] BLOQUEADO débito de comissão Exchange na carteira — forçando 0",
+        row.id,
+        commission
+      );
+      commission = 0;
+    }
     const stakeLock =
       typeof isStakeLockProtection === "function"
         ? isStakeLockProtection(row)

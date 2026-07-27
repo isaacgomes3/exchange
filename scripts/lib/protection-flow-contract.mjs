@@ -127,11 +127,22 @@ export const EXCHANGE_CHARGE_DEDUCTION_RULE_V6 =
 /**
  * Comissão Exchange a debitar na carteira no settle.
  * v9: sempre 0 — a fatia 4,5% já sai no cálculo da dedução.
+ * Qualquer caller que debitar settlementExchangeCommissionCents de novo
+ * reintroduz o erro 8.982,52 em vez de 8.976,41.
  */
 export function settlementExchangeCommissionWalletCents(_row) {
   void EXCHANGE_NO_DOUBLE_COMMISSION_RULE;
   void EXCHANGE_CHARGE_DEDUCTION_RULE;
   return 0;
+}
+
+/**
+ * Débito total na carteira no PERDEU/Exchange (stake_lock):
+ * só a dedução ArbiShield. Comissão wallet = 0.
+ */
+export function exchangeWalletChargeCents(row) {
+  return Math.max(0, settlementDeductionCents(row)) +
+    Math.max(0, settlementExchangeCommissionWalletCents(row));
 }
 
 /** Fração máxima do saldo Apostador que pode ser travada na ativação. */
