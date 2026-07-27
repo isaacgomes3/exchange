@@ -17,6 +17,7 @@ UI_MARK="Comissão Exchange (4,5% do lucro)"
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null 2>&1 || die "$1 nao encontrado"; }
 need curl
 [[ "$(id -u)" -eq 0 ]] || die "rode como root"
 mkdir -p "$SCRIPTS_DIR/lib" "$SHIM_DIR/lib" "$SHIM_DIR/scripts/lib"
