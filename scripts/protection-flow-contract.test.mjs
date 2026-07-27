@@ -12,8 +12,12 @@ import {
   PROTECTION_FLOW_LOCK,
   STAKE_LOCK_RULE,
   MAX_STAKE_FRACTION_OF_APOSTADOR,
+  ONE_OPERATION_PER_EVENT,
+  ENTRY_BEFORE_KICKOFF_ONLY,
   maxStakeLockCents,
   apostadorRemainingAfterLock,
+  isMatchKickoffPassed,
+  isCancelledProtectionStatus,
   calcFeeUpfront,
   calcLay,
   calcBack,
@@ -32,22 +36,26 @@ const root = resolve(__dirname, "..");
 
 describe("contrato travado — metadados", () => {
   it("mantém versão e lock", () => {
-    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v5");
+    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v6");
     assert.equal(STAKE_LOCK_RULE, "stake-lock-v1");
     assert.equal(MAX_STAKE_FRACTION_OF_APOSTADOR, 0.5);
+    assert.equal(ONE_OPERATION_PER_EVENT, true);
+    assert.equal(ENTRY_BEFORE_KICKOFF_ONLY, true);
     assert.equal(
       PROTECTION_FLOW_LOCK,
       "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST"
     );
   });
 
-  it("AGENTS.md cita a regra vigente stake_lock + 50%", () => {
+  it("AGENTS.md cita a regra vigente stake_lock + 50% + 1op + kickoff", () => {
     const agents = readFileSync(resolve(root, "AGENTS.md"), "utf8");
     assert.match(agents, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
-    assert.match(agents, /protection-flow-contract-v5/);
+    assert.match(agents, /protection-flow-contract-v6/);
     assert.match(agents, /stake_lock_v1/);
     assert.match(agents, /trava o stake/);
     assert.match(agents, /50%/);
+    assert.match(agents, /Uma operação por evento/);
+    assert.match(agents, /Sem entrada após o início/);
     assert.match(agents, /Saldo Reembolso/);
     assert.match(agents, /Ganhou na ArbiShield/);
     assert.match(agents, /Ganhou na Exchange/);
@@ -68,11 +76,13 @@ describe("contrato travado — metadados", () => {
     assert.match(prelive, /PROTECTION_FLOW_LOCK/);
     assert.match(shim, /PROTECTION_FLOW_LOCK/);
     assert.match(prelive, /maxStakeLockCents/);
+    assert.match(prelive, /isMatchKickoffPassed/);
+    assert.match(prelive, /isCancelledProtectionStatus/);
     assert.doesNotMatch(prelive, /function settlementCreditParts\s*\(/);
     assert.doesNotMatch(shim, /function settlementCreditParts\s*\(/);
   });
 
-  it("create-protection e UI aplicam teto 50%", () => {
+  it("create-protection e UI: 50% + 1op + antes do kickoff", () => {
     const createTs = readFileSync(
       resolve(root, "src/lib/arbishield/create-protection.ts"),
       "utf8"
@@ -82,9 +92,14 @@ describe("contrato travado — metadados", () => {
       "utf8"
     );
     assert.match(createTs, /maxStakeLockCents/);
-    assert.match(createTs, /MAX_STAKE_FRACTION_OF_APOSTADOR/);
+    assert.match(createTs, /isMatchKickoffPassed/);
+    assert.match(createTs, /uma proteção por jogo/);
+    assert.match(createTs, /já iniciado/);
     assert.match(ui, /maxStakeLockCents/);
     assert.match(ui, /50%/);
+    assert.match(ui, /isMatchKickoffPassed/);
+    assert.match(ui, /occupiedMatchIds/);
+    assert.match(ui, /1 proteção por evento/);
   });
 
   it("carteira do cliente exibe Saldo Reembolso", () => {
@@ -124,6 +139,27 @@ describe("ativação — teto 50% Apostador", () => {
     const agents = readFileSync(resolve(root, "AGENTS.md"), "utf8");
     assert.match(agents, /sucessivamente/);
     assert.match(agents, /50% do que sobrou/);
+  });
+});
+
+describe("ativação — 1 op/evento e antes do kickoff", () => {
+  it("isMatchKickoffPassed: bloqueia no/após starts_at", () => {
+    const start = "2026-07-27T18:00:00.000Z";
+    const t = new Date(start).getTime();
+    assert.equal(isMatchKickoffPassed(start, t - 1), false);
+    assert.equal(isMatchKickoffPassed(start, t), true);
+    assert.equal(isMatchKickoffPassed(start, t + 60_000), true);
+    assert.equal(isMatchKickoffPassed(null, t), false);
+  });
+
+  it("cancelada/estornada não conta como operação ativa", () => {
+    assert.equal(isCancelledProtectionStatus("cancelled"), true);
+    assert.equal(isCancelledProtectionStatus("canceled"), true);
+    assert.equal(isCancelledProtectionStatus("refunded"), true);
+    assert.equal(isCancelledProtectionStatus("active"), false);
+    assert.equal(isCancelledProtectionStatus("won_exchange"), false);
+    assert.equal(isCancelledProtectionStatus("lost_exchange"), false);
+    assert.equal(isCancelledProtectionStatus("void"), false);
   });
 });
 

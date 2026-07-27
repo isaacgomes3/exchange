@@ -27,6 +27,8 @@ import {
   calcBack,
   layToBackOdd,
   maxStakeLockCents,
+  isMatchKickoffPassed,
+  isCancelledProtectionStatus,
 } from "./lib/protection-flow-contract.mjs";
 import {
   BETBRA_INPLAY_SYNC_VERSION,
@@ -2133,11 +2135,10 @@ async function createProtection(body, userToken) {
   if (match.starts_at) {
     const startMs = new Date(match.starts_at).getTime();
     const now = Date.now();
-    // Alinha com a grade do cliente (LIVE_WINDOW ≈ 2h30 pós-kickoff).
-    const LIVE_WINDOW_MS = 9000 * 1000;
-    if (Number.isFinite(startMs) && startMs + LIVE_WINDOW_MS <= now) {
+    // Entradas só ANTES do kickoff (contrato v6).
+    if (isMatchKickoffPassed(match.starts_at, now)) {
       const err = new Error(
-        "Jogo fora da janela de proteção. Não é possível criar novas proteções."
+        "Evento já iniciado. Não é possível ativar proteção após o início."
       );
       err.status = 400;
       throw err;
@@ -2156,6 +2157,29 @@ async function createProtection(body, userToken) {
         err.status = 400;
         throw err;
       }
+    }
+  }
+
+  // 1 operação por evento (LAY ou BACK) — cancelada/estornada não conta
+  {
+    const [lays, backs] = await Promise.all([
+      sb(
+        `/rest/v1/protections?user_id=eq.${encodeURIComponent(userId)}&match_id=eq.${encodeURIComponent(matchId)}&select=id,status&limit=20`,
+        { token: SERVICE_KEY }
+      ).catch(() => []),
+      sb(
+        `/rest/v1/back_protections?user_id=eq.${encodeURIComponent(userId)}&match_id=eq.${encodeURIComponent(matchId)}&select=id,status&limit=20`,
+        { token: SERVICE_KEY }
+      ).catch(() => []),
+    ]);
+    const existing = [...(Array.isArray(lays) ? lays : []), ...(Array.isArray(backs) ? backs : [])];
+    const already = existing.find((r) => !isCancelledProtectionStatus(r?.status));
+    if (already) {
+      const err = new Error(
+        "Você já possui uma operação neste evento. Só é permitida uma proteção por jogo."
+      );
+      err.status = 400;
+      throw err;
     }
   }
 
@@ -3960,7 +3984,8 @@ function isAvailableForClientGrid(m, now = Date.now()) {
   if (!m || m.deleted_at || m.is_published !== true) return false;
   const start = new Date(m.starts_at).getTime();
   if (!Number.isFinite(start)) return false;
-  if (start + CLIENT_LIVE_WINDOW_MS <= now) return false;
+  // Contrato v6: não listar / não aceitar após o início do evento
+  if (isMatchKickoffPassed(m.starts_at, now)) return false;
   const meta = m.metadata && typeof m.metadata === "object" ? m.metadata : {};
   if (meta.hide_from_site || meta.hidden) return false;
   const st = String(m.status_v2 || m.status || "open").toLowerCase();
@@ -4026,7 +4051,8 @@ async function listAvailableMatchesForClient() {
       );
     }
   }
-  const windowStart = new Date(now - CLIENT_LIVE_WINDOW_MS).toISOString();
+  // Só jogos ainda não iniciados (contrato v6)
+  const windowStart = new Date(now).toISOString();
   const select =
     "id,external_id,home_team,away_team,home_logo,away_logo,league,starts_at,status,status_v2,sport_type,is_published,markets,max_protection_cents,used_protection_cents,protection_odds,metadata,deleted_at";
   const rows = await sb(

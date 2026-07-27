@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <meta name="arbishield-build" content="proteger-stake-lock-50-sucessivo-v5" />
-  <meta name="arbishield-features" content="proteger-stake-lock-v5-sucessivo proteger-espelho-readonly-v13" />
+  <meta name="arbishield-build" content="proteger-1op-antes-kickoff-v6" />
+  <meta name="arbishield-features" content="proteger-stake-lock-v6-1op-kickoff proteger-espelho-readonly-v13" />
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=proteger-stake-lock-50-sucessivo-v5" />
+  <link rel="stylesheet" href="/v2.css?v=proteger-1op-antes-kickoff-v6" />
   <style>
     .term-score {
       display: inline-flex;
@@ -36,8 +36,8 @@
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=proteger-stake-lock-50-sucessivo-v5"></script>
-  <script src="/v2-shell.js?v=proteger-stake-lock-50-sucessivo-v5" defer></script>
+  <script src="/v2.js?v=proteger-1op-antes-kickoff-v6"></script>
+  <script src="/v2-shell.js?v=proteger-1op-antes-kickoff-v6" defer></script>
 </head>
 <body data-shell="app" data-active="proteger">
   <div class="page-head term-head">
@@ -163,7 +163,7 @@
       var hintEl = document.getElementById("billingHint");
       if (hintEl) {
         hintEl.textContent =
-          "Cada ativação trava no máx. 50% do saldo Apostador que ainda resta · no próximo evento o teto é 50% do que sobrou · dedução só se ganhar na Exchange";
+          "1 proteção por evento · entradas só antes do início · máx. 50% do Apostador restante · dedução só se ganhar na Exchange";
       }
 
       var SPORTS = [
@@ -178,6 +178,7 @@
       var state = {
         profile: null,
         matches: [],
+        occupiedMatchIds: {},
         selected: null,
         sport: "todos",
         side: "all",
@@ -317,16 +318,35 @@
         if (!(mins > 0)) return true;
         return now >= start - mins * 60000;
       }
+      /** Entradas só antes do kickoff (contrato v6). */
+      function isMatchKickoffPassed(m, now) {
+        if (!m || !m.starts_at) return false;
+        var start = new Date(m.starts_at).getTime();
+        if (!Number.isFinite(start)) return false;
+        return (now != null ? now : Date.now()) >= start;
+      }
+      function isCancelledProtectionStatus(status) {
+        var s = String(status || "").toLowerCase().trim();
+        return (
+          s === "cancelled" ||
+          s === "canceled" ||
+          s === "refunded" ||
+          s === "pending_refund"
+        );
+      }
       /**
-       * Legado Je: jogo fica na grade só com liquidez restante e ainda na janela.
-       * Quando a liquidez esgota (used >= max ou liqLeft <= 0), sai da grade.
+       * Grade: liquidez + liberação + ainda não iniciado + sem operação prévia do user.
        */
       function isOnAvailableGrid(m) {
         if (!m || !m.starts_at) return false;
         var now = Date.now();
         var start = new Date(m.starts_at).getTime();
         if (!Number.isFinite(start)) return false;
+        if (isMatchKickoffPassed(m, now)) return false;
         if (!isEntryReleased(m, now)) return false;
+        if (state.occupiedMatchIds && state.occupiedMatchIds[String(m.id)]) {
+          return false;
+        }
         var status = m.status_v2 || m.status || "open";
         if (
           status === "FINISHED" ||
@@ -336,13 +356,11 @@
         ) {
           return false;
         }
-        // Legado Je: max > 0 && used < max  → senão some da grade
         var max = Number(m.max_protection_cents || 0);
         var used = Number(m.used_protection_cents || 0);
         if (!(max > 0 && used < max)) return false;
-        // Reforço: liquidez restante (mercados ou partida) deve ser > 0
         if (liqLeft(m) <= 0) return false;
-        return start + LIVE_WINDOW_MS > now;
+        return true;
       }
       function hasProtectLiquidity(m) {
         return isOnAvailableGrid(m) && liqLeft(m) > 0;
@@ -489,6 +507,16 @@
       }
 
       function openDrawer(match, market) {
+        if (isMatchKickoffPassed(match)) {
+          showErr("Evento já iniciado. Não é possível ativar proteção após o início.");
+          return;
+        }
+        if (state.occupiedMatchIds && state.occupiedMatchIds[String(match.id)]) {
+          showErr(
+            "Você já possui uma operação neste evento. Só é permitida uma proteção por jogo."
+          );
+          return;
+        }
         var mt = String(market.market_type || "LAY").toUpperCase() === "BACK" ? "BACK" : "LAY";
         state.selected = { match: match, market: market, marketType: mt };
         document.getElementById("drawerTitle").textContent =
@@ -587,6 +615,23 @@
         if (!(amountCents > 0)) {
           showErr("Insira um valor para ativar a proteção.");
           return;
+        }
+        if (state.selected && state.selected.match) {
+          if (isMatchKickoffPassed(state.selected.match)) {
+            showErr(
+              "Evento já iniciado. Não é possível ativar proteção após o início."
+            );
+            return;
+          }
+          if (
+            state.occupiedMatchIds &&
+            state.occupiedMatchIds[String(state.selected.match.id)]
+          ) {
+            showErr(
+              "Você já possui uma operação neste evento. Só é permitida uma proteção por jogo."
+            );
+            return;
+          }
         }
         var balType = document.getElementById("balanceType").value;
         var availBal = available(balType);
@@ -924,6 +969,37 @@
             .eq("status", "active");
           document.getElementById("stAct").textContent = String(act.count || 0);
 
+          // Marca eventos em que o user já operou (1 proteção por evento)
+          var occupied = {};
+          try {
+            var [layOcc, backOcc] = await Promise.all([
+              supa
+                .from("protections")
+                .select("match_id,status")
+                .eq("user_id", viewUserId)
+                .not("match_id", "is", null)
+                .limit(300),
+              supa
+                .from("back_protections")
+                .select("match_id,status")
+                .eq("user_id", viewUserId)
+                .not("match_id", "is", null)
+                .limit(300),
+            ]);
+            function markOcc(rows) {
+              (rows || []).forEach(function (r) {
+                if (!r || !r.match_id) return;
+                if (isCancelledProtectionStatus(r.status)) return;
+                occupied[String(r.match_id)] = true;
+              });
+            }
+            markOcc(layOcc.data);
+            markOcc(backOcc.data);
+          } catch (eOcc) {
+            occupied = {};
+          }
+          state.occupiedMatchIds = occupied;
+
           // Grade via API (service_role) — RLS do PostgREST bloqueia anon/cliente
           // em `matches`, então o fetch direto no Supabase vinha sempre vazio.
           var apiMatches = null;
@@ -948,9 +1024,7 @@
               return isOnAvailableGrid(m);
             });
           } else {
-            var windowStartIso = new Date(
-              Date.now() - LIVE_WINDOW_MS
-            ).toISOString();
+            var windowStartIso = new Date().toISOString();
             var matchesRes = await supa
               .from("matches")
               .select(

@@ -14,7 +14,7 @@ import { createRequire } from "node:module";
 // Contrato travado — import opcional (se lib faltar na VPS, usa fallback inline
 // para o shim não cair e a rota de saque continuar disponível).
 let PROTECTION_FLOW_LOCK = "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST";
-let PROTECTION_FLOW_CONTRACT_VERSION = "protection-flow-contract-v5";
+let PROTECTION_FLOW_CONTRACT_VERSION = "protection-flow-contract-v6";
 let isStakeLockProtection;
 let settlementCreditParts;
 let settlementCreditCents;

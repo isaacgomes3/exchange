@@ -8,10 +8,12 @@
  * de crédito no settle; os testes em protection-flow-contract.test.mjs
  * travam o comportamento no CI.
  *
- * Versão: protection-flow-contract-v5 (2026-07-27)
+ * Versão: protection-flow-contract-v6 (2026-07-27)
  *   Regra vigente (stake_lock_v1):
  *     - Ativação → trava stake; máx. 50% do Apostador RESTANTE naquele momento
  *       (evento 1: 50% da banca; evento 2: 50% do que sobrou; e assim por diante)
+ *     - 1 operação por evento (user + match): não cria 2ª proteção no mesmo jogo
+ *     - Entradas só ANTES do início (starts_at); após kickoff recusa
  *     - Ganhou na ArbiShield → credita stake (Saldo Reembolso) e destrava
  *     - Ganhou na Exchange → R$ 0; cobra só a dedução; destrava sem devolver
  *     - Empate Anula → destrava stake (devolve à origem)
@@ -23,7 +25,7 @@
  */
 
 export const PROTECTION_FLOW_CONTRACT_VERSION =
-  "protection-flow-contract-v5";
+  "protection-flow-contract-v6";
 
 /** Marcador exigido pelos testes / hotfixes — não renomear. */
 export const PROTECTION_FLOW_LOCK =
@@ -35,9 +37,40 @@ export const STAKE_LOCK_RULE = "stake-lock-v1";
 /** Fração máxima do saldo Apostador que pode ser travada na ativação. */
 export const MAX_STAKE_FRACTION_OF_APOSTADOR = 0.5;
 
+/** Cliente: no máximo uma proteção por evento (match). */
+export const ONE_OPERATION_PER_EVENT = true;
+
+/** Cliente: entradas apenas antes de starts_at (kickoff). */
+export const ENTRY_BEFORE_KICKOFF_ONLY = true;
+
 function n(v) {
   const x = Number(v);
   return Number.isFinite(x) ? Math.trunc(x) : 0;
+}
+
+/**
+ * Evento já começou (now >= starts_at) → não aceita nova entrada.
+ * @param {unknown} startsAt
+ * @param {number} [nowMs]
+ */
+export function isMatchKickoffPassed(startsAt, nowMs = Date.now()) {
+  if (startsAt == null || startsAt === "") return false;
+  const t = new Date(startsAt).getTime();
+  if (!Number.isFinite(t)) return false;
+  return Number(nowMs) >= t;
+}
+
+/** Status que libera nova tentativa no mesmo evento (operação desfeita). */
+export function isCancelledProtectionStatus(status) {
+  const s = String(status || "")
+    .toLowerCase()
+    .trim();
+  return (
+    s === "cancelled" ||
+    s === "canceled" ||
+    s === "refunded" ||
+    s === "pending_refund"
+  );
 }
 
 /**

@@ -2,9 +2,10 @@
  * Cria proteção LAY/BACK no mesmo schema do SPA (sem RPC legado).
  *
  * TRAVADO — DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST
- * Fonte da verdade: scripts/lib/protection-flow-contract.mjs (v5 stake_lock_v1)
- * Ativação trava stake (máx. 50% Apostador) · Ganhou Arbi credita stake ·
- * Ganhou Exchange R$ 0 cobra dedução · Empate Anula / Cancelar destravam.
+ * Fonte da verdade: scripts/lib/protection-flow-contract.mjs (v6 stake_lock_v1)
+ * Ativação trava stake (máx. 50% restante · 1 op/evento · só antes do kickoff) ·
+ * Ganhou Arbi credita stake · Ganhou Exchange R$ 0 cobra dedução ·
+ * Empate Anula / Cancelar destravam.
  */
 
 export type BalanceType = "REAL" | "DEMO" | "INVESTOR";
@@ -130,11 +131,30 @@ function availableBalance(
   );
 }
 
-/** Alinhado a scripts/lib/protection-flow-contract.mjs → maxStakeLockCents */
+/** Alinhado a scripts/lib/protection-flow-contract.mjs */
 const MAX_STAKE_FRACTION_OF_APOSTADOR = 0.5;
 function maxStakeLockCents(apostadorAvailableCents: number) {
   return Math.floor(
     Math.max(0, num(apostadorAvailableCents)) * MAX_STAKE_FRACTION_OF_APOSTADOR
+  );
+}
+
+function isMatchKickoffPassed(startsAt: unknown, nowMs = Date.now()) {
+  if (startsAt == null || startsAt === "") return false;
+  const t = new Date(String(startsAt)).getTime();
+  if (!Number.isFinite(t)) return false;
+  return nowMs >= t;
+}
+
+function isCancelledProtectionStatus(status: unknown) {
+  const s = String(status || "")
+    .toLowerCase()
+    .trim();
+  return (
+    s === "cancelled" ||
+    s === "canceled" ||
+    s === "refunded" ||
+    s === "pending_refund"
   );
 }
 
@@ -173,12 +193,11 @@ export async function createProtection(
   if (match.starts_at) {
     const startMs = new Date(match.starts_at).getTime();
     const now = Date.now();
-    // Alinha com a grade do cliente (LIVE_WINDOW ≈ 2h30 pós-kickoff).
-    const LIVE_WINDOW_MS = 9000 * 1000;
-    if (Number.isFinite(startMs) && startMs + LIVE_WINDOW_MS <= now) {
+    // Entradas só ANTES do kickoff (contrato v6).
+    if (isMatchKickoffPassed(match.starts_at, now)) {
       throw Object.assign(
         new Error(
-          "Jogo fora da janela de proteção. Não é possível criar novas proteções."
+          "Evento já iniciado. Não é possível ativar proteção após o início."
         ),
         { status: 400 }
       );
@@ -202,6 +221,36 @@ export async function createProtection(
           { status: 400 }
         );
       }
+    }
+  }
+
+  // 1 operação por evento (LAY ou BACK)
+  {
+    const [laysRes, backsRes] = await Promise.all([
+      admin
+        .from("protections")
+        .select("id,status")
+        .eq("user_id", input.userId)
+        .eq("match_id", input.matchId)
+        .limit(20),
+      admin
+        .from("back_protections")
+        .select("id,status")
+        .eq("user_id", input.userId)
+        .eq("match_id", input.matchId)
+        .limit(20),
+    ]);
+    const existing = [
+      ...((laysRes.data as { status?: string }[]) || []),
+      ...((backsRes.data as { status?: string }[]) || []),
+    ];
+    if (existing.some((r) => !isCancelledProtectionStatus(r?.status))) {
+      throw Object.assign(
+        new Error(
+          "Você já possui uma operação neste evento. Só é permitida uma proteção por jogo."
+        ),
+        { status: 400 }
+      );
     }
   }
 
