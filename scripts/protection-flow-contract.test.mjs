@@ -395,6 +395,26 @@ describe("cancel — fee_upfront nunca devolve stake", () => {
     };
     assert.equal(cancelRefundCents(row), 100_000);
   });
+
+  it("guarda cancel-stake-lock-devolve-stake-v6 no prelive/shim/UI", () => {
+    const prelive = readFileSync(
+      resolve(root, "scripts/arbishield-prelive-events.mjs"),
+      "utf8"
+    );
+    const shim = readFileSync(
+      resolve(root, "scripts/arbishield-serverfn-shim.mjs"),
+      "utf8"
+    );
+    const ui = readFileSync(
+      resolve(root, "deploy/vps-supabase/static/v2/app-protecoes.html"),
+      "utf8"
+    );
+    assert.match(prelive, /cancel-stake-lock-devolve-stake-v6/);
+    assert.match(shim, /async function claimProtectionCancelled/);
+    assert.match(shim, /cancel-stake-lock-devolve-stake-v6/);
+    assert.match(ui, /Stake devolvido/);
+    assert.match(ui, /cancel-sem-estorno|NÃO foi devolvido/);
+  });
 });
 
 describe("Comissão Exchange 4,5% do lucro", () => {

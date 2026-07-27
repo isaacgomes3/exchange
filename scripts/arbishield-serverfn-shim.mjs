@@ -4533,9 +4533,7 @@ async function cancelProtectionRefund(token, body) {
 
   const { table, row } = await loadProtectionRow(protectionId, marketType);
   const st = String(row.status || "").toLowerCase();
-  if (st === "cancelled") {
-    return { ok: true, alreadyCancelled: true, protectionId, refundedCents: 0 };
-  }
+  // cancelled sem estorno é reparado mais abaixo (não engolir)
   if (st === "settled" || st === "closed") {
     throw new Error("Proteção já encerrada — use estorno manual se necessário");
   }
@@ -4558,8 +4556,9 @@ async function cancelProtectionRefund(token, body) {
         ? feeCents
         : stakeCents;
   const refundFeeOnly =
-    feeUpfront ||
-    (amount === feeCents && feeCents > 0 && feeCents !== stakeCents);
+    !stakeLock &&
+    (feeUpfront ||
+      (amount === feeCents && feeCents > 0 && feeCents !== stakeCents));
   const balanceType = String(
     (row.metadata &&
       (row.metadata.balance_type ||
@@ -4570,7 +4569,9 @@ async function cancelProtectionRefund(token, body) {
   const adminId = requireUserId(token);
 
   if (await protectionAlreadyCredited(protectionId)) {
-    await claimProtectionCancelled(table, protectionId, {});
+    if (st !== "cancelled") {
+      await claimProtectionCancelled(table, protectionId, {});
+    }
     return {
       ok: true,
       alreadyRefunded: true,
@@ -4580,8 +4581,61 @@ async function cancelProtectionRefund(token, body) {
     };
   }
 
+  // Status cancelled sem TX → reparar estorno (não engolir)
+  if (st === "cancelled") {
+    await refundProtectionCancelToWallet(row, {
+      protectionId,
+      amount,
+      stakeCents,
+      feeCents,
+      feeUpfront: refundFeeOnly,
+      stakeLock: !refundFeeOnly && stakeLock,
+      balanceType,
+      extraMeta: {
+        marketType,
+        cancelled_by_admin: adminId,
+        guard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+        fix: "cancel-stake-lock-devolve-stake-v6",
+        repaired: true,
+      },
+    });
+    return {
+      ok: true,
+      repaired: true,
+      protectionId,
+      status: "cancelled",
+      refundedCents: amount,
+    };
+  }
+
   const claimed = await claimProtectionCancelled(table, protectionId, {});
   if (!claimed) {
+    // Outro processo cancelou — tenta reparar se ainda não creditou
+    if (!(await protectionAlreadyCredited(protectionId)) && amount > 0) {
+      await refundProtectionCancelToWallet(row, {
+        protectionId,
+        amount,
+        stakeCents,
+        feeCents,
+        feeUpfront: refundFeeOnly,
+        stakeLock: !refundFeeOnly && stakeLock,
+        balanceType,
+        extraMeta: {
+          marketType,
+          cancelled_by_admin: adminId,
+          guard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+          fix: "cancel-stake-lock-devolve-stake-v6",
+          repaired: true,
+        },
+      });
+      return {
+        ok: true,
+        repaired: true,
+        protectionId,
+        status: "cancelled",
+        refundedCents: amount,
+      };
+    }
     return { ok: true, alreadyCancelled: true, protectionId, refundedCents: 0 };
   }
 
@@ -4597,6 +4651,7 @@ async function cancelProtectionRefund(token, body) {
       marketType,
       cancelled_by_admin: adminId,
       guard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+      fix: "cancel-stake-lock-devolve-stake-v6",
     },
   });
 
@@ -5880,6 +5935,44 @@ async function protectionAlreadyCredited(protectionId) {
   }
 }
 
+/**
+ * Claim atômico cancelled — impede re-crédito em F5 / listagens.
+ * Restaurado (apagado acidentalmente no hotfix de comissão 4,5%).
+ * Marker: cancel-stake-lock-devolve-stake-v6
+ */
+async function claimProtectionCancelled(table, protectionId, extraBody = {}) {
+  const body = {
+    status: "cancelled",
+    settled_at: new Date().toISOString(),
+    result: "cancelled_refund",
+    ...extraBody,
+  };
+  delete body.updated_at;
+  try {
+    const claimed = await sb(
+      `/rest/v1/${table}?id=eq.${encodeURIComponent(protectionId)}&status=in.(active,pending,review_odd)`,
+      { method: "PATCH", token: SERVICE_KEY, body }
+    );
+    return Array.isArray(claimed) && claimed.length > 0;
+  } catch {
+    try {
+      const claimed = await sb(
+        `/rest/v1/${table}?id=eq.${encodeURIComponent(protectionId)}&status=in.(active,pending,review_odd)`,
+        {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: {
+            status: "cancelled",
+            settled_at: new Date().toISOString(),
+          },
+        }
+      );
+      return Array.isArray(claimed) && claimed.length > 0;
+    } catch {
+      return false;
+    }
+  }
+}
 
 async function loadExchangeSettlementPrior(protectionId) {
   const empty = {

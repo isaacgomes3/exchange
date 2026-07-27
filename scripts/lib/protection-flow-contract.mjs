@@ -227,7 +227,7 @@ export function cancelRefundCents(row) {
   const fee = settlementDeductionCents(row);
   const meta =
     row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
-  // stake_lock explícito sempre devolve stake
+  // Guarda absoluta: stake_lock explícito nunca devolve só fee
   if (meta.billing_model === "stake_lock_v1" || meta.stake_lock === true) {
     return stake;
   }
@@ -237,6 +237,10 @@ export function cancelRefundCents(row) {
   }
   return stake;
 }
+
+/** Marker: cancel stake_lock deve devolver stake (anti-regressão). */
+export const CANCEL_STAKE_LOCK_RETURN_STAKE =
+  "cancel-stake-lock-devolve-stake-v6";
 
 /**
  * Exchange/PERDEU wallet completo?

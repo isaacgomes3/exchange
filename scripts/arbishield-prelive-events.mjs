@@ -2798,7 +2798,7 @@ async function protectionRefundAlreadyDone(protectionId) {
   if (!protectionId) return false;
   try {
     const byRef = await sb(
-      `/rest/v1/wallet_transactions?ref=eq.${encodeURIComponent(protectionId)}&type=in.(protection_refund,protection_settlement,protection_release)&select=id&limit=1`,
+      `/rest/v1/wallet_transactions?ref=eq.${encodeURIComponent(protectionId)}&type=in.(protection_refund,protection_settlement,protection_release)&select=id,type,amount_cents&limit=5`,
       { token: SERVICE_KEY }
     );
     if (Array.isArray(byRef) && byRef.length) return true;
@@ -2860,19 +2860,106 @@ async function claimProtectionCancelled(table, protectionId, metadata) {
   }
 }
 
-/** Estorno + status cancelled (service role) — IDEMPOTENTE. */
+/**
+ * Credita estorno de cancel na carteira de origem + TX.
+ * Marker: cancel-stake-lock-devolve-stake-v6
+ */
+async function creditCancelRefundToWallet(row, {
+  protectionId,
+  amount,
+  stakeCents,
+  feeCents,
+  refundFeeOnly,
+  stakeLock,
+  balanceType,
+  audit = {},
+} = {}) {
+  const userId = row.user_id ? String(row.user_id) : null;
+  if (!(userId && amount > 0)) return { refundedCents: 0 };
+  const prof = await sb(
+    `/rest/v1/profiles?select=balance_cents,locked_balance_cents,demo_balance_cents,investor_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const p = Array.isArray(prof) ? prof[0] : null;
+  if (!p) {
+    throw new Error(
+      `Perfil ${userId} não encontrado para estorno do cancel (${protectionId})`
+    );
+  }
+  const patchFull = { updated_at: new Date().toISOString() };
+  if (balanceType === "DEMO") {
+    patchFull.demo_balance_cents = n(p.demo_balance_cents) + amount;
+  } else if (balanceType === "INVESTOR") {
+    patchFull.investor_balance_cents = n(p.investor_balance_cents) + amount;
+  } else {
+    patchFull.balance_cents = n(p.balance_cents) + amount;
+  }
+  if (!refundFeeOnly) {
+    // stake_lock: solta locked do stake
+    patchFull.locked_balance_cents = Math.max(
+      0,
+      n(p.locked_balance_cents) - stakeCents
+    );
+  }
+  await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: patchFull,
+  });
+  try {
+    await sb("/rest/v1/wallet_transactions", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        user_id: userId,
+        type: "protection_refund",
+        amount_cents: amount,
+        ref: protectionId,
+        metadata: {
+          protection_id: protectionId,
+          auto_cancel: true,
+          billing_model: refundFeeOnly
+            ? "fee_upfront_v1"
+            : stakeLock
+              ? "stake_lock_v1"
+              : "legacy_lock",
+          refund_kind: refundFeeOnly ? "fee" : "stake",
+          fee_cents: feeCents,
+          stake_cents: stakeCents,
+          balance_type: balanceType,
+          guard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+          fix: "cancel-stake-lock-devolve-stake-v6",
+          ...(audit || {}),
+        },
+      },
+    });
+  } catch (e) {
+    console.warn("[prelive] wallet_transactions refund:", e.message || e);
+  }
+  return { refundedCents: amount };
+}
+
+/** Estorno + status cancelled (service role) — IDEMPOTENTE + repara cancel sem crédito. */
 async function refundAndCancelProtection(table, row, audit = {}) {
   const protectionId = row.id;
   const stakeCents = n(row.responsibility_cents || row.amount_cents);
+  const meta =
+    row.metadata && typeof row.metadata === "object" ? row.metadata : {};
   const feeUpfront = isFeeUpfrontProtection(row);
-  const stakeLock = isStakeLockProtection(row);
+  const stakeLock =
+    isStakeLockProtection(row) ||
+    meta.billing_model === "stake_lock_v1" ||
+    meta.stake_lock === true ||
+    String(meta.source || "").includes("stake_lock");
   const feeCents = settlementDeductionCents(row);
   // vigente stake_lock: destrava stake · histórico fee_upfront: estorna só dedução
   // Guarda cancel-fee-upfront-nao-devolve-stake-v6
+  // Guarda cancel-stake-lock-devolve-stake-v6
   const amount = cancelRefundCents(row);
   const refundFeeOnly =
-    feeUpfront ||
-    (amount === feeCents && feeCents > 0 && feeCents !== stakeCents);
+    !stakeLock &&
+    (feeUpfront ||
+      (amount === feeCents && feeCents > 0 && feeCents !== stakeCents));
   const balanceType = String(
     (row.metadata && row.metadata.balance_type) ||
       (row.metadata && row.metadata.balance_type_requested) ||
@@ -2881,22 +2968,12 @@ async function refundAndCancelProtection(table, row, audit = {}) {
   const userId = row.user_id ? String(row.user_id) : null;
   const st = String(row.status || "").toLowerCase();
 
-  if (st === "cancelled") {
-    return {
-      ok: true,
-      alreadyCancelled: true,
-      action: "cancellation",
-      auto: true,
-      protectionId,
-      status: "cancelled",
-      refundedCents: 0,
-    };
-  }
-
   if (await protectionRefundAlreadyDone(protectionId)) {
     // Já creditou antes — só garante status cancelled, NÃO credita de novo
     try {
-      await claimProtectionCancelled(table, protectionId, null);
+      if (st !== "cancelled") {
+        await claimProtectionCancelled(table, protectionId, null);
+      }
     } catch {
       /* */
     }
@@ -2928,6 +3005,7 @@ async function refundAndCancelProtection(table, row, audit = {}) {
     refund_kind: refundFeeOnly ? "fee" : "stake",
     refund_cents: amount,
     guard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+    fix: "cancel-stake-lock-devolve-stake-v6",
   };
   if (audit.reason) {
     prevMeta.contestation = {
@@ -2939,18 +3017,23 @@ async function refundAndCancelProtection(table, row, audit = {}) {
     };
   }
 
-  // 1) Claim ANTES do crédito — 2º F5 não passa
-  const claimed = await claimProtectionCancelled(table, protectionId, prevMeta);
-  if (!claimed) {
-    return {
-      ok: true,
-      alreadyCancelled: true,
-      action: "cancellation",
-      auto: true,
-      protectionId,
-      status: "cancelled",
-      refundedCents: 0,
-    };
+  let repaired = false;
+  if (st === "active" || st === "pending" || st === "review_odd") {
+    // Claim ANTES do crédito — 2º F5 não passa
+    const claimed = await claimProtectionCancelled(table, protectionId, prevMeta);
+    if (!claimed) {
+      // Outro processo pode ter cancelado sem creditar → tenta reparar abaixo
+      repaired = true;
+    }
+  } else if (st === "cancelled") {
+    // Cancelado sem TX de estorno → reparar crédito do stake
+    repaired = true;
+  } else {
+    const err = new Error(
+      `Só é possível cancelar proteções ativas ou em contestação (status=${st})`
+    );
+    err.status = 400;
+    throw err;
   }
 
   if (refundFeeOnly && !(amount > 0)) {
@@ -2960,86 +3043,51 @@ async function refundAndCancelProtection(table, row, audit = {}) {
     );
   }
 
-  // 2) Credita só quem ganhou o claim
+  // Credita se ainda não há TX (inclui reparo de cancel sem estorno)
+  let refundedCents = 0;
   if (userId && amount > 0) {
-    const prof = await sb(
-      `/rest/v1/profiles?select=balance_cents,locked_balance_cents,demo_balance_cents,investor_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`,
-      { token: SERVICE_KEY }
-    );
-    const p = Array.isArray(prof) ? prof[0] : null;
-    if (p) {
-      const patchFull = {
-        updated_at: new Date().toISOString(),
-      };
-      if (refundFeeOnly) {
-        // Histórico fee_upfront: devolve só a taxa; não mexe em locked
-        if (balanceType === "DEMO") {
-          patchFull.demo_balance_cents = n(p.demo_balance_cents) + amount;
-        } else if (balanceType === "INVESTOR") {
-          patchFull.investor_balance_cents = n(p.investor_balance_cents) + amount;
-        } else {
-          patchFull.balance_cents = n(p.balance_cents) + amount;
-        }
-        // histórico fee_upfront: não trava stake — não mexe em locked
-      } else {
-        // stake_lock / legado: devolve stake e solta locked
-        if (balanceType === "DEMO") {
-          patchFull.demo_balance_cents = n(p.demo_balance_cents) + amount;
-        } else if (balanceType === "INVESTOR") {
-          patchFull.investor_balance_cents = n(p.investor_balance_cents) + amount;
-        } else {
-          patchFull.balance_cents = n(p.balance_cents) + amount;
-        }
-        patchFull.locked_balance_cents = Math.max(
-          0,
-          n(p.locked_balance_cents) - stakeCents
-        );
-      }
-      try {
-        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
-          method: "PATCH",
-          token: SERVICE_KEY,
-          body: patchFull,
-        });
-      } catch {
-        const slim = { ...patchFull };
-        delete slim.updated_at;
-        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
-          method: "PATCH",
-          token: SERVICE_KEY,
-          body: slim,
-        });
-      }
-    }
-    try {
-      await sb("/rest/v1/wallet_transactions", {
-        method: "POST",
-        token: SERVICE_KEY,
-        body: {
-          user_id: userId,
-          type: "protection_refund",
-          amount_cents: amount,
-          ref: protectionId,
-          metadata: {
-            protection_id: protectionId,
-            auto_cancel: true,
-            billing_model: refundFeeOnly
-              ? "fee_upfront_v1"
-              : stakeLock
-                ? "stake_lock_v1"
-                : "legacy_lock",
-            refund_kind: refundFeeOnly ? "fee" : "stake",
-            fee_cents: feeCents,
-            stake_cents: stakeCents,
-            balance_type: balanceType,
-            guard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
-            ...(audit || {}),
-          },
+    // recheck race
+    if (!(await protectionRefundAlreadyDone(protectionId))) {
+      const credited = await creditCancelRefundToWallet(row, {
+        protectionId,
+        amount,
+        stakeCents,
+        feeCents,
+        refundFeeOnly,
+        stakeLock,
+        balanceType,
+        audit: {
+          ...(audit || {}),
+          repaired: repaired || undefined,
         },
       });
-    } catch (e) {
-      console.warn("[prelive] wallet_transactions refund:", e.message || e);
+      refundedCents = credited.refundedCents || 0;
     }
+  }
+
+  // Garante status cancelled mesmo no repair
+  if (repaired) {
+    try {
+      await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(protectionId)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          status: "cancelled",
+          settled_at: new Date().toISOString(),
+          result: "cancelled_refund",
+          metadata: prevMeta,
+          updated_at: new Date().toISOString(),
+        },
+      });
+    } catch {
+      /* */
+    }
+  }
+
+  if (!(refundedCents > 0) && amount > 0 && !(await protectionRefundAlreadyDone(protectionId))) {
+    throw new Error(
+      `Cancelamento sem estorno aplicado (proteção ${protectionId}, esperado ${amount} centavos)`
+    );
   }
 
   const marketId =
@@ -3072,7 +3120,9 @@ async function refundAndCancelProtection(table, row, audit = {}) {
     auto: true,
     protectionId,
     status: "cancelled",
-    refundedCents: amount,
+    refundedCents,
+    repaired: repaired || undefined,
+    alreadyCancelled: repaired && refundedCents > 0 ? undefined : repaired || undefined,
   };
 }
 
@@ -3109,7 +3159,12 @@ async function contestCancelAuto(body, token) {
   }
   const st = String(row.status || "").toLowerCase();
   if (st === "cancelled") {
-    return { ok: true, alreadyCancelled: true, status: "cancelled", protectionId };
+    // Pode ser cancel sem estorno — refundAndCancelProtection repara
+    return refundAndCancelProtection(table, row, {
+      reason: reason.length >= 3 ? reason : "Reparo cancel sem estorno",
+      cancelled_by: userId,
+      repair: true,
+    });
   }
   if (st !== "active" && st !== "pending" && st !== "review_odd") {
     const err = new Error("Só é possível cancelar proteções ativas ou em contestação");
