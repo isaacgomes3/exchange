@@ -416,24 +416,6 @@ describe("integração dos callers e documentação", () => {
     assert.match(shim, /createProtectionModel:\s*"fee_upfront_v1"/);
   });
 
-  it("fluxo de comprovante publica submit, approve e página elegível", () => {
-    const shim = source("scripts/arbishield-serverfn-shim.mjs");
-    assert.match(shim, /\/api\/arbishield\/refund-proof\/submit/);
-    assert.match(shim, /\/api\/arbishield\/refund-proof\/approve/);
-    assert.match(shim, /proof_approved:\s*true/);
-    assert.match(shim, /deduction_balance_cents:\s*nextBalance/);
-
-    const proofPage = source(
-      "deploy/vps-supabase/static/v2/app-comprovantes.html"
-    );
-    assert.match(proofPage, /Reembolso Elegível/);
-    assert.match(
-      proofPage,
-      /Sua proteção foi validada\. Envie seu comprovante para solicitar o reembolso\./
-    );
-    assert.match(proofPage, /refund-proof\/submit/);
-  });
-
   it("AGENTS e doc registram as regras v11", () => {
     for (const doc of [
       source("AGENTS.md"),

@@ -23,8 +23,6 @@
       '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3 5 6v5c0 4.5 2.8 7.8 7 9 4.2-1.2 7-4.5 7-9V6l-7-3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m9.2 12 1.8 1.8 3.8-3.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     protecoes:
       '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 7h12M8 12h12M8 17h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="4.5" cy="7" r="1" fill="currentColor"/><circle cx="4.5" cy="12" r="1" fill="currentColor"/><circle cx="4.5" cy="17" r="1" fill="currentColor"/></svg>',
-    comprovantes:
-      '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 3.5h7l4 4V20.5H7V3.5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3.5v4h4M10 12h5M10 15.5h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
     desafio:
       '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 4h8v3a4 4 0 0 1-8 0V4z" stroke="currentColor" stroke-width="1.8"/><path d="M8 6H5.5A2.5 2.5 0 0 0 5 11c1.2 1.2 2.8 1.7 4 2M16 6h2.5A2.5 2.5 0 0 1 19 11c-1.2 1.2-2.8 1.7-4 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M10 15h4v2l-2 3-2-3v-2z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
     carteira:
@@ -144,7 +142,6 @@
         p("home", "Visão Geral", "/app.html"),
         p("proteger", "Proteger Aposta", "/app-proteger.html"),
         p("protecoes", "Minhas Proteções", "/app-protecoes.html"),
-        p("comprovantes", "Comprovantes", "/app-comprovantes.html"),
         p("desafio", "Desafio", "/app-desafio.html", { glow: true }),
         p("carteira", "Financeiro", "/app-carteira.html"),
         p("suporte", "Atendimento", "/app-suporte.html"),

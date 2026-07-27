@@ -7,11 +7,11 @@
   <title>Gestão de Proteções — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="protecoes-comprovantes-v11" />
-  <link rel="stylesheet" href="/v2.css?v=protecoes-comprovantes-v11" />
+  <meta name="arbishield-build" content="protecoes-cancel-devolve-stake-v6g" />
+  <link rel="stylesheet" href="/v2.css?v=protecoes-cancel-devolve-stake-v6g" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=protecoes-comprovantes-v11"></script>
-  <script src="/v2-shell.js?v=protecoes-comprovantes-v11" defer></script>
+  <script src="/v2.js?v=protecoes-cancel-devolve-stake-v6g"></script>
+  <script src="/v2-shell.js?v=protecoes-cancel-devolve-stake-v6g" defer></script>
   <style>
     .prot-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 16px; align-items: start; }
     @media (max-width: 960px) {
@@ -113,7 +113,6 @@
       background: rgba(255,255,255,0.04); text-align: center; line-height: 1.2;
     }
     .prot-badge.review { border-color: rgba(251,191,36,0.45); color: #fbbf24; background: rgba(251,191,36,0.08); }
-    .prot-badge.eligible { border-color: rgba(201,242,35,0.55); color: #d7ff1f; background: rgba(201,242,35,0.12); }
     .prot-badge.active { border-color: rgba(201,242,35,0.4); color: #c9f223; background: rgba(201,242,35,0.08); }
     .prot-badge.cancelled {
       border-color: rgba(248,113,113,0.45); color: #fff;
@@ -372,8 +371,6 @@
       function statusLabel(st) {
         st = String(st || "").toLowerCase();
         if (st === "review_odd") return "Em Contestação";
-        if (st === "pending_refund") return "Reembolso Elegível";
-        if (st === "refund_requested") return "Em Análise";
         if (st === "active") return "Ativa";
         if (st === "cancelled") return "Cancelada";
         if (st === "settled" || st === "won_exchange" || st === "lost_exchange") return "Encerrada";
@@ -382,8 +379,6 @@
       function statusClass(st) {
         st = String(st || "").toLowerCase();
         if (st === "review_odd") return "review";
-        if (st === "pending_refund") return "eligible";
-        if (st === "refund_requested") return "review";
         if (st === "active") return "active";
         if (st === "cancelled") return "cancelled";
         if (st === "settled" || st === "won_exchange" || st === "lost_exchange") return "settled";
@@ -822,11 +817,8 @@
           var oddTxt = oddN > 1.01 ? oddN.toFixed(2) : "—";
           var res = resultInfo(it);
           var badgeCls = statusClass(it.status);
-          var statusNow = String(it.status || "").toLowerCase();
-          if (statusNow !== "pending_refund" && statusNow !== "refund_requested") {
-            if (res.kind === "won") badgeCls = "won";
-            if (res.kind === "lost") badgeCls = "lost";
-          }
+          if (res.kind === "won") badgeCls = "won";
+          if (res.kind === "lost") badgeCls = "lost";
           var metaHtml = "";
           if (res.label) {
             metaHtml =
@@ -885,9 +877,6 @@
           ? new Date(it.matches.starts_at).toLocaleString("pt-BR")
           : "—";
         var res = resultInfo(it);
-        var protectionStatus = String(it.status || "").toLowerCase();
-        var needsRefundProof = protectionStatus === "pending_refund";
-        var refundInReview = protectionStatus === "refund_requested";
         var created = it.created_at
           ? new Date(it.created_at).toLocaleString("pt-BR")
           : "—";
@@ -931,16 +920,12 @@
             "</strong></div>" +
           "</div>" +
           '<div class="prot-actions" style="display:flex;flex-direction:column;gap:10px">' +
-            (needsRefundProof
-              ? '<a class="btn btn-primary" href="/app-comprovantes.html">Enviar comprovante</a>'
-              : refundInReview
-                ? '<p class="warn" style="margin:0">Comprovante recebido. Seu reembolso está Em Análise.</p>'
-                : '<button type="button" class="btn btn-primary" id="btnContest"' +
-                  (gate.ok ? "" : " disabled") +
-                  ">Contestar proteção</button>" +
-                  '<button type="button" class="btn btn-ghost" id="btnCancelProt"' +
-                  (gate.ok ? "" : " disabled") +
-                  ">Cancelar proteção</button>") +
+            '<button type="button" class="btn btn-primary" id="btnContest"' +
+            (gate.ok ? "" : " disabled") +
+            ">Contestar proteção</button>" +
+            '<button type="button" class="btn btn-ghost" id="btnCancelProt"' +
+            (gate.ok ? "" : " disabled") +
+            ">Cancelar proteção</button>" +
             (isMirror
               ? '<button type="button" class="btn btn-ghost" id="btnHideErr" style="border-color:rgba(248,113,113,0.45);color:#fecaca">Ocultar da lista (erro de lançamento)</button>' +
                 '<p class="sub" style="margin:0">Espelho: oculta só na UI do cliente. Não estorna saldo. Use se a entrada não foi dele.</p>'
