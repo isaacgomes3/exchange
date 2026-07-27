@@ -7,11 +7,11 @@
   <title>Gestão de Proteções — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="protecoes-col-odd-valor-v1" />
-  <link rel="stylesheet" href="/v2.css?v=protecoes-col-odd-valor-1" />
+  <meta name="arbishield-build" content="protecoes-col-odd-valor-v2" />
+  <link rel="stylesheet" href="/v2.css?v=protecoes-col-odd-valor-2" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=protecoes-col-odd-valor-1"></script>
-  <script src="/v2-shell.js?v=protecoes-col-odd-valor-1" defer></script>
+  <script src="/v2.js?v=protecoes-col-odd-valor-2"></script>
+  <script src="/v2-shell.js?v=protecoes-col-odd-valor-2" defer></script>
   <style>
     .prot-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 16px; align-items: start; }
     @media (max-width: 960px) {
@@ -138,19 +138,16 @@
         grid-template-areas:
           "time match"
           "time sides"
-          "comp comp"
           "market market"
           "valor status";
         gap: 10px 12px;
       }
       .prot-list .term-col-time { grid-area: time; }
       .prot-list .term-col-match { grid-area: match; }
-      .prot-list .term-col-comp { grid-area: comp; }
       .prot-list .term-col-sides { grid-area: sides; justify-content: flex-start; }
       .prot-list .term-col-market { grid-area: market; justify-content: stretch; }
       .prot-list .term-col-valor { grid-area: valor; text-align: left; }
       .prot-list .term-col-status { grid-area: status; justify-content: flex-end; }
-      .prot-list .term-comp { white-space: normal; }
       .prot-list .term-market { font-size: 14px; padding: 12px 14px; }
     }
     .prot-detail {
