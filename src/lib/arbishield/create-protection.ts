@@ -2,9 +2,9 @@
  * Cria proteção LAY/BACK no mesmo schema do SPA (sem RPC legado).
  *
  * TRAVADO — DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST
- * Fonte da verdade: scripts/lib/protection-flow-contract.mjs (v4 stake_lock_v1)
- * Ativação trava stake · Arbi credita stake · PERDEU R$ 0 cobra dedução
- * Empate Anula / Cancelar destravam stake.
+ * Fonte da verdade: scripts/lib/protection-flow-contract.mjs (v5 stake_lock_v1)
+ * Ativação trava stake (máx. 50% Apostador) · Ganhou Arbi credita stake ·
+ * Ganhou Exchange R$ 0 cobra dedução · Empate Anula / Cancelar destravam.
  */
 
 export type BalanceType = "REAL" | "DEMO" | "INVESTOR";
@@ -127,6 +127,14 @@ function availableBalance(
     num(profile.balance_cents) +
     num(profile.reusable_balance_cents) +
     num(profile.deduction_balance_cents)
+  );
+}
+
+/** Alinhado a scripts/lib/protection-flow-contract.mjs → maxStakeLockCents */
+const MAX_STAKE_FRACTION_OF_APOSTADOR = 0.5;
+function maxStakeLockCents(apostadorAvailableCents: number) {
+  return Math.floor(
+    Math.max(0, num(apostadorAvailableCents)) * MAX_STAKE_FRACTION_OF_APOSTADOR
   );
 }
 
@@ -256,6 +264,15 @@ export async function createProtection(
     throw Object.assign(
       new Error(
         `Saldo insuficiente para travar ${(lockCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
+      ),
+      { status: 400 }
+    );
+  }
+  const maxLock = maxStakeLockCents(available);
+  if (lockCents > maxLock) {
+    throw Object.assign(
+      new Error(
+        `Stake máximo na ativação é 50% do saldo Apostador restante (${(maxLock / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}). Disponível: ${(available / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`
       ),
       { status: 400 }
     );

@@ -26,6 +26,7 @@ import {
   calcLay,
   calcBack,
   layToBackOdd,
+  maxStakeLockCents,
 } from "./lib/protection-flow-contract.mjs";
 import {
   BETBRA_INPLAY_SYNC_VERSION,
@@ -1464,31 +1465,73 @@ async function creditWalletForSettlement(row, outcome, now) {
     return { refunded: 0, credited: 0, alreadyCredited: true };
   }
 
-  // Exchange (fee_upfront OU legado): NUNCA credita Saldo Reembolso.
-  // Legado: só libera locked. Empate Anula / Arbi seguem abaixo.
+  // Ganhou na Exchange: R$ 0 Reembolso; stake_lock cobra só a dedução; destrava sem devolver.
+  // fee_upfront: dedução já cobrada na criação — só audita.
   if (!wonArbi && !isVoid) {
+    const fee = settlementDeductionCents(row);
+    const stakeLock = isStakeLockProtection(row);
     let unlocked = false;
-    if (!feeUpfront && amount > 0 && row.user_id) {
-      try {
-        const prof = await sb(
-          `/rest/v1/profiles?select=locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
-          { token: SERVICE_KEY }
-        );
-        const p = Array.isArray(prof) ? prof[0] : null;
-        if (p) {
-          await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
-            method: "PATCH",
-            token: SERVICE_KEY,
-            body: {
-              locked_balance_cents: Math.max(0, nCents(p.locked_balance_cents) - amount),
-              updated_at: now,
-            },
-          });
+    let feeCharged = 0;
+    let feeShortfall = 0;
+    try {
+      const prof = await sb(
+        `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents,demo_balance_cents,investor_balance_cents,deduction_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+        { token: SERVICE_KEY }
+      );
+      const p = Array.isArray(prof) ? prof[0] : null;
+      if (p) {
+        const patch = { updated_at: now };
+        if ((stakeLock || !feeUpfront) && amount > 0) {
+          patch.locked_balance_cents = Math.max(
+            0,
+            nCents(p.locked_balance_cents) - amount
+          );
           unlocked = true;
         }
-      } catch (e) {
-        console.warn("[settle] unlock legado exchange:", e?.message || e);
+        // stake_lock: cobra dedução agora (fee_upfront já cobrou na ativação)
+        if (stakeLock && !feeUpfront && fee > 0) {
+          let left = fee;
+          if (balanceType === "DEMO") {
+            const cur = nCents(p.demo_balance_cents);
+            const take = Math.min(cur, left);
+            patch.demo_balance_cents = cur - take;
+            feeCharged = take;
+            left -= take;
+          } else if (balanceType === "INVESTOR") {
+            const cur = nCents(p.investor_balance_cents);
+            const take = Math.min(cur, left);
+            patch.investor_balance_cents = cur - take;
+            feeCharged = take;
+            left -= take;
+          } else {
+            let bal =
+              nCents(p.balance_cents) + nCents(p.reusable_balance_cents);
+            let ded = nCents(p.deduction_balance_cents);
+            patch.reusable_balance_cents = 0;
+            if (bal >= left) {
+              patch.balance_cents = bal - left;
+              patch.deduction_balance_cents = ded;
+              feeCharged = left;
+              left = 0;
+            } else {
+              left -= bal;
+              const takeDed = Math.min(ded, left);
+              patch.balance_cents = 0;
+              patch.deduction_balance_cents = ded - takeDed;
+              feeCharged = bal + takeDed;
+              left -= takeDed;
+            }
+          }
+          feeShortfall = Math.max(0, left);
+        }
+        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: patch,
+        });
       }
+    } catch (e) {
+      console.warn("[settle] exchange stake_lock:", e?.message || e);
     }
     try {
       await sb("/rest/v1/wallet_transactions", {
@@ -1497,20 +1540,26 @@ async function creditWalletForSettlement(row, outcome, now) {
         body: {
           user_id: row.user_id,
           type: "protection_settlement",
-          amount_cents: 0,
+          amount_cents: feeCharged > 0 ? -feeCharged : 0,
           ref: row.id,
           metadata: {
             protection_id: row.id,
             match_id: row.match_id || null,
             outcome: "exchange",
             stake_cents: amount,
-            fee_cents: settlementDeductionCents(row),
-            billing_model: feeUpfront ? "fee_upfront_v1" : "legacy_lock",
+            fee_cents: fee,
+            fee_charged_cents: feeCharged,
+            fee_shortfall_cents: feeShortfall,
+            billing_model: feeUpfront
+              ? "fee_upfront_v1"
+              : stakeLock
+                ? "stake_lock_v1"
+                : "legacy_lock",
             fix: "settle-exchange-nunca-reembolso-v1",
             unlocked_locked: unlocked,
             note: feeUpfront
-              ? "taxa cobrada na criação — sem crédito no settle (PERDEU)"
-              : "legado Exchange — sem crédito Reembolso; só libera locked",
+              ? "Ganhou Exchange: taxa já cobrada na criação — sem crédito Reembolso"
+              : "Ganhou Exchange: R$ 0 Reembolso; cobra só dedução; destrava sem devolver",
           },
         },
       });
@@ -1522,6 +1571,8 @@ async function creditWalletForSettlement(row, outcome, now) {
       credited: 0,
       exchangeNoCredit: true,
       feeUpfrontExchange: feeUpfront,
+      feeChargedCents: feeCharged,
+      feeShortfallCents: feeShortfall,
       unlocked,
     };
   }
@@ -1617,14 +1668,18 @@ async function creditWalletForSettlement(row, outcome, now) {
           fee_cents: parts.fee,
           fee_returned_cents: wonArbi || isVoid ? parts.fee : 0,
           bucket,
-          billing_model: feeUpfront ? "fee_upfront_v1" : "legacy_lock",
+          billing_model: feeUpfront
+            ? "fee_upfront_v1"
+            : isStakeLockProtection(row)
+              ? "stake_lock_v1"
+              : "legacy_lock",
           fix: isVoid
-            ? "settle-empate-anula-deducao-v1"
-            : "settle-arbishield-stake-mais-deducao-v1",
+            ? "settle-empate-anula-destrava-v1"
+            : "settle-arbishield-stake-reembolso-v1",
           note: isVoid
-            ? "Empate Anula: devolve só a dedução (Saldo Reembolso)"
+            ? "Empate Anula: destrava stake (devolve à origem)"
             : wonArbi
-              ? "ArbiShield: stake + dedução creditados (Saldo Reembolso / bucket origem)"
+              ? "Ganhou na ArbiShield: credita stake no Saldo Reembolso e destrava"
               : undefined,
         },
       },
@@ -2173,7 +2228,7 @@ async function createProtection(body, userToken) {
       n(profile.reusable_balance_cents) +
       n(profile.deduction_balance_cents);
 
-  // stake_lock: precisa ter saldo para o STAKE
+  // stake_lock: precisa ter saldo para o STAKE (máx. 50% do restante Apostador)
   let walletType = balanceType;
   if (lockCents > available && walletType === "REAL") {
     const demoAvail = n(profile.demo_balance_cents);
@@ -2188,6 +2243,14 @@ async function createProtection(body, userToken) {
   if (lockCents > available) {
     const err = new Error(
       `Saldo insuficiente para travar ${(lockCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}. Saldo ${walletType}: ${(available / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`
+    );
+    err.status = 400;
+    throw err;
+  }
+  const maxLock = maxStakeLockCents(available);
+  if (lockCents > maxLock) {
+    const err = new Error(
+      `Stake máximo na ativação é 50% do saldo Apostador restante (${(maxLock / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}). Disponível: ${(available / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`
     );
     err.status = 400;
     throw err;

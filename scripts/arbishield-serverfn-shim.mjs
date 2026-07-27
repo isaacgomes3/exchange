@@ -14,7 +14,7 @@ import { createRequire } from "node:module";
 // Contrato travado — import opcional (se lib faltar na VPS, usa fallback inline
 // para o shim não cair e a rota de saque continuar disponível).
 let PROTECTION_FLOW_LOCK = "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST";
-let PROTECTION_FLOW_CONTRACT_VERSION = "protection-flow-contract-v4";
+let PROTECTION_FLOW_CONTRACT_VERSION = "protection-flow-contract-v5";
 let isStakeLockProtection;
 let settlementCreditParts;
 let settlementCreditCents;
@@ -5787,30 +5787,81 @@ async function creditWalletForSettlement(row, outcome, now) {
     return { refunded: 0, credited: 0, alreadyCredited: true };
   }
 
-  // Exchange (fee_upfront OU legado): NUNCA credita Saldo Reembolso.
+  // Ganhou na Exchange: R$ 0 Reembolso; stake_lock cobra só a dedução; destrava sem devolver.
   if (!wonArbi && !isVoid) {
+    const fee =
+      (typeof settlementDeductionCents === "function"
+        ? settlementDeductionCents(row)
+        : 0) ||
+      parts.fee ||
+      0;
+    const stakeLock =
+      typeof isStakeLockProtection === "function"
+        ? isStakeLockProtection(row)
+        : !feeUpfront;
     let unlocked = false;
-    if (!feeUpfront && amount > 0 && row.user_id) {
-      try {
-        const prof = await sb(
-          `/rest/v1/profiles?select=locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+    let feeCharged = 0;
+    let feeShortfall = 0;
+    try {
+      let prof = await sb(
+        `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents,demo_balance_cents,investor_balance_cents,deduction_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+        { token: SERVICE_KEY }
+      ).catch(() => null);
+      if (!Array.isArray(prof) || !prof[0]) {
+        prof = await sb(
+          `/rest/v1/profiles?select=locked_balance_cents,balance_cents,reusable_balance_cents,demo_balance_cents,investor_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
           { token: SERVICE_KEY }
         );
-        const p = Array.isArray(prof) ? prof[0] : null;
-        if (p) {
-          await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
-            method: "PATCH",
-            token: SERVICE_KEY,
-            body: {
-              locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
-              updated_at: now,
-            },
-          });
+      }
+      const p = Array.isArray(prof) ? prof[0] : null;
+      if (p) {
+        const patch = { updated_at: now };
+        if ((stakeLock || !feeUpfront) && amount > 0) {
+          patch.locked_balance_cents = Math.max(0, n(p.locked_balance_cents) - amount);
           unlocked = true;
         }
-      } catch {
-        /* */
+        if (stakeLock && !feeUpfront && fee > 0) {
+          let left = fee;
+          if (balanceType === "DEMO") {
+            const cur = n(p.demo_balance_cents);
+            const take = Math.min(cur, left);
+            patch.demo_balance_cents = cur - take;
+            feeCharged = take;
+            left -= take;
+          } else if (balanceType === "INVESTOR") {
+            const cur = n(p.investor_balance_cents);
+            const take = Math.min(cur, left);
+            patch.investor_balance_cents = cur - take;
+            feeCharged = take;
+            left -= take;
+          } else {
+            let bal = n(p.balance_cents) + n(p.reusable_balance_cents);
+            let ded = n(p.deduction_balance_cents);
+            patch.reusable_balance_cents = 0;
+            if (bal >= left) {
+              patch.balance_cents = bal - left;
+              patch.deduction_balance_cents = ded;
+              feeCharged = left;
+              left = 0;
+            } else {
+              left -= bal;
+              const takeDed = Math.min(ded, left);
+              patch.balance_cents = 0;
+              patch.deduction_balance_cents = Math.max(0, ded - takeDed);
+              feeCharged = bal + takeDed;
+              left -= takeDed;
+            }
+          }
+          feeShortfall = Math.max(0, left);
+        }
+        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: patch,
+        });
       }
+    } catch {
+      /* */
     }
     try {
       await sb("/rest/v1/wallet_transactions", {
@@ -5819,20 +5870,26 @@ async function creditWalletForSettlement(row, outcome, now) {
         body: {
           user_id: row.user_id,
           type: "protection_settlement",
-          amount_cents: 0,
+          amount_cents: feeCharged > 0 ? -feeCharged : 0,
           ref: row.id,
           metadata: {
             protection_id: row.id,
             match_id: row.match_id || null,
             outcome: "exchange",
             stake_cents: amount,
-            fee_cents: parts.fee || settlementDeductionCents(row),
-            billing_model: feeUpfront ? "fee_upfront_v1" : "legacy_lock",
+            fee_cents: fee,
+            fee_charged_cents: feeCharged,
+            fee_shortfall_cents: feeShortfall,
+            billing_model: feeUpfront
+              ? "fee_upfront_v1"
+              : stakeLock
+                ? "stake_lock_v1"
+                : "legacy_lock",
             fix: "settle-exchange-nunca-reembolso-v1",
             unlocked_locked: unlocked,
             note: feeUpfront
-              ? "taxa cobrada na criação — sem crédito no settle (PERDEU)"
-              : "legado Exchange — sem crédito Reembolso; só libera locked",
+              ? "Ganhou Exchange: taxa já cobrada na criação — sem crédito Reembolso"
+              : "Ganhou Exchange: R$ 0 Reembolso; cobra só dedução; destrava sem devolver",
           },
         },
       });
@@ -5844,6 +5901,8 @@ async function creditWalletForSettlement(row, outcome, now) {
       credited: 0,
       exchangeNoCredit: true,
       feeUpfrontExchange: feeUpfront,
+      feeChargedCents: feeCharged,
+      feeShortfallCents: feeShortfall,
       unlocked,
     };
   }

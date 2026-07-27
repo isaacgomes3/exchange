@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <meta name="arbishield-build" content="proteger-sem-radar-v1" />
-  <meta name="arbishield-features" content="proteger-sem-radar-v1 proteger-espelho-readonly-v13" />
+  <meta name="arbishield-build" content="proteger-stake-lock-50-v5" />
+  <meta name="arbishield-features" content="proteger-stake-lock-v5 proteger-espelho-readonly-v13" />
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=proteger-sem-radar-1" />
+  <link rel="stylesheet" href="/v2.css?v=proteger-stake-lock-50-v5" />
   <style>
     .term-score {
       display: inline-flex;
@@ -36,8 +36,8 @@
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=proteger-sem-radar-1"></script>
-  <script src="/v2-shell.js?v=proteger-sem-radar-1" defer></script>
+  <script src="/v2.js?v=proteger-stake-lock-50-v5"></script>
+  <script src="/v2-shell.js?v=proteger-stake-lock-50-v5" defer></script>
 </head>
 <body data-shell="app" data-active="proteger">
   <div class="page-head term-head">
@@ -155,16 +155,15 @@
         : user.id;
       var isMirror = String(viewUserId) !== String(user.id);
 
-      /** Sandbox: cobrança fee_upfront via worker :3198. Produção: não misturar eventos de teste. */
+      /** Sandbox / produção: mesma regra stake_lock (trava stake, máx. 50% Apostador). */
       var IS_SANDBOX =
         /^\/sandbox(?:\/|$)/.test(location.pathname || "") ||
         document.getElementById("arbishield-sandbox-banner") != null;
       var API_BASE = IS_SANDBOX ? "/__sandbox_api/arbishield" : "/api/arbishield";
       var hintEl = document.getElementById("billingHint");
       if (hintEl) {
-        hintEl.textContent = IS_SANDBOX
-          ? "SANDBOX · dedução ArbiShield cobrada na ativação (stake não trava)"
-          : "Produção · dedução ArbiShield conforme regra do evento";
+        hintEl.textContent =
+          "Ativação trava o stake · máx. 50% do saldo Apostador restante · dedução só se ganhar na Exchange";
       }
 
       var SPORTS = [
@@ -267,6 +266,10 @@
           Number(p.reusable_balance_cents || 0) +
           Number(p.deduction_balance_cents || 0)
         );
+      }
+      /** Máx. 50% do restante da carteira Apostador (contrato stake_lock_v1). */
+      function maxStakeLockCents(avail) {
+        return Math.floor(Math.max(0, Number(avail) || 0) * 0.5);
       }
       function liqLeft(m) {
         // Legado Ye: soma liquidez restante dos mercados; senão max−used da partida
@@ -442,6 +445,7 @@
         var seuLucro = Math.round(amountCents * 0.015);
         var deducao = Math.max(0, lucroBruto - seuLucro);
         var avail = available(document.getElementById("balanceType").value);
+        var maxLock = maxStakeLockCents(avail);
         var valorLabel = mt === "LAY" ? "Responsabilidade" : "Stake";
         var extraLine = "";
         if (mt === "LAY" && amountCents > 0 && layOdd > 1.01) {
@@ -460,12 +464,13 @@
         }
         document.getElementById("preview").innerHTML =
           "<div><span>Tipo</span><b>" + mt + "</b></div>" +
-          "<div><span>" + valorLabel + "</span><b>" + money(amountCents) + "</b></div>" +
+          "<div><span>" + valorLabel + " (trava)</span><b>" + money(amountCents) + "</b></div>" +
           extraLine +
           "<div><span>Retorno casa externa</span><b>" + money(retorno) + "</b></div>" +
           "<div><span>Seu lucro (1,5%)</span><b>" + money(seuLucro) + "</b></div>" +
-          "<div><span>Dedução ArbiShield</span><b>" + money(deducao) + "</b></div>" +
-          "<div><span>Saldo disponível</span><b>" + money(avail) + "</b></div>";
+          "<div><span>Dedução se ganhar Exchange</span><b>" + money(deducao) + "</b></div>" +
+          "<div><span>Saldo disponível</span><b>" + money(avail) + "</b></div>" +
+          "<div><span>Máx. stake (50%)</span><b>" + money(maxLock) + "</b></div>";
       }
 
       function marketBetLink(match, market) {
@@ -584,23 +589,24 @@
           return;
         }
         var balType = document.getElementById("balanceType").value;
-        var feeNeed = calcForMarket(
-          state.selected.marketType,
-          amountCents,
-          odd
-        ).feeChargedCents;
-        if (!(available(balType) >= feeNeed)) {
-          var modo =
-            state.selected.marketType === "LAY"
-              ? "responsabilidade"
-              : "stake";
+        var availBal = available(balType);
+        var maxLock = maxStakeLockCents(availBal);
+        if (amountCents > availBal) {
           showErr(
-            "Saldo insuficiente para a dedução de " +
-              money(feeNeed) +
-              " (" +
-              modo +
-              " não é travado). Disponível: " +
-              money(available(balType)) +
+            "Saldo insuficiente para travar " +
+              money(amountCents) +
+              ". Disponível: " +
+              money(availBal) +
+              "."
+          );
+          return;
+        }
+        if (amountCents > maxLock) {
+          showErr(
+            "Máximo 50% do saldo Apostador restante: " +
+              money(maxLock) +
+              ". Disponível: " +
+              money(availBal) +
               "."
           );
           return;
@@ -660,16 +666,9 @@
             );
           }
           closeDrawer();
-          var charged =
-            data.feeChargedCents != null ? data.feeChargedCents : feeNeed;
-          if (!(Number(charged) > 0) && IS_SANDBOX) {
-            throw new Error(
-              "API sandbox não cobrou a dedução. Rode o hotfix fee_upfront na VPS e tente de novo."
-            );
-          }
           showOk(
-            "Proteção ativada · cobrado " +
-              money(charged) +
+            "Proteção ativada · stake travado " +
+              money(amountCents) +
               " · " +
               String(data.protectionId).slice(0, 8) +
               "…"

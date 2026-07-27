@@ -8,11 +8,11 @@
  * de crédito no settle; os testes em protection-flow-contract.test.mjs
  * travam o comportamento no CI.
  *
- * Versão: protection-flow-contract-v4 (2026-07-27)
+ * Versão: protection-flow-contract-v5 (2026-07-27)
  *   Regra vigente (stake_lock_v1):
- *     - Ativação → trava stake
- *     - ArbiShield → credita stake (Saldo Reembolso)
- *     - Exchange / PERDEU → R$ 0 (não credita Reembolso); cobra só a dedução
+ *     - Ativação → trava stake (máx. 50% do restante da carteira Apostador)
+ *     - Ganhou na ArbiShield → credita stake (Saldo Reembolso) e destrava
+ *     - Ganhou na Exchange → R$ 0; cobra só a dedução; destrava sem devolver
  *     - Empate Anula → destrava stake (devolve à origem)
  *     - Cancelar → destrava stake (devolve à origem)
  *
@@ -22,7 +22,7 @@
  */
 
 export const PROTECTION_FLOW_CONTRACT_VERSION =
-  "protection-flow-contract-v4";
+  "protection-flow-contract-v5";
 
 /** Marcador exigido pelos testes / hotfixes — não renomear. */
 export const PROTECTION_FLOW_LOCK =
@@ -31,9 +31,21 @@ export const PROTECTION_FLOW_LOCK =
 /** Marker da regra vigente. */
 export const STAKE_LOCK_RULE = "stake-lock-v1";
 
+/** Fração máxima do saldo Apostador que pode ser travada na ativação. */
+export const MAX_STAKE_FRACTION_OF_APOSTADOR = 0.5;
+
 function n(v) {
   const x = Number(v);
   return Number.isFinite(x) ? Math.trunc(x) : 0;
+}
+
+/**
+ * Teto de stake na ativação: 50% do saldo restante da carteira Apostador.
+ * @param {number} apostadorAvailableCents
+ */
+export function maxStakeLockCents(apostadorAvailableCents) {
+  const avail = Math.max(0, n(apostadorAvailableCents));
+  return Math.floor(avail * MAX_STAKE_FRACTION_OF_APOSTADOR);
 }
 
 /**
@@ -126,9 +138,11 @@ export function settlementDeductionCents(row) {
 /**
  * Regras de crédito no settle (TRAVADAS) — stake_lock_v1:
  *
- *   - ArbiShield → stake (Saldo Reembolso)
- *   - Exchange   → 0 (não credita Reembolso; caller cobra dedução + destrava)
+ *   - Ganhou na ArbiShield → stake (Saldo Reembolso) + destrava
+ *   - Ganhou na Exchange   → 0 (não credita Reembolso; cobra só a dedução; destrava sem devolver)
  *   - Empate Anula / void → stake (caller destrava/devolve à origem — NÃO Reembolso)
+ *
+ * Ativação: trava stake, máx. 50% do restante da carteira Apostador.
  *
  * Histórico fee_upfront_v1 (só linhas antigas):
  *   - ArbiShield → stake + dedução (Reembolso)

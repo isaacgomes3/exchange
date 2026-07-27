@@ -8,7 +8,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 # Fluxo de Proteção — CONTRATO TRAVADO
 
 **Marker:** `DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST`  
-**Versão:** `protection-flow-contract-v4`  
+**Versão:** `protection-flow-contract-v5`  
 **Modelo vigente:** `stake_lock_v1`  
 **Fonte da verdade:** `scripts/lib/protection-flow-contract.mjs`  
 **Testes CI:** `npm test` → `scripts/protection-flow-contract.test.mjs`
@@ -27,11 +27,11 @@ Arquivos cobertos (lista mínima):
 
 ## Regras de produto vigentes (`stake_lock_v1`)
 
-1. **Ativação:** **trava o stake** (`locked_balance_cents`). Não cobra dedução na entrada.
+1. **Ativação:** **trava o stake** (`locked_balance_cents`). Usuário pode apostar **no máximo 50%** do valor restante na carteira Apostador (`maxStakeLockCents`). Não cobra dedução na entrada.
 2. **LAY** = responsabilidade; **BACK** = stake.
-3. **Bateu ArbiShield:** **credita o stake** no Saldo Reembolso (`deduction_balance_cents`) e destrava.
-4. **Bateu Exchange / PERDEU:** **R$ 0** (não credita Reembolso). **Cobra só a dedução**. Destrava o locked sem devolver ao cliente.
-5. **Empate Anula / void:** **destrava o stake** (devolve à carteira de origem — Real/Demo/Investidor). Não é vitória Arbi nem Exchange.
+3. **Ganhou na ArbiShield** (`outcome: arbishield` → `lost_exchange`): **credita o stake** no Saldo Reembolso (`deduction_balance_cents`) e **destrava**.
+4. **Ganhou na Exchange** (`outcome: exchange` → `won_exchange`): **R$ 0** (não credita Reembolso); **cobra só a dedução**; **destrava sem devolver**.
+5. **Empate Anula / void:** **destrava o stake** (devolve à origem — Real/Demo/Investidor).
 6. **Cancelar proteção:** **destrava o stake** (devolve à origem).
 
 Alterar qualquer item acima exige pedido explícito + atualização dos testes do contrato.

@@ -11,6 +11,8 @@ import {
   PROTECTION_FLOW_CONTRACT_VERSION,
   PROTECTION_FLOW_LOCK,
   STAKE_LOCK_RULE,
+  MAX_STAKE_FRACTION_OF_APOSTADOR,
+  maxStakeLockCents,
   calcFeeUpfront,
   calcLay,
   calcBack,
@@ -29,21 +31,25 @@ const root = resolve(__dirname, "..");
 
 describe("contrato travado — metadados", () => {
   it("mantém versão e lock", () => {
-    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v4");
+    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v5");
     assert.equal(STAKE_LOCK_RULE, "stake-lock-v1");
+    assert.equal(MAX_STAKE_FRACTION_OF_APOSTADOR, 0.5);
     assert.equal(
       PROTECTION_FLOW_LOCK,
       "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST"
     );
   });
 
-  it("AGENTS.md cita a regra vigente stake_lock", () => {
+  it("AGENTS.md cita a regra vigente stake_lock + 50%", () => {
     const agents = readFileSync(resolve(root, "AGENTS.md"), "utf8");
     assert.match(agents, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
-    assert.match(agents, /protection-flow-contract-v4/);
+    assert.match(agents, /protection-flow-contract-v5/);
     assert.match(agents, /stake_lock_v1/);
     assert.match(agents, /trava o stake/);
+    assert.match(agents, /50%/);
     assert.match(agents, /Saldo Reembolso/);
+    assert.match(agents, /Ganhou na ArbiShield/);
+    assert.match(agents, /Ganhou na Exchange/);
     assert.match(agents, /Empate Anula/);
   });
 
@@ -60,8 +66,24 @@ describe("contrato travado — metadados", () => {
     assert.match(shim, /protection-flow-contract\.mjs/);
     assert.match(prelive, /PROTECTION_FLOW_LOCK/);
     assert.match(shim, /PROTECTION_FLOW_LOCK/);
+    assert.match(prelive, /maxStakeLockCents/);
     assert.doesNotMatch(prelive, /function settlementCreditParts\s*\(/);
     assert.doesNotMatch(shim, /function settlementCreditParts\s*\(/);
+  });
+
+  it("create-protection e UI aplicam teto 50%", () => {
+    const createTs = readFileSync(
+      resolve(root, "src/lib/arbishield/create-protection.ts"),
+      "utf8"
+    );
+    const ui = readFileSync(
+      resolve(root, "deploy/vps-supabase/static/v2/app-proteger.html"),
+      "utf8"
+    );
+    assert.match(createTs, /maxStakeLockCents/);
+    assert.match(createTs, /MAX_STAKE_FRACTION_OF_APOSTADOR/);
+    assert.match(ui, /maxStakeLockCents/);
+    assert.match(ui, /50%/);
   });
 
   it("carteira do cliente exibe Saldo Reembolso", () => {
@@ -71,6 +93,16 @@ describe("contrato travado — metadados", () => {
     );
     assert.match(html, /Saldo Reembolso/);
     assert.doesNotMatch(html, /Saldo Dedução/);
+  });
+});
+
+describe("ativação — teto 50% Apostador", () => {
+  it("maxStakeLockCents = floor(50% disponível)", () => {
+    assert.equal(maxStakeLockCents(100_000), 50_000);
+    assert.equal(maxStakeLockCents(1), 0);
+    assert.equal(maxStakeLockCents(0), 0);
+    assert.equal(maxStakeLockCents(-10), 0);
+    assert.equal(maxStakeLockCents(99), 49);
   });
 });
 
@@ -107,7 +139,8 @@ describe("settle — stake_lock vigente", () => {
     assert.equal(settlementDeductionCents(row), 3763);
   });
 
-  it("ArbiShield credita só o stake", () => {
+  it("Ganhou na ArbiShield credita só o stake → Reembolso", () => {
+    assert.equal(normalizeSettleOutcome("arbishield"), "arbishield");
     assert.deepEqual(settlementCreditParts(row, "arbishield"), {
       stake: 100_000,
       fee: 0,
@@ -119,7 +152,7 @@ describe("settle — stake_lock vigente", () => {
     );
   });
 
-  it("Exchange / PERDEU → R$ 0", () => {
+  it("Ganhou na Exchange → R$ 0 (não Reembolso)", () => {
     assert.deepEqual(settlementCreditParts(row, "exchange"), {
       stake: 0,
       fee: 0,
