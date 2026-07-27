@@ -633,8 +633,8 @@
         <div id="settleOutcomeBox" style="display:grid;gap:10px;margin-top:8px">
           <button type="button" class="btn btn-ghost" id="btnOutcomeArbi" data-outcome="arbishield" style="justify-content:flex-start;text-align:left;padding:14px 16px;border-color:rgba(201,242,35,0.45)">
             <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU ARBISHIELD</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção válida · fica pendente até o envio do comprovante</span>
-            <span id="settleRefundHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Elegível após comprovante: —</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção válida · devolve stake/responsabilidade + dedução (Saldo Reembolso)</span>
+            <span id="settleRefundHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">A creditar: —</span>
           </button>
           <button type="button" class="btn btn-ghost" id="btnOutcomeExch" data-outcome="exchange" style="justify-content:flex-start;text-align:left;padding:14px 16px">
             <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU CASA EXTERNA (EXCHANGE)</span>
@@ -2131,28 +2131,11 @@
             /* nomes são opcionais */
           }
           // Marca jogos com proteção ainda aberta (LAY + BACK)
-          function isHistoricalStakeLock(p) {
-            var meta =
-              p && p.metadata && typeof p.metadata === "object" ? p.metadata : {};
-            return (
-              meta.billing_model === "stake_lock_v1" ||
-              meta.stake_lock === true ||
-              String(meta.source || "").indexOf("stake_lock") >= 0
-            );
-          }
-          // v11: fee_upfront usa a taxa já cobrada; stake_lock histórico
-          // recalcula pela fórmula antiga (lucro−4,5%−1,5%).
+          // settle-exchange-cobra-so-deducao-v9: margem = dedução vigente
+          // (lucro−4,5%−1,5%), NÃO stored antigo 96,11 e NÃO soma comissão.
           function liveExchangeDeductionCents(p) {
             var meta =
               p && p.metadata && typeof p.metadata === "object" ? p.metadata : {};
-            var stored = Number(
-              p.platform_deduction_cents != null
-                ? p.platform_deduction_cents
-                : p.locked_deduction_cents || 0
-            );
-            if (!isHistoricalStakeLock(p) && stored > 0) {
-              return Math.max(0, stored);
-            }
             var stake = Number(p.responsibility_cents || p.amount_cents || 0);
             var odd = Number(meta.market_odd);
             if (!(odd > 1.01)) odd = Number(p.odd || 0);
@@ -2162,11 +2145,13 @@
               var profit = Math.max(0, Math.round(stake * eff) - stake);
               var commission = Math.round(profit * 0.045);
               var user = Math.round(stake * 0.015);
-              return Math.max(
-                0,
-                profit - (isHistoricalStakeLock(p) ? commission : 0) - user
-              );
+              return Math.max(0, profit - commission - user);
             }
+            var stored = Number(
+              p.platform_deduction_cents != null
+                ? p.platform_deduction_cents
+                : p.locked_deduction_cents || 0
+            );
             return Math.max(0, stored);
           }
           var openByMatch = {};
@@ -2188,9 +2173,8 @@
               var margin = liveExchangeDeductionCents(p);
               openByMatch[p.match_id].count += 1;
               openByMatch[p.match_id].cents += amt;
-              // v11: stake + taxa ficam elegíveis após comprovante.
-              openByMatch[p.match_id].refund +=
-                amt + (isHistoricalStakeLock(p) ? 0 : margin);
+              // ArbiShield (vitória) credita só o stake no Saldo Reembolso
+              openByMatch[p.match_id].refund += amt;
               openByMatch[p.match_id].margin += Math.max(0, margin);
             });
           } catch (e1) {}
@@ -2212,8 +2196,7 @@
               var margin = liveExchangeDeductionCents(p);
               openByMatch[p.match_id].count += 1;
               openByMatch[p.match_id].cents += amt;
-              openByMatch[p.match_id].refund +=
-                amt + (isHistoricalStakeLock(p) ? 0 : margin);
+              openByMatch[p.match_id].refund += amt;
               openByMatch[p.match_id].margin += Math.max(0, margin);
             });
           } catch (e2) {}
@@ -3516,25 +3499,25 @@
           money(stake);
         if ($("settleRefundHint")) {
           $("settleRefundHint").textContent =
-            "Ganhou ArbiShield → pending_refund, sem crédito automático · elegível após comprovante: " +
+            "Ganhou ArbiShield → credita stake no Saldo Reembolso: " +
             money(refund) +
-            " (stake_lock histórico mantém crédito automático)";
+            " (stake_lock; dedução NÃO entra no Reembolso)";
         }
         if ($("settleDeductHint")) {
           $("settleDeductHint").textContent =
             margin > 0
-              ? "Exchange/PERDEU → crédito R$ 0 · taxa já cobrada na ativação: " +
+              ? "Exchange/PERDEU → cobra só a dedução agora: " +
                 money(margin) +
-                " · sem stake para devolver no fee_upfront v11"
-              : "Exchange/PERDEU → R$ 0 · taxa já cobrada · sem retorno de stake";
+                " · R$ 0 Reembolso · destrava e devolve o stake (ex. 1000@10 → R$ 91,11; sem comissão extra)"
+              : "Exchange/PERDEU → R$ 0 Reembolso · destrava e devolve o stake · cobra só a dedução ArbiShield";
         }
         if ($("settleStakeKeepHint")) {
           $("settleStakeKeepHint").textContent =
-            "Regra fee_upfront v11: taxa já cobrada na entrada; Exchange não credita nem devolve stake. Histórico stake_lock preserva destrava/devolução e fórmula lucro−4,5%−1,5%.";
+            "Regra stake_lock v9: Exchange = R$ 0 Reembolso · destrava e DEVOLVE o stake · cobra SÓ dedução (lucro−4,5%−1,5%). A fatia Exchange 4,5% já entra no cálculo — não debita de novo. Histórico fee_upfront: dedução já cobrada na entrada.";
         }
         if ($("settleVoidHint")) {
           $("settleVoidHint").textContent =
-            "Empate Anula → fee_upfront devolve só a taxa ao Saldo Reembolso; stake_lock histórico devolve o stake à origem.";
+            "Empate Anula → destrava e devolve o stake à origem (não vai para Reembolso).";
         }
         var liveInfo = matchLiveInfo(m);
         if (

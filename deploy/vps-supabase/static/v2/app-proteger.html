@@ -192,7 +192,7 @@
         : user.id;
       var isMirror = String(viewUserId) !== String(user.id);
 
-      /** Sandbox / produção: fee_upfront_v1 (cobra taxa, sem trava, cap 50%). */
+      /** Sandbox / produção: mesma regra stake_lock (trava stake, máx. 50% Apostador). */
       var IS_SANDBOX =
         /^\/sandbox(?:\/|$)/.test(location.pathname || "") ||
         document.getElementById("arbishield-sandbox-banner") != null;
@@ -200,7 +200,7 @@
       var hintEl = document.getElementById("billingHint");
       if (hintEl) {
         hintEl.textContent =
-          "1 proteção por evento · só antes do início · máx. 50% do Apostador restante · cobra somente a taxa ArbiShield agora";
+          "1 proteção por evento · entradas só antes do início · máx. 50% do Apostador restante · dedução só se ganhar na Exchange";
       }
 
       var SPORTS = [
@@ -264,21 +264,19 @@
         var profit = Math.max(0, grossReturn - coverage);
         var userProfit = Math.round(coverage * 0.015);
         var commission = Math.round(Math.max(0, profit) * 0.045);
-        // v11: a comissão Exchange é informativa e não reduz a taxa.
-        var feeNow = Math.max(0, profit - userProfit);
+        var feeNow = Math.max(0, profit - commission - userProfit);
         return {
           stakeCents: coverage,
           responsibilityCents: coverage,
           grossReturnCents: grossReturn,
           grossProfitCents: profit,
           userProfitCents: userProfit,
-          exchangeCommissionCents: commission,
           feeChargedCents: feeNow,
           effectiveBackOdd: a,
         };
       }
       /** LAY: amountCents = responsabilidade.
-       * Lucro fee = resp/(odd−1) (ex.: 1000@10 → 111,11 → taxa 96,11). */
+       * Lucro fee = resp/(odd−1) (ex.: 1000@10 → 111,11 → ArbiShield 91,11). */
       function calcLay(amountCents, odd) {
         var marketOdd = Number(odd) > 1.01 ? Number(odd) : 1.01;
         var backOdd = layToBackOdd(marketOdd);
@@ -309,7 +307,7 @@
           Number(p.deduction_balance_cents || 0)
         );
       }
-      /** Máx. 50% do Apostador restante para responsabilidade/stake (v11). */
+      /** Máx. 50% do restante da carteira Apostador (contrato stake_lock_v1). */
       function maxStakeLockCents(avail) {
         return Math.floor(Math.max(0, Number(avail) || 0) * 0.5);
       }
@@ -337,7 +335,7 @@
           maxCents > 0
             ? "Máximo efetivo neste evento (50% do Apostador ∩ liquidez): " +
               money(maxCents)
-            : "Sem saldo disponível para operar";
+            : "Sem saldo disponível para travar";
       }
       function applyMaxAmount() {
         showErr("");
@@ -558,7 +556,7 @@
         var lucroBruto = Math.max(0, retorno - amountCents);
         var seuLucro = Math.round(amountCents * 0.015);
         var comissaoEx = Math.round(Math.max(0, lucroBruto) * 0.045);
-        var deducao = Math.max(0, lucroBruto - seuLucro);
+        var deducao = Math.max(0, lucroBruto - comissaoEx - seuLucro);
         var avail = available(document.getElementById("balanceType").value);
         var maxLock = maxStakeLockCents(avail);
         var maxEff = currentEventMaxCents();
@@ -591,12 +589,12 @@
         }
         document.getElementById("preview").innerHTML =
           "<div><span>Tipo</span><b>" + mt + "</b></div>" +
-          "<div><span>" + valorLabel + " (não trava)</span><b>" + money(amountCents) + "</b></div>" +
+          "<div><span>" + valorLabel + " (trava)</span><b>" + money(amountCents) + "</b></div>" +
           extraLine +
           "<div><span>Retorno casa externa</span><b>" + money(retorno) + "</b></div>" +
           "<div><span>Seu lucro (1,5%)</span><b>" + money(seuLucro) + "</b></div>" +
-          "<div><span>Taxa ArbiShield cobrada agora</span><b>" + money(deducao) + "</b></div>" +
-          "<div><span>Comissão Exchange informativa (4,5%)</span><b>" +
+          "<div><span>Dedução se ganhar Exchange</span><b>" + money(deducao) + "</b></div>" +
+          "<div><span>Comissão Exchange (4,5% do lucro)</span><b>" +
           money(comissaoEx) +
           "</b></div>" +
           "<div><span>Saldo disponível agora</span><b>" + money(avail) + "</b></div>" +
@@ -755,15 +753,10 @@
         var balType = document.getElementById("balanceType").value;
         var availBal = available(balType);
         var maxLock = maxStakeLockCents(availBal);
-        var feePreview = calcForMarket(
-          state.selected.marketType,
-          amountCents,
-          odd
-        ).feeChargedCents;
-        if (feePreview > availBal) {
+        if (amountCents > availBal) {
           showErr(
-            "Saldo insuficiente para cobrar a taxa ArbiShield de " +
-              money(feePreview) +
+            "Saldo insuficiente para travar " +
+              money(amountCents) +
               ". Disponível: " +
               money(availBal) +
               "."
@@ -835,11 +828,28 @@
             );
           }
           closeDrawer();
+          // Toast usa a resposta da API (não o input) — evita mentir se a VPS
+          // ainda estiver em fee_upfront (só debita a dedução ~R$96 em odd 10).
+          var lockedApi = Number(data.lockedCents);
           var feeApi = Number(data.feeChargedCents) || 0;
-          var toastMsg =
-            "Proteção ativada · taxa ArbiShield cobrada " +
-            money(feeApi) +
-            " · stake não travado";
+          var billingApi = String(data.billingModel || "");
+          var toastMsg;
+          if (
+            billingApi.indexOf("fee_upfront") >= 0 ||
+            (feeApi > 0 && !(lockedApi > 0))
+          ) {
+            toastMsg =
+              "Proteção ativada · cobrada só a dedução " +
+              money(feeApi) +
+              " (API antiga fee_upfront — deploy stake_lock pendente)";
+          } else {
+            var lockedShow =
+              Number.isFinite(lockedApi) && lockedApi > 0
+                ? lockedApi
+                : amountCents;
+            toastMsg =
+              "Proteção ativada · stake travado " + money(lockedShow);
+          }
           showOk(
             toastMsg + " · " + String(data.protectionId).slice(0, 8) + "…"
           );

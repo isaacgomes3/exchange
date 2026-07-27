@@ -1,6 +1,6 @@
 /**
- * Contrato de produto ArbiShield v11.
- * Mudanças exigem solicitação explícita, bump de versão, docs e callers.
+ * Regressão do fluxo de proteção — falha o CI se alguém alterar as regras
+ * sem atualizar este contrato de propósito (e sem pedido explícito).
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -8,322 +8,721 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import {
-  ARBISHIELD_REQUIRES_PROOF_RULE,
-  CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
-  ENTRY_BEFORE_KICKOFF_ONLY,
-  EXCHANGE_INCOMPLETE_HEAL_RULE,
-  FEE_FORMULA_GROSS_MINUS_USER,
-  FEE_UPFRONT_ACTIVE_RULE,
-  MAX_STAKE_FRACTION_OF_APOSTADOR,
-  ONE_OPERATION_PER_EVENT,
   PROTECTION_FLOW_CONTRACT_VERSION,
   PROTECTION_FLOW_LOCK,
   PROTECTION_FLOW_SPEC,
-  SETTLEMENT_ODD_CANONICAL_RULE,
-  arbishieldRequiresProof,
-  calcBack,
+  STAKE_LOCK_RULE,
+  MAX_STAKE_FRACTION_OF_APOSTADOR,
+  ONE_OPERATION_PER_EVENT,
+  ENTRY_BEFORE_KICKOFF_ONLY,
+  maxStakeLockCents,
+  apostadorRemainingAfterLock,
+  isMatchKickoffPassed,
+  isCancelledProtectionStatus,
   calcFeeUpfront,
   calcLay,
-  cancelRefundCents,
-  computeArbiShieldDeductionCents,
-  creditBucketForSettlement,
-  exchangeCommissionCentsFromProfit,
-  exchangeWalletHealNeeded,
-  grossProfitCentsForFees,
-  isCancelledProtectionStatus,
-  isExchangeWalletComplete,
-  isFeeUpfrontProtection,
-  isMatchKickoffPassed,
-  isStakeLockProtection,
-  isVoidSettleOutcome,
-  maxStakeLockCents,
-  normalizeSettleOutcome,
+  calcBack,
   settlementCreditParts,
   settlementDeductionCents,
-  settlementExchangeCommissionCents,
-  settlementExchangeCommissionWalletCents,
+  creditBucketForSettlement,
+  settlementStatusForOutcome,
+  isFeeUpfrontProtection,
+  isStakeLockProtection,
+  isVoidSettleOutcome,
+  normalizeSettleOutcome,
+  cancelRefundCents,
+  CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+  EXCHANGE_CHARGE_DEDUCTION_RULE,
+  EXCHANGE_INCOMPLETE_HEAL_RULE,
+  SETTLEMENT_ODD_CANONICAL_RULE,
+  isExchangeWalletComplete,
+  exchangeWalletHealNeeded,
   settlementMarketOdd,
   settlementMarketType,
-  settlementStatusForOutcome,
+  settlementOutcomeFromProtectionRow,
+  EXCHANGE_COMMISSION_RATE,
+  exchangeCommissionCentsFromProfit,
+  settlementExchangeCommissionCents,
+  settlementExchangeCommissionWalletCents,
+  exchangeWalletChargeCents,
+  LAY_PROFIT_OVER_ODD_RULE,
+  EXCHANGE_NO_DOUBLE_COMMISSION_RULE,
+  grossProfitCentsForFees,
 } from "./lib/protection-flow-contract.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
-const source = (relativePath) =>
-  readFileSync(resolve(root, relativePath), "utf8");
 
-const feeUpfront10 = {
-  amount_cents: 100_000,
-  responsibility_cents: 100_000,
-  odd: 10,
-  platform_deduction_cents: 9_611,
-  metadata: {
-    billing_model: "fee_upfront_v1",
-    fee_upfront: true,
-    fee_charged_cents: 9_611,
-    market_type: "LAY",
-    market_odd: 10,
-  },
-};
-
-const historicalStakeLock10 = {
-  amount_cents: 100_000,
-  responsibility_cents: 100_000,
-  odd: 10,
-  platform_deduction_cents: 9_611,
-  metadata: {
-    billing_model: "stake_lock_v1",
-    stake_lock: true,
-    market_type: "LAY",
-    market_odd: 10,
-  },
-};
-
-describe("contrato v11 — modelo ativo", () => {
-  it("publica versão, lock e markers explícitos", () => {
-    assert.equal(
-      PROTECTION_FLOW_CONTRACT_VERSION,
-      "protection-flow-contract-v11"
-    );
+describe("contrato travado — metadados", () => {
+  it("mantém versão e lock", () => {
+    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v10");
+    assert.equal(STAKE_LOCK_RULE, "stake-lock-v1");
+    assert.equal(MAX_STAKE_FRACTION_OF_APOSTADOR, 0.5);
+    assert.equal(ONE_OPERATION_PER_EVENT, true);
+    assert.equal(ENTRY_BEFORE_KICKOFF_ONLY, true);
     assert.equal(
       PROTECTION_FLOW_LOCK,
       "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST"
     );
-    assert.equal(FEE_UPFRONT_ACTIVE_RULE, "fee-upfront-ativo-v11");
     assert.equal(
-      ARBISHIELD_REQUIRES_PROOF_RULE,
-      "arbishield-exige-comprovante-v11"
+      EXCHANGE_INCOMPLETE_HEAL_RULE,
+      "settle-exchange-heal-incompleto-v10"
     );
-    assert.equal(FEE_FORMULA_GROSS_MINUS_USER, "fee-lucro-menos-1_5-v11");
+    assert.equal(SETTLEMENT_ODD_CANONICAL_RULE, "settlement-odd-canonico-v10");
+  });
+
+  it("PROTECTION_FLOW_SPEC espelha as regras vigentes (só muda com pedido explícito)", () => {
+    assert.equal(PROTECTION_FLOW_SPEC.requiresExplicitRequestToChange, true);
+    assert.equal(PROTECTION_FLOW_SPEC.lock, PROTECTION_FLOW_LOCK);
+    assert.equal(PROTECTION_FLOW_SPEC.version, PROTECTION_FLOW_CONTRACT_VERSION);
+    assert.equal(PROTECTION_FLOW_SPEC.model, "stake_lock_v1");
+    assert.equal(PROTECTION_FLOW_SPEC.activation.locksStake, true);
+    assert.equal(PROTECTION_FLOW_SPEC.activation.chargesDeductionOnCreate, false);
+    assert.equal(PROTECTION_FLOW_SPEC.activation.maxFractionOfRemainingApostador, 0.5);
+    assert.equal(PROTECTION_FLOW_SPEC.activation.successiveCapOnRemaining, true);
+    assert.equal(PROTECTION_FLOW_SPEC.activation.oneOperationPerEvent, true);
+    assert.equal(PROTECTION_FLOW_SPEC.activation.entryOnlyBeforeKickoff, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.arbishield.creditStakeToReembolso, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.creditReembolso, false);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.creditTotal, 0);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.chargeDeductionOnly, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.unlockWithoutReturn, false);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.unlockReturnToOrigin, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.chargeExchangeCommission, false);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.void.unlockReturnToOrigin, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.cancel.unlockReturnToOrigin, true);
+  });
+
+  it("AGENTS.md e docs/PROTECTION_FLOW_LOCKED.md travam o fluxo", () => {
+    const agents = readFileSync(resolve(root, "AGENTS.md"), "utf8");
+    const lockedDoc = readFileSync(
+      resolve(root, "docs/PROTECTION_FLOW_LOCKED.md"),
+      "utf8"
+    );
+    assert.match(agents, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
+    assert.match(agents, /protection-flow-contract-v10/);
+    assert.match(agents, /LOCKED/);
+    assert.match(agents, /solicitação explícita/);
+    assert.match(agents, /docs\/PROTECTION_FLOW_LOCKED\.md/);
+    assert.match(agents, /stake_lock_v1/);
+    assert.match(agents, /trava o stake/);
+    assert.match(agents, /50%/);
+    assert.match(agents, /Uma operação por evento/);
+    assert.match(agents, /Sem entrada após o início/);
+    assert.match(agents, /Saldo Reembolso/);
+    assert.match(agents, /Ganhou na ArbiShield/);
+    assert.match(agents, /Ganhou na Exchange/);
+    assert.match(agents, /destrava e devolve/);
+    assert.match(agents, /Empate Anula/);
+    assert.match(agents, /8\.976,?41|91,?11|settle-exchange-cobra-so-deducao-v9/);
+    assert.match(agents, /settle-exchange-heal-incompleto-v10|9\.051,?71|15,?81/);
+    assert.match(lockedDoc, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
+    assert.match(lockedDoc, /protection-flow-contract-v10/);
+    assert.match(lockedDoc, /LOCKED/);
+    assert.match(lockedDoc, /solicitação explícita/);
+    assert.match(lockedDoc, /Uma operação por evento|1 operação por evento|uma proteção por jogo/i);
+    assert.match(lockedDoc, /antes do início|antes do kickoff/i);
+    assert.match(lockedDoc, /settle-exchange-cobra-so-deducao-v9/);
+    assert.match(lockedDoc, /settle-exchange-heal-incompleto-v10|settlement-odd-canonico-v10/);
+    assert.match(lockedDoc, /Destrava e DEVOLVE|destrava e DEVOLVE|destrava e devolve/i);
+    assert.match(lockedDoc, /8\.976,?41|91,?11/);
+    assert.match(lockedDoc, /9\.051,?71|15,?81/);
+  });
+
+  it("prelive e shim importam o contrato", () => {
+    const prelive = readFileSync(
+      resolve(root, "scripts/arbishield-prelive-events.mjs"),
+      "utf8"
+    );
+    const shim = readFileSync(
+      resolve(root, "scripts/arbishield-serverfn-shim.mjs"),
+      "utf8"
+    );
+    assert.match(prelive, /protection-flow-contract\.mjs/);
+    assert.match(shim, /protection-flow-contract\.mjs/);
+    assert.match(prelive, /PROTECTION_FLOW_LOCK/);
+    assert.match(shim, /PROTECTION_FLOW_LOCK/);
+    assert.match(prelive, /maxStakeLockCents/);
+    assert.match(prelive, /isMatchKickoffPassed/);
+    assert.match(prelive, /isCancelledProtectionStatus/);
+    assert.doesNotMatch(prelive, /function settlementCreditParts\s*\(/);
+    assert.doesNotMatch(shim, /function settlementCreditParts\s*\(/);
+  });
+
+  it("create-protection e UI: 50% + 1op + antes do kickoff", () => {
+    const createTs = readFileSync(
+      resolve(root, "src/lib/arbishield/create-protection.ts"),
+      "utf8"
+    );
+    const ui = readFileSync(
+      resolve(root, "deploy/vps-supabase/static/v2/app-proteger.html"),
+      "utf8"
+    );
+    assert.match(createTs, /maxStakeLockCents/);
+    assert.match(createTs, /isMatchKickoffPassed/);
+    assert.match(createTs, /uma proteção por jogo/);
+    assert.match(createTs, /já iniciado/);
+    assert.match(ui, /maxStakeLockCents/);
+    assert.match(ui, /50%/);
+    assert.match(ui, /isMatchKickoffPassed/);
+    assert.match(ui, /occupiedMatchIds/);
+    assert.match(ui, /1 proteção por evento/);
+    assert.match(ui, /btnAmountMax/);
+    assert.match(ui, /applyMaxAmount/);
+    assert.match(ui, /currentEventMaxCents/);
+    assert.match(ui, /Máx\. efetivo neste evento/);
+    assert.match(ui, /limitado pela liquidez/);
+  });
+
+  it("carteira do cliente exibe Saldo Reembolso", () => {
+    const html = readFileSync(
+      resolve(root, "deploy/vps-supabase/static/v2/app-carteira.html"),
+      "utf8"
+    );
+    assert.match(html, /Saldo Reembolso/);
+    assert.doesNotMatch(html, /Saldo Dedução/);
+  });
+});
+
+describe("ativação — teto 50% Apostador", () => {
+  it("maxStakeLockCents = floor(50% disponível)", () => {
+    assert.equal(maxStakeLockCents(100_000), 50_000);
+    assert.equal(maxStakeLockCents(1), 0);
+    assert.equal(maxStakeLockCents(0), 0);
+    assert.equal(maxStakeLockCents(-10), 0);
+    assert.equal(maxStakeLockCents(99), 49);
+  });
+
+  it("eventos sucessivos: 50% do restante após cada trava", () => {
+    // Banca 1000 → evento1 máx 500; usa 500 → resta 500 → evento2 máx 250;
+    // usa 250 → resta 250 → evento3 máx 125.
+    let avail = 100_000;
+    const caps = [];
+    for (let i = 0; i < 3; i++) {
+      const cap = maxStakeLockCents(avail);
+      caps.push(cap);
+      avail = apostadorRemainingAfterLock(avail, cap);
+    }
+    assert.deepEqual(caps, [50_000, 25_000, 12_500]);
+    assert.equal(avail, 12_500);
+  });
+
+  it("AGENTS.md descreve o teto sucessivo sobre o restante", () => {
+    const agents = readFileSync(resolve(root, "AGENTS.md"), "utf8");
+    assert.match(agents, /sucessivamente/);
+    assert.match(agents, /50% do que sobrou/);
+  });
+});
+
+describe("ativação — 1 op/evento e antes do kickoff", () => {
+  it("isMatchKickoffPassed: bloqueia no/após starts_at", () => {
+    const start = "2026-07-27T18:00:00.000Z";
+    const t = new Date(start).getTime();
+    assert.equal(isMatchKickoffPassed(start, t - 1), false);
+    assert.equal(isMatchKickoffPassed(start, t), true);
+    assert.equal(isMatchKickoffPassed(start, t + 60_000), true);
+    assert.equal(isMatchKickoffPassed(null, t), false);
+  });
+
+  it("cancelada/estornada não conta como operação ativa", () => {
+    assert.equal(isCancelledProtectionStatus("cancelled"), true);
+    assert.equal(isCancelledProtectionStatus("canceled"), true);
+    assert.equal(isCancelledProtectionStatus("refunded"), true);
+    assert.equal(isCancelledProtectionStatus("active"), false);
+    assert.equal(isCancelledProtectionStatus("won_exchange"), false);
+    assert.equal(isCancelledProtectionStatus("lost_exchange"), false);
+    assert.equal(isCancelledProtectionStatus("void"), false);
+  });
+});
+
+describe("cálculo dedução", () => {
+  it("LAY @ 20 resp. R$1000 → lucro = resp/(odd−1) − 4,5% − 1,5%", () => {
+    const c = calcLay(100_000, 20);
+    assert.equal(c.input_mode, "responsabilidade");
+    assert.equal(c.odd, 20);
+    assert.equal(c.billing_model, "stake_lock_v1");
+    // lucro 5263 − comissão 237 − usuário 1500 = 3526
+    assert.equal(c.arbiShieldDeductionCents, 3526);
+    assert.equal(c.exchangeCommissionCents, 237);
+  });
+
+  it("BACK usa stake direto", () => {
+    const c = calcBack(10_000, 2);
+    assert.equal(c.input_mode, "stake");
+    assert.equal(
+      c.arbiShieldDeductionCents,
+      calcFeeUpfront(10_000, 2).arbiShieldDeductionCents
+    );
+    // lucro 10000 − 450 − 150 = 9400
+    assert.equal(c.arbiShieldDeductionCents, 9400);
+  });
+});
+
+describe("settle — stake_lock vigente", () => {
+  const row = {
+    amount_cents: 100_000,
+    responsibility_cents: 100_000,
+    platform_deduction_cents: 3526,
+    metadata: { billing_model: "stake_lock_v1", stake_lock: true },
+  };
+
+  it("detecta stake_lock (não fee_upfront)", () => {
+    assert.equal(isStakeLockProtection(row), true);
+    assert.equal(isFeeUpfrontProtection(row), false);
+    // sem odd → cai no stored
+    assert.equal(settlementDeductionCents(row), 3526);
+  });
+
+  it("Ganhou na ArbiShield credita só o stake → Reembolso", () => {
+    assert.equal(normalizeSettleOutcome("arbishield"), "arbishield");
+    assert.deepEqual(settlementCreditParts(row, "arbishield"), {
+      stake: 100_000,
+      fee: 0,
+      total: 100_000,
+    });
+    assert.equal(
+      creditBucketForSettlement("REAL", row, "arbishield"),
+      "deduction_balance_cents"
+    );
+  });
+
+  it("Ganhou na Exchange → R$ 0 (não Reembolso)", () => {
+    assert.deepEqual(settlementCreditParts(row, "exchange"), {
+      stake: 0,
+      fee: 0,
+      total: 0,
+    });
+  });
+
+  it("Empate Anula → stake (destino = origem, não Reembolso)", () => {
+    assert.equal(isVoidSettleOutcome("empate_anula"), true);
+    assert.deepEqual(settlementCreditParts(row, "void"), {
+      stake: 100_000,
+      fee: 0,
+      total: 100_000,
+    });
+    assert.equal(
+      creditBucketForSettlement("REAL", row, "void"),
+      "balance_cents"
+    );
+    assert.equal(
+      creditBucketForSettlement("DEMO", row, "void"),
+      "demo_balance_cents"
+    );
+  });
+
+  it("status corretos", () => {
+    assert.equal(settlementStatusForOutcome("arbishield"), "lost_exchange");
+    assert.equal(settlementStatusForOutcome("exchange"), "won_exchange");
+    assert.equal(settlementStatusForOutcome("empate_anula"), "void");
+  });
+});
+
+describe("settle — histórico fee_upfront", () => {
+  const row = {
+    amount_cents: 100_000,
+    responsibility_cents: 100_000,
+    platform_deduction_cents: 3763,
+    metadata: { billing_model: "fee_upfront_v1", fee_upfront: true },
+  };
+
+  it("ArbiShield devolve stake + dedução", () => {
+    assert.equal(isFeeUpfrontProtection(row), true);
+    assert.deepEqual(settlementCreditParts(row, "arbishield"), {
+      stake: 100_000,
+      fee: 3763,
+      total: 103_763,
+    });
+  });
+
+  it("Exchange → 0", () => {
+    assert.deepEqual(settlementCreditParts(row, "exchange"), {
+      stake: 0,
+      fee: 0,
+      total: 0,
+    });
+  });
+
+  it("Empate Anula devolve só a dedução (histórico)", () => {
+    assert.deepEqual(settlementCreditParts(row, "void"), {
+      stake: 0,
+      fee: 3763,
+      total: 3763,
+    });
+    assert.equal(
+      creditBucketForSettlement("REAL", row, "void"),
+      "deduction_balance_cents"
+    );
+  });
+});
+
+describe("anti-regressão — Exchange nunca Reembolso", () => {
+  it("exchange.total === 0 em stake_lock e fee_upfront", () => {
+    const lock = {
+      amount_cents: 50_000,
+      platform_deduction_cents: 1000,
+      metadata: { billing_model: "stake_lock_v1" },
+    };
+    const feeUp = {
+      amount_cents: 50_000,
+      platform_deduction_cents: 1000,
+      metadata: { billing_model: "fee_upfront_v1", fee_upfront: true },
+    };
+    assert.equal(settlementCreditParts(lock, "exchange").total, 0);
+    assert.equal(settlementCreditParts(feeUp, "exchange").total, 0);
+  });
+});
+
+describe("cancel — fee_upfront nunca devolve stake", () => {
+  it("guarda cancel-fee-upfront-nao-devolve-stake-v6", () => {
     assert.equal(
       CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
       "cancel-fee-upfront-nao-devolve-stake-v6"
     );
   });
 
-  it("SPEC descreve fee_upfront sem trava", () => {
-    assert.equal(PROTECTION_FLOW_SPEC.version, PROTECTION_FLOW_CONTRACT_VERSION);
-    assert.equal(PROTECTION_FLOW_SPEC.model, "fee_upfront_v1");
-    assert.equal(PROTECTION_FLOW_SPEC.requiresExplicitRequestToChange, true);
-    assert.equal(PROTECTION_FLOW_SPEC.activation.locksStake, false);
-    assert.equal(
-      PROTECTION_FLOW_SPEC.activation.chargesDeductionOnCreate,
-      true
+  it("fee_upfront explícito → só dedução (caso Carlos LAY 1000 @10)", () => {
+    // Histórico: stored 9611 (fórmula antiga lucro−1,5%). Cancel devolve o stored.
+    const feeStored = 9611;
+    const row = {
+      amount_cents: 100_000,
+      responsibility_cents: 100_000,
+      platform_deduction_cents: feeStored,
+      odd: 10,
+      metadata: {
+        billing_model: "fee_upfront_v1",
+        fee_upfront: true,
+        market_type: "LAY",
+        fee_charged_cents: feeStored,
+      },
+    };
+    assert.equal(isFeeUpfrontProtection(row), true);
+    assert.equal(isStakeLockProtection(row), false);
+    assert.equal(cancelRefundCents(row), feeStored);
+  });
+
+  it("só fee_charged_cents (sem billing_model) → ainda fee, não stake", () => {
+    const row = {
+      amount_cents: 100_000,
+      responsibility_cents: 100_000,
+      platform_deduction_cents: 9611,
+      metadata: { fee_charged_cents: 9611, market_type: "LAY", market_odd: 10 },
+    };
+    assert.equal(isFeeUpfrontProtection(row), true);
+    assert.equal(cancelRefundCents(row), 9611);
+  });
+
+  it("stake_lock → devolve stake", () => {
+    const row = {
+      amount_cents: 100_000,
+      responsibility_cents: 100_000,
+      platform_deduction_cents: 9611,
+      metadata: { billing_model: "stake_lock_v1", stake_lock: true },
+    };
+    assert.equal(cancelRefundCents(row), 100_000);
+  });
+
+  it("guarda cancel-stake-lock-devolve-stake-v6 no prelive/shim/UI", () => {
+    const prelive = readFileSync(
+      resolve(root, "scripts/arbishield-prelive-events.mjs"),
+      "utf8"
     );
-    assert.equal(
-      PROTECTION_FLOW_SPEC.activation.maxFractionOfRemainingApostador,
-      0.5
+    const shim = readFileSync(
+      resolve(root, "scripts/arbishield-serverfn-shim.mjs"),
+      "utf8"
     );
-    assert.equal(PROTECTION_FLOW_SPEC.activation.oneOperationPerEvent, true);
-    assert.equal(PROTECTION_FLOW_SPEC.activation.entryOnlyBeforeKickoff, true);
-    assert.equal(PROTECTION_FLOW_SPEC.outcomes.arbishield.requiresProof, true);
-    assert.equal(
-      PROTECTION_FLOW_SPEC.outcomes.arbishield.creditStakeToReembolso,
-      false
+    const ui = readFileSync(
+      resolve(root, "deploy/vps-supabase/static/v2/app-protecoes.html"),
+      "utf8"
     );
-    assert.equal(
-      PROTECTION_FLOW_SPEC.outcomes.exchange.chargeDeductionOnly,
-      false
-    );
-    assert.equal(
-      PROTECTION_FLOW_SPEC.outcomes.exchange.unlockReturnToOrigin,
-      false
-    );
-    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.creditTotal, 0);
-    assert.equal(PROTECTION_FLOW_SPEC.outcomes.void.refundFeeOnly, true);
-    assert.equal(PROTECTION_FLOW_SPEC.outcomes.cancel.refundFeeOnly, true);
+    assert.match(prelive, /cancel-stake-lock-devolve-stake-v6/);
+    assert.match(shim, /async function claimProtectionCancelled/);
+    assert.match(shim, /cancel-stake-lock-devolve-stake-v6/);
+    assert.match(ui, /Stake devolvido/);
+    assert.match(ui, /cancel-sem-estorno|NÃO foi devolvido/);
   });
 });
 
-describe("ativação — limites preservados", () => {
-  it("mantém 50%, uma operação e entrada antes do kickoff", () => {
-    assert.equal(MAX_STAKE_FRACTION_OF_APOSTADOR, 0.5);
-    assert.equal(ONE_OPERATION_PER_EVENT, true);
-    assert.equal(ENTRY_BEFORE_KICKOFF_ONLY, true);
-    assert.equal(maxStakeLockCents(100_000), 50_000);
-    assert.equal(maxStakeLockCents(95_000), 47_500);
-
-    const kickoff = new Date("2026-07-27T18:00:00.000Z").getTime();
-    assert.equal(isMatchKickoffPassed(kickoff, kickoff - 1), false);
-    assert.equal(isMatchKickoffPassed(kickoff, kickoff), true);
-  });
-
-  it("proteção cancelada libera nova tentativa; ativa não", () => {
-    assert.equal(isCancelledProtectionStatus("cancelled"), true);
-    assert.equal(isCancelledProtectionStatus("refunded"), true);
-    assert.equal(isCancelledProtectionStatus("active"), false);
-  });
-});
-
-describe("taxa v11 — lucro bruto menos somente 1,5% do usuário", () => {
-  it("LAY R$1000 @10 cobra R$96,11", () => {
+describe("Comissão Exchange 4,5% do lucro", () => {
+  it("LAY 1000 @10 → lucro 111,11 · cliente 15 · Exchange 5 · ArbiShield 91,11", () => {
+    assert.equal(EXCHANGE_COMMISSION_RATE, 0.045);
+    assert.equal(LAY_PROFIT_OVER_ODD_RULE, "lay-lucro-back-equiv-v9");
+    assert.equal(grossProfitCentsForFees(100_000, 10, "LAY"), 11_111);
     const c = calcLay(100_000, 10);
-    assert.equal(c.billing_model, "fee_upfront_v1");
-    assert.equal(c.input_mode, "responsabilidade");
     assert.equal(c.grossProfitCents, 11_111);
-    assert.equal(c.userProfitCents, 1_500);
-    assert.equal(c.exchangeCommissionCents, 500);
-    assert.equal(c.arbiShieldDeductionCents, 9_611);
-  });
-
-  it("LAY R$1000 @32 cobra R$17,26", () => {
-    const c = calcLay(100_000, 32);
-    assert.equal(c.grossProfitCents, 3_226);
-    assert.equal(c.userProfitCents, 1_500);
-    assert.equal(c.exchangeCommissionCents, 145);
-    assert.equal(c.arbiShieldDeductionCents, 1_726);
-  });
-
-  it("BACK e helper genérico também não subtraem Exchange", () => {
-    const c = calcBack(10_000, 2);
-    assert.equal(c.billing_model, "fee_upfront_v1");
-    assert.equal(c.grossProfitCents, 10_000);
-    assert.equal(c.userProfitCents, 150);
-    assert.equal(c.exchangeCommissionCents, 450);
-    assert.equal(c.arbiShieldDeductionCents, 9_850);
-    assert.deepEqual(c, { ...calcFeeUpfront(10_000, 2), input_mode: "stake" });
-  });
-
-  it("compute usa v11 para fee_upfront e linha sem marker", () => {
-    assert.equal(computeArbiShieldDeductionCents(feeUpfront10), 9_611);
+    assert.equal(c.userProfitCents, 1500);
+    assert.equal(c.exchangeCommissionCents, Math.round(11111 * 0.045)); // 500
+    assert.equal(c.exchangeFeeCents, c.exchangeCommissionCents);
+    // 11111 − 500 − 1500 = 9111
+    assert.equal(c.arbiShieldDeductionCents, 9111);
+    // Carteira: 8067,52 + 1000 − 91,11 = 8976,41
+    assert.equal(806_752 + 100_000 - c.arbiShieldDeductionCents, 897_641);
+    // Comissão NÃO debita de novo
+    assert.equal(settlementExchangeCommissionWalletCents(c), 0);
     assert.equal(
-      computeArbiShieldDeductionCents({
+      EXCHANGE_NO_DOUBLE_COMMISSION_RULE,
+      "settle-exchange-sem-comissao-extra-v9"
+    );
+  });
+
+  it("carteira PERDEU nunca soma comissão Em cima da dedução (anti 8.982,52)", () => {
+    const row = {
+      amount_cents: 100_000,
+      responsibility_cents: 100_000,
+      odd: 10,
+      metadata: {
+        billing_model: "stake_lock_v1",
+        stake_lock: true,
+        market_type: "LAY",
+        market_odd: 10,
+      },
+    };
+    const fee = settlementDeductionCents(row);
+    const info = settlementExchangeCommissionCents(row);
+    const wallet = settlementExchangeCommissionWalletCents(row);
+    assert.equal(fee, 9111);
+    assert.equal(info, 500); // informativa
+    assert.equal(wallet, 0); // NÃO sai da carteira
+    assert.equal(exchangeWalletChargeCents(row), 9111);
+    // Erro antigo: fee+info = 9611 → 8.971,41 ou fee+450=8.982,52
+    assert.notEqual(fee + info, exchangeWalletChargeCents(row));
+    assert.equal(806_752 + 100_000 - exchangeWalletChargeCents(row), 897_641);
+  });
+
+  it("stake_lock com stored antigo 8050/9611 recalcula 9111 no settle", () => {
+    const row = {
+      amount_cents: 100_000,
+      responsibility_cents: 100_000,
+      platform_deduction_cents: 8050,
+      odd: 10,
+      metadata: {
+        billing_model: "stake_lock_v1",
+        stake_lock: true,
+        market_type: "LAY",
+        market_odd: 10,
+      },
+    };
+    assert.equal(settlementDeductionCents(row), 9111);
+    assert.equal(settlementExchangeCommissionCents(row), 500);
+    assert.equal(settlementExchangeCommissionWalletCents(row), 0);
+  });
+
+  it("settlementExchangeCommissionCents lê exchange_fee_cents / meta", () => {
+    assert.equal(
+      settlementExchangeCommissionCents({
+        exchange_fee_cents: 500,
+        platform_deduction_cents: 9111,
+        metadata: { billing_model: "stake_lock_v1" },
+      }),
+      500
+    );
+    assert.equal(
+      settlementExchangeCommissionCents({
         amount_cents: 100_000,
+        responsibility_cents: 100_000,
         odd: 10,
         metadata: { market_type: "LAY", market_odd: 10 },
       }),
-      9_611
+      500
     );
   });
 
-  it("comissão 4,5% continua disponível apenas como informação", () => {
-    assert.equal(grossProfitCentsForFees(100_000, 10, "LAY"), 11_111);
-    assert.equal(exchangeCommissionCentsFromProfit(11_111), 500);
-    assert.equal(settlementExchangeCommissionCents(feeUpfront10), 500);
-    assert.equal(settlementExchangeCommissionWalletCents(feeUpfront10), 0);
+  it("UI bilhete e extrato citam comissão 4,5%", () => {
+    const ui = readFileSync(
+      resolve(root, "deploy/vps-supabase/static/v2/app-proteger.html"),
+      "utf8"
+    );
+    const prot = readFileSync(
+      resolve(root, "deploy/vps-supabase/static/v2/app-protecoes.html"),
+      "utf8"
+    );
+    const pages = readFileSync(
+      resolve(root, "deploy/vps-supabase/static/v2/v2-pages.js"),
+      "utf8"
+    );
+    assert.match(ui, /Comissão Exchange \(4,5% do lucro\)/);
+    assert.match(prot, /Comissão Exchange \(4,5% do lucro\)/);
+    assert.match(pages, /exchange_commission/);
   });
 });
 
-describe("settle fee_upfront ativo", () => {
-  it("é o default vigente e exige comprovante", () => {
-    assert.equal(isFeeUpfrontProtection(feeUpfront10), true);
-    assert.equal(isStakeLockProtection(feeUpfront10), false);
-    assert.equal(arbishieldRequiresProof(feeUpfront10), true);
-    assert.equal(isFeeUpfrontProtection({ metadata: {} }), true);
-    assert.equal(arbishieldRequiresProof({ metadata: {} }), true);
+describe("Exchange/PERDEU — devolve stake · cobra SÓ dedução · R$ 0 Reembolso", () => {
+  it("guarda settle-exchange-cobra-so-deducao-v9", () => {
+    assert.equal(
+      EXCHANGE_CHARGE_DEDUCTION_RULE,
+      "settle-exchange-cobra-so-deducao-v9"
+    );
   });
 
-  it("ArbiShield fica pending_refund e valor elegível não é crédito imediato", () => {
-    assert.equal(
-      settlementStatusForOutcome("arbishield", feeUpfront10),
-      "pending_refund"
-    );
-    assert.deepEqual(settlementCreditParts(feeUpfront10, "arbishield"), {
-      stake: 100_000,
-      fee: 9_611,
-      total: 109_611,
-    });
+  it("crédito Exchange sempre 0 (stake_lock e fee_upfront)", () => {
+    const lock = {
+      amount_cents: 100_000,
+      platform_deduction_cents: 9611,
+      metadata: { billing_model: "stake_lock_v1", stake_lock: true },
+    };
+    const feeUp = {
+      amount_cents: 100_000,
+      platform_deduction_cents: 9611,
+      metadata: { billing_model: "fee_upfront_v1", fee_upfront: true },
+    };
+    assert.equal(settlementCreditParts(lock, "exchange").total, 0);
+    assert.equal(settlementCreditParts(feeUp, "exchange").total, 0);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.chargeDeductionOnly, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.unlockReturnToOrigin, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.unlockWithoutReturn, false);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.creditReembolso, false);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.chargeExchangeCommission, false);
   });
 
-  it("Exchange credita zero, sem stake return", () => {
+  it("isExchangeWalletComplete exige fee + devolução no stake_lock", () => {
     assert.equal(
-      settlementStatusForOutcome("exchange", feeUpfront10),
-      "won_exchange"
+      isExchangeWalletComplete({
+        feeUpfront: false,
+        feeExpected: 9111,
+        feeCharged: 0,
+        unlocked: true,
+        needsUnlock: true,
+        stakeReturned: true,
+        needsReturn: true,
+      }),
+      false
     );
-    assert.deepEqual(settlementCreditParts(feeUpfront10, "exchange"), {
-      stake: 0,
-      fee: 0,
-      total: 0,
-    });
+    assert.equal(
+      isExchangeWalletComplete({
+        feeUpfront: false,
+        feeExpected: 9111,
+        feeCharged: 9111,
+        unlocked: true,
+        needsUnlock: true,
+        stakeReturned: false,
+        needsReturn: true,
+      }),
+      false
+    );
+    assert.equal(
+      isExchangeWalletComplete({
+        feeUpfront: false,
+        feeExpected: 9111,
+        feeCharged: 9111,
+        unlocked: true,
+        needsUnlock: true,
+        stakeReturned: true,
+        needsReturn: true,
+      }),
+      true
+    );
     assert.equal(
       isExchangeWalletComplete({
         feeUpfront: true,
-        feeExpected: 9_611,
+        feeExpected: 9611,
         feeCharged: 0,
+        unlocked: false,
         needsUnlock: false,
-        needsReturn: false,
       }),
       true
     );
   });
 
-  it("void e cancel devolvem somente a taxa", () => {
-    assert.equal(isVoidSettleOutcome("empate anula"), true);
-    assert.equal(normalizeSettleOutcome("empate-anula"), "void");
-    assert.equal(settlementStatusForOutcome("void", feeUpfront10), "void");
-    assert.deepEqual(settlementCreditParts(feeUpfront10, "void"), {
-      stake: 0,
-      fee: 9_611,
-      total: 9_611,
-    });
-    assert.equal(
-      creditBucketForSettlement("REAL", feeUpfront10, "void"),
-      "deduction_balance_cents"
+  it("prelive/shim NÃO reintroduzem débito de comissão na carteira", () => {
+    const prelive = readFileSync(
+      resolve(root, "scripts/arbishield-prelive-events.mjs"),
+      "utf8"
     );
-    assert.equal(cancelRefundCents(feeUpfront10), 9_611);
+    const shim = readFileSync(
+      resolve(root, "scripts/arbishield-serverfn-shim.mjs"),
+      "utf8"
+    );
+    const admin = readFileSync(
+      resolve(root, "deploy/vps-supabase/static/v2/admin-jogos.html"),
+      "utf8"
+    );
+    assert.match(prelive, /settle-exchange-cobra-so-deducao-v9/);
+    assert.match(shim, /settle-exchange-cobra-so-deducao-v9/);
+    assert.match(prelive, /settle-exchange-sem-comissao-extra-v9/);
+    assert.match(shim, /settle-exchange-sem-comissao-extra-v9/);
+    assert.match(prelive, /settlementExchangeCommissionWalletCents/);
+    assert.match(shim, /settlementExchangeCommissionWalletCents/);
+    assert.match(prelive, /BLOQUEADO débito de comissão Exchange/);
+    assert.match(shim, /BLOQUEADO débito de comissão Exchange/);
+    assert.match(prelive, /needsReturn/);
+    assert.match(shim, /needsReturn/);
+    assert.match(prelive, /stake_returned/);
+    assert.match(shim, /stake_returned/);
+    assert.match(prelive, /cobra só dedução \(v9\)/);
+    assert.match(shim, /cobra só dedução \(v9\)/);
+    // Regressão clássica: voltar a debitar settlementExchangeCommissionCents
+    assert.doesNotMatch(
+      prelive,
+      /const commission = feeUpfront\s*\?\s*0\s*:\s*settlementExchangeCommissionCents/
+    );
+    assert.doesNotMatch(
+      shim,
+      /commission = feeUpfront\s*\?\s*0\s*:/
+    );
+    assert.doesNotMatch(prelive, /cobra dedução \+ comissão 4,5%/);
+    assert.doesNotMatch(shim, /cobra dedução \+ comissão 4,5%/);
+    assert.match(prelive, /Exchange incompleto/);
+    assert.match(shim, /Exchange incompleto/);
+    assert.match(prelive, /settle-exchange-heal-incompleto-v10/);
+    assert.match(shim, /settle-exchange-heal-incompleto-v10/);
+    assert.match(prelive, /exchangeWalletHealNeeded/);
+    assert.match(shim, /exchangeWalletHealNeeded/);
+    assert.match(prelive, /settlementOutcomeFromProtectionRow/);
+    assert.match(shim, /settlementOutcomeFromProtectionRow/);
+    assert.match(prelive, /Exchange settle sem user_id/);
+    assert.match(shim, /Exchange settle sem user_id/);
+    assert.match(prelive, /market_odd = approvedOdd|prevMeta\.market_odd = approvedOdd/);
+    assert.match(shim, /prevMeta\.market_odd = approvedOdd/);
+    // Modal admin não pode mais prometer 96,11 / comissão extra
+    assert.match(admin, /liveExchangeDeductionCents|cobra só a dedução/);
+    assert.match(admin, /stake_lock v9/);
+    assert.doesNotMatch(admin, /cobra dedução \+ comissão 4,5%/);
+    assert.doesNotMatch(admin, /stake_lock v7: Exchange = R\$ 0 Reembolso · destrava e devolve o stake · cobra dedução ArbiShield \+ comissão/);
   });
 });
 
-describe("compatibilidade histórica stake_lock_v1", () => {
-  it("mantém fórmula 9111 e não exige comprovante", () => {
-    assert.equal(isStakeLockProtection(historicalStakeLock10), true);
-    assert.equal(isFeeUpfrontProtection(historicalStakeLock10), false);
-    assert.equal(arbishieldRequiresProof(historicalStakeLock10), false);
-    assert.equal(
-      computeArbiShieldDeductionCents(historicalStakeLock10),
-      9_111
-    );
-    assert.equal(settlementDeductionCents(historicalStakeLock10), 9_111);
+describe("Anti-regressão Sport×Cuiabá — odd 32 / heal incompleto", () => {
+  const lock32 = {
+    amount_cents: 100_000,
+    responsibility_cents: 100_000,
+    odd: 32,
+    metadata: {
+      billing_model: "stake_lock_v1",
+      stake_lock: true,
+      market_type: "LAY",
+      market_odd: 32,
+    },
+  };
+
+  it("LAY 1000 @32 → fee R$15,81 · carteira 9.051,71", () => {
+    const c = calcLay(100_000, 32);
+    assert.equal(c.arbiShieldDeductionCents, 1581);
+    assert.equal(settlementDeductionCents(lock32), 1581);
+    assert.equal(806_752 + 100_000 - 1581, 905_171);
+    assert.notEqual(settlementDeductionCents(lock32), 9111);
   });
 
-  it("ArbiShield histórico mantém auto-crédito e lost_exchange", () => {
-    assert.equal(
-      settlementStatusForOutcome("arbishield", historicalStakeLock10),
-      "lost_exchange"
-    );
-    assert.deepEqual(
-      settlementCreditParts(historicalStakeLock10, "arbishield"),
-      { stake: 100_000, fee: 0, total: 100_000 }
-    );
-    assert.equal(
-      creditBucketForSettlement("REAL", historicalStakeLock10, "arbishield"),
-      "deduction_balance_cents"
-    );
-  });
-
-  it("void/cancel histórico devolvem stake à origem", () => {
-    assert.deepEqual(settlementCreditParts(historicalStakeLock10, "void"), {
-      stake: 100_000,
-      fee: 0,
-      total: 100_000,
-    });
-    assert.equal(
-      creditBucketForSettlement("REAL", historicalStakeLock10, "void"),
-      "balance_cents"
-    );
-    assert.equal(cancelRefundCents(historicalStakeLock10), 100_000);
-  });
-
-  it("preserva odd canônica e heal Exchange históricos", () => {
-    assert.equal(SETTLEMENT_ODD_CANONICAL_RULE, "settlement-odd-canonico-v10");
-    assert.equal(
-      EXCHANGE_INCOMPLETE_HEAL_RULE,
-      "settle-exchange-heal-incompleto-v10"
-    );
-    const row32 = {
-      ...historicalStakeLock10,
+  it("approved_odd 32 vence metadata.market_odd stale 10", () => {
+    const row = {
+      amount_cents: 100_000,
+      responsibility_cents: 100_000,
       odd: 32,
       metadata: {
-        ...historicalStakeLock10.metadata,
+        billing_model: "stake_lock_v1",
+        stake_lock: true,
+        market_type: "LAY",
         market_odd: 10,
-        contestation: { approved_odd: 32 },
+        contestation: { approved_odd: 32, contestation_approved: true },
       },
     };
-    assert.equal(settlementMarketOdd(row32), 32);
-    assert.equal(settlementMarketType(row32), "LAY");
-    assert.equal(settlementDeductionCents(row32), 1_581);
+    assert.equal(settlementMarketOdd(row), 32);
+    assert.equal(settlementMarketType(row), "LAY");
+    assert.equal(settlementDeductionCents(row), 1581);
+  });
+
+  it("tx zerada / sem stake_returned exige heal", () => {
     assert.equal(
-      exchangeWalletHealNeeded(row32, {
+      exchangeWalletHealNeeded(lock32, {
         hasTx: true,
         feeCharged: 0,
         unlocked: false,
@@ -331,108 +730,49 @@ describe("compatibilidade histórica stake_lock_v1", () => {
       }),
       true
     );
-  });
-});
-
-describe("integração dos callers e documentação", () => {
-  it("create TypeScript debita fee, não locked", () => {
-    const createTs = source("src/lib/arbishield/create-protection.ts");
-    assert.match(createTs, /billing_model:\s*"fee_upfront_v1"/);
-    assert.match(createTs, /fee_charged_cents:\s*feeCents/);
-    assert.match(createTs, /type:\s*"protection_fee"/);
-    assert.match(createTs, /amount_cents:\s*-feeCents/);
-    assert.match(createTs, /lockedCents:\s*0/);
-    assert.match(createTs, /if \(feeCents > available\)/);
-    assert.match(createTs, /if \(amountCents > maxLock\)/);
-    assert.doesNotMatch(
-      createTs,
-      /locked_balance_cents:\s*num\(profile\.locked_balance_cents\)\s*\+/
+    assert.equal(
+      exchangeWalletHealNeeded(lock32, {
+        hasTx: true,
+        feeCharged: 1581,
+        unlocked: true,
+        stakeReturned: true,
+        feeShortfall: 0,
+      }),
+      false
+    );
+    assert.equal(
+      exchangeWalletHealNeeded(lock32, { hasTx: false }),
+      true
     );
   });
 
-  it("UI de ativação calcula e comunica fee_upfront v11", () => {
-    const ui = source("deploy/vps-supabase/static/v2/app-proteger.html");
-    assert.match(ui, /fee_upfront_v1/);
-    assert.match(ui, /feeNow = Math\.max\(0,\s*profit - userProfit\)/);
-    assert.match(ui, /deducao = Math\.max\(0,\s*lucroBruto - seuLucro\)/);
-    assert.match(ui, /Taxa ArbiShield cobrada agora/);
-    assert.match(ui, /stake não travado/);
-    assert.match(ui, /if \(feePreview > availBal\)/);
-    assert.doesNotMatch(
-      ui,
-      /feeNow = Math\.max\(0,\s*profit - commission - userProfit\)/
+  it("outcome heal a partir de won_exchange", () => {
+    assert.equal(
+      settlementOutcomeFromProtectionRow({
+        status: "won_exchange",
+        settled_outcome: "exchange",
+      }),
+      "exchange"
     );
   });
 
-  it("modal admin informa pending proof sem prometer auto-crédito", () => {
-    const admin = source("deploy/vps-supabase/static/v2/admin-jogos.html");
-    assert.match(admin, /pending_refund, sem crédito automático/);
-    assert.match(admin, /fee_upfront v11/);
-    assert.match(admin, /isHistoricalStakeLock/);
-    assert.match(admin, /taxa já cobrada na ativação/);
-  });
-
-  it("UI de proteções não promete stake no cancel fee_upfront", () => {
-    const protections = source(
-      "deploy/vps-supabase/static/v2/app-protecoes.html"
-    );
-    assert.match(protections, /fee_upfront v11/);
-    assert.match(protections, /estorna somente a taxa/);
-    assert.match(protections, /Valor estornado/);
-  });
-
-  it("prelive cria fee_upfront e adia ArbiShield para comprovante", () => {
-    const prelive = source("scripts/arbishield-prelive-events.mjs");
-    const createStart = prelive.indexOf("async function createProtection");
-    const createEnd = prelive.indexOf("const CONTESTATION_LOCK_MS", createStart);
-    const create = prelive.slice(createStart, createEnd);
-    assert.match(create, /type:\s*"protection_fee"/);
-    assert.match(create, /fee_charged_cents:\s*feeCents/);
-    assert.match(create, /lockedCents:\s*0/);
-    assert.doesNotMatch(
-      create,
-      /locked_balance_cents:\s*n\(profile\.locked_balance_cents\)\s*\+/
-    );
-    assert.match(prelive, /arbishieldRequiresProof/);
-    assert.match(prelive, /deferredProof:\s*true/);
-    assert.match(prelive, /eligibleRefundCents:\s*Math\.max\(0,\s*parts\.total\)/);
-    assert.match(
-      prelive,
-      /settlementStatusForOutcome\(outcomeNorm,\s*row\)/
-    );
-  });
-
-  it("shim tem fallback v11, deferred proof e status por row", () => {
-    const shim = source("scripts/arbishield-serverfn-shim.mjs");
-    assert.match(shim, /protection-flow-contract-v11/);
-    assert.match(shim, /arbishieldRequiresProof/);
-    assert.match(
-      shim,
-      /arbiShieldDeductionCents:\s*Math\.max\(\s*0,\s*grossProfitCents - userProfitCents/s
-    );
-    assert.match(shim, /deferredProof:\s*true/);
-    assert.match(shim, /eligibleRefundCents:\s*Math\.max\(0,\s*parts\.total\)/);
-    assert.match(shim, /settlementStatusForOutcome\(outcome,\s*row\)/);
-    assert.match(shim, /createProtectionModel:\s*"fee_upfront_v1"/);
-  });
-
-  it("AGENTS e doc registram as regras v11", () => {
-    for (const doc of [
-      source("AGENTS.md"),
-      source("docs/PROTECTION_FLOW_LOCKED.md"),
+  it("scripts odd10 hardcoded estão bloqueados por padrão", () => {
+    for (const rel of [
+      "scripts/vps-force-carlos-897641.mjs",
+      "scripts/vps-ajustar-carlos-897641.mjs",
+      "scripts/vps-reparar-carlos-stake-nao-voltou.mjs",
+      "scripts/vps-forcar-descongelar-carlos.mjs",
+      "scripts/vps-reparar-carlos-exchange-locked-stuck.mjs",
     ]) {
-      assert.match(doc, /protection-flow-contract-v11/);
-      assert.match(doc, /fee_upfront_v1/);
-      assert.match(doc, /solicitação explícita/i);
-      assert.match(doc, /não (?:debita nem )?trava|não.*stake travado/i);
-      assert.match(doc, /50%/);
-      assert.match(doc, /antes do kickoff|após o início/i);
-      assert.match(doc, /uma proteção por evento|uma operação por evento/i);
-      assert.match(doc, /pending_refund/);
-      assert.match(doc, /comprovante/i);
-      assert.match(doc, /96,11/);
-      assert.match(doc, /17,26/);
-      assert.match(doc, /stake_lock_v1/);
+      const src = readFileSync(resolve(root, rel), "utf8");
+      assert.match(src, /ALLOW_ODD10_TARGET/);
+      assert.match(src, /BLOQUEADO|SUPERSEDED/);
     }
+    const forceOk = readFileSync(
+      resolve(root, "scripts/vps-force-carlos-905171.mjs"),
+      "utf8"
+    );
+    assert.match(forceOk, /905_171|9\.051/);
+    assert.match(forceOk, /15,?81|1581/);
   });
 });
