@@ -6358,7 +6358,7 @@ async function creditWalletForSettlement(row, outcome, now) {
             unlock_return_to_origin: stakeReturned,
             note: feeUpfront
               ? "Ganhou Exchange: taxa já cobrada na criação — sem crédito Reembolso"
-              : "Ganhou Exchange: R$ 0 Reembolso; destrava e devolve stake; cobra dedução + comissão 4,5%",
+              : "Ganhou Exchange: R$ 0 Reembolso; destrava e devolve stake; cobra só dedução (v9)",
           },
         },
       });

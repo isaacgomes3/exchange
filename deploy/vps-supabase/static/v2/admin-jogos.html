@@ -2131,10 +2131,33 @@
             /* nomes são opcionais */
           }
           // Marca jogos com proteção ainda aberta (LAY + BACK)
+          // settle-exchange-cobra-so-deducao-v9: margem = dedução vigente
+          // (lucro−4,5%−1,5%), NÃO stored antigo 96,11 e NÃO soma comissão.
+          function liveExchangeDeductionCents(p) {
+            var meta =
+              p && p.metadata && typeof p.metadata === "object" ? p.metadata : {};
+            var stake = Number(p.responsibility_cents || p.amount_cents || 0);
+            var odd = Number(meta.market_odd);
+            if (!(odd > 1.01)) odd = Number(p.odd || 0);
+            var mt = String(meta.market_type || "").toUpperCase();
+            if (stake > 0 && odd > 1.01) {
+              var eff = mt === "LAY" ? odd / (odd - 1) : odd;
+              var profit = Math.max(0, Math.round(stake * eff) - stake);
+              var commission = Math.round(profit * 0.045);
+              var user = Math.round(stake * 0.015);
+              return Math.max(0, profit - commission - user);
+            }
+            var stored = Number(
+              p.platform_deduction_cents != null
+                ? p.platform_deduction_cents
+                : p.locked_deduction_cents || 0
+            );
+            return Math.max(0, stored);
+          }
           var openByMatch = {};
           try {
             var openProt = await restAuth(
-              "protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,responsibility_cents,platform_deduction_cents,locked_deduction_cents&limit=2000"
+              "protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,responsibility_cents,platform_deduction_cents,locked_deduction_cents,odd,metadata&limit=2000"
             );
             (openProt || []).forEach(function (p) {
               if (!p.match_id) return;
@@ -2147,21 +2170,17 @@
                 };
               }
               var amt = Number(p.responsibility_cents || p.amount_cents || 0);
-              var margin = Number(
-                p.platform_deduction_cents != null
-                  ? p.platform_deduction_cents
-                  : p.locked_deduction_cents || 0
-              );
+              var margin = liveExchangeDeductionCents(p);
               openByMatch[p.match_id].count += 1;
               openByMatch[p.match_id].cents += amt;
-              // ArbiShield credita stake + margem (Saldo Dedução)
+              // ArbiShield (vitória) credita só o stake no Saldo Reembolso
               openByMatch[p.match_id].refund += amt;
               openByMatch[p.match_id].margin += Math.max(0, margin);
             });
           } catch (e1) {}
           try {
             var openBack = await restAuth(
-              "back_protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,platform_deduction_cents,locked_deduction_cents&limit=1000"
+              "back_protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,platform_deduction_cents,locked_deduction_cents,odd,metadata&limit=1000"
             );
             (openBack || []).forEach(function (p) {
               if (!p.match_id) return;
@@ -2174,11 +2193,7 @@
                 };
               }
               var amt = Number(p.amount_cents || 0);
-              var margin = Number(
-                p.platform_deduction_cents != null
-                  ? p.platform_deduction_cents
-                  : p.locked_deduction_cents || 0
-              );
+              var margin = liveExchangeDeductionCents(p);
               openByMatch[p.match_id].count += 1;
               openByMatch[p.match_id].cents += amt;
               openByMatch[p.match_id].refund += amt;
@@ -3491,14 +3506,14 @@
         if ($("settleDeductHint")) {
           $("settleDeductHint").textContent =
             margin > 0
-              ? "Exchange/PERDEU → cobra dedução agora: " +
+              ? "Exchange/PERDEU → cobra só a dedução agora: " +
                 money(margin) +
-                " · R$ 0 Reembolso · destrava e devolve · cobra dedução + comissão 4,5%"
-              : "Exchange/PERDEU → R$ 0 Reembolso · destrava e devolve · cobra dedução + comissão 4,5%";
+                " · R$ 0 Reembolso · destrava e devolve o stake (ex. 1000@10 → R$ 91,11; sem comissão extra)"
+              : "Exchange/PERDEU → R$ 0 Reembolso · destrava e devolve o stake · cobra só a dedução ArbiShield";
         }
         if ($("settleStakeKeepHint")) {
           $("settleStakeKeepHint").textContent =
-            "Regra stake_lock v7: Exchange = R$ 0 Reembolso · destrava e devolve o stake · cobra dedução ArbiShield + comissão Exchange 4,5% do lucro. Histórico fee_upfront: dedução já cobrada na entrada.";
+            "Regra stake_lock v9: Exchange = R$ 0 Reembolso · destrava e DEVOLVE o stake · cobra SÓ dedução (lucro−4,5%−1,5%). A fatia Exchange 4,5% já entra no cálculo — não debita de novo. Histórico fee_upfront: dedução já cobrada na entrada.";
         }
         if ($("settleVoidHint")) {
           $("settleVoidHint").textContent =

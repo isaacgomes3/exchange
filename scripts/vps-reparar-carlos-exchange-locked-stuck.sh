@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Repara Carlos: Congelado R$1.000 preso com 0 proteções ativas (Exchange stuck).
-# Aplica regra v7: devolve stake + cobra dedução + comissão 4,5%.
+# Aplica regra v9: devolve stake + cobra SÓ dedução (ex. −91,11).
 #
 # Na VPS (root):
 #   curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-reembolso-lucas-perdeu-723d/scripts/vps-reparar-carlos-exchange-locked-stuck.sh?$(date +%s)" -o /tmp/repair-carlos.sh

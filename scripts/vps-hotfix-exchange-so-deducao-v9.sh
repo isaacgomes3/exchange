@@ -82,11 +82,17 @@ log "4/5 UI"
 for pair in \
   "deploy/vps-supabase/static/v2/app-proteger.html:app-proteger.html" \
   "deploy/vps-supabase/static/v2/app-protecoes.html:app-protecoes.html" \
-  "deploy/vps-supabase/static/v2/proteger-preview-fix.js:proteger-preview-fix.js"
+  "deploy/vps-supabase/static/v2/proteger-preview-fix.js:proteger-preview-fix.js" \
+  "deploy/vps-supabase/static/v2/admin-jogos.html:admin-jogos.html"
 do
   rel="${pair%%:*}"; name="${pair##*:}"
   tmp="$(mktemp)"
   download_repo_file "$rel" "$tmp"
+  if [[ "$name" == admin-jogos.html ]]; then
+    grep -q 'settle-exchange-cobra-so-deducao-v9\|cobra só a dedução\|liveExchangeDeductionCents' "$tmp" \
+      || die "admin-jogos sem texto/cálculo v9"
+    grep -q 'cobra dedução + comissão 4,5%' "$tmp" && die "admin-jogos ainda diz cobra dedução + comissão"
+  fi
   n=0
   while IFS= read -r -d '' f; do
     cp -f "$tmp" "$f"; chmod 0644 "$f"; n=$((n+1)); echo "  OK $f"

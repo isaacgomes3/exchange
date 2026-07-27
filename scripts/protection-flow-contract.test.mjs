@@ -618,6 +618,10 @@ describe("Exchange/PERDEU — devolve stake · cobra SÓ dedução · R$ 0 Reemb
       resolve(root, "scripts/arbishield-serverfn-shim.mjs"),
       "utf8"
     );
+    const admin = readFileSync(
+      resolve(root, "deploy/vps-supabase/static/v2/admin-jogos.html"),
+      "utf8"
+    );
     assert.match(prelive, /settle-exchange-cobra-so-deducao-v9/);
     assert.match(shim, /settle-exchange-cobra-so-deducao-v9/);
     assert.match(prelive, /settle-exchange-sem-comissao-extra-v9/);
@@ -630,6 +634,8 @@ describe("Exchange/PERDEU — devolve stake · cobra SÓ dedução · R$ 0 Reemb
     assert.match(shim, /needsReturn/);
     assert.match(prelive, /stake_returned/);
     assert.match(shim, /stake_returned/);
+    assert.match(prelive, /cobra só dedução \(v9\)/);
+    assert.match(shim, /cobra só dedução \(v9\)/);
     // Regressão clássica: voltar a debitar settlementExchangeCommissionCents
     assert.doesNotMatch(
       prelive,
@@ -639,7 +645,14 @@ describe("Exchange/PERDEU — devolve stake · cobra SÓ dedução · R$ 0 Reemb
       shim,
       /commission = feeUpfront\s*\?\s*0\s*:/
     );
+    assert.doesNotMatch(prelive, /cobra dedução \+ comissão 4,5%/);
+    assert.doesNotMatch(shim, /cobra dedução \+ comissão 4,5%/);
     assert.match(prelive, /Exchange incompleto/);
     assert.match(shim, /Exchange incompleto/);
+    // Modal admin não pode mais prometer 96,11 / comissão extra
+    assert.match(admin, /liveExchangeDeductionCents|cobra só a dedução/);
+    assert.match(admin, /stake_lock v9/);
+    assert.doesNotMatch(admin, /cobra dedução \+ comissão 4,5%/);
+    assert.doesNotMatch(admin, /stake_lock v7: Exchange = R\$ 0 Reembolso · destrava e devolve o stake · cobra dedução ArbiShield \+ comissão/);
   });
 });
