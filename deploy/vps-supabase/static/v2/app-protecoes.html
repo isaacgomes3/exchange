@@ -381,7 +381,8 @@
         var amount = nCents(row.responsibility_cents || row.amount_cents);
         var fee = deductionCentsOf(row);
         var won = outcome === "arbishield";
-        // settle-exchange-nunca-reembolso-v1: PERDEU / Exchange → sempre R$ 0
+        // stake_lock vigente: Arbi = stake; PERDEU = 0
+        // histórico fee_upfront: Arbi = stake + fee
         var refund = 0;
         if (won) {
           refund = isFeeUpfront(row) ? amount + fee : amount;

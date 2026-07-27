@@ -2,9 +2,9 @@
  * Cria proteção LAY/BACK no mesmo schema do SPA (sem RPC legado).
  *
  * TRAVADO — DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST
- * Fonte da verdade das regras: scripts/lib/protection-flow-contract.mjs
- * (protection-flow-contract-v1). Não alterar fee_upfront / LAY=resp / BACK=stake
- * sem solicitação explícita do produto.
+ * Fonte da verdade: scripts/lib/protection-flow-contract.mjs (v4 stake_lock_v1)
+ * Ativação trava stake · Arbi credita stake · PERDEU R$ 0 cobra dedução
+ * Empate Anula / Cancelar destravam stake.
  */
 
 export type BalanceType = "REAL" | "DEMO" | "INVESTOR";
