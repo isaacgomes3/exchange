@@ -29,6 +29,8 @@ import {
   maxStakeLockCents,
   isMatchKickoffPassed,
   isCancelledProtectionStatus,
+  cancelRefundCents,
+  CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
 } from "./lib/protection-flow-contract.mjs";
 import {
   BETBRA_INPLAY_SYNC_VERSION,
@@ -57,6 +59,7 @@ import {
 // Trava de produto: fluxo de proteção — não alterar sem pedido explícito.
 void PROTECTION_FLOW_LOCK;
 void PROTECTION_FLOW_CONTRACT_VERSION;
+void CANCEL_FEE_UPFRONT_NO_STAKE_REFUND;
 void settlementCreditCents;
 void calcFeeUpfront;
 void layToBackOdd;
@@ -2662,7 +2665,11 @@ async function refundAndCancelProtection(table, row, audit = {}) {
   const stakeLock = isStakeLockProtection(row);
   const feeCents = settlementDeductionCents(row);
   // vigente stake_lock: destrava stake · histórico fee_upfront: estorna só dedução
-  const amount = feeUpfront && !stakeLock ? feeCents : stakeCents;
+  // Guarda cancel-fee-upfront-nao-devolve-stake-v6
+  const amount = cancelRefundCents(row);
+  const refundFeeOnly =
+    feeUpfront ||
+    (amount === feeCents && feeCents > 0 && feeCents !== stakeCents);
   const balanceType = String(
     (row.metadata && row.metadata.balance_type) ||
       (row.metadata && row.metadata.balance_type_requested) ||
@@ -2703,7 +2710,7 @@ async function refundAndCancelProtection(table, row, audit = {}) {
 
   const prevMeta =
     row.metadata && typeof row.metadata === "object" ? { ...row.metadata } : {};
-  if (feeUpfront) {
+  if (refundFeeOnly) {
     prevMeta.billing_model = prevMeta.billing_model || "fee_upfront_v1";
     prevMeta.fee_upfront = true;
     if (!(n(prevMeta.fee_charged_cents) > 0) && feeCents > 0) {
@@ -2715,8 +2722,9 @@ async function refundAndCancelProtection(table, row, audit = {}) {
     cancelled_at: new Date().toISOString(),
     cancelled_by: audit.cancelled_by || null,
     auto: true,
-    refund_kind: feeUpfront ? "fee" : "stake",
+    refund_kind: refundFeeOnly ? "fee" : "stake",
     refund_cents: amount,
+    guard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
   };
   if (audit.reason) {
     prevMeta.contestation = {
@@ -2742,7 +2750,7 @@ async function refundAndCancelProtection(table, row, audit = {}) {
     };
   }
 
-  if (feeUpfront && !(amount > 0)) {
+  if (refundFeeOnly && !(amount > 0)) {
     console.warn(
       "[prelive] fee_upfront cancel sem dedução para estornar:",
       protectionId
@@ -2760,7 +2768,7 @@ async function refundAndCancelProtection(table, row, audit = {}) {
       const patchFull = {
         updated_at: new Date().toISOString(),
       };
-      if (feeUpfront && !stakeLock) {
+      if (refundFeeOnly) {
         // Histórico fee_upfront: devolve só a taxa; não mexe em locked
         if (balanceType === "DEMO") {
           patchFull.demo_balance_cents = n(p.demo_balance_cents) + amount;
@@ -2812,15 +2820,16 @@ async function refundAndCancelProtection(table, row, audit = {}) {
           metadata: {
             protection_id: protectionId,
             auto_cancel: true,
-            billing_model: feeUpfront
+            billing_model: refundFeeOnly
               ? "fee_upfront_v1"
               : stakeLock
                 ? "stake_lock_v1"
                 : "legacy_lock",
-            refund_kind: feeUpfront && !stakeLock ? "fee" : "stake",
+            refund_kind: refundFeeOnly ? "fee" : "stake",
             fee_cents: feeCents,
             stake_cents: stakeCents,
             balance_type: balanceType,
+            guard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
             ...(audit || {}),
           },
         },
@@ -4181,6 +4190,7 @@ async function handleApi(req, res) {
       service: "arbishield-matches",
       fix: "create-protection-stake-lock-v6",
       createProtectionModel: "stake_lock_v1",
+      cancelRefundGuard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
       protectionFlowContract: PROTECTION_FLOW_CONTRACT_VERSION,
       protectionFlowLock: PROTECTION_FLOW_LOCK,
       inplaySync: BETBRA_INPLAY_SYNC_VERSION,

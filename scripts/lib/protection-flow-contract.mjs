@@ -21,6 +21,8 @@
  *
  *   Histórico fee_upfront_v1 (linhas antigas): mantido só para settle/cancel
  *   de proteções já criadas com billing_model fee_upfront_v1.
+ *   Cancel fee_upfront → estorna SÓ a dedução (nunca o stake).
+ *   Guarda: cancel-fee-upfront-nao-devolve-stake-v6
  * ============================================================================
  */
 
@@ -30,6 +32,13 @@ export const PROTECTION_FLOW_CONTRACT_VERSION =
 /** Marcador exigido pelos testes / hotfixes — não renomear. */
 export const PROTECTION_FLOW_LOCK =
   "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST";
+
+/**
+ * Guarda anti-overcredit no cancel: fee_upfront nunca devolve stake.
+ * Hotfix / health devem conter esta string.
+ */
+export const CANCEL_FEE_UPFRONT_NO_STAKE_REFUND =
+  "cancel-fee-upfront-nao-devolve-stake-v6";
 
 /**
  * Snapshot textual das regras vigentes — travado nos testes.
@@ -172,11 +181,17 @@ export function isFeeUpfrontProtection(row) {
   if (meta.billing_model === "stake_lock_v1" || meta.stake_lock === true) {
     return false;
   }
-  return (
+  if (
     meta.billing_model === "fee_upfront_v1" ||
     meta.fee_upfront === true ||
     String(meta.source || "").includes("fee_upfront")
-  );
+  ) {
+    return true;
+  }
+  // Create cobrou fee na ativação (fee_charged_cents) sem marker stake_lock
+  // → trata como histórico fee_upfront (evita cancel devolver stake).
+  if (n(meta.fee_charged_cents) > 0) return true;
+  return false;
 }
 
 /** Modelo vigente: trava stake na ativação. */
@@ -188,6 +203,29 @@ export function isStakeLockProtection(row) {
   }
   // Sem marker fee_upfront → trata como trava stake (legado / vigente)
   return !isFeeUpfrontProtection(row);
+}
+
+/**
+ * Quanto creditar no cancelamento (origem).
+ * fee_upfront → só dedução · stake_lock → stake.
+ * Nunca devolver stake se a ativação cobrou fee_upfront.
+ * Marker: cancel-fee-upfront-nao-devolve-stake-v6
+ */
+export function cancelRefundCents(row) {
+  void CANCEL_FEE_UPFRONT_NO_STAKE_REFUND;
+  const stake = n(row?.responsibility_cents || row?.amount_cents);
+  const fee = settlementDeductionCents(row);
+  const meta =
+    row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  // stake_lock explícito sempre devolve stake
+  if (meta.billing_model === "stake_lock_v1" || meta.stake_lock === true) {
+    return stake;
+  }
+  // fee_upfront (markers ou fee cobrada na criação) → só a dedução
+  if (isFeeUpfrontProtection(row)) {
+    return fee;
+  }
+  return stake;
 }
 
 /**

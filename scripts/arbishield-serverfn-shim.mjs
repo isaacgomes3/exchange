@@ -24,6 +24,9 @@ let isFeeUpfrontProtection;
 let isVoidSettleOutcome;
 let normalizeSettleOutcome;
 let creditBucketForSettlement = () => "deduction_balance_cents";
+let cancelRefundCents;
+let CANCEL_FEE_UPFRONT_NO_STAKE_REFUND =
+  "cancel-fee-upfront-nao-devolve-stake-v6";
 
 try {
   const mod = await import(
@@ -42,6 +45,10 @@ try {
   isVoidSettleOutcome = mod.isVoidSettleOutcome;
   normalizeSettleOutcome = mod.normalizeSettleOutcome;
   creditBucketForSettlement = mod.creditBucketForSettlement;
+  cancelRefundCents = mod.cancelRefundCents;
+  if (mod.CANCEL_FEE_UPFRONT_NO_STAKE_REFUND) {
+    CANCEL_FEE_UPFRONT_NO_STAKE_REFUND = mod.CANCEL_FEE_UPFRONT_NO_STAKE_REFUND;
+  }
 } catch (err) {
   console.warn(
     "[serverfn-shim] protection-flow-contract ausente — fallback inline:",
@@ -73,11 +80,17 @@ try {
   };
   isFeeUpfrontProtection = (row) => {
     const meta = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
-    return (
+    if (meta.billing_model === "stake_lock_v1" || meta.stake_lock === true) {
+      return false;
+    }
+    if (
       meta.billing_model === "fee_upfront_v1" ||
       meta.fee_upfront === true ||
       String(meta.source || "").includes("fee_upfront")
-    );
+    ) {
+      return true;
+    }
+    return Number(meta.fee_charged_cents || 0) > 0;
   };
   settlementDeductionCents = (row) => {
     const meta = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
@@ -92,6 +105,17 @@ try {
     const meta = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
     if (meta.billing_model === "stake_lock_v1" || meta.stake_lock === true) return true;
     return !isFeeUpfrontProtection(row);
+  };
+  cancelRefundCents = (row) => {
+    const stake = Math.max(
+      0,
+      Math.trunc(Number(row?.responsibility_cents || row?.amount_cents) || 0)
+    );
+    const fee = settlementDeductionCents(row);
+    const meta = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
+    if (meta.billing_model === "stake_lock_v1" || meta.stake_lock === true) return stake;
+    if (isFeeUpfrontProtection(row)) return fee;
+    return stake;
   };
   settlementCreditParts = (row, outcome) => {
     const amount = Math.max(
@@ -137,6 +161,7 @@ try {
 
 void PROTECTION_FLOW_LOCK;
 void PROTECTION_FLOW_CONTRACT_VERSION;
+void CANCEL_FEE_UPFRONT_NO_STAKE_REFUND;
 void settlementCreditCents;
 
 const require = createRequire(import.meta.url);
@@ -4465,7 +4490,16 @@ async function cancelProtectionRefund(token, body) {
       ? settlementDeductionCents(row)
       : 0;
   const stakeCents = n(row.responsibility_cents || row.amount_cents);
-  const amount = feeUpfront && !stakeLock ? feeCents : stakeCents;
+  // Guarda cancel-fee-upfront-nao-devolve-stake-v6
+  const amount =
+    typeof cancelRefundCents === "function"
+      ? cancelRefundCents(row)
+      : feeUpfront && !stakeLock
+        ? feeCents
+        : stakeCents;
+  const refundFeeOnly =
+    feeUpfront ||
+    (amount === feeCents && feeCents > 0 && feeCents !== stakeCents);
   const balanceType = String(
     (row.metadata &&
       (row.metadata.balance_type ||
@@ -4496,10 +4530,14 @@ async function cancelProtectionRefund(token, body) {
     amount,
     stakeCents,
     feeCents,
-    feeUpfront,
-    stakeLock,
+    feeUpfront: refundFeeOnly,
+    stakeLock: !refundFeeOnly && stakeLock,
     balanceType,
-    extraMeta: { marketType, cancelled_by_admin: adminId },
+    extraMeta: {
+      marketType,
+      cancelled_by_admin: adminId,
+      guard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+    },
   });
 
   const marketId =
@@ -5320,7 +5358,16 @@ async function submitContestation(token, body) {
         ? settlementDeductionCents(row)
         : 0;
     const stakeCents = n(row.responsibility_cents || row.amount_cents);
-    const amount = feeUpfront && !stakeLock ? feeCents : stakeCents;
+    // Guarda cancel-fee-upfront-nao-devolve-stake-v6
+    const amount =
+      typeof cancelRefundCents === "function"
+        ? cancelRefundCents(row)
+        : feeUpfront && !stakeLock
+          ? feeCents
+          : stakeCents;
+    const refundFeeOnly =
+      feeUpfront ||
+      (amount === feeCents && feeCents > 0 && feeCents !== stakeCents);
     const balanceType = String(
       (row.metadata &&
         (row.metadata.balance_type ||
@@ -5350,8 +5397,9 @@ async function submitContestation(token, body) {
       cancelled_at: new Date().toISOString(),
       cancelled_by: userId,
       auto: true,
-      refund_kind: feeUpfront && !stakeLock ? "fee" : "stake",
+      refund_kind: refundFeeOnly ? "fee" : "stake",
       refund_cents: amount,
+      guard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
     };
     // Claim ANTES do crédito — impede F5 / race re-creditar
     const claimed = await claimProtectionCancelled(table, protectionId, {
@@ -5373,10 +5421,14 @@ async function submitContestation(token, body) {
       amount,
       stakeCents,
       feeCents,
-      feeUpfront,
-      stakeLock,
+      feeUpfront: refundFeeOnly,
+      stakeLock: !refundFeeOnly && stakeLock,
       balanceType,
-      extraMeta: { auto_cancel: true, cancelled_by: userId },
+      extraMeta: {
+        auto_cancel: true,
+        cancelled_by: userId,
+        guard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+      },
     });
     const marketId =
       row.market_id ||
@@ -7871,6 +7923,7 @@ const server = createServer(async (req, res) => {
       service: "serverfn-shim",
       fix: "create-protection-stake-lock-v6",
       createProtectionModel: "stake_lock_v1",
+      cancelRefundGuard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
       protectionFlowContract: PROTECTION_FLOW_CONTRACT_VERSION,
       env: process.env.ARBISHIELD_ENV || "production",
       listen: LISTEN,

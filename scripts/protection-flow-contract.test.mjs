@@ -30,6 +30,8 @@ import {
   isStakeLockProtection,
   isVoidSettleOutcome,
   normalizeSettleOutcome,
+  cancelRefundCents,
+  CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
 } from "./lib/protection-flow-contract.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -332,5 +334,55 @@ describe("anti-regressão — Exchange nunca Reembolso", () => {
     };
     assert.equal(settlementCreditParts(lock, "exchange").total, 0);
     assert.equal(settlementCreditParts(feeUp, "exchange").total, 0);
+  });
+});
+
+describe("cancel — fee_upfront nunca devolve stake", () => {
+  it("guarda cancel-fee-upfront-nao-devolve-stake-v6", () => {
+    assert.equal(
+      CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+      "cancel-fee-upfront-nao-devolve-stake-v6"
+    );
+  });
+
+  it("fee_upfront explícito → só dedução (caso Carlos LAY 1000 @10)", () => {
+    const fee = calcLay(100_000, 10).arbiShieldDeductionCents;
+    assert.equal(fee, 9611);
+    const row = {
+      amount_cents: 100_000,
+      responsibility_cents: 100_000,
+      platform_deduction_cents: fee,
+      odd: 10,
+      metadata: {
+        billing_model: "fee_upfront_v1",
+        fee_upfront: true,
+        market_type: "LAY",
+        fee_charged_cents: fee,
+      },
+    };
+    assert.equal(isFeeUpfrontProtection(row), true);
+    assert.equal(isStakeLockProtection(row), false);
+    assert.equal(cancelRefundCents(row), fee);
+  });
+
+  it("só fee_charged_cents (sem billing_model) → ainda fee, não stake", () => {
+    const row = {
+      amount_cents: 100_000,
+      responsibility_cents: 100_000,
+      platform_deduction_cents: 9611,
+      metadata: { fee_charged_cents: 9611, market_type: "LAY", market_odd: 10 },
+    };
+    assert.equal(isFeeUpfrontProtection(row), true);
+    assert.equal(cancelRefundCents(row), 9611);
+  });
+
+  it("stake_lock → devolve stake", () => {
+    const row = {
+      amount_cents: 100_000,
+      responsibility_cents: 100_000,
+      platform_deduction_cents: 9611,
+      metadata: { billing_model: "stake_lock_v1", stake_lock: true },
+    };
+    assert.equal(cancelRefundCents(row), 100_000);
   });
 });
