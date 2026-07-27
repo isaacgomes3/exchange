@@ -9,7 +9,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 **Status:** LOCKED — alterar **somente** com solicitação explícita do dono do produto  
 **Marker:** `DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST`  
-**Versão:** `protection-flow-contract-v6`  
+**Versão:** `protection-flow-contract-v7`  
 **Modelo vigente:** `stake_lock_v1`  
 **Fonte da verdade:** `scripts/lib/protection-flow-contract.mjs`  
 **Doc espelho:** `docs/PROTECTION_FLOW_LOCKED.md`  
@@ -37,7 +37,7 @@ Arquivos cobertos (lista mínima):
 3. **Sem entrada após o início:** não aceita ativação se `now >= starts_at` (kickoff). Grade e API recusam jogos já iniciados.
 4. **LAY** = responsabilidade; **BACK** = stake.
 5. **Ganhou na ArbiShield** (`outcome: arbishield` → `lost_exchange`): **credita o stake** no Saldo Reembolso (`deduction_balance_cents`) e **destrava**.
-6. **Ganhou na Exchange** (`outcome: exchange` → `won_exchange`): **R$ 0** (não credita Reembolso); **cobra só a dedução**; **destrava sem devolver**.
+6. **Ganhou na Exchange** (`outcome: exchange` → `won_exchange`): **R$ 0** (não credita Reembolso); **destrava e devolve** o stake à origem; **cobra dedução ArbiShield** + **comissão Exchange 4,5% do lucro**.
 7. **Empate Anula / void:** **destrava o stake** (devolve à origem — Real/Demo/Investidor).
 8. **Cancelar proteção:** **destrava o stake** (devolve à origem).
 

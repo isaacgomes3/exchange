@@ -2,7 +2,7 @@
 
 **Status:** LOCKED  
 **Marker:** `DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST`  
-**Versão:** `protection-flow-contract-v6`  
+**Versão:** `protection-flow-contract-v7`  
 **Modelo:** `stake_lock_v1`  
 **Fonte da verdade:** `scripts/lib/protection-flow-contract.mjs`  
 **Espelho em:** `AGENTS.md` (bloco `<!-- BEGIN:protection-flow-lock -->`)  
@@ -67,12 +67,13 @@ Exemplo sucessivo:
 - **Destrava** o locked
 - **Não** cobra dedução
 
-### 3. Ganhou na Exchange
+### 3. Ganhou na Exchange (pedido explícito v7)
 
 - Outcome: `exchange` → status `won_exchange`
 - **R$ 0** no Saldo Reembolso (não credita)
-- **Cobra só a dedução** do Apostador restante
-- **Destrava sem devolver** o stake
+- **Destrava e DEVOLVE** o stake à origem (Apostador / Demo / Investidor)
+- **Cobra a dedução ArbiShield** (`lucro − 4,5% − 1,5%`)
+- **Cobra comissão Exchange 4,5%** sobre o lucro bruto da aposta
 
 ### 4. Empate Anula / void
 
@@ -92,10 +93,10 @@ Exemplo sucessivo:
 ```
 ATIVAR   → só antes do kickoff · 1 op/evento · trava stake · máx 50% do restante
 ARBI     → stake → Saldo Reembolso + destrava
-EXCHANGE → R$ 0 Reembolso · cobra só dedução · destrava sem devolver
+EXCHANGE → R$ 0 Reembolso · destrava e devolve · cobra dedução + comissão 4,5%
 EMPATE   → destrava e devolve à origem
 CANCELAR → destrava e devolve à origem
 ```
 
 **Saldo Reembolso** = `profiles.deduction_balance_cents`  
-Proteções antigas `fee_upfront_v1` só para settle/cancel histórico — **modelo vigente = `stake_lock_v1`**.
+**Marker settle Exchange:** `settle-exchange-devolve-cobra-v7`

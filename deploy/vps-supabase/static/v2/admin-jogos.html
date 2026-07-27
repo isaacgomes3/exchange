@@ -3493,12 +3493,12 @@
             margin > 0
               ? "Exchange/PERDEU → cobra dedução agora: " +
                 money(margin) +
-                " · R$ 0 Reembolso · destrava sem devolver"
-              : "Exchange/PERDEU → R$ 0 Reembolso · cobra só dedução (sem platform_deduction nesta linha)";
+                " · R$ 0 Reembolso · destrava e devolve · cobra dedução + comissão 4,5%"
+              : "Exchange/PERDEU → R$ 0 Reembolso · destrava e devolve · cobra dedução + comissão 4,5%";
         }
         if ($("settleStakeKeepHint")) {
           $("settleStakeKeepHint").textContent =
-            "Regra stake_lock: Exchange = R$ 0 Reembolso · cobra só a dedução · destrava sem devolver o stake · + comissão Exchange 4,5% do lucro. Histórico fee_upfront: dedução já cobrada na entrada.";
+            "Regra stake_lock v7: Exchange = R$ 0 Reembolso · destrava e devolve o stake · cobra dedução ArbiShield + comissão Exchange 4,5% do lucro. Histórico fee_upfront: dedução já cobrada na entrada.";
         }
         if ($("settleVoidHint")) {
           $("settleVoidHint").textContent =

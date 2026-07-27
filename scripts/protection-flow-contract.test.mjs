@@ -44,7 +44,7 @@ const root = resolve(__dirname, "..");
 
 describe("contrato travado — metadados", () => {
   it("mantém versão e lock", () => {
-    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v6");
+    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v7");
     assert.equal(STAKE_LOCK_RULE, "stake-lock-v1");
     assert.equal(MAX_STAKE_FRACTION_OF_APOSTADOR, 0.5);
     assert.equal(ONE_OPERATION_PER_EVENT, true);
@@ -70,7 +70,9 @@ describe("contrato travado — metadados", () => {
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.creditReembolso, false);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.creditTotal, 0);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.chargeDeductionOnly, true);
-    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.unlockWithoutReturn, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.unlockWithoutReturn, false);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.unlockReturnToOrigin, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.chargeExchangeCommission, true);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.void.unlockReturnToOrigin, true);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.cancel.unlockReturnToOrigin, true);
   });
@@ -82,7 +84,7 @@ describe("contrato travado — metadados", () => {
       "utf8"
     );
     assert.match(agents, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
-    assert.match(agents, /protection-flow-contract-v6/);
+    assert.match(agents, /protection-flow-contract-v7/);
     assert.match(agents, /LOCKED/);
     assert.match(agents, /solicitação explícita/);
     assert.match(agents, /docs\/PROTECTION_FLOW_LOCKED\.md/);
@@ -94,13 +96,16 @@ describe("contrato travado — metadados", () => {
     assert.match(agents, /Saldo Reembolso/);
     assert.match(agents, /Ganhou na ArbiShield/);
     assert.match(agents, /Ganhou na Exchange/);
+    assert.match(agents, /destrava e devolve/);
     assert.match(agents, /Empate Anula/);
     assert.match(lockedDoc, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
-    assert.match(lockedDoc, /protection-flow-contract-v6/);
+    assert.match(lockedDoc, /protection-flow-contract-v7/);
     assert.match(lockedDoc, /LOCKED/);
     assert.match(lockedDoc, /solicitação explícita/);
     assert.match(lockedDoc, /Uma operação por evento|1 operação por evento|uma proteção por jogo/i);
     assert.match(lockedDoc, /antes do início|antes do kickoff/i);
+    assert.match(lockedDoc, /settle-exchange-devolve-cobra-v7/);
+    assert.match(lockedDoc, /Destrava e DEVOLVE|destrava e DEVOLVE|destrava e devolve/i);
   });
 
   it("prelive e shim importam o contrato", () => {
@@ -490,11 +495,11 @@ describe("Comissão Exchange 4,5% do lucro", () => {
   });
 });
 
-describe("Exchange/PERDEU — cobra dedução · R$ 0 Reembolso · destrava", () => {
-  it("guarda settle-exchange-cobra-deducao-v6", () => {
+describe("Exchange/PERDEU — devolve stake · cobra dedução + comissão · R$ 0 Reembolso", () => {
+  it("guarda settle-exchange-devolve-cobra-v7", () => {
     assert.equal(
       EXCHANGE_CHARGE_DEDUCTION_RULE,
-      "settle-exchange-cobra-deducao-v6"
+      "settle-exchange-devolve-cobra-v7"
     );
   });
 
@@ -512,39 +517,45 @@ describe("Exchange/PERDEU — cobra dedução · R$ 0 Reembolso · destrava", ()
     assert.equal(settlementCreditParts(lock, "exchange").total, 0);
     assert.equal(settlementCreditParts(feeUp, "exchange").total, 0);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.chargeDeductionOnly, true);
-    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.unlockWithoutReturn, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.unlockReturnToOrigin, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.unlockWithoutReturn, false);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.creditReembolso, false);
   });
 
-  it("isExchangeWalletComplete exige fee cobrada no stake_lock", () => {
+  it("isExchangeWalletComplete exige fee + devolução no stake_lock", () => {
     assert.equal(
       isExchangeWalletComplete({
         feeUpfront: false,
-        feeExpected: 9611,
+        feeExpected: 9111,
         feeCharged: 0,
         unlocked: true,
         needsUnlock: true,
+        stakeReturned: true,
+        needsReturn: true,
       }),
       false
     );
     assert.equal(
       isExchangeWalletComplete({
         feeUpfront: false,
-        feeExpected: 9611,
-        feeCharged: 9611,
+        feeExpected: 9111,
+        feeCharged: 9111,
         unlocked: true,
         needsUnlock: true,
+        stakeReturned: false,
+        needsReturn: true,
       }),
-      true
+      false
     );
     assert.equal(
       isExchangeWalletComplete({
         feeUpfront: false,
-        feeExpected: 9611,
-        feeCharged: 5000,
-        feeShortfall: 4611,
+        feeExpected: 9111,
+        feeCharged: 9111,
         unlocked: true,
         needsUnlock: true,
+        stakeReturned: true,
+        needsReturn: true,
       }),
       true
     );
@@ -560,7 +571,7 @@ describe("Exchange/PERDEU — cobra dedução · R$ 0 Reembolso · destrava", ()
     );
   });
 
-  it("prelive/shim cobram dedução no Exchange (não engolem PATCH)", () => {
+  it("prelive/shim cobram dedução e devolvem stake no Exchange", () => {
     const prelive = readFileSync(
       resolve(root, "scripts/arbishield-prelive-events.mjs"),
       "utf8"
@@ -569,21 +580,14 @@ describe("Exchange/PERDEU — cobra dedução · R$ 0 Reembolso · destrava", ()
       resolve(root, "scripts/arbishield-serverfn-shim.mjs"),
       "utf8"
     );
-    assert.match(prelive, /settle-exchange-cobra-deducao-v6/);
-    assert.match(shim, /settle-exchange-cobra-deducao-v6/);
-    assert.match(prelive, /isExchangeWalletComplete/);
-    assert.match(shim, /isExchangeWalletComplete/);
-    assert.match(prelive, /loadExchangeSettlementPrior/);
-    assert.match(shim, /loadExchangeSettlementPrior/);
-    assert.match(
-      prelive,
-      /não encontrado para settle Exchange \(cobrar dedução\)/
-    );
-    assert.match(
-      shim,
-      /não encontrado para settle Exchange \(cobrar dedução\)/
-    );
-    // não pode engolir erro do PATCH Exchange com catch vazio antes do tx
+    assert.match(prelive, /settle-exchange-devolve-cobra-v7/);
+    assert.match(shim, /settle-exchange-devolve-cobra-v7/);
+    assert.match(prelive, /needsReturn/);
+    assert.match(shim, /needsReturn/);
+    assert.match(prelive, /stake_returned/);
+    assert.match(shim, /stake_returned/);
+    assert.match(prelive, /destrava e devolve stake/);
+    assert.match(shim, /destrava e devolve stake/);
     assert.match(prelive, /Exchange incompleto/);
     assert.match(shim, /Exchange incompleto/);
   });

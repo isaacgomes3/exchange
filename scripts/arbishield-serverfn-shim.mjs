@@ -28,7 +28,7 @@ let cancelRefundCents;
 let CANCEL_FEE_UPFRONT_NO_STAKE_REFUND =
   "cancel-fee-upfront-nao-devolve-stake-v6";
 let isExchangeWalletComplete;
-let EXCHANGE_CHARGE_DEDUCTION_RULE = "settle-exchange-cobra-deducao-v6";
+let EXCHANGE_CHARGE_DEDUCTION_RULE = "settle-exchange-devolve-cobra-v7";
 let settlementExchangeCommissionCents;
 let EXCHANGE_COMMISSION_RATE = 0.045;
 
@@ -158,9 +158,12 @@ try {
     feeShortfall = 0,
     unlocked = false,
     needsUnlock = false,
+    stakeReturned = false,
+    needsReturn = false,
   } = {}) => {
     if (feeUpfront) return true;
     if (needsUnlock && !unlocked) return false;
+    if (needsReturn && !stakeReturned) return false;
     const fee = Math.max(0, Number(feeExpected) || 0);
     if (!(fee > 0)) return true;
     return (
@@ -5979,6 +5982,7 @@ async function loadExchangeSettlementPrior(protectionId) {
     feeCharged: 0,
     feeShortfall: 0,
     unlocked: false,
+    stakeReturned: false,
     hasTx: false,
     commissionCharged: 0,
   };
@@ -5992,6 +5996,7 @@ async function loadExchangeSettlementPrior(protectionId) {
     let feeCharged = 0;
     let feeShortfall = 0;
     let unlocked = false;
+    let stakeReturned = false;
     let hasTx = false;
     let commissionCharged = 0;
     for (const t of list) {
@@ -6009,9 +6014,16 @@ async function loadExchangeSettlementPrior(protectionId) {
       }
       feeShortfall = Math.max(feeShortfall, n(meta.fee_shortfall_cents));
       if (meta.unlocked_locked === true) unlocked = true;
+      if (
+        meta.stake_returned === true ||
+        meta.returned_stake_cents > 0 ||
+        meta.unlock_return_to_origin === true
+      ) {
+        stakeReturned = true;
+      }
       commissionCharged += Math.max(0, n(meta.exchange_commission_charged_cents));
     }
-    return { feeCharged, feeShortfall, unlocked, hasTx, commissionCharged };
+    return { feeCharged, feeShortfall, unlocked, stakeReturned, hasTx, commissionCharged };
   } catch {
     return empty;
   }
@@ -6055,8 +6067,8 @@ async function creditWalletForSettlement(row, outcome, now) {
     return { refunded: 0, credited: 0, alreadyCredited: true };
   }
 
-  // Ganhou na Exchange: R$ 0 Reembolso; stake_lock cobra só a dedução; destrava sem devolver.
-  // Guarda: settle-exchange-cobra-deducao-v6
+  // Ganhou na Exchange: R$ 0 Reembolso; stake_lock DEVOLVE stake; cobra dedução + comissão 4,5%.
+  // Guarda: settle-exchange-devolve-cobra-v7
   if (!wonArbi && !isVoid) {
     const fee =
       (typeof settlementDeductionCents === "function"
@@ -6075,6 +6087,7 @@ async function creditWalletForSettlement(row, outcome, now) {
         ? isStakeLockProtection(row)
         : !feeUpfront;
     const needsUnlock = (stakeLock || !feeUpfront) && amount > 0;
+    const needsReturn = stakeLock && !feeUpfront && amount > 0;
     const prior = await loadExchangeSettlementPrior(row.id);
     const completeFn =
       typeof isExchangeWalletComplete === "function"
@@ -6089,6 +6102,8 @@ async function creditWalletForSettlement(row, outcome, now) {
         feeShortfall: prior.feeShortfall,
         unlocked: prior.unlocked || !needsUnlock,
         needsUnlock,
+        stakeReturned: prior.stakeReturned || !needsReturn,
+        needsReturn,
       }) &&
       (prior.commissionCharged || 0) >= commission
     ) {
@@ -6101,10 +6116,12 @@ async function creditWalletForSettlement(row, outcome, now) {
         feeShortfallCents: prior.feeShortfall,
         exchangeCommissionChargedCents: prior.commissionCharged,
         unlocked: prior.unlocked,
+        stakeReturned: prior.stakeReturned,
       };
     }
 
     let unlocked = prior.unlocked;
+    let stakeReturned = !!prior.stakeReturned;
     let feeCharged = prior.feeCharged;
     let feeShortfall = prior.feeShortfall;
     const feeStillDue = Math.max(0, fee - feeCharged - feeShortfall);
@@ -6131,25 +6148,56 @@ async function creditWalletForSettlement(row, outcome, now) {
       patch.locked_balance_cents = Math.max(0, n(p.locked_balance_cents) - amount);
       unlocked = true;
     }
+    if (needsReturn && !stakeReturned) {
+      if (balanceType === "DEMO") {
+        const base =
+          patch.demo_balance_cents != null ? n(patch.demo_balance_cents) : n(p.demo_balance_cents);
+        patch.demo_balance_cents = base + amount;
+      } else if (balanceType === "INVESTOR") {
+        const base =
+          patch.investor_balance_cents != null
+            ? n(patch.investor_balance_cents)
+            : n(p.investor_balance_cents);
+        patch.investor_balance_cents = base + amount;
+      } else {
+        const base =
+          patch.balance_cents != null
+            ? n(patch.balance_cents)
+            : n(p.balance_cents) + n(p.reusable_balance_cents);
+        patch.reusable_balance_cents = 0;
+        patch.balance_cents = base + amount;
+      }
+      stakeReturned = true;
+    }
 
     let chargedNow = 0;
     if (stakeLock && !feeUpfront && feeStillDue > 0) {
       let left = feeStillDue;
       if (balanceType === "DEMO") {
-        const cur = n(p.demo_balance_cents);
+        const cur =
+          patch.demo_balance_cents != null ? n(patch.demo_balance_cents) : n(p.demo_balance_cents);
         const take = Math.min(cur, left);
         patch.demo_balance_cents = cur - take;
         chargedNow = take;
         left -= take;
       } else if (balanceType === "INVESTOR") {
-        const cur = n(p.investor_balance_cents);
+        const cur =
+          patch.investor_balance_cents != null
+            ? n(patch.investor_balance_cents)
+            : n(p.investor_balance_cents);
         const take = Math.min(cur, left);
         patch.investor_balance_cents = cur - take;
         chargedNow = take;
         left -= take;
       } else {
-        let bal = n(p.balance_cents) + n(p.reusable_balance_cents);
-        let ded = n(p.deduction_balance_cents);
+        let bal =
+          patch.balance_cents != null
+            ? n(patch.balance_cents)
+            : n(p.balance_cents) + n(p.reusable_balance_cents);
+        let ded =
+          patch.deduction_balance_cents != null
+            ? n(patch.deduction_balance_cents)
+            : n(p.deduction_balance_cents);
         patch.reusable_balance_cents = 0;
         if (bal >= left) {
           patch.balance_cents = bal - left;
@@ -6235,10 +6283,12 @@ async function creditWalletForSettlement(row, outcome, now) {
         feeShortfall,
         unlocked,
         needsUnlock,
+        stakeReturned,
+        needsReturn,
       })
     ) {
       throw new Error(
-        `Exchange incompleto (proteção ${row.id}): feeExpected=${fee} feeCharged=${feeCharged} shortfall=${feeShortfall} unlocked=${unlocked}`
+        `Exchange incompleto (proteção ${row.id}): feeExpected=${fee} feeCharged=${feeCharged} shortfall=${feeShortfall} unlocked=${unlocked} returned=${stakeReturned}`
       );
     }
 
@@ -6270,9 +6320,12 @@ async function creditWalletForSettlement(row, outcome, now) {
                 : "legacy_lock",
             fix: EXCHANGE_CHARGE_DEDUCTION_RULE,
             unlocked_locked: unlocked,
+            stake_returned: stakeReturned,
+            returned_stake_cents: stakeReturned ? amount : 0,
+            unlock_return_to_origin: stakeReturned,
             note: feeUpfront
               ? "Ganhou Exchange: taxa já cobrada na criação — sem crédito Reembolso"
-              : "Ganhou Exchange: R$ 0 Reembolso; cobra só dedução; destrava sem devolver",
+              : "Ganhou Exchange: R$ 0 Reembolso; destrava e devolve stake; cobra dedução + comissão 4,5%",
           },
         },
       });
@@ -6316,6 +6369,8 @@ async function creditWalletForSettlement(row, outcome, now) {
       exchangeCommissionCents: commission,
       exchangeCommissionChargedCents: commissionCharged,
       unlocked,
+      stakeReturned,
+      returnedStakeCents: stakeReturned ? amount : 0,
     };
   }
 

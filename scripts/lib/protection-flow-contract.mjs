@@ -8,14 +8,15 @@
  * de crédito no settle; os testes em protection-flow-contract.test.mjs
  * travam o comportamento no CI.
  *
- * Versão: protection-flow-contract-v6 (2026-07-27)
+ * Versão: protection-flow-contract-v7 (2026-07-27)
  *   Regra vigente (stake_lock_v1):
  *     - Ativação → trava stake; máx. 50% do Apostador RESTANTE naquele momento
  *       (evento 1: 50% da banca; evento 2: 50% do que sobrou; e assim por diante)
  *     - 1 operação por evento (user + match): não cria 2ª proteção no mesmo jogo
  *     - Entradas só ANTES do início (starts_at); após kickoff recusa
  *     - Ganhou na ArbiShield → credita stake (Saldo Reembolso) e destrava
- *     - Ganhou na Exchange → R$ 0; cobra só a dedução; destrava sem devolver
+ *     - Ganhou na Exchange → R$ 0 Reembolso; destrava e DEVOLVE o stake à origem;
+ *       cobra dedução ArbiShield + comissão Exchange 4,5% do lucro
  *     - Empate Anula → destrava stake (devolve à origem)
  *     - Cancelar → destrava stake (devolve à origem)
  *
@@ -27,7 +28,7 @@
  */
 
 export const PROTECTION_FLOW_CONTRACT_VERSION =
-  "protection-flow-contract-v6";
+  "protection-flow-contract-v7";
 
 /** Marcador exigido pelos testes / hotfixes — não renomear. */
 export const PROTECTION_FLOW_LOCK =
@@ -67,7 +68,10 @@ export const PROTECTION_FLOW_SPEC = Object.freeze({
       creditReembolso: false,
       creditTotal: 0,
       chargeDeductionOnly: true,
-      unlockWithoutReturn: true,
+      /** Pedido explícito 2026-07-27: destrava E devolve o stake à origem. */
+      unlockWithoutReturn: false,
+      unlockReturnToOrigin: true,
+      chargeExchangeCommission: true,
     }),
     void: Object.freeze({
       unlockReturnToOrigin: true,
@@ -83,14 +87,19 @@ export const PROTECTION_FLOW_SPEC = Object.freeze({
 export const STAKE_LOCK_RULE = "stake-lock-v1";
 
 /**
- * Guarda Exchange/PERDEU: R$ 0 Reembolso · cobra só dedução · destrava sem devolver.
+ * Guarda Exchange/PERDEU: R$ 0 Reembolso · destrava e devolve stake ·
+ * cobra dedução + comissão Exchange 4,5% do lucro.
  * Hotfix / health / CI devem conter esta string.
  */
 export const EXCHANGE_CHARGE_DEDUCTION_RULE =
-  "settle-exchange-cobra-deducao-v6";
+  "settle-exchange-devolve-cobra-v7";
 
 /** Alias histórico (anti-crédito Reembolso). */
 export const EXCHANGE_NO_CREDIT_RULE = "settle-exchange-nunca-reembolso-v1";
+
+/** Alias do marker v6 (ainda citado em hotfixes antigos). */
+export const EXCHANGE_CHARGE_DEDUCTION_RULE_V6 =
+  "settle-exchange-cobra-deducao-v6";
 
 /** Fração máxima do saldo Apostador que pode ser travada na ativação. */
 export const MAX_STAKE_FRACTION_OF_APOSTADOR = 0.5;
@@ -245,9 +254,9 @@ export const CANCEL_STAKE_LOCK_RETURN_STAKE =
 /**
  * Exchange/PERDEU wallet completo?
  * - fee_upfront: só auditoria (taxa já cobrada na criação)
- * - stake_lock: precisa destravar (se havia stake) E cobrir a dedução
+ * - stake_lock: precisa devolver stake (se havia) + destravar + cobrir a dedução
  *   (feeCharged + feeShortfall >= feeExpected)
- * Marker: settle-exchange-cobra-deducao-v6
+ * Marker: settle-exchange-devolve-cobra-v7
  */
 export function isExchangeWalletComplete({
   feeUpfront = false,
@@ -256,10 +265,13 @@ export function isExchangeWalletComplete({
   feeShortfall = 0,
   unlocked = false,
   needsUnlock = false,
+  stakeReturned = false,
+  needsReturn = false,
 } = {}) {
   void EXCHANGE_CHARGE_DEDUCTION_RULE;
   if (feeUpfront) return true;
   if (needsUnlock && !unlocked) return false;
+  if (needsReturn && !stakeReturned) return false;
   const fee = Math.max(0, n(feeExpected));
   if (!(fee > 0)) return true;
   return Math.max(0, n(feeCharged)) + Math.max(0, n(feeShortfall)) >= fee;
@@ -321,7 +333,8 @@ export function settlementDeductionCents(row) {
  * Regras de crédito no settle (TRAVADAS) — stake_lock_v1:
  *
  *   - Ganhou na ArbiShield → stake (Saldo Reembolso) + destrava
- *   - Ganhou na Exchange   → 0 (não credita Reembolso; cobra só a dedução; destrava sem devolver)
+ *   - Ganhou na Exchange   → 0 Reembolso; destrava e DEVOLVE stake à origem;
+ *     cobra dedução + comissão 4,5% (caller)
  *   - Empate Anula / void → stake (caller destrava/devolve à origem — NÃO Reembolso)
  *
  * Ativação: trava stake; máx. 50% do Apostador restante naquele momento
@@ -332,7 +345,7 @@ export function settlementDeductionCents(row) {
  *   - Exchange   → 0
  *   - void → só dedução (Reembolso)
  *
- * Marker: settle-exchange-nunca-reembolso-v1 · stake-lock-v1
+ * Marker: settle-exchange-nunca-reembolso-v1 · settle-exchange-devolve-cobra-v7 · stake-lock-v1
  */
 export function settlementCreditParts(row, outcome) {
   const amount = n(row?.responsibility_cents || row?.amount_cents);
