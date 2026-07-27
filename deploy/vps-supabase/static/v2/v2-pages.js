@@ -69,7 +69,7 @@
     amount_cents: "valor",
     created_at: "criado em",
     origem: "origem",
-    type: "descrição",
+    type: "tipo",
     description: "descrição",
   };
 
@@ -79,7 +79,7 @@
     reusable_balance_cents: "Saldo Reutilizável",
     desafio_balance_cents: "Carteira Desafio",
     demo_balance_cents: "Demo",
-    locked_balance_cents: "Locked",
+    locked_balance_cents: "Travado",
     investor_balance_cents: "Investidor",
   };
 
@@ -88,12 +88,23 @@
     protection_settlement: "Liquidação de proteção",
     protection_lock: "Travamento de proteção",
     protection_fee: "Taxa de proteção",
-    protection_refund: "Estorno de proteção",
+    protection_refund: "Reembolso de proteção",
     protection_release: "Liberação de proteção",
+    protection_unlock: "Destravamento de proteção",
     admin_adjustment: "Ajuste administrativo",
     desafio_deposit: "Depósito Desafio",
+    desafio_cancel_refund: "Estorno cancelamento Desafio",
+    desafio_void_refund: "Estorno empate Desafio",
+    desafio_forfeit_to_provider: "Forfeit Desafio → Provedor",
     deposit: "Depósito",
+    asaas_deposit: "Depósito Asaas",
+    manual_credit: "Crédito manual",
+    provider_deposit: "Depósito Provedor",
     withdrawal: "Saque",
+    bonus: "Bônus",
+    refund: "Estorno",
+    profit: "Lucro",
+    coverage_credit: "Crédito de cobertura",
   };
 
   function metaOf(row) {
