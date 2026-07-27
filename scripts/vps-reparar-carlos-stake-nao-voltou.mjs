@@ -269,7 +269,7 @@ function plan(user, prots) {
   }
 
   // C) saldos intermediários conhecidos → força alvo
-  if ([897_141, 898_252, 8_971_41].includes(bal) || bal !== TARGET) {
+  if ([897_141, 898_252, BASE_BEFORE].includes(bal) || bal !== TARGET) {
     // Se parece Carlos no print histórico, ajusta ao alvo
     if (
       bal === 897_141 ||
