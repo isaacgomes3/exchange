@@ -27,7 +27,7 @@ const root = resolve(__dirname, "..");
 
 describe("contrato travado — metadados", () => {
   it("mantém versão e lock", () => {
-    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v2");
+    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v3");
     assert.equal(
       PROTECTION_FLOW_LOCK,
       "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST"
@@ -37,9 +37,25 @@ describe("contrato travado — metadados", () => {
   it("AGENTS.md cita o lock do fluxo", () => {
     const agents = readFileSync(resolve(root, "AGENTS.md"), "utf8");
     assert.match(agents, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
-    assert.match(agents, /protection-flow-contract-v2/);
+    assert.match(agents, /protection-flow-contract-v3/);
+    assert.match(agents, /settle-exchange-nunca-reembolso-v1/);
     assert.match(agents, /Saldo Reembolso/);
     assert.match(agents, /Empate Anula/);
+  });
+
+  it("prelive/shim bloqueiam crédito Exchange → Reembolso", () => {
+    const prelive = readFileSync(
+      resolve(root, "scripts/arbishield-prelive-events.mjs"),
+      "utf8"
+    );
+    const shim = readFileSync(
+      resolve(root, "scripts/arbishield-serverfn-shim.mjs"),
+      "utf8"
+    );
+    assert.match(prelive, /settle-exchange-nunca-reembolso-v1/);
+    assert.match(shim, /settle-exchange-nunca-reembolso-v1/);
+    assert.match(prelive, /exchangeNoCredit/);
+    assert.match(shim, /exchangeNoCredit/);
   });
 
   it("carteira do cliente exibe Saldo Reembolso (não Saldo Dedução)", () => {
@@ -165,11 +181,11 @@ describe("settle — legado", () => {
     });
   });
 
-  it("Exchange devolve stake − taxa", () => {
+  it("Exchange NUNCA devolve (nem stake − taxa)", () => {
     assert.deepEqual(settlementCreditParts(row, "exchange"), {
-      stake: 8500,
+      stake: 0,
       fee: 0,
-      total: 8500,
+      total: 0,
     });
   });
 
@@ -179,5 +195,24 @@ describe("settle — legado", () => {
       fee: 0,
       total: 10_000,
     });
+  });
+});
+
+describe("anti-regressão — Exchange nunca Reembolso", () => {
+  it("fee_upfront e legado: exchange.total === 0", () => {
+    const feeUp = {
+      amount_cents: 50_000,
+      platform_deduction_cents: 1000,
+      metadata: { billing_model: "fee_upfront_v1", fee_upfront: true },
+    };
+    const legado = {
+      amount_cents: 50_000,
+      platform_deduction_cents: 1000,
+      metadata: { source: "v2_create_protection" },
+    };
+    assert.equal(settlementCreditParts(feeUp, "exchange").total, 0);
+    assert.equal(settlementCreditParts(legado, "exchange").total, 0);
+    assert.equal(settlementCreditParts(legado, "EXCHANGE").total, 0);
+    assert.equal(settlementCreditParts(legado, "won_exchange").total, 0);
   });
 });

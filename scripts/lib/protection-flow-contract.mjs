@@ -8,13 +8,14 @@
  * de crédito no settle; os testes em protection-flow-contract.test.mjs
  * travam o comportamento no CI.
  *
- * Versão: protection-flow-contract-v2 (2026-07-25)
+ * Versão: protection-flow-contract-v3 (2026-07-27)
  *   + Empate Anula / void → devolve só a dedução (fee_upfront)
+ *   + Exchange NUNCA credita (fee_upfront e legado) — evita Saldo Reembolso em PERDEU
  * ============================================================================
  */
 
 export const PROTECTION_FLOW_CONTRACT_VERSION =
-  "protection-flow-contract-v2";
+  "protection-flow-contract-v3";
 
 /** Marcador exigido pelos testes / hotfixes — não renomear. */
 export const PROTECTION_FLOW_LOCK =
@@ -108,10 +109,12 @@ export function settlementDeductionCents(row) {
  *
  * legado (lock):
  *   - ArbiShield → stake inteiro
- *   - Exchange   → stake − taxa
+ *   - Exchange   → 0 (NUNCA credita Saldo Reembolso; só libera locked)
  *   - Empate Anula / void → stake inteiro (libera lock)
  *
  * Cancelamento (fora daqui): estorna só a dedução no fee_upfront.
+ *
+ * Marker: settle-exchange-nunca-reembolso-v1
  */
 export function settlementCreditParts(row, outcome) {
   const amount = n(row?.responsibility_cents || row?.amount_cents);
@@ -119,15 +122,16 @@ export function settlementCreditParts(row, outcome) {
   const o = normalizeSettleOutcome(outcome);
   const wonArbi = o === "arbishield";
   const isVoid = o === "void";
+  // Exchange (qualquer billing): zero crédito — nunca Saldo Reembolso em PERDEU.
+  if (!wonArbi && !isVoid) {
+    return { stake: 0, fee: 0, total: 0 };
+  }
   if (isFeeUpfrontProtection(row)) {
     if (isVoid) return { stake: 0, fee, total: fee };
-    if (!wonArbi) return { stake: 0, fee: 0, total: 0 };
     return { stake: amount, fee, total: amount + fee };
   }
-  if (isVoid || wonArbi) return { stake: amount, fee: 0, total: amount };
-  const keep = Math.min(fee, amount);
-  const net = Math.max(0, amount - keep);
-  return { stake: net, fee: 0, total: net };
+  // legado: ArbiShield ou void → stake inteiro
+  return { stake: amount, fee: 0, total: amount };
 }
 
 export function settlementCreditCents(row, outcome) {

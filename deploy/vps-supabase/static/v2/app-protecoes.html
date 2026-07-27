@@ -7,11 +7,11 @@
   <title>Gestão de Proteções — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="protecoes-col-odd-valor-v3" />
-  <link rel="stylesheet" href="/v2.css?v=protecoes-col-odd-valor-3" />
+  <meta name="arbishield-build" content="settle-exchange-nunca-reembolso-v1" />
+  <link rel="stylesheet" href="/v2.css?v=exchange-nunca-reembolso-1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=protecoes-col-odd-valor-3"></script>
-  <script src="/v2-shell.js?v=protecoes-col-odd-valor-3" defer></script>
+  <script src="/v2.js?v=exchange-nunca-reembolso-1"></script>
+  <script src="/v2-shell.js?v=exchange-nunca-reembolso-1" defer></script>
   <style>
     .prot-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 16px; align-items: start; }
     @media (max-width: 960px) {
@@ -381,13 +381,10 @@
         var amount = nCents(row.responsibility_cents || row.amount_cents);
         var fee = deductionCentsOf(row);
         var won = outcome === "arbishield";
+        // settle-exchange-nunca-reembolso-v1: PERDEU / Exchange → sempre R$ 0
         var refund = 0;
-        if (isFeeUpfront(row)) {
-          refund = won ? amount + fee : 0;
-        } else if (won) {
-          refund = amount;
-        } else {
-          refund = Math.max(0, amount - Math.min(fee, amount));
+        if (won) {
+          refund = isFeeUpfront(row) ? amount + fee : amount;
         }
         return {
           label: won ? "Ganhou" : "Perdeu",

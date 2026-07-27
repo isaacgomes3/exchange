@@ -14,7 +14,7 @@ import { createRequire } from "node:module";
 // Contrato travado — import opcional (se lib faltar na VPS, usa fallback inline
 // para o shim não cair e a rota de saque continuar disponível).
 let PROTECTION_FLOW_LOCK = "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST";
-let PROTECTION_FLOW_CONTRACT_VERSION = "protection-flow-contract-v2";
+let PROTECTION_FLOW_CONTRACT_VERSION = "protection-flow-contract-v3";
 let settlementCreditParts;
 let settlementCreditCents;
 let settlementDeductionCents;
@@ -95,14 +95,13 @@ try {
     const o = normalizeSettleOutcome(outcome);
     const wonArbi = o === "arbishield";
     const isVoid = o === "void";
+    // settle-exchange-nunca-reembolso-v1 — Exchange nunca credita
+    if (!wonArbi && !isVoid) return { stake: 0, fee: 0, total: 0 };
     if (isFeeUpfrontProtection(row)) {
       if (isVoid) return { stake: 0, fee, total: fee };
-      if (!wonArbi) return { stake: 0, fee: 0, total: 0 };
       return { stake: amount, fee, total: amount + fee };
     }
-    if (isVoid || wonArbi) return { stake: amount, fee: 0, total: amount };
-    const net = Math.max(0, amount - Math.min(fee, amount));
-    return { stake: net, fee: 0, total: net };
+    return { stake: amount, fee: 0, total: amount };
   };
   settlementCreditCents = (row, outcome) => settlementCreditParts(row, outcome).total;
   settlementStatusForOutcome = (outcome) => {
@@ -5695,15 +5694,27 @@ async function claimProtectionCancelled(table, protectionId, extraBody = {}) {
 }
 
 async function creditWalletForSettlement(row, outcome, now) {
+  // Marker: settle-exchange-nunca-reembolso-v1
   const amount = n(row.responsibility_cents || row.amount_cents);
   const parts = settlementCreditParts(row, outcome);
-  const credit = parts.total;
   const outcomeNorm = normalizeSettleOutcome
     ? normalizeSettleOutcome(outcome)
     : String(outcome || "").toLowerCase();
   const wonArbi = outcomeNorm === "arbishield";
-  const isVoid = outcomeNorm === "void" || (isVoidSettleOutcome && isVoidSettleOutcome(outcome));
+  const isVoid =
+    outcomeNorm === "void" ||
+    (isVoidSettleOutcome && isVoidSettleOutcome(outcome));
   const feeUpfront = isFeeUpfrontProtection(row);
+  // Guarda absoluta: Exchange nunca credita (mesmo se contrato antigo estiver carregado)
+  let credit = parts.total;
+  if (!wonArbi && !isVoid && credit > 0) {
+    console.warn(
+      "[settle] BLOQUEADO crédito Exchange→Reembolso — forçando 0",
+      row.id,
+      credit
+    );
+    credit = 0;
+  }
   const balanceType = String(
     (row.metadata &&
       (row.metadata.balance_type ||
@@ -5711,14 +5722,42 @@ async function creditWalletForSettlement(row, outcome, now) {
         row.metadata.balanceType)) ||
       "REAL"
   ).toUpperCase();
-  if (!row.user_id || (amount <= 0 && credit <= 0)) {
+  if (!row.user_id) {
+    return { refunded: 0, credited: 0, skipped: true };
+  }
+  // Exchange: processa mesmo com credit=0 (libera locked legado + auditoria)
+  if ((wonArbi || isVoid) && amount <= 0 && credit <= 0) {
     return { refunded: 0, credited: 0, skipped: true };
   }
   if (await protectionAlreadyCredited(row.id)) {
     return { refunded: 0, credited: 0, alreadyCredited: true };
   }
 
-  if (feeUpfront && !wonArbi && !isVoid) {
+  // Exchange (fee_upfront OU legado): NUNCA credita Saldo Reembolso.
+  if (!wonArbi && !isVoid) {
+    let unlocked = false;
+    if (!feeUpfront && amount > 0 && row.user_id) {
+      try {
+        const prof = await sb(
+          `/rest/v1/profiles?select=locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+          { token: SERVICE_KEY }
+        );
+        const p = Array.isArray(prof) ? prof[0] : null;
+        if (p) {
+          await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+            method: "PATCH",
+            token: SERVICE_KEY,
+            body: {
+              locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
+              updated_at: now,
+            },
+          });
+          unlocked = true;
+        }
+      } catch {
+        /* */
+      }
+    }
     try {
       await sb("/rest/v1/wallet_transactions", {
         method: "POST",
@@ -5734,15 +5773,25 @@ async function creditWalletForSettlement(row, outcome, now) {
             outcome: "exchange",
             stake_cents: amount,
             fee_cents: parts.fee || settlementDeductionCents(row),
-            billing_model: "fee_upfront_v1",
-            note: "taxa cobrada na criação — sem crédito no settle",
+            billing_model: feeUpfront ? "fee_upfront_v1" : "legacy_lock",
+            fix: "settle-exchange-nunca-reembolso-v1",
+            unlocked_locked: unlocked,
+            note: feeUpfront
+              ? "taxa cobrada na criação — sem crédito no settle (PERDEU)"
+              : "legado Exchange — sem crédito Reembolso; só libera locked",
           },
         },
       });
     } catch {
       /* */
     }
-    return { refunded: 0, credited: 0, feeUpfrontExchange: true };
+    return {
+      refunded: 0,
+      credited: 0,
+      exchangeNoCredit: true,
+      feeUpfrontExchange: feeUpfront,
+      unlocked,
+    };
   }
 
   let prof = await sb(

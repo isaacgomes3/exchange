@@ -1428,13 +1428,23 @@ async function protectionAlreadyCredited(protectionId) {
 }
 
 async function creditWalletForSettlement(row, outcome, now) {
+  // Marker: settle-exchange-nunca-reembolso-v1
   const amount = nCents(row.responsibility_cents || row.amount_cents);
   const parts = settlementCreditParts(row, outcome);
-  const credit = parts.total;
   const outcomeNorm = normalizeSettleOutcome(outcome);
   const wonArbi = outcomeNorm === "arbishield";
   const isVoid = outcomeNorm === "void" || isVoidSettleOutcome(outcome);
   const feeUpfront = isFeeUpfrontProtection(row);
+  // Guarda absoluta: Exchange nunca credita (mesmo se contrato antigo estiver carregado)
+  let credit = parts.total;
+  if (!wonArbi && !isVoid && credit > 0) {
+    console.warn(
+      "[settle] BLOQUEADO crédito Exchange→Reembolso — forçando 0",
+      row.id,
+      credit
+    );
+    credit = 0;
+  }
   const balanceType = String(
     (row.metadata &&
       (row.metadata.balance_type ||
@@ -1442,16 +1452,43 @@ async function creditWalletForSettlement(row, outcome, now) {
         row.metadata.balanceType)) ||
       "REAL"
   ).toUpperCase();
-  if (!row.user_id || (amount <= 0 && credit <= 0)) {
+  if (!row.user_id) {
+    return { refunded: 0, credited: 0, skipped: true };
+  }
+  // Exchange: processa mesmo com credit=0 (libera locked legado + auditoria)
+  if ((wonArbi || isVoid) && amount <= 0 && credit <= 0) {
     return { refunded: 0, credited: 0, skipped: true };
   }
   if (await protectionAlreadyCredited(row.id)) {
     return { refunded: 0, credited: 0, alreadyCredited: true };
   }
 
-  // fee_upfront + Exchange: nada a creditar (taxa já cobrada na criação)
-  // Empate Anula / void: devolve a dedução (segue fluxo de crédito abaixo)
-  if (feeUpfront && !wonArbi && !isVoid) {
+  // Exchange (fee_upfront OU legado): NUNCA credita Saldo Reembolso.
+  // Legado: só libera locked. Empate Anula / Arbi seguem abaixo.
+  if (!wonArbi && !isVoid) {
+    let unlocked = false;
+    if (!feeUpfront && amount > 0 && row.user_id) {
+      try {
+        const prof = await sb(
+          `/rest/v1/profiles?select=locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+          { token: SERVICE_KEY }
+        );
+        const p = Array.isArray(prof) ? prof[0] : null;
+        if (p) {
+          await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+            method: "PATCH",
+            token: SERVICE_KEY,
+            body: {
+              locked_balance_cents: Math.max(0, nCents(p.locked_balance_cents) - amount),
+              updated_at: now,
+            },
+          });
+          unlocked = true;
+        }
+      } catch (e) {
+        console.warn("[settle] unlock legado exchange:", e?.message || e);
+      }
+    }
     try {
       await sb("/rest/v1/wallet_transactions", {
         method: "POST",
@@ -1467,15 +1504,25 @@ async function creditWalletForSettlement(row, outcome, now) {
             outcome: "exchange",
             stake_cents: amount,
             fee_cents: settlementDeductionCents(row),
-            billing_model: "fee_upfront_v1",
-            note: "taxa cobrada na criação — sem crédito no settle",
+            billing_model: feeUpfront ? "fee_upfront_v1" : "legacy_lock",
+            fix: "settle-exchange-nunca-reembolso-v1",
+            unlocked_locked: unlocked,
+            note: feeUpfront
+              ? "taxa cobrada na criação — sem crédito no settle (PERDEU)"
+              : "legado Exchange — sem crédito Reembolso; só libera locked",
           },
         },
       });
     } catch (e) {
-      console.warn("[settle] fee_upfront exchange tx:", e?.message || e);
+      console.warn("[settle] exchange no-credit tx:", e?.message || e);
     }
-    return { refunded: 0, credited: 0, feeUpfrontExchange: true };
+    return {
+      refunded: 0,
+      credited: 0,
+      exchangeNoCredit: true,
+      feeUpfrontExchange: feeUpfront,
+      unlocked,
+    };
   }
 
   const prof = await sb(
@@ -4027,7 +4074,8 @@ async function handleApi(req, res) {
     return sendJson(res, 200, {
       ok: true,
       service: "arbishield-matches",
-      fix: "protection-flow-contract-v1",
+      fix: "settle-exchange-nunca-reembolso-v1",
+      protectionFlowContract: PROTECTION_FLOW_CONTRACT_VERSION,
       protectionFlowLock: PROTECTION_FLOW_LOCK,
       inplaySync: BETBRA_INPLAY_SYNC_VERSION,
       inplaySyncEnabled: INPLAY_SYNC_ENABLED,
