@@ -8,7 +8,10 @@
  * de crédito no settle; os testes em protection-flow-contract.test.mjs
  * travam o comportamento no CI.
  *
- * Versão: protection-flow-contract-v9 (2026-07-27)
+ * Versão: protection-flow-contract-v10 (2026-07-27)
+ *   Pedido explícito: "esse erro não pode voltar a acontecer"
+ *   (won_exchange sem devolver stake / fee odd errada).
+ *
  *   Regra vigente (stake_lock_v1):
  *     - Ativação → trava stake; máx. 50% do Apostador RESTANTE naquele momento
  *       (evento 1: 50% da banca; evento 2: 50% do que sobrou; e assim por diante)
@@ -16,13 +19,17 @@
  *     - Entradas só ANTES do início (starts_at); após kickoff recusa
  *     - Ganhou na ArbiShield → credita stake (Saldo Reembolso) e destrava
  *     - Ganhou na Exchange → R$ 0 Reembolso; destrava e DEVOLVE o stake à origem;
- *       cobra SÓ a dedução ArbiShield (ex.: 1000@10 → R$ 91,11).
+ *       cobra SÓ a dedução ArbiShield da ODD CANÔNICA do bilhete
+ *       (ex.: 1000@10 → R$ 91,11 · 1000@32 → R$ 15,81).
  *       A fatia Exchange 4,5% já entra no cálculo da dedução — NÃO debita de novo.
+ *     - Heal: won_exchange com tx zerada/incompleta NÃO conta como creditado;
+ *       reprocessa até isExchangeWalletComplete.
  *     - Empate Anula → destrava stake (devolve à origem)
  *     - Cancelar → destrava stake (devolve à origem)
  *     - LAY lucro fee = responsabilidade × (odd/(odd−1) − 1)
  *       ex.: 1000@10 → lucro 111,11 → Exchange 5 · cliente 15 · ArbiShield 91,11
  *       carteira: 8.067,52 + 1.000 − 91,11 = 8.976,41
+ *       ex.: 1000@32 → lucro 32,26 → fee 15,81 → 8.067,52+1.000−15,81=9.051,71
  *
  *   Histórico fee_upfront_v1 (linhas antigas): mantido só para settle/cancel
  *   de proteções já criadas com billing_model fee_upfront_v1.
@@ -32,7 +39,7 @@
  */
 
 export const PROTECTION_FLOW_CONTRACT_VERSION =
-  "protection-flow-contract-v9";
+  "protection-flow-contract-v10";
 
 /**
  * LAY: lucro fee = responsabilidade × (backOdd − 1) = resp/(odd−1).
@@ -112,6 +119,19 @@ export const STAKE_LOCK_RULE = "stake-lock-v1";
  */
 export const EXCHANGE_CHARGE_DEDUCTION_RULE =
   "settle-exchange-cobra-so-deducao-v9";
+
+/**
+ * Heal anti-regressão: tx R$0 / parcial NÃO bloqueia reprocesso Exchange.
+ * Marker exigido em prelive/shim/CI — não renomear.
+ */
+export const EXCHANGE_INCOMPLETE_HEAL_RULE =
+  "settle-exchange-heal-incompleto-v10";
+
+/**
+ * Odd canônica do settle: approved_odd > calculations.marketOdd >
+ * metadata.market_odd > row.odd. Evita fee @10 em bilhete @32.
+ */
+export const SETTLEMENT_ODD_CANONICAL_RULE = "settlement-odd-canonico-v10";
 
 /** Alias v7 (ainda citado em hotfixes antigos). */
 export const EXCHANGE_CHARGE_DEDUCTION_RULE_V7 =
@@ -322,6 +342,59 @@ export function isExchangeWalletComplete({
 }
 
 /**
+ * Odd canônica para fee/settle (anti fee @10 em bilhete @32).
+ * Prioridade: contestation.approved_odd → calculations.marketOdd →
+ * metadata.market_odd → row.odd.
+ */
+export function settlementMarketOdd(row) {
+  void SETTLEMENT_ODD_CANONICAL_RULE;
+  const meta =
+    row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  const contest =
+    meta.contestation && typeof meta.contestation === "object"
+      ? meta.contestation
+      : {};
+  const metaCalc =
+    meta.calculations && typeof meta.calculations === "object"
+      ? meta.calculations
+      : {};
+  const rowCalc =
+    row?.calculations && typeof row.calculations === "object"
+      ? row.calculations
+      : {};
+  const candidates = [
+    contest.approved_odd,
+    metaCalc.marketOdd,
+    metaCalc.market_odd,
+    rowCalc.marketOdd,
+    rowCalc.market_odd,
+    meta.market_odd,
+    row?.odd,
+  ];
+  for (const c of candidates) {
+    const o = Number(c);
+    if (o > 1.01) return o;
+  }
+  return 0;
+}
+
+/**
+ * Tipo de mercado canônico. Sem marker: LAY em `protections`, BACK em
+ * `back_protections`. Nunca assume BACK em LAY de odd alta (fee inflada).
+ */
+export function settlementMarketType(row) {
+  const meta =
+    row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  const mt = String(
+    meta.market_type || meta.side || row?.market_type || ""
+  ).toUpperCase();
+  if (mt === "LAY" || mt === "BACK") return mt;
+  const table = String(row?._table || row?.table || "").toLowerCase();
+  if (table.includes("back")) return "BACK";
+  return "LAY";
+}
+
+/**
  * Lucro bruto usado nas fees.
  * - LAY: responsabilidade × (backOdd − 1) = resp/(odd−1)
  *   (marker lay-lucro-back-equiv-v9) — ex. 1000@10 → 111,11
@@ -350,14 +423,56 @@ export function computeArbiShieldDeductionCents(row) {
   const stake = n(
     row?.responsibility_cents || row?.amount_cents || meta.stake_cents
   );
-  let odd = Number(meta.market_odd);
-  if (!(odd > 1.01)) odd = Number(row?.odd || 0);
-  const mt = String(meta.market_type || "").toUpperCase();
+  const odd = settlementMarketOdd(row);
+  const mt = settlementMarketType(row);
   if (!(stake > 0) || !(odd > 1.01)) return 0;
-  const profit = grossProfitCentsForFees(stake, odd, mt || "BACK");
+  const profit = grossProfitCentsForFees(stake, odd, mt);
   const commission = exchangeCommissionCentsFromProfit(profit);
   const userProfit = Math.round(stake * 0.015);
   return Math.max(0, profit - commission - userProfit);
+}
+
+/**
+ * won_exchange precisa reprocessar carteira?
+ * Tx R$0 / sem stake_returned / fee parcial → true (heal v10).
+ */
+export function exchangeWalletHealNeeded(row, prior = {}) {
+  void EXCHANGE_INCOMPLETE_HEAL_RULE;
+  void EXCHANGE_CHARGE_DEDUCTION_RULE;
+  const feeUpfront = isFeeUpfrontProtection(row);
+  const amount = n(row?.responsibility_cents || row?.amount_cents);
+  const stakeLock = isStakeLockProtection(row);
+  const needsUnlock = (stakeLock || !feeUpfront) && amount > 0;
+  const needsReturn = stakeLock && !feeUpfront && amount > 0;
+  const fee = settlementDeductionCents(row);
+  if (!prior || prior.hasTx !== true) return true;
+  return !isExchangeWalletComplete({
+    feeUpfront,
+    feeExpected: fee,
+    feeCharged: prior.feeCharged || 0,
+    feeShortfall: prior.feeShortfall || 0,
+    unlocked: prior.unlocked || !needsUnlock,
+    needsUnlock,
+    stakeReturned: prior.stakeReturned || !needsReturn,
+    needsReturn,
+  });
+}
+
+/** Outcome efetivo para heal a partir do status/settled_outcome da linha. */
+export function settlementOutcomeFromProtectionRow(row) {
+  const stored = normalizeSettleOutcome(row?.settled_outcome || "");
+  if (stored === "arbishield" || stored === "exchange" || stored === "void") {
+    return stored;
+  }
+  const st = String(row?.status || "")
+    .toLowerCase()
+    .trim();
+  if (st === "won_exchange") return "exchange";
+  if (st === "lost_exchange" || st === "won_platform" || st === "lost_platform") {
+    return "arbishield";
+  }
+  if (st === "cancelled" || st === "canceled" || st === "void") return "void";
+  return "";
 }
 
 function storedPlatformDeductionCents(row) {

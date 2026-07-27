@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 /**
- * Ajusta Apostador do Carlos para R$ 8.976,41
- * (= 8.067,52 + 1.000 − 91,11) — pedido explícito da calculadora.
- *
- * Tela atual típica: R$ 8.982,52 (cobrou 80,50+4,50) → debita R$ 6,11
- * Ou R$ 8.971,41 (cobrou 91,11+5) → credita R$ 5,00
- *
- * Na VPS:
- *   node scripts/vps-ajustar-carlos-897641.mjs
- *   FIX=1 node scripts/vps-ajustar-carlos-897641.mjs
+ * ⛔ SUPERSEDED — NÃO use alvo fixo R$ 8.976,41 sem odd do bilhete.
+ * Sport×Cuiabá (odd 32) → R$ 9.051,71 via vps-force-carlos-905171.
+ * Override: ALLOW_ODD10_TARGET=1
  */
 import fs from "node:fs";
 import path from "node:path";
+
+if (process.env.ALLOW_ODD10_TARGET !== "1") {
+  console.error("⛔ BLOQUEADO: vps-ajustar-carlos-897641 supersedido.");
+  console.error("   Use: FIX=1 node scripts/vps-force-carlos-905171.mjs");
+  process.exit(2);
+}
 
 const FIX = process.env.FIX === "1" || process.env.FIX === "true";
 const USER_ID_ENV = String(process.env.USER_ID || "").trim();

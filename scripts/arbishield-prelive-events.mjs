@@ -32,7 +32,11 @@ import {
   cancelRefundCents,
   CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
   isExchangeWalletComplete,
+  exchangeWalletHealNeeded,
+  settlementOutcomeFromProtectionRow,
   EXCHANGE_CHARGE_DEDUCTION_RULE,
+  EXCHANGE_INCOMPLETE_HEAL_RULE,
+  SETTLEMENT_ODD_CANONICAL_RULE,
   settlementExchangeCommissionCents,
   settlementExchangeCommissionWalletCents,
   EXCHANGE_COMMISSION_RATE,
@@ -66,6 +70,8 @@ void PROTECTION_FLOW_LOCK;
 void PROTECTION_FLOW_CONTRACT_VERSION;
 void CANCEL_FEE_UPFRONT_NO_STAKE_REFUND;
 void EXCHANGE_CHARGE_DEDUCTION_RULE;
+void EXCHANGE_INCOMPLETE_HEAL_RULE;
+void SETTLEMENT_ODD_CANONICAL_RULE;
 void settlementCreditCents;
 void calcFeeUpfront;
 void layToBackOdd;
@@ -1507,6 +1513,7 @@ async function loadExchangeSettlementPrior(protectionId) {
 
 async function creditWalletForSettlement(row, outcome, now) {
   // Marker: settle-exchange-cobra-so-deducao-v9 · settle-exchange-nunca-reembolso-v1
+  // Marker: settle-exchange-heal-incompleto-v10 · settlement-odd-canonico-v10
   const amount = nCents(row.responsibility_cents || row.amount_cents);
   const parts = settlementCreditParts(row, outcome);
   const outcomeNorm = normalizeSettleOutcome(outcome);
@@ -1531,6 +1538,11 @@ async function creditWalletForSettlement(row, outcome, now) {
       "REAL"
   ).toUpperCase();
   if (!row.user_id) {
+    if (!wonArbi && !isVoid) {
+      throw new Error(
+        `Exchange settle sem user_id (proteção ${row.id}) — não marca won_exchange`
+      );
+    }
     return { refunded: 0, credited: 0, skipped: true };
   }
   // Exchange: processa mesmo com credit=0 (libera locked + cobra dedução)
@@ -2058,6 +2070,7 @@ async function settleOneProtectionRow(row, outcome, now) {
 }
 
 async function fetchProtectionsNeedingCredit(matchId) {
+  // Marker: settle-exchange-heal-incompleto-v10
   async function load(table) {
     try {
       const rows = await sb(
@@ -2079,6 +2092,12 @@ async function fetchProtectionsNeedingCredit(matchId) {
   ];
   const out = [];
   for (const row of all) {
+    const healOutcome = settlementOutcomeFromProtectionRow(row);
+    if (healOutcome === "exchange") {
+      const prior = await loadExchangeSettlementPrior(row.id);
+      if (exchangeWalletHealNeeded(row, prior)) out.push(row);
+      continue;
+    }
     if (!(await protectionAlreadyCredited(row.id))) out.push(row);
   }
   return out;
@@ -2133,7 +2152,13 @@ async function settleMatchFromBody(body, token) {
 
   for (const row of open) {
     try {
-      const r = await settleOneProtectionRow(row, outcome, now);
+      // Heal: usa outcome gravado na proteção (não o do request atual)
+      let rowOutcome = outcome;
+      if (repaired) {
+        const stored = settlementOutcomeFromProtectionRow(row);
+        if (stored) rowOutcome = stored;
+      }
+      const r = await settleOneProtectionRow(row, rowOutcome, now);
       settledCount += 1;
       refundedCents += r.refunded || 0;
     } catch (err) {
@@ -3527,10 +3552,19 @@ async function contestApprove(body, token) {
     approved_by: adminId,
     contestation_approved: true,
   };
+  // Odd canônica: sync metadata.market_odd (anti fee stale @10)
+  prevMeta.market_odd = approvedOdd;
 
   let patch;
   if (isBack) {
     const c = calcBack(amount, approvedOdd);
+    prevMeta.market_type = "BACK";
+    prevMeta.calculations = {
+      ...(prevMeta.calculations || {}),
+      ...c,
+      marketOdd: approvedOdd,
+      contestation: prevMeta.contestation,
+    };
     patch = {
       status: "active",
       odd: approvedOdd,
@@ -3542,6 +3576,13 @@ async function contestApprove(body, token) {
     };
   } else {
     const c = calcLay(amount, approvedOdd);
+    prevMeta.market_type = "LAY";
+    prevMeta.calculations = {
+      ...(prevMeta.calculations || {}),
+      ...c,
+      marketOdd: approvedOdd,
+      contestation: prevMeta.contestation,
+    };
     patch = {
       status: "active",
       odd: approvedOdd,
@@ -3550,7 +3591,7 @@ async function contestApprove(body, token) {
       user_profit_cents: c.userProfitCents,
       platform_deduction_cents: c.arbiShieldDeductionCents,
       platform_profit_cents: c.arbiShieldDeductionCents,
-      locked_deduction_cents: c(c.lockedDeductionCents),
+      locked_deduction_cents: c.lockedDeductionCents,
       exchange_fee_cents: c.exchangeFeeCents,
       exchange_profit_net_cents: c.exchangeProfitNetCents,
       metadata: prevMeta,

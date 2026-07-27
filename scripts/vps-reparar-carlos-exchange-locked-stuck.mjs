@@ -1,25 +1,18 @@
 #!/usr/bin/env node
 /**
- * Reparo Carlos Roberto — locked preso após Exchange (print 27/07).
- *
- * Sintoma no Centro Financeiro:
- *   Apostador R$ 8.067,52 · Congelado R$ 1.000 · Proteções ativas 0
- *   (settle marcou a proteção, mas NÃO destravaou / NÃO devolveu / NÃO cobrou fees)
- *
- * Regra v7 (pedido explícito):
- *   Exchange → R$ 0 Reembolso · destrava e DEVOLVE stake ·
- *   cobra dedução (lucro−4,5%−1,5%) + comissão Exchange 4,5%
- *
- * Na VPS:
- *   node scripts/vps-reparar-carlos-exchange-locked-stuck.mjs           # dry-run
- *   FIX=1 node scripts/vps-reparar-carlos-exchange-locked-stuck.mjs     # aplica
- *
- * Overrides: USER_ID=... EMAIL=... NAME="Carlos Roberto"
- *            EXPECT_BALANCE_CENTS=806752 EXPECT_LOCKED_CENTS=100000
+ * ⛔ SUPERSEDED — não assume fee 91,11 / odd 10.
+ * Use vps-force-carlos-905171 ou reparo por protection_id (odd canônica).
+ * Override: ALLOW_ODD10_TARGET=1
  */
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+
+if (process.env.ALLOW_ODD10_TARGET !== "1") {
+  console.error("⛔ BLOQUEADO: vps-reparar-carlos-exchange-locked-stuck supersedido.");
+  console.error("   Use: FIX=1 node scripts/vps-force-carlos-905171.mjs");
+  process.exit(2);
+}
 
 const FIX = process.env.FIX === "1" || process.env.FIX === "true";
 const EMAIL = String(process.env.EMAIL || "carloskku4@gmail.com").trim().toLowerCase();

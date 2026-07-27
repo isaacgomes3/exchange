@@ -1,21 +1,18 @@
 #!/usr/bin/env node
 /**
- * Reparo: stake do último jogo do Carlos NÃO voltou após Exchange/PERDEU.
- *
- * Casos cobertos:
- *  A) Congelado > 0  → devolve locked − 91,11 · zera locked
- *  B) Congelado = 0 e Apostador ainda ~8.067,52 → credita 1.000 − 91,11
- *  C) Apostador em 8.971,41 / 8.982,52 → ajusta para 8.976,41
- *  D) Já em 8.976,41 → noop
- *
- * Alvo: 8.067,52 + 1.000 − 91,11 = 8.976,41
- *
- * Na VPS:
- *   node scripts/vps-reparar-carlos-stake-nao-voltou.mjs
- *   FIX=1 node scripts/vps-reparar-carlos-stake-nao-voltou.mjs
+ * ⛔ SUPERSEDED — alvo fixo 8.976,41 / fee 91,11 só vale para odd 10.
+ * Bilhete Sport×Cuiabá = odd 32 → use vps-force-carlos-905171 / reparo 33bd22c8.
+ * Override: ALLOW_ODD10_TARGET=1
  */
 import fs from "node:fs";
 import path from "node:path";
+
+if (process.env.ALLOW_ODD10_TARGET !== "1") {
+  console.error("⛔ BLOQUEADO: vps-reparar-carlos-stake-nao-voltou supersedido.");
+  console.error("   Use fee da ODD do bilhete (ex. @32 → R$15,81 → R$9.051,71).");
+  console.error("   FIX=1 node scripts/vps-force-carlos-905171.mjs");
+  process.exit(2);
+}
 
 const FIX = process.env.FIX === "1" || process.env.FIX === "true";
 const USER_ID_ENV = String(process.env.USER_ID || "").trim();

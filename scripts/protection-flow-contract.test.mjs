@@ -33,7 +33,13 @@ import {
   cancelRefundCents,
   CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
   EXCHANGE_CHARGE_DEDUCTION_RULE,
+  EXCHANGE_INCOMPLETE_HEAL_RULE,
+  SETTLEMENT_ODD_CANONICAL_RULE,
   isExchangeWalletComplete,
+  exchangeWalletHealNeeded,
+  settlementMarketOdd,
+  settlementMarketType,
+  settlementOutcomeFromProtectionRow,
   EXCHANGE_COMMISSION_RATE,
   exchangeCommissionCentsFromProfit,
   settlementExchangeCommissionCents,
@@ -49,7 +55,7 @@ const root = resolve(__dirname, "..");
 
 describe("contrato travado — metadados", () => {
   it("mantém versão e lock", () => {
-    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v9");
+    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v10");
     assert.equal(STAKE_LOCK_RULE, "stake-lock-v1");
     assert.equal(MAX_STAKE_FRACTION_OF_APOSTADOR, 0.5);
     assert.equal(ONE_OPERATION_PER_EVENT, true);
@@ -58,6 +64,11 @@ describe("contrato travado — metadados", () => {
       PROTECTION_FLOW_LOCK,
       "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST"
     );
+    assert.equal(
+      EXCHANGE_INCOMPLETE_HEAL_RULE,
+      "settle-exchange-heal-incompleto-v10"
+    );
+    assert.equal(SETTLEMENT_ODD_CANONICAL_RULE, "settlement-odd-canonico-v10");
   });
 
   it("PROTECTION_FLOW_SPEC espelha as regras vigentes (só muda com pedido explícito)", () => {
@@ -89,7 +100,7 @@ describe("contrato travado — metadados", () => {
       "utf8"
     );
     assert.match(agents, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
-    assert.match(agents, /protection-flow-contract-v9/);
+    assert.match(agents, /protection-flow-contract-v10/);
     assert.match(agents, /LOCKED/);
     assert.match(agents, /solicitação explícita/);
     assert.match(agents, /docs\/PROTECTION_FLOW_LOCKED\.md/);
@@ -104,15 +115,18 @@ describe("contrato travado — metadados", () => {
     assert.match(agents, /destrava e devolve/);
     assert.match(agents, /Empate Anula/);
     assert.match(agents, /8\.976,?41|91,?11|settle-exchange-cobra-so-deducao-v9/);
+    assert.match(agents, /settle-exchange-heal-incompleto-v10|9\.051,?71|15,?81/);
     assert.match(lockedDoc, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
-    assert.match(lockedDoc, /protection-flow-contract-v9/);
+    assert.match(lockedDoc, /protection-flow-contract-v10/);
     assert.match(lockedDoc, /LOCKED/);
     assert.match(lockedDoc, /solicitação explícita/);
     assert.match(lockedDoc, /Uma operação por evento|1 operação por evento|uma proteção por jogo/i);
     assert.match(lockedDoc, /antes do início|antes do kickoff/i);
     assert.match(lockedDoc, /settle-exchange-cobra-so-deducao-v9/);
+    assert.match(lockedDoc, /settle-exchange-heal-incompleto-v10|settlement-odd-canonico-v10/);
     assert.match(lockedDoc, /Destrava e DEVOLVE|destrava e DEVOLVE|destrava e devolve/i);
     assert.match(lockedDoc, /8\.976,?41|91,?11/);
+    assert.match(lockedDoc, /9\.051,?71|15,?81/);
   });
 
   it("prelive e shim importam o contrato", () => {
@@ -649,10 +663,116 @@ describe("Exchange/PERDEU — devolve stake · cobra SÓ dedução · R$ 0 Reemb
     assert.doesNotMatch(shim, /cobra dedução \+ comissão 4,5%/);
     assert.match(prelive, /Exchange incompleto/);
     assert.match(shim, /Exchange incompleto/);
+    assert.match(prelive, /settle-exchange-heal-incompleto-v10/);
+    assert.match(shim, /settle-exchange-heal-incompleto-v10/);
+    assert.match(prelive, /exchangeWalletHealNeeded/);
+    assert.match(shim, /exchangeWalletHealNeeded/);
+    assert.match(prelive, /settlementOutcomeFromProtectionRow/);
+    assert.match(shim, /settlementOutcomeFromProtectionRow/);
+    assert.match(prelive, /Exchange settle sem user_id/);
+    assert.match(shim, /Exchange settle sem user_id/);
+    assert.match(prelive, /market_odd = approvedOdd|prevMeta\.market_odd = approvedOdd/);
+    assert.match(shim, /prevMeta\.market_odd = approvedOdd/);
     // Modal admin não pode mais prometer 96,11 / comissão extra
     assert.match(admin, /liveExchangeDeductionCents|cobra só a dedução/);
     assert.match(admin, /stake_lock v9/);
     assert.doesNotMatch(admin, /cobra dedução \+ comissão 4,5%/);
     assert.doesNotMatch(admin, /stake_lock v7: Exchange = R\$ 0 Reembolso · destrava e devolve o stake · cobra dedução ArbiShield \+ comissão/);
+  });
+});
+
+describe("Anti-regressão Sport×Cuiabá — odd 32 / heal incompleto", () => {
+  const lock32 = {
+    amount_cents: 100_000,
+    responsibility_cents: 100_000,
+    odd: 32,
+    metadata: {
+      billing_model: "stake_lock_v1",
+      stake_lock: true,
+      market_type: "LAY",
+      market_odd: 32,
+    },
+  };
+
+  it("LAY 1000 @32 → fee R$15,81 · carteira 9.051,71", () => {
+    const c = calcLay(100_000, 32);
+    assert.equal(c.arbiShieldDeductionCents, 1581);
+    assert.equal(settlementDeductionCents(lock32), 1581);
+    assert.equal(806_752 + 100_000 - 1581, 905_171);
+    assert.notEqual(settlementDeductionCents(lock32), 9111);
+  });
+
+  it("approved_odd 32 vence metadata.market_odd stale 10", () => {
+    const row = {
+      amount_cents: 100_000,
+      responsibility_cents: 100_000,
+      odd: 32,
+      metadata: {
+        billing_model: "stake_lock_v1",
+        stake_lock: true,
+        market_type: "LAY",
+        market_odd: 10,
+        contestation: { approved_odd: 32, contestation_approved: true },
+      },
+    };
+    assert.equal(settlementMarketOdd(row), 32);
+    assert.equal(settlementMarketType(row), "LAY");
+    assert.equal(settlementDeductionCents(row), 1581);
+  });
+
+  it("tx zerada / sem stake_returned exige heal", () => {
+    assert.equal(
+      exchangeWalletHealNeeded(lock32, {
+        hasTx: true,
+        feeCharged: 0,
+        unlocked: false,
+        stakeReturned: false,
+      }),
+      true
+    );
+    assert.equal(
+      exchangeWalletHealNeeded(lock32, {
+        hasTx: true,
+        feeCharged: 1581,
+        unlocked: true,
+        stakeReturned: true,
+        feeShortfall: 0,
+      }),
+      false
+    );
+    assert.equal(
+      exchangeWalletHealNeeded(lock32, { hasTx: false }),
+      true
+    );
+  });
+
+  it("outcome heal a partir de won_exchange", () => {
+    assert.equal(
+      settlementOutcomeFromProtectionRow({
+        status: "won_exchange",
+        settled_outcome: "exchange",
+      }),
+      "exchange"
+    );
+  });
+
+  it("scripts odd10 hardcoded estão bloqueados por padrão", () => {
+    for (const rel of [
+      "scripts/vps-force-carlos-897641.mjs",
+      "scripts/vps-ajustar-carlos-897641.mjs",
+      "scripts/vps-reparar-carlos-stake-nao-voltou.mjs",
+      "scripts/vps-forcar-descongelar-carlos.mjs",
+      "scripts/vps-reparar-carlos-exchange-locked-stuck.mjs",
+    ]) {
+      const src = readFileSync(resolve(root, rel), "utf8");
+      assert.match(src, /ALLOW_ODD10_TARGET/);
+      assert.match(src, /BLOQUEADO|SUPERSEDED/);
+    }
+    const forceOk = readFileSync(
+      resolve(root, "scripts/vps-force-carlos-905171.mjs"),
+      "utf8"
+    );
+    assert.match(forceOk, /905_171|9\.051/);
+    assert.match(forceOk, /15,?81|1581/);
   });
 });

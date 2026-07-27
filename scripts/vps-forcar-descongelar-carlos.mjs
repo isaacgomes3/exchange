@@ -1,21 +1,17 @@
 #!/usr/bin/env node
 /**
- * FORÇA descongelar Carlos Roberto (print: Real 8.067,52 + Congelado 1.000).
- * Não depende de achar a proteção — usa o saldo atual como chave.
- *
- * Regra Exchange v7:
- *   devolve stake (locked) ao Apostador
- *   cobra dedução 91,11 (LAY 1000 @10) — sem comissão extra
- *   zera locked
- *
- * Alvo: Apostador R$ 8.971,41 · Congelado R$ 0,00
- *
- * Na VPS:
- *   node scripts/vps-forcar-descongelar-carlos.mjs         # dry-run
- *   FIX=1 node scripts/vps-forcar-descongelar-carlos.mjs   # aplica
+ * ⛔ SUPERSEDED — fee hardcoded 91,11 (odd 10).
+ * Use vps-force-carlos-905171 ou reparo por protection_id com odd canônica.
+ * Override: ALLOW_ODD10_TARGET=1
  */
 import fs from "node:fs";
 import path from "node:path";
+
+if (process.env.ALLOW_ODD10_TARGET !== "1") {
+  console.error("⛔ BLOQUEADO: vps-forcar-descongelar-carlos supersedido.");
+  console.error("   Use: FIX=1 node scripts/vps-force-carlos-905171.mjs");
+  process.exit(2);
+}
 
 const FIX = process.env.FIX === "1" || process.env.FIX === "true";
 const EMAIL = String(process.env.EMAIL || "carloskku4@gmail.com").trim().toLowerCase();

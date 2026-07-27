@@ -28,7 +28,11 @@ let cancelRefundCents;
 let CANCEL_FEE_UPFRONT_NO_STAKE_REFUND =
   "cancel-fee-upfront-nao-devolve-stake-v6";
 let isExchangeWalletComplete;
+let exchangeWalletHealNeeded;
+let settlementOutcomeFromProtectionRow;
 let EXCHANGE_CHARGE_DEDUCTION_RULE = "settle-exchange-cobra-so-deducao-v9";
+let EXCHANGE_INCOMPLETE_HEAL_RULE = "settle-exchange-heal-incompleto-v10";
+let SETTLEMENT_ODD_CANONICAL_RULE = "settlement-odd-canonico-v10";
 let settlementExchangeCommissionCents;
 let settlementExchangeCommissionWalletCents = () => 0;
 let EXCHANGE_COMMISSION_RATE = 0.045;
@@ -55,8 +59,20 @@ try {
     CANCEL_FEE_UPFRONT_NO_STAKE_REFUND = mod.CANCEL_FEE_UPFRONT_NO_STAKE_REFUND;
   }
   isExchangeWalletComplete = mod.isExchangeWalletComplete;
+  if (typeof mod.exchangeWalletHealNeeded === "function") {
+    exchangeWalletHealNeeded = mod.exchangeWalletHealNeeded;
+  }
+  if (typeof mod.settlementOutcomeFromProtectionRow === "function") {
+    settlementOutcomeFromProtectionRow = mod.settlementOutcomeFromProtectionRow;
+  }
   if (mod.EXCHANGE_CHARGE_DEDUCTION_RULE) {
     EXCHANGE_CHARGE_DEDUCTION_RULE = mod.EXCHANGE_CHARGE_DEDUCTION_RULE;
+  }
+  if (mod.EXCHANGE_INCOMPLETE_HEAL_RULE) {
+    EXCHANGE_INCOMPLETE_HEAL_RULE = mod.EXCHANGE_INCOMPLETE_HEAL_RULE;
+  }
+  if (mod.SETTLEMENT_ODD_CANONICAL_RULE) {
+    SETTLEMENT_ODD_CANONICAL_RULE = mod.SETTLEMENT_ODD_CANONICAL_RULE;
   }
   settlementExchangeCommissionCents = mod.settlementExchangeCommissionCents;
   if (typeof mod.settlementExchangeCommissionWalletCents === "function") {
@@ -240,12 +256,55 @@ try {
     if (o === "void") return "void";
     return "won_exchange";
   };
+  exchangeWalletHealNeeded = (row, prior = {}) => {
+    const feeUpfront = isFeeUpfrontProtection(row);
+    const amount = Math.max(
+      0,
+      Math.trunc(Number(row?.responsibility_cents || row?.amount_cents) || 0)
+    );
+    const stakeLock = isStakeLockProtection(row);
+    const needsUnlock = (stakeLock || !feeUpfront) && amount > 0;
+    const needsReturn = stakeLock && !feeUpfront && amount > 0;
+    const fee = settlementDeductionCents(row);
+    if (!prior || prior.hasTx !== true) return true;
+    return !isExchangeWalletComplete({
+      feeUpfront,
+      feeExpected: fee,
+      feeCharged: prior.feeCharged || 0,
+      feeShortfall: prior.feeShortfall || 0,
+      unlocked: prior.unlocked || !needsUnlock,
+      needsUnlock,
+      stakeReturned: prior.stakeReturned || !needsReturn,
+      needsReturn,
+    });
+  };
+  settlementOutcomeFromProtectionRow = (row) => {
+    const stored = normalizeSettleOutcome(row?.settled_outcome || "");
+    if (stored === "arbishield" || stored === "exchange" || stored === "void") {
+      return stored;
+    }
+    const st = String(row?.status || "")
+      .toLowerCase()
+      .trim();
+    if (st === "won_exchange") return "exchange";
+    if (
+      st === "lost_exchange" ||
+      st === "won_platform" ||
+      st === "lost_platform"
+    ) {
+      return "arbishield";
+    }
+    if (st === "cancelled" || st === "canceled" || st === "void") return "void";
+    return "";
+  };
 }
 
 void PROTECTION_FLOW_LOCK;
 void PROTECTION_FLOW_CONTRACT_VERSION;
 void CANCEL_FEE_UPFRONT_NO_STAKE_REFUND;
 void EXCHANGE_CHARGE_DEDUCTION_RULE;
+void EXCHANGE_INCOMPLETE_HEAL_RULE;
+void SETTLEMENT_ODD_CANONICAL_RULE;
 void settlementCreditCents;
 
 const require = createRequire(import.meta.url);
@@ -5764,7 +5823,9 @@ async function approveContestation(token, body) {
       contestation_approved: true,
     };
     prevMeta.contestation = prevCalc.contestation;
-    prevMeta.calculations = { ...prevCalc, ...c };
+    prevMeta.market_odd = approvedOdd;
+    prevMeta.market_type = "BACK";
+    prevMeta.calculations = { ...prevCalc, ...c, marketOdd: approvedOdd };
     patch = {
       ...patch,
       amount_cents: c.coverageCents,
@@ -5783,6 +5844,14 @@ async function approveContestation(token, body) {
       approved_at: new Date().toISOString(),
       approved_by: adminId,
       contestation_approved: true,
+    };
+    prevMeta.market_odd = approvedOdd;
+    prevMeta.market_type = "LAY";
+    prevMeta.calculations = {
+      ...(prevMeta.calculations || {}),
+      ...c,
+      marketOdd: approvedOdd,
+      contestation: prevMeta.contestation,
     };
     patch = {
       ...patch,
@@ -6084,6 +6153,11 @@ async function creditWalletForSettlement(row, outcome, now) {
       "REAL"
   ).toUpperCase();
   if (!row.user_id) {
+    if (!wonArbi && !isVoid) {
+      throw new Error(
+        `Exchange settle sem user_id (proteção ${row.id}) — não marca won_exchange`
+      );
+    }
     return { refunded: 0, credited: 0, skipped: true };
   }
   if ((wonArbi || isVoid) && amount <= 0 && credit <= 0) {
@@ -6754,6 +6828,20 @@ async function settleMatch(token, body) {
     ];
     const needing = [];
     for (const row of candidates) {
+      // Marker: settle-exchange-heal-incompleto-v10
+      const healOutcome =
+        typeof settlementOutcomeFromProtectionRow === "function"
+          ? settlementOutcomeFromProtectionRow(row)
+          : "";
+      if (healOutcome === "exchange") {
+        const prior = await loadExchangeSettlementPrior(row.id);
+        const needs =
+          typeof exchangeWalletHealNeeded === "function"
+            ? exchangeWalletHealNeeded(row, prior)
+            : !prior.hasTx || !prior.stakeReturned;
+        if (needs) needing.push(row);
+        continue;
+      }
       if (!(await protectionAlreadyCredited(row.id))) needing.push(row);
     }
     if (needing.length) {
@@ -6772,7 +6860,13 @@ async function settleMatch(token, body) {
       (row.metadata && (row.metadata.market_id || row.metadata.marketId)) ||
       null;
     let rowOutcome = outcome;
-    if (marketId) {
+    if (repaired) {
+      const stored =
+        typeof settlementOutcomeFromProtectionRow === "function"
+          ? settlementOutcomeFromProtectionRow(row)
+          : "";
+      if (stored) rowOutcome = stored;
+    } else if (marketId) {
       if (rowMarket && String(rowMarket) !== String(marketId)) continue;
       rowOutcome = outcome;
     } else if (outcomesMap && rowMarket) {

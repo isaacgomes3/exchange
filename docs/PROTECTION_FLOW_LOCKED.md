@@ -2,7 +2,7 @@
 
 **Status:** LOCKED  
 **Marker:** `DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST`  
-**Versão:** `protection-flow-contract-v9`  
+**Versão:** `protection-flow-contract-v10`  
 **Modelo:** `stake_lock_v1`  
 **Fonte da verdade:** `scripts/lib/protection-flow-contract.mjs`  
 **Espelho em:** `AGENTS.md` (bloco `<!-- BEGIN:protection-flow-lock -->`)  
@@ -67,15 +67,20 @@ Exemplo sucessivo:
 - **Destrava** o locked
 - **Não** cobra dedução
 
-### 3. Ganhou na Exchange (pedido explícito v9)
+### 3. Ganhou na Exchange (pedido explícito v9/v10)
 
 - Outcome: `exchange` → status `won_exchange`
 - **R$ 0** no Saldo Reembolso (não credita)
 - **Destrava e DEVOLVE** o stake à origem (Apostador / Demo / Investidor)
-- **Cobra SÓ a dedução ArbiShield** (`lucro − 4,5% − 1,5%`)
+- **Cobra SÓ a dedução ArbiShield** da **odd canônica** (`lucro − 4,5% − 1,5%`)
 - **NÃO** debita comissão Exchange de novo na carteira (já líquida na dedução)
 - Ex. LAY R$1000 @10: `8.067,52 + 1.000 − 91,11 = 8.976,41`
+- Ex. LAY R$1000 @32: `8.067,52 + 1.000 − 15,81 = 9.051,71`
 - Marker: `settle-exchange-cobra-so-deducao-v9`
+- **Heal v10:** `won_exchange` com tx R$0 / sem `stake_returned` / fee incompleta **reprocessa** (não trata como já creditado). Marker: `settle-exchange-heal-incompleto-v10`
+- **Odd canônica:** `approved_odd` > `calculations.marketOdd` > `metadata.market_odd` > `row.odd`. Marker: `settlement-odd-canonico-v10`
+- Contestation approve **sempre** sincroniza `metadata.market_odd` com a odd aprovada
+- Scripts de reparo com alvo fixo `897641` / fee `9111` estão **bloqueados** por padrão (exigem `ALLOW_ODD10_TARGET=1`)
 
 ### 3b. Lucro LAY para fees
 
@@ -84,6 +89,7 @@ Exemplo sucessivo:
   - Exchange (4,5% do lucro): **R$5,00** (só no cálculo)
   - Cliente (1,5% da resp.): **R$15,00**
   - ArbiShield (cobrado): **R$91,11**
+- Ex.: R$1000 @32 → lucro R$32,26 → ArbiShield **R$15,81**
 - Marker: `lay-lucro-back-equiv-v9`
 
 ### 4. Empate Anula / void
@@ -104,10 +110,13 @@ Exemplo sucessivo:
 ```
 ATIVAR   → só antes do kickoff · 1 op/evento · trava stake · máx 50% do restante
 ARBI     → stake → Saldo Reembolso + destrava
-EXCHANGE → R$ 0 Reembolso · destrava e devolve · cobra só dedução (ex. −91,11)
+EXCHANGE → R$ 0 Reembolso · destrava e devolve · cobra só dedução da odd canônica
+           (@10 → −91,11 · @32 → −15,81) · heal incompleto (v10)
 EMPATE   → destrava e devolve à origem
 CANCELAR → destrava e devolve à origem
 ```
 
 **Saldo Reembolso** = `profiles.deduction_balance_cents`  
-**Marker settle Exchange:** `settle-exchange-cobra-so-deducao-v9`
+**Marker settle Exchange:** `settle-exchange-cobra-so-deducao-v9`  
+**Marker heal incompleto:** `settle-exchange-heal-incompleto-v10`  
+**Marker odd canônica:** `settlement-odd-canonico-v10`
