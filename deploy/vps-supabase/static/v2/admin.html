@@ -6,12 +6,12 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Dashboard — ArbiShield v2</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css" />
+  <link rel="stylesheet" href="/v2.css?v=dash-tx-tipo-pt-1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/finance-admins.js?v=dash-kpi-2"></script>
   <script src="/v2.js?v=dash-kpi-2"></script>
   <script src="/v2-shell.js?v=dash-kpi-2" defer></script>
-  <meta name="arbishield-build" content="dashboard-kpis-v2" />
+  <meta name="arbishield-build" content="dashboard-tx-tipo-pt-v1" />
 </head>
 <body data-shell="admin" data-active="hub">
   <div class="page-head">
@@ -90,6 +90,63 @@
       var FN_DASH =
         "8867aca1da470aaa83906b6b13bb7e7018c9dea355ae3cff430f0f97ddbb4a62";
       var period = "today";
+
+      var TX_TYPE_LABELS = {
+        internal_transfer: "Transferência interna",
+        protection_settlement: "Liquidação de proteção",
+        protection_lock: "Travamento de proteção",
+        protection_fee: "Taxa de proteção",
+        protection_refund: "Reembolso de proteção",
+        protection_release: "Liberação de proteção",
+        protection_unlock: "Destravamento de proteção",
+        admin_adjustment: "Ajuste administrativo",
+        desafio_deposit: "Depósito Desafio",
+        desafio_cancel_refund: "Estorno cancelamento Desafio",
+        desafio_void_refund: "Estorno empate Desafio",
+        desafio_forfeit_to_provider: "Forfeit Desafio → Provedor",
+        deposit: "Depósito",
+        asaas_deposit: "Depósito Asaas",
+        manual_credit: "Crédito manual",
+        provider_deposit: "Depósito Provedor",
+        withdrawal: "Saque",
+        bonus: "Bônus",
+        refund: "Estorno",
+        profit: "Lucro",
+        coverage_credit: "Crédito de cobertura",
+      };
+
+      function txTypeLabel(row) {
+        var t = String((row && row.type) || "").toLowerCase();
+        if (!t) return "—";
+        var meta = row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+        if (t === "protection_settlement") {
+          var o = String(meta.outcome || "").toLowerCase();
+          if (o === "arbishield" || o === "lost_exchange") return "Liquidação · Bateu ArbiShield";
+          if (o === "exchange" || o === "won_exchange") return "Liquidação · Bateu Exchange";
+          if (o === "void" || o === "empate_anula") return "Liquidação · Empate Anula";
+        }
+        if (t === "internal_transfer") {
+          var from = meta.from_bucket || meta.from || "";
+          var to = meta.to_bucket || meta.to || "";
+          if (from || to) {
+            var map = {
+              deduction_balance_cents: "Saldo Reembolso",
+              balance_cents: "Saldo Real",
+              desafio_balance_cents: "Carteira Desafio",
+              demo_balance_cents: "Demo",
+              investor_balance_cents: "Investidor",
+            };
+            return (
+              "Transferência " +
+              (map[from] || from || "?") +
+              " → " +
+              (map[to] || to || "?")
+            );
+          }
+        }
+        if (t === "admin_adjustment" && meta.note) return String(meta.note);
+        return TX_TYPE_LABELS[t] || String(row.type).replace(/_/g, " ");
+      }
 
       function startIso(p) {
         var d = new Date();
@@ -252,7 +309,7 @@
           return "<tr>" +
             "<td>" + new Date(r.created_at).toLocaleString("pt-BR") + "</td>" +
             "<td><strong style=\"color:var(--text)\">" + esc(nome) + "</strong></td>" +
-            "<td>" + esc(r.type || "—") + "</td>" +
+            "<td>" + esc(txTypeLabel(r)) + "</td>" +
             "<td>" + money(r.amount_cents) + "</td>" +
             "<td>" + money(r.balance_after_cents) + "</td>" +
             "<td>ok</td>" +
