@@ -7,11 +7,11 @@
   <title>Gestão de Proteções — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="settle-exchange-nunca-reembolso-v1" />
-  <link rel="stylesheet" href="/v2.css?v=exchange-nunca-reembolso-1" />
+  <meta name="arbishield-build" content="protecoes-deducao-lucro-kv-v1" />
+  <link rel="stylesheet" href="/v2.css?v=protecoes-deducao-lucro-kv-1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=exchange-nunca-reembolso-1"></script>
-  <script src="/v2-shell.js?v=exchange-nunca-reembolso-1" defer></script>
+  <script src="/v2.js?v=protecoes-deducao-lucro-kv-1"></script>
+  <script src="/v2-shell.js?v=protecoes-deducao-lucro-kv-1" defer></script>
   <style>
     .prot-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 16px; align-items: start; }
     @media (max-width: 960px) {
@@ -160,9 +160,73 @@
     .prot-detail h2 { margin: 0 0 4px; font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; }
     .prot-detail .sub { color: var(--muted); font-size: 12px; margin: 0 0 14px; }
     .prot-kv { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
-    .prot-kv div { border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 10px; }
-    .prot-kv span { display: block; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
-    .prot-kv strong { font-size: 14px; font-variant-numeric: tabular-nums; }
+    .prot-kv > div {
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 10px;
+      padding: 10px;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+    .prot-kv > div.prot-kv-wide {
+      grid-column: 1 / -1;
+    }
+    .prot-kv span {
+      display: block;
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      max-width: 100%;
+    }
+    .prot-kv strong {
+      display: block;
+      font-size: 13px;
+      line-height: 1.3;
+      font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      max-width: 100%;
+      white-space: normal;
+    }
+    .prot-kv .prot-kv-lines {
+      display: grid;
+      gap: 6px;
+      margin-top: 8px;
+      min-width: 0;
+    }
+    .prot-kv .prot-kv-line {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+      min-width: 0;
+    }
+    .prot-kv .prot-kv-line span {
+      flex: 1 1 auto;
+      min-width: 0;
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: 11px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.62);
+    }
+    .prot-kv .prot-kv-line b {
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: 55%;
+      text-align: right;
+      font-size: 12px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      color: #fff;
+    }
     .prot-actions { display: flex; flex-direction: column; gap: 8px; }
     .prot-actions .btn { width: 100%; }
     .prot-actions .btn:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -357,8 +421,35 @@
               ? row.platform_profit_cents
               : meta.fee_charged_cents != null
                 ? meta.fee_charged_cents
-                : row.locked_deduction_cents;
-        return Math.max(0, nCents(raw));
+                : meta.platform_deduction_cents != null
+                  ? meta.platform_deduction_cents
+                  : row.locked_deduction_cents;
+        var fee = Math.max(0, nCents(raw));
+        if (fee > 0) return fee;
+        var calc = meta.calculations && typeof meta.calculations === "object"
+          ? meta.calculations
+          : null;
+        if (calc && calc.arbiShieldDeductionCents != null) {
+          return Math.max(0, nCents(calc.arbiShieldDeductionCents));
+        }
+        return 0;
+      }
+      function userProfitCentsOf(row) {
+        var meta = metaOf(row);
+        var calc = meta.calculations && typeof meta.calculations === "object"
+          ? meta.calculations
+          : null;
+        var raw =
+          row.user_profit_cents != null
+            ? row.user_profit_cents
+            : meta.user_profit_cents != null
+              ? meta.user_profit_cents
+              : calc && calc.userProfitCents != null
+                ? calc.userProfitCents
+                : null;
+        if (raw != null) return Math.max(0, nCents(raw));
+        var amount = nCents(row.responsibility_cents || row.amount_cents);
+        return amount > 0 ? Math.round(amount * 0.015) : 0;
       }
       /** outcome do settle: arbishield = usuário ganhou a proteção; exchange = perdeu. */
       function settleOutcomeOf(row) {
@@ -739,6 +830,8 @@
         }
         var gate = canContest(it);
         var amount = it.responsibility_cents || it.amount_cents || 0;
+        var deducao = deductionCentsOf(it);
+        var lucroUser = userProfitCentsOf(it);
         var starts = it.matches && it.matches.starts_at
           ? new Date(it.matches.starts_at).toLocaleString("pt-BR")
           : "—";
@@ -759,7 +852,18 @@
             (res.refundCents != null ? money(res.refundCents) : "—") +
             "</strong></div>" +
             "<div><span>Odd alvo</span><strong>" + Number(displayOddOf(it) || 0).toFixed(2) + "</strong></div>" +
-            "<div><span>Valor protegido</span><strong>" + money(amount) + "</strong></div>" +
+            '<div class="prot-kv-wide">' +
+              "<span>Valor protegido</span>" +
+              "<strong>" + money(amount) + "</strong>" +
+              '<div class="prot-kv-lines">' +
+                '<div class="prot-kv-line"><span>Dedução ArbiShield</span><b>' +
+                money(deducao) +
+                "</b></div>" +
+                '<div class="prot-kv-line"><span>Lucro do usuário (1,5%)</span><b>' +
+                money(lucroUser) +
+                "</b></div>" +
+              "</div>" +
+            "</div>" +
             "<div><span>Início</span><strong>" + starts + "</strong></div>" +
             "<div><span>Criada em</span><strong>" + esc(created) + "</strong></div>" +
             "<div><span>ID proteção</span><strong>" + esc(String(it.id || "").slice(0, 8)) + "…</strong></div>" +
