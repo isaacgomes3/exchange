@@ -10,7 +10,8 @@
  *
  * Versão: protection-flow-contract-v5 (2026-07-27)
  *   Regra vigente (stake_lock_v1):
- *     - Ativação → trava stake (máx. 50% do restante da carteira Apostador)
+ *     - Ativação → trava stake; máx. 50% do Apostador RESTANTE naquele momento
+ *       (evento 1: 50% da banca; evento 2: 50% do que sobrou; e assim por diante)
  *     - Ganhou na ArbiShield → credita stake (Saldo Reembolso) e destrava
  *     - Ganhou na Exchange → R$ 0; cobra só a dedução; destrava sem devolver
  *     - Empate Anula → destrava stake (devolve à origem)
@@ -40,12 +41,26 @@ function n(v) {
 }
 
 /**
- * Teto de stake na ativação: 50% do saldo restante da carteira Apostador.
- * @param {number} apostadorAvailableCents
+ * Teto de stake na ativação: 50% do saldo Apostador líquido restante AGORA.
+ * Locked ativo já saiu do disponível (debito na criação), então cada novo
+ * evento recalcula sobre o que sobrou — sucessivo, não 50% da banca original.
+ *
+ * Ex.: disponível 100_000 → máx 50_000; após travar 50_000 resta 50_000 → máx 25_000.
+ *
+ * @param {number} apostadorAvailableCents saldo líquido atual (sem locked)
  */
 export function maxStakeLockCents(apostadorAvailableCents) {
   const avail = Math.max(0, n(apostadorAvailableCents));
   return Math.floor(avail * MAX_STAKE_FRACTION_OF_APOSTADOR);
+}
+
+/**
+ * Saldo Apostador após uma trava (para simular eventos sucessivos).
+ * @param {number} apostadorAvailableCents
+ * @param {number} lockCents
+ */
+export function apostadorRemainingAfterLock(apostadorAvailableCents, lockCents) {
+  return Math.max(0, n(apostadorAvailableCents) - Math.max(0, n(lockCents)));
 }
 
 /**
@@ -142,7 +157,8 @@ export function settlementDeductionCents(row) {
  *   - Ganhou na Exchange   → 0 (não credita Reembolso; cobra só a dedução; destrava sem devolver)
  *   - Empate Anula / void → stake (caller destrava/devolve à origem — NÃO Reembolso)
  *
- * Ativação: trava stake, máx. 50% do restante da carteira Apostador.
+ * Ativação: trava stake; máx. 50% do Apostador restante naquele momento
+ * (recalcula a cada evento sobre o que sobrou após travas anteriores).
  *
  * Histórico fee_upfront_v1 (só linhas antigas):
  *   - ArbiShield → stake + dedução (Reembolso)

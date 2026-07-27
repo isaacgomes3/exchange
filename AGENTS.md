@@ -27,7 +27,7 @@ Arquivos cobertos (lista mínima):
 
 ## Regras de produto vigentes (`stake_lock_v1`)
 
-1. **Ativação:** **trava o stake** (`locked_balance_cents`). Usuário pode apostar **no máximo 50%** do valor restante na carteira Apostador (`maxStakeLockCents`). Não cobra dedução na entrada.
+1. **Ativação:** **trava o stake** (`locked_balance_cents`). Em **cada** evento o usuário pode apostar **no máximo 50% do saldo Apostador restante naquele momento** (`maxStakeLockCents(disponível)`). Após travar, o disponível cai; no próximo evento o teto é de novo **50% do que sobrou**, e assim sucessivamente (ex.: R$ 1000 → máx R$ 500; após usar R$ 500 resta R$ 500 → máx R$ 250). Não cobra dedução na entrada.
 2. **LAY** = responsabilidade; **BACK** = stake.
 3. **Ganhou na ArbiShield** (`outcome: arbishield` → `lost_exchange`): **credita o stake** no Saldo Reembolso (`deduction_balance_cents`) e **destrava**.
 4. **Ganhou na Exchange** (`outcome: exchange` → `won_exchange`): **R$ 0** (não credita Reembolso); **cobra só a dedução**; **destrava sem devolver**.

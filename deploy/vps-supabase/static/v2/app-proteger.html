@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <meta name="arbishield-build" content="proteger-stake-lock-50-v5" />
-  <meta name="arbishield-features" content="proteger-stake-lock-v5 proteger-espelho-readonly-v13" />
+  <meta name="arbishield-build" content="proteger-stake-lock-50-sucessivo-v5" />
+  <meta name="arbishield-features" content="proteger-stake-lock-v5-sucessivo proteger-espelho-readonly-v13" />
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=proteger-stake-lock-50-v5" />
+  <link rel="stylesheet" href="/v2.css?v=proteger-stake-lock-50-sucessivo-v5" />
   <style>
     .term-score {
       display: inline-flex;
@@ -36,8 +36,8 @@
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=proteger-stake-lock-50-v5"></script>
-  <script src="/v2-shell.js?v=proteger-stake-lock-50-v5" defer></script>
+  <script src="/v2.js?v=proteger-stake-lock-50-sucessivo-v5"></script>
+  <script src="/v2-shell.js?v=proteger-stake-lock-50-sucessivo-v5" defer></script>
 </head>
 <body data-shell="app" data-active="proteger">
   <div class="page-head term-head">
@@ -163,7 +163,7 @@
       var hintEl = document.getElementById("billingHint");
       if (hintEl) {
         hintEl.textContent =
-          "Ativação trava o stake · máx. 50% do saldo Apostador restante · dedução só se ganhar na Exchange";
+          "Cada ativação trava no máx. 50% do saldo Apostador que ainda resta · no próximo evento o teto é 50% do que sobrou · dedução só se ganhar na Exchange";
       }
 
       var SPORTS = [
@@ -469,8 +469,8 @@
           "<div><span>Retorno casa externa</span><b>" + money(retorno) + "</b></div>" +
           "<div><span>Seu lucro (1,5%)</span><b>" + money(seuLucro) + "</b></div>" +
           "<div><span>Dedução se ganhar Exchange</span><b>" + money(deducao) + "</b></div>" +
-          "<div><span>Saldo disponível</span><b>" + money(avail) + "</b></div>" +
-          "<div><span>Máx. stake (50%)</span><b>" + money(maxLock) + "</b></div>";
+          "<div><span>Saldo disponível agora</span><b>" + money(avail) + "</b></div>" +
+          "<div><span>Máx. neste evento (50% do restante)</span><b>" + money(maxLock) + "</b></div>";
       }
 
       function marketBetLink(match, market) {
@@ -603,11 +603,11 @@
         }
         if (amountCents > maxLock) {
           showErr(
-            "Máximo 50% do saldo Apostador restante: " +
+            "Neste evento o máximo é 50% do saldo Apostador restante: " +
               money(maxLock) +
-              ". Disponível: " +
+              " (disponível agora: " +
               money(availBal) +
-              "."
+              "). Após ativar, o próximo evento usa 50% do que sobrar."
           );
           return;
         }

@@ -13,6 +13,7 @@ import {
   STAKE_LOCK_RULE,
   MAX_STAKE_FRACTION_OF_APOSTADOR,
   maxStakeLockCents,
+  apostadorRemainingAfterLock,
   calcFeeUpfront,
   calcLay,
   calcBack,
@@ -103,6 +104,26 @@ describe("ativação — teto 50% Apostador", () => {
     assert.equal(maxStakeLockCents(0), 0);
     assert.equal(maxStakeLockCents(-10), 0);
     assert.equal(maxStakeLockCents(99), 49);
+  });
+
+  it("eventos sucessivos: 50% do restante após cada trava", () => {
+    // Banca 1000 → evento1 máx 500; usa 500 → resta 500 → evento2 máx 250;
+    // usa 250 → resta 250 → evento3 máx 125.
+    let avail = 100_000;
+    const caps = [];
+    for (let i = 0; i < 3; i++) {
+      const cap = maxStakeLockCents(avail);
+      caps.push(cap);
+      avail = apostadorRemainingAfterLock(avail, cap);
+    }
+    assert.deepEqual(caps, [50_000, 25_000, 12_500]);
+    assert.equal(avail, 12_500);
+  });
+
+  it("AGENTS.md descreve o teto sucessivo sobre o restante", () => {
+    const agents = readFileSync(resolve(root, "AGENTS.md"), "utf8");
+    assert.match(agents, /sucessivamente/);
+    assert.match(agents, /50% do que sobrou/);
   });
 });
 

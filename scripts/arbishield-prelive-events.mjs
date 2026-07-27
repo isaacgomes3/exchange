@@ -2250,7 +2250,7 @@ async function createProtection(body, userToken) {
   const maxLock = maxStakeLockCents(available);
   if (lockCents > maxLock) {
     const err = new Error(
-      `Stake máximo na ativação é 50% do saldo Apostador restante (${(maxLock / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}). Disponível: ${(available / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`
+      `Stake máximo neste evento é 50% do Apostador restante agora (${(maxLock / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}). Disponível: ${(available / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}. No próximo evento o teto será 50% do que sobrar.`
     );
     err.status = 400;
     throw err;
