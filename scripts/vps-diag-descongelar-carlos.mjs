@@ -127,36 +127,39 @@ async function loadCandidates() {
       out.push(p);
     }
   }
+  async function tryPush(label, path) {
+    try {
+      push(await sb(path));
+    } catch (e) {
+      console.warn("  skip", label + ":", e.message || e);
+    }
+  }
+  const sel =
+    "id,full_name,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents,updated_at";
+
+  console.log("  (profiles.email inexistente — buscando por nome/saldo/locked)");
+
   if (USER_ID_ENV) {
-    push(
-      await sb(
-        `/rest/v1/profiles?id=eq.${encodeURIComponent(USER_ID_ENV)}&select=id,full_name,email,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents,updated_at`
-      )
+    await tryPush(
+      "USER_ID",
+      `/rest/v1/profiles?id=eq.${encodeURIComponent(USER_ID_ENV)}&select=${sel}`
     );
   }
-  if (EMAIL) {
-    push(
-      await sb(
-        `/rest/v1/profiles?email=eq.${encodeURIComponent(EMAIL)}&select=id,full_name,email,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents,updated_at&limit=5`
-      )
-    );
-  }
-  push(
-    await sb(
-      `/rest/v1/profiles?full_name=ilike.*${encodeURIComponent(NAME)}*&select=id,full_name,email,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents,updated_at&limit=30`
-    )
+  await tryPush(
+    "nome Carlos Roberto",
+    `/rest/v1/profiles?full_name=ilike.*${encodeURIComponent(NAME)}*&select=${sel}&limit=30`
   );
-  // qualquer um com locked = 1000
-  push(
-    await sb(
-      `/rest/v1/profiles?locked_balance_cents=eq.100000&select=id,full_name,email,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents,updated_at&limit=20`
-    )
+  await tryPush(
+    "locked=100000",
+    `/rest/v1/profiles?locked_balance_cents=eq.100000&select=${sel}&limit=20`
   );
-  // print exact pair
-  push(
-    await sb(
-      `/rest/v1/profiles?balance_cents=eq.806752&locked_balance_cents=eq.100000&select=id,full_name,email,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents,updated_at&limit=10`
-    )
+  await tryPush(
+    "print 806752/100000",
+    `/rest/v1/profiles?balance_cents=eq.806752&locked_balance_cents=eq.100000&select=${sel}&limit=10`
+  );
+  await tryPush(
+    "nome Carlos*",
+    `/rest/v1/profiles?full_name=ilike.*Carlos*&select=${sel}&order=locked_balance_cents.desc&limit=30`
   );
   return out;
 }
@@ -328,7 +331,7 @@ async function main() {
       "|",
       p.full_name || "-",
       "|",
-      p.email || "-",
+      "-",
       "| Real",
       money(p.balance_cents),
       "| Locked",

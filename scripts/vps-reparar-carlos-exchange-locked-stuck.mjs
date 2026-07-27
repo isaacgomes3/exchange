@@ -159,20 +159,15 @@ try {
 async function findUser() {
   if (USER_ID_ENV) {
     const rows = await sb(
-      `/rest/v1/profiles?id=eq.${encodeURIComponent(USER_ID_ENV)}&select=id,full_name,email,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents,desafio_balance_cents&limit=1`
+      `/rest/v1/profiles?id=eq.${encodeURIComponent(USER_ID_ENV)}&select=id,full_name,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents,desafio_balance_cents&limit=1`
     );
     const p = Array.isArray(rows) ? rows[0] : null;
     if (!p) throw new Error(`USER_ID não encontrado: ${USER_ID_ENV}`);
     return p;
   }
-  if (EMAIL) {
-    const rows = await sb(
-      `/rest/v1/profiles?email=eq.${encodeURIComponent(EMAIL)}&select=id,full_name,email,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents,desafio_balance_cents&limit=3`
-    );
-    if (Array.isArray(rows) && rows[0]) return rows[0];
-  }
+  // profiles.email não existe — busca por nome/saldo
   const rows = await sb(
-    `/rest/v1/profiles?full_name=ilike.*${encodeURIComponent(NAME)}*&select=id,full_name,email,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents,desafio_balance_cents&limit=20`
+    `/rest/v1/profiles?full_name=ilike.*${encodeURIComponent(NAME)}*&select=id,full_name,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents,desafio_balance_cents&limit=20`
   );
   const list = Array.isArray(rows) ? rows : [];
   const hit =

@@ -116,22 +116,16 @@ async function sb(p, { method = "GET", body } = {}) {
 async function findUser() {
   if (USER_ID_ENV) {
     const rows = await sb(
-      `/rest/v1/profiles?id=eq.${encodeURIComponent(USER_ID_ENV)}&select=id,full_name,email,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents&limit=1`
+      `/rest/v1/profiles?id=eq.${encodeURIComponent(USER_ID_ENV)}&select=id,full_name,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents&limit=1`
     );
     const p = Array.isArray(rows) ? rows[0] : null;
     if (!p) throw new Error(`USER_ID não encontrado: ${USER_ID_ENV}`);
     return p;
   }
-  // 1) email
-  if (EMAIL) {
-    const rows = await sb(
-      `/rest/v1/profiles?email=eq.${encodeURIComponent(EMAIL)}&select=id,full_name,email,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents&limit=3`
-    );
-    if (Array.isArray(rows) && rows[0]) return rows[0];
-  }
+  // profiles.email não existe nesta base — busca por nome/saldo
   // 2) nome + saldo do print
   const rows = await sb(
-    `/rest/v1/profiles?full_name=ilike.*${encodeURIComponent(NAME)}*&select=id,full_name,email,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents&limit=30`
+    `/rest/v1/profiles?full_name=ilike.*${encodeURIComponent(NAME)}*&select=id,full_name,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents&limit=30`
   );
   const list = Array.isArray(rows) ? rows : [];
   console.log("Candidatos:");
@@ -156,7 +150,7 @@ async function findUser() {
   if (byLocked) return byLocked;
   // 3) qualquer perfil com esse par de saldos
   const byBal = await sb(
-    `/rest/v1/profiles?balance_cents=eq.${EXPECT_BALANCE}&locked_balance_cents=eq.${EXPECT_LOCKED}&select=id,full_name,email,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents&limit=5`
+    `/rest/v1/profiles?balance_cents=eq.${EXPECT_BALANCE}&locked_balance_cents=eq.${EXPECT_LOCKED}&select=id,full_name,balance_cents,locked_balance_cents,deduction_balance_cents,reusable_balance_cents&limit=5`
   );
   if (Array.isArray(byBal) && byBal[0]) return byBal[0];
   throw new Error(
