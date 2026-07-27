@@ -36,10 +36,13 @@ Se um pedido tangenciar esses arquivos por outro motivo (hotfix de JS, Encerrado
    da carteira usada na ativação (REAL/DEMO só define de onde a dedução foi cobrada).
 4. **Bateu Exchange / PERDEU:** **nunca** credita Saldo Reembolso (nem `balance_cents`).
    Vale para **fee_upfront e legado**. No legado, só libera `locked_balance_cents`.
+   A regra antiga “deduz taxa só no fim do evento / devolve stake−taxa” **está obsoleta**.
 5. **Empate Anula / void:** devolve **só a dedução** (Saldo Reembolso) no fee_upfront;
    no legado libera o stake inteiro. Não é vitória Arbi nem Exchange.
 6. **Cancelar proteção:** estorna a dedução (fee_upfront); cliente não precisa solicitar reembolso no caso ArbiShield.
 7. Cliente **não** precisa pedir reembolso para ver stake/dedução quando o resultado é ArbiShield — o crédito é imediato.
+8. **Saldo Reembolso** deve refletir **só** créditos Arbi (stake + dedução devolvida) e void (só dedução),
+   menos saques/xfers. Qualquer crédito de Exchange no bucket é **indevido**, não “excesso de taxa no fim”.
 
 Alterar qualquer item acima exige pedido explícito + atualização dos testes do contrato.
 <!-- END:protection-flow-lock -->

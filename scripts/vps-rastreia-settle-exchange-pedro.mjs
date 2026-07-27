@@ -281,10 +281,23 @@ async function main() {
     );
   } else if (reembolso > Math.max(0, sumArbi - wdReemb) + 100) {
     const excess = reembolso - Math.max(0, sumArbi - wdReemb);
+    console.log("\n==> fee_upfront (regra atual)");
+    console.log("    Reembolso correto (só Arbi)     :", money(Math.max(0, sumArbi - wdReemb)));
     console.log(
-      "\n==> Correção sugerida: mover excesso",
+      "    Crédito indevido (Exchange/legado):",
       money(excess),
-      "Reembolso → Real (manter residual Arbi legítimo)"
+      `(${money(reembolso)} − ${money(Math.max(0, sumArbi - wdReemb))})`
+    );
+    console.log(
+      "    NOTA: NÃO é 'sobra de taxa no fim do evento' — essa regra é antiga."
+    );
+    console.log(
+      "    Hoje a dedução é na ativação; PERDEU = R$ 0; Reembolso = só stakes Arbi (+ dedução devolvida)."
+    );
+    console.log(
+      "\n==> Correção: mover crédito indevido",
+      money(excess),
+      "Reembolso → Real"
     );
   }
 

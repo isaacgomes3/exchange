@@ -260,13 +260,14 @@ async function main() {
   suspects.sort((a, b) => b.excess - a.excess || b.exchange - a.exchange);
 
   console.log("\n================================================================");
-  console.log(" SUSPEITOS (mesmo padrão Lucas/Augusto/Pedro)");
-  console.log(" Reembolso > residual Arbi legítimo  e/ou  settles Exchange");
+  console.log(" SUSPEITOS — crédito Exchange/legado no Saldo Reembolso");
+  console.log(" fee_upfront: PERDEU = R$ 0; Reembolso = só Arbi (stake+dedução)");
+  console.log(" (regra antiga stake−taxa no fim do evento NÃO se aplica mais)");
   console.log("================================================================");
   console.log(
     "n=",
     suspects.length,
-    "| excesso total a mover ≈",
+    "| crédito indevido total ≈",
     money(suspects.reduce((s, r) => s + r.excess, 0))
   );
   console.log("");
@@ -283,7 +284,7 @@ async function main() {
         "exch".padStart(12),
         "saqueR".padStart(10),
         "keep".padStart(10),
-        "EXCESSO".padStart(12),
+        "INDEVIDO".padStart(12),
       ].join(" ")
     );
     console.log("-".repeat(120));
@@ -304,7 +305,7 @@ async function main() {
   }
 
   if (!ONLY_SUSPECTS) {
-    console.log("\n==> OK (Reembolso ≈ Arbi líquido):", okArbi.length);
+    console.log("\n==> OK (Reembolso ≈ Arbi fee_upfront):", okArbi.length);
     console.log("==> Outros / sem settle classificado:", unknown.length);
   }
 
@@ -336,16 +337,17 @@ async function main() {
           };
         })();
       console.log(
-        `    ${k.label}: reemb=${money(r.reembolso)} excesso=${money(r.excess)} arbi=${money(r.arbi)} exch=${money(r.exchange)}`
+        `    ${k.label}: reemb=${money(r.reembolso)} indevido=${money(r.excess)} arbi=${money(r.arbi)} exch=${money(r.exchange)}`
       );
     } else {
       console.log(`    ${k.label}: não listado (Reembolso 0 ou fora do filtro)`);
     }
   }
 
-  console.log("\n==> Próximo passo");
-  console.log("    Para cada suspeito com EXCESSO > 0:");
-  console.log("      mover excesso Reembolso → Real (preservar keep Arbi)");
+  console.log("\n==> Próximo passo (fee_upfront)");
+  console.log("    Para cada suspeito com INDEVIDO > 0:");
+  console.log("      mover crédito Exchange/legado Reembolso → Real");
+  console.log("      (Reembolso fica só com Arbi — stakes + dedução devolvida)");
   console.log("    Scripts por cliente ou batch:");
   console.log("      FIX=1 NAME=\"...\" ID_PREFIX=... node scripts/vps-correcao-reembolso-cliente.mjs");
   console.log("\n(fim auditoria global — sem FIX automático)");

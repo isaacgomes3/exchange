@@ -205,16 +205,25 @@ async function main() {
   const keepArbi = Math.min(keepArbiRaw, Math.max(0, reembolso));
   const move = Math.max(0, reembolso - keepArbi);
 
-  console.log("\n==> Contas");
-  console.log("    settles Arbi hist :", money(sumArbi));
-  console.log("    settles Exch hist :", money(sumEx));
+  console.log("\n==> Contas (fee_upfront — NÃO usa regra legada stake−taxa no fim)");
+  console.log("    settles Arbi hist :", money(sumArbi), "(deve ficar no Reembolso)");
+  console.log("    settles Exch hist :", money(sumEx), "(NÃO deveria ter creditado — PERDEU = R$ 0)");
   console.log("    saques Reembolso  :", money(wdReemb));
   console.log("    xfer → Desafio    :", money(xferOut));
-  console.log("    preservar Arbi    :", money(keepArbi), keepArbi !== keepArbiRaw ? `(capado de ${money(keepArbiRaw)})` : "");
+  console.log(
+    "    Reembolso correto :",
+    money(keepArbi),
+    keepArbi !== keepArbiRaw ? `(capado de ${money(keepArbiRaw)})` : ""
+  );
+  console.log(
+    "    Crédito indevido  :",
+    money(move),
+    move > 0 ? `(${money(reembolso)} − ${money(keepArbi)} — Exchange/legado no bucket errado)` : ""
+  );
   console.log("    mover → Real      :", money(move));
 
   if (move <= 0) {
-    console.log("\nNada a mover (Reembolso = residual Arbi legítimo ou já zerado).");
+    console.log("\nNada a mover (Reembolso = só Arbi fee_upfront, ou já zerado).");
     return;
   }
 
@@ -225,7 +234,7 @@ async function main() {
 
   console.log("\n==> PLANO");
   console.log("    Real     :", money(real), "→", money(newReal));
-  console.log("    Reembolso:", money(reembolso), "→", money(newDed));
+  console.log("    Reembolso:", money(reembolso), "→", money(newDed), "(só stakes/Arbi)");
   console.log("    Apostador:", money(apostador), "→", money(newReal + newDed + n(p.demo_balance_cents)), "(igual)");
 
   if (!FIX) {
@@ -256,8 +265,11 @@ async function main() {
         amount_cents: move,
         keep_arbi_cents: keepArbi,
         xfer_out_cents: xferOut,
+        billing_model: "fee_upfront_v1",
+        note:
+          "fee_upfront: Reembolso = só Arbi (stake+dedução). Crédito Exchange/legado (regra antiga stake−taxa no fim) → Real.",
         reason:
-          "Pedro Iuri: mesmo bug Lucas/Augusto — crédito Exchange/legado no Saldo Reembolso; mover excesso → Real (respeita xfer→Desafio)",
+          "Pedro Iuri: crédito Exchange/legado no Saldo Reembolso (regra antiga); fee_upfront PERDEU=0; mover indevido → Real",
         name: NAME,
         settle_arbi_cents: sumArbi,
         settle_exchange_cents: sumEx,
@@ -266,8 +278,8 @@ async function main() {
   });
 
   console.log("\n==> ✓ APLICADO");
-  console.log("    Reembolso →", money(newDed));
-  console.log("    movido para Real:", money(move));
+  console.log("    Reembolso →", money(newDed), "(só Arbi)");
+  console.log("    indevido → Real:", money(move));
 }
 
 main().catch((e) => {
