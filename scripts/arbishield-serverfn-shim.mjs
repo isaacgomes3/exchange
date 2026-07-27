@@ -14,7 +14,8 @@ import { createRequire } from "node:module";
 // Contrato travado — import opcional (se lib faltar na VPS, usa fallback inline
 // para o shim não cair e a rota de saque continuar disponível).
 let PROTECTION_FLOW_LOCK = "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST";
-let PROTECTION_FLOW_CONTRACT_VERSION = "protection-flow-contract-v3";
+let PROTECTION_FLOW_CONTRACT_VERSION = "protection-flow-contract-v4";
+let isStakeLockProtection;
 let settlementCreditParts;
 let settlementCreditCents;
 let settlementDeductionCents;
@@ -37,6 +38,7 @@ try {
   settlementDeductionCents = mod.settlementDeductionCents;
   settlementStatusForOutcome = mod.settlementStatusForOutcome;
   isFeeUpfrontProtection = mod.isFeeUpfrontProtection;
+  isStakeLockProtection = mod.isStakeLockProtection;
   isVoidSettleOutcome = mod.isVoidSettleOutcome;
   normalizeSettleOutcome = mod.normalizeSettleOutcome;
   creditBucketForSettlement = mod.creditBucketForSettlement;
@@ -86,6 +88,11 @@ try {
       row?.locked_deduction_cents;
     return Math.max(0, Number(raw) || 0);
   };
+  isStakeLockProtection = (row) => {
+    const meta = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
+    if (meta.billing_model === "stake_lock_v1" || meta.stake_lock === true) return true;
+    return !isFeeUpfrontProtection(row);
+  };
   settlementCreditParts = (row, outcome) => {
     const amount = Math.max(
       0,
@@ -95,13 +102,29 @@ try {
     const o = normalizeSettleOutcome(outcome);
     const wonArbi = o === "arbishield";
     const isVoid = o === "void";
-    // settle-exchange-nunca-reembolso-v1 — Exchange nunca credita
     if (!wonArbi && !isVoid) return { stake: 0, fee: 0, total: 0 };
     if (isFeeUpfrontProtection(row)) {
       if (isVoid) return { stake: 0, fee, total: fee };
       return { stake: amount, fee, total: amount + fee };
     }
     return { stake: amount, fee: 0, total: amount };
+  };
+  creditBucketForSettlement = (_balanceType, row, outcome) => {
+    const o = normalizeSettleOutcome(outcome);
+    if (o === "void" && isStakeLockProtection(row)) {
+      const bt = String(
+        (row?.metadata &&
+          (row.metadata.balance_type ||
+            row.metadata.balance_type_requested ||
+            row.metadata.balanceType)) ||
+          _balanceType ||
+          "REAL"
+      ).toUpperCase();
+      if (bt === "DEMO") return "demo_balance_cents";
+      if (bt === "INVESTOR") return "investor_balance_cents";
+      return "balance_cents";
+    }
+    return "deduction_balance_cents";
   };
   settlementCreditCents = (row, outcome) => settlementCreditParts(row, outcome).total;
   settlementStatusForOutcome = (outcome) => {
@@ -5839,16 +5862,17 @@ async function creditWalletForSettlement(row, outcome, now) {
   if (!p) throw new Error(`Perfil ${row.user_id} não encontrado para crédito`);
 
   const patch = { updated_at: now };
-  if (!feeUpfront) {
+  if ((typeof isStakeLockProtection === "function" && isStakeLockProtection(row)) || !feeUpfront) {
     patch.locked_balance_cents = Math.max(0, n(p.locked_balance_cents) - amount);
   }
-  const bucket = creditBucketForSettlement(balanceType);
+  const bucket = creditBucketForSettlement(balanceType, row, outcomeNorm);
   if (bucket === "demo_balance_cents") {
     patch.demo_balance_cents = n(p.demo_balance_cents) + credit;
   } else if (bucket === "investor_balance_cents") {
     patch.investor_balance_cents = n(p.investor_balance_cents) + credit;
+  } else if (bucket === "balance_cents") {
+    patch.balance_cents = n(p.balance_cents) + credit;
   } else {
-    // Saldo Reembolso (deduction_balance_cents): usável e sacável
     patch.deduction_balance_cents = n(p.deduction_balance_cents) + credit;
   }
 

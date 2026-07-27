@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * CONTRATO TRAVADO — Fluxo de Proteção ArbiShield (fee_upfront_v1)
+ * CONTRATO TRAVADO — Fluxo de Proteção ArbiShield
  * ============================================================================
  * NÃO ALTERAR sem solicitação explícita do dono do produto.
  * Qualquer mudança aqui ou nos callers (prelive/shim/create-protection/UI)
@@ -8,18 +8,28 @@
  * de crédito no settle; os testes em protection-flow-contract.test.mjs
  * travam o comportamento no CI.
  *
- * Versão: protection-flow-contract-v3 (2026-07-27)
- *   + Empate Anula / void → devolve só a dedução (fee_upfront)
- *   + Exchange NUNCA credita (fee_upfront e legado) — evita Saldo Reembolso em PERDEU
+ * Versão: protection-flow-contract-v4 (2026-07-27)
+ *   Regra vigente (stake_lock_v1):
+ *     - Ativação → trava stake
+ *     - ArbiShield → credita stake (Saldo Reembolso)
+ *     - Exchange / PERDEU → R$ 0 (não credita Reembolso); cobra só a dedução
+ *     - Empate Anula → destrava stake (devolve à origem)
+ *     - Cancelar → destrava stake (devolve à origem)
+ *
+ *   Histórico fee_upfront_v1 (linhas antigas): mantido só para settle/cancel
+ *   de proteções já criadas com billing_model fee_upfront_v1.
  * ============================================================================
  */
 
 export const PROTECTION_FLOW_CONTRACT_VERSION =
-  "protection-flow-contract-v3";
+  "protection-flow-contract-v4";
 
 /** Marcador exigido pelos testes / hotfixes — não renomear. */
 export const PROTECTION_FLOW_LOCK =
   "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST";
+
+/** Marker da regra vigente. */
+export const STAKE_LOCK_RULE = "stake-lock-v1";
 
 function n(v) {
   const x = Number(v);
@@ -56,9 +66,13 @@ export function normalizeSettleOutcome(outcome) {
   return o;
 }
 
+/** Proteções criadas no modelo antigo (só cobrava dedução na ativação). */
 export function isFeeUpfrontProtection(row) {
   const meta =
     row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  if (meta.billing_model === "stake_lock_v1" || meta.stake_lock === true) {
+    return false;
+  }
   return (
     meta.billing_model === "fee_upfront_v1" ||
     meta.fee_upfront === true ||
@@ -66,8 +80,19 @@ export function isFeeUpfrontProtection(row) {
   );
 }
 
+/** Modelo vigente: trava stake na ativação. */
+export function isStakeLockProtection(row) {
+  const meta =
+    row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  if (meta.billing_model === "stake_lock_v1" || meta.stake_lock === true) {
+    return true;
+  }
+  // Sem marker fee_upfront → trata como trava stake (legado / vigente)
+  return !isFeeUpfrontProtection(row);
+}
+
 /**
- * Dedução ArbiShield cobrada na ativação (fee_upfront) ou margem legada.
+ * Dedução ArbiShield (cobrada no PERDEU; calculada/armazenada na criação).
  */
 export function settlementDeductionCents(row) {
   const meta =
@@ -81,11 +106,10 @@ export function settlementDeductionCents(row) {
           ? meta.fee_charged_cents
           : row?.locked_deduction_cents;
   let fee = Math.max(0, n(raw));
-  if (!(fee > 0) && isFeeUpfrontProtection(row)) {
+  if (!(fee > 0)) {
     const stake = n(
       row?.responsibility_cents || row?.amount_cents || meta.stake_cents
     );
-    // Preferir odd do mercado lançado (metadata.market_odd); senão coluna odd.
     let odd = Number(meta.market_odd);
     if (!(odd > 1.01)) odd = Number(row?.odd || 0);
     const mt = String(meta.market_type || "").toUpperCase();
@@ -100,21 +124,18 @@ export function settlementDeductionCents(row) {
 }
 
 /**
- * Regras de crédito no settle (TRAVADAS):
+ * Regras de crédito no settle (TRAVADAS) — stake_lock_v1:
  *
- * fee_upfront_v1:
- *   - ArbiShield → stake/responsabilidade + dedução (total)
- *   - Exchange   → 0 (dedução permanece na plataforma)
- *   - Empate Anula / void → só a dedução (aposta anulada)
+ *   - ArbiShield → stake (Saldo Reembolso)
+ *   - Exchange   → 0 (não credita Reembolso; caller cobra dedução + destrava)
+ *   - Empate Anula / void → stake (caller destrava/devolve à origem — NÃO Reembolso)
  *
- * legado (lock):
- *   - ArbiShield → stake inteiro
- *   - Exchange   → 0 (NUNCA credita Saldo Reembolso; só libera locked)
- *   - Empate Anula / void → stake inteiro (libera lock)
+ * Histórico fee_upfront_v1 (só linhas antigas):
+ *   - ArbiShield → stake + dedução (Reembolso)
+ *   - Exchange   → 0
+ *   - void → só dedução (Reembolso)
  *
- * Cancelamento (fora daqui): estorna só a dedução no fee_upfront.
- *
- * Marker: settle-exchange-nunca-reembolso-v1
+ * Marker: settle-exchange-nunca-reembolso-v1 · stake-lock-v1
  */
 export function settlementCreditParts(row, outcome) {
   const amount = n(row?.responsibility_cents || row?.amount_cents);
@@ -122,15 +143,19 @@ export function settlementCreditParts(row, outcome) {
   const o = normalizeSettleOutcome(outcome);
   const wonArbi = o === "arbishield";
   const isVoid = o === "void";
-  // Exchange (qualquer billing): zero crédito — nunca Saldo Reembolso em PERDEU.
+
+  // PERDEU / Exchange: nunca credita
   if (!wonArbi && !isVoid) {
     return { stake: 0, fee: 0, total: 0 };
   }
+
+  // Histórico fee_upfront
   if (isFeeUpfrontProtection(row)) {
     if (isVoid) return { stake: 0, fee, total: fee };
     return { stake: amount, fee, total: amount + fee };
   }
-  // legado: ArbiShield ou void → stake inteiro
+
+  // Vigente stake_lock: Arbi ou void → stake (destino do void = origem, no caller)
   return { stake: amount, fee: 0, total: amount };
 }
 
@@ -139,10 +164,26 @@ export function settlementCreditCents(row, outcome) {
 }
 
 /**
- * Bucket de crédito após settle ArbiShield / Empate Anula:
- * Sempre `deduction_balance_cents` (UI: **Saldo Reembolso** — usável + sacável).
+ * Bucket de crédito após settle:
+ * - ArbiShield → sempre Saldo Reembolso
+ * - void stake_lock → carteira de origem (balance); fee_upfront void → Reembolso
  */
-export function creditBucketForSettlement(_balanceType) {
+export function creditBucketForSettlement(_balanceType, row, outcome) {
+  const o = normalizeSettleOutcome(outcome);
+  if (o === "void" && isStakeLockProtection(row)) {
+    const bt = String(
+      (row &&
+        row.metadata &&
+        (row.metadata.balance_type ||
+          row.metadata.balance_type_requested ||
+          row.metadata.balanceType)) ||
+        _balanceType ||
+        "REAL"
+    ).toUpperCase();
+    if (bt === "DEMO") return "demo_balance_cents";
+    if (bt === "INVESTOR") return "investor_balance_cents";
+    return "balance_cents";
+  }
   return "deduction_balance_cents";
 }
 
@@ -155,7 +196,7 @@ export function settlementStatusForOutcome(outcome) {
 }
 
 /**
- * fee_upfront sobre odd BACK efetiva.
+ * fee_upfront / dedução sobre odd BACK efetiva.
  * amountCents = cobertura (LAY=responsabilidade · BACK=stake).
  */
 export function calcFeeUpfront(amountCents, odd) {
@@ -179,7 +220,7 @@ export function calcFeeUpfront(amountCents, odd) {
     grossProfitCents,
     userProfitCents,
     arbiShieldDeductionCents,
-    billing_model: "fee_upfront_v1",
+    billing_model: "stake_lock_v1",
   };
 }
 
@@ -201,8 +242,6 @@ export function calcLay(amountCents, odd) {
     marketOdd > 1.01 ? Math.round(liability / (marketOdd - 1)) : 0;
   return {
     ...c,
-    // Persistência/UI: odd LAY do mercado (não a back equivalente).
-    // A conversão L/(L−1) fica só em effectiveBackOdd p/ cálculo de fee.
     odd: marketOdd,
     stakeCents: houseStakeCents,
     responsibilityCents: liability,

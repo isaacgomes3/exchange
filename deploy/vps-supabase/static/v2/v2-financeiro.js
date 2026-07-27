@@ -262,18 +262,18 @@
           je = "ArbiShield";
           pe = Ne;
           Ae = true;
-          Qe = "Coberto pela ArbiShield • stake + dedução no Saldo Reembolso";
+          Qe = "Coberto pela ArbiShield • stake no Saldo Reembolso";
         } else if (Se === "exchange") {
-          // fee_upfront: taxa já cobrada na ativação — PERDEU não devolve nada
+          // stake_lock: PERDEU = R$ 0; cobra só a dedução
           je = "Exchange";
           pe = 0;
           Ae = undefined;
-          Qe = "Bateu Exchange • sem crédito (taxa cobrada na ativação)";
+          Qe = "Bateu Exchange • sem crédito (cobra só a dedução)";
         } else if (Se === "void" || Se === "empate_anula" || Se === "anula") {
           je = "Empate Anula";
-          pe = Ye > 0 ? Ye : 0;
+          pe = Ne;
           Ae = true;
-          Qe = "Empate Anula • devolve só a dedução no Saldo Reembolso";
+          Qe = "Empate Anula • stake destravado (devolvido à origem)";
         } else if (Se === "won" || Se === "win" || Se === "user_won") {
           je = "Vitória";
           pe = Je > 0 ? Je : Ne;
