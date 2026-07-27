@@ -28,7 +28,12 @@ export type CreateProtectionResult = {
   marketType: "LAY" | "BACK";
   amountCents: number;
   balanceAfterCents: number;
+  /** stake_lock: sempre 0 na criação (dedução só no Exchange). */
   feeChargedCents?: number;
+  /** Valor travado em locked_balance_cents. */
+  lockedCents?: number;
+  /** Dedução calculada (cobrada só se ganhar na Exchange). */
+  platformDeductionCents?: number;
   billingModel?: string;
 };
 
