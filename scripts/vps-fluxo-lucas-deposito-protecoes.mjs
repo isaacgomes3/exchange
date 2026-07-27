@@ -134,15 +134,28 @@ async function sb(p, { method = "GET", body, okNull = false } = {}) {
   return data;
 }
 
-async function sbTry(paths) {
+function isMissingRelation(err) {
+  const msg = String(err && err.message ? err.message : err);
+  return (
+    msg.includes("PGRST205") ||
+    msg.includes("Could not find the table") ||
+    msg.includes("Could not find the relationship") ||
+    msg.includes("42703") || // column missing
+    /404 \/rest\/v1\//.test(msg)
+  );
+}
+
+async function sbTry(paths, { optional = false } = {}) {
   let last = null;
   for (const p of paths) {
     try {
       return await sb(p);
     } catch (e) {
       last = e;
+      if (optional && isMissingRelation(e)) continue;
     }
   }
+  if (optional) return [];
   if (last) throw last;
   return null;
 }
@@ -183,14 +196,20 @@ async function main() {
   console.log("    TOTAL     :", money(total));
 
   // --- Depósitos ---
-  const manual = await sbTry([
-    `/rest/v1/manual_deposits?select=id,amount_cents,status,network,deposit_type,admin_notes,created_at,updated_at&user_id=eq.${encodeURIComponent(USER_ID)}&order=created_at.asc&limit=100`,
-    `/rest/v1/manual_deposits?select=id,amount_cents,status,created_at&user_id=eq.${encodeURIComponent(USER_ID)}&order=created_at.asc&limit=100`,
-  ]);
-  const asaas = await sbTry([
-    `/rest/v1/asaas_payments?select=id,amount_cents,status,created_at,paid_at,net_value_cents&user_id=eq.${encodeURIComponent(USER_ID)}&order=created_at.asc&limit=100`,
-    `/rest/v1/asaas_deposits?select=id,amount_cents,status,created_at&user_id=eq.${encodeURIComponent(USER_ID)}&order=created_at.asc&limit=100`,
-  ]);
+  const manual = await sbTry(
+    [
+      `/rest/v1/manual_deposits?select=id,amount_cents,status,network,deposit_type,admin_notes,created_at,updated_at&user_id=eq.${encodeURIComponent(USER_ID)}&order=created_at.asc&limit=100`,
+      `/rest/v1/manual_deposits?select=id,amount_cents,status,created_at&user_id=eq.${encodeURIComponent(USER_ID)}&order=created_at.asc&limit=100`,
+    ],
+    { optional: true }
+  );
+  const asaas = await sbTry(
+    [
+      `/rest/v1/asaas_payments?select=id,amount_cents,confirmed_amount_cents,status,created_at,user_id&user_id=eq.${encodeURIComponent(USER_ID)}&order=created_at.asc&limit=100`,
+      `/rest/v1/asaas_payments?select=id,amount_cents,status,created_at,paid_at&user_id=eq.${encodeURIComponent(USER_ID)}&order=created_at.asc&limit=100`,
+    ],
+    { optional: true }
+  );
   const manuals = Array.isArray(manual) ? manual : [];
   const asaasRows = Array.isArray(asaas) ? asaas : [];
 
@@ -198,27 +217,42 @@ async function main() {
   let depApproved = 0;
   for (const d of manuals) {
     const st = String(d.status || "").toLowerCase();
-    const ok = ["approved", "confirmed", "paid", "completed", "aprovado"].includes(st);
+    const ok = [
+      "approved",
+      "confirmed",
+      "paid",
+      "completed",
+      "aprovado",
+      "recebido",
+    ].includes(st);
     if (ok) depApproved += n(d.amount_cents);
     console.log(
       `    ${d.created_at} ${String(d.status).padEnd(12)} ${money(d.amount_cents)} ${d.deposit_type || d.network || ""} ${d.admin_notes || ""}`
     );
   }
+  if (!manuals.length) console.log("    (nenhum)");
+
   console.log("\n==> Depósitos Asaas/PIX (", asaasRows.length, ")");
   for (const d of asaasRows) {
     const st = String(d.status || "").toLowerCase();
-    const ok = ["confirmed", "received", "paid", "approved", "completed"].includes(st);
-    if (ok) depApproved += n(d.net_value_cents || d.amount_cents);
+    const ok = ["confirmed", "received", "paid", "approved", "completed"].includes(
+      st
+    );
+    const amt = n(d.confirmed_amount_cents || d.net_value_cents || d.amount_cents);
+    if (ok) depApproved += amt;
     console.log(
-      `    ${d.created_at || d.paid_at} ${String(d.status).padEnd(12)} ${money(d.net_value_cents || d.amount_cents)}`
+      `    ${d.created_at || d.paid_at} ${String(d.status).padEnd(12)} ${money(amt)}`
     );
   }
+  if (!asaasRows.length) {
+    console.log("    (nenhum / tabela asaas opcional — ok)");
+  }
   console.log(
-    "    soma aprovada:",
+    "    soma aprovada tabelas:",
     money(depApproved),
     depApproved === EXPECTED_DEPOSIT_CENTS
       ? "✓ bate R$ 300"
-      : `≠ esperado ${money(EXPECTED_DEPOSIT_CENTS)}`
+      : `≠ esperado ${money(EXPECTED_DEPOSIT_CENTS)} (pode estar só no ledger)`
   );
 
   // --- Proteções ---
