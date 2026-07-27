@@ -107,23 +107,29 @@ H3098="$(curl -fsS --max-time 8 http://127.0.0.1:3098/health || true)"
 echo "  health :3098 → $H3098"
 echo "$H3098" | grep -q "$MARKER" || die "health :3098 sem $MARKER"
 
-log "4/4 clawback Carlos (dry-run + FIX=1)"
+log "4/4 clawback Carlos — padrão + forçado"
 tmp_fix="$(mktemp)"
 download_repo_file "scripts/vps-clawback-cancel-stake-fee-upfront.mjs" "$tmp_fix"
 cp -f "$tmp_fix" "$SCRIPTS_DIR/vps-clawback-cancel-stake-fee-upfront.mjs"
 chmod 0755 "$SCRIPTS_DIR/vps-clawback-cancel-stake-fee-upfront.mjs"
-# garante contract ao lado do script
-cp -f "$SCRIPTS_DIR/lib/protection-flow-contract.mjs" \
-  "$(dirname "$tmp_fix")/lib/protection-flow-contract.mjs" 2>/dev/null || true
 mkdir -p "$SCRIPTS_DIR/lib"
-echo "  Dry-run:"
+# contract já publicado no passo 1
+echo "  Clawback por padrão (proteção):"
 (cd "$SCRIPTS_DIR" && node ./vps-clawback-cancel-stake-fee-upfront.mjs) || true
-echo "  Aplicando FIX=1:"
-(cd "$SCRIPTS_DIR" && FIX=1 node ./vps-clawback-cancel-stake-fee-upfront.mjs)
+(cd "$SCRIPTS_DIR" && FIX=1 node ./vps-clawback-cancel-stake-fee-upfront.mjs) || true
 rm -f "$tmp_fix"
 
+tmp_force="$(mktemp)"
+download_repo_file "scripts/vps-forcar-debito-carlos-windfall-cancel.mjs" "$tmp_force"
+cp -f "$tmp_force" "$SCRIPTS_DIR/vps-forcar-debito-carlos-windfall-cancel.mjs"
+chmod 0755 "$SCRIPTS_DIR/vps-forcar-debito-carlos-windfall-cancel.mjs"
+echo "  Débito forçado (se Real ainda = R\$ 10.971,41):"
+(cd "$SCRIPTS_DIR" && node ./vps-forcar-debito-carlos-windfall-cancel.mjs) || true
+(cd "$SCRIPTS_DIR" && FIX=1 node ./vps-forcar-debito-carlos-windfall-cancel.mjs)
+rm -f "$tmp_force"
+
 echo
-echo "OK — cancel fee_upfront não devolve mais stake + clawback aplicado."
+echo "OK — cancel fee_upfront não devolve mais stake + saldo Carlos corrigido."
 echo "  Marker: $MARKER"
 echo "  Conferir Carlos: Saldo Real ≈ R\$ 10.067,52 (não R\$ 10.971,41)"
 echo "  curl -s http://127.0.0.1:3098/health | grep cancelRefundGuard"
