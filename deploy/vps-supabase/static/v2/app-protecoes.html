@@ -7,11 +7,11 @@
   <title>Gestão de Proteções — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="protecoes-col-odd-valor-v2" />
-  <link rel="stylesheet" href="/v2.css?v=protecoes-col-odd-valor-2" />
+  <meta name="arbishield-build" content="protecoes-col-odd-valor-v3" />
+  <link rel="stylesheet" href="/v2.css?v=protecoes-col-odd-valor-3" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=protecoes-col-odd-valor-2"></script>
-  <script src="/v2-shell.js?v=protecoes-col-odd-valor-2" defer></script>
+  <script src="/v2.js?v=protecoes-col-odd-valor-3"></script>
+  <script src="/v2-shell.js?v=protecoes-col-odd-valor-3" defer></script>
   <style>
     .prot-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 16px; align-items: start; }
     @media (max-width: 960px) {
@@ -70,19 +70,22 @@
     .prot-list .term-col-valor { text-align: right; }
     .prot-list .term-col-valor strong {
       display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 2px;
+      flex-direction: row;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      align-items: baseline;
+      gap: 6px;
       font-size: 15px;
       font-weight: 800;
       color: #fff;
       font-variant-numeric: tabular-nums;
     }
     .prot-list .term-col-valor .term-odd {
-      font-size: 12px;
-      font-weight: 700;
-      color: rgba(201, 242, 35, 0.92);
+      font-size: 13px;
+      font-weight: 800;
+      color: rgba(201, 242, 35, 0.95);
       letter-spacing: 0.02em;
+      white-space: nowrap;
     }
     .prot-list .term-col-valor small {
       display: block;
@@ -406,7 +409,8 @@
         var odd = displayOddOf(it);
         return odd > 0 ? odd.toFixed(2) : "—";
       }
-      /** Odd do mercado lançado (LAY 30 → 30), nunca a back-equivalente. */
+      /** Odd do mercado lançado (LAY 30 → 30), nunca a back-equivalente.
+       * Evita @ 1000 fantasma: não usa markets[0] cego nem sentinel >= 500. */
       function displayOddOf(it) {
         var meta = metaOf(it);
         var calc =
@@ -416,42 +420,48 @@
         var match = it.matches || {};
         var markets = Array.isArray(match.markets) ? match.markets : [];
         var mid = meta.market_id || meta.marketId || null;
-        var mk =
-          (mid &&
+        var mk = null;
+        if (mid) {
+          mk =
             markets.find(function (x) {
               return String(x.id) === String(mid);
-            })) ||
-          markets[0] ||
-          null;
-        var candidates = [
-          mk && mk.odd,
+            }) || null;
+        }
+        function sane(n) {
+          n = Number(n);
+          return Number.isFinite(n) && n > 1.01 && n < 500 ? n : null;
+        }
+        // Prioridade: odd da própria proteção / metadata (não o JSON vivo do jogo)
+        var preferred = [
           meta.market_odd,
           calc.marketOdd,
           calc.market_odd,
+          meta.odd,
+          calc.odd,
+          mk && mk.odd,
         ];
-        var marketOdd = null;
-        for (var i = 0; i < candidates.length; i++) {
-          var n = Number(candidates[i]);
-          if (n > 1.01) {
-            marketOdd = n;
-            break;
-          }
+        var i;
+        for (i = 0; i < preferred.length; i++) {
+          var p = sane(preferred[i]);
+          if (p != null) return Math.round(p * 100) / 100;
         }
         var stored = Number(it && it.odd);
-        if (marketOdd != null) {
-          if (stored > 1.01) {
-            var equiv = marketOdd / (marketOdd - 1);
-            if (Math.abs(stored - equiv) <= 0.08) return marketOdd;
-            if (stored < 2 && marketOdd >= 2) return marketOdd;
-          }
-          return marketOdd;
-        }
-        var mt = String(it.side || it.market_category || "LAY").toUpperCase();
+        var mt = String(
+          it.side || it.market_category || meta.market_type || "LAY"
+        ).toUpperCase();
+        // LAY com odd "baixa" (1.01–2): pode ser back-equivalente → inverter
         if (mt !== "BACK" && stored > 1.01 && stored < 2) {
           var reversed = stored / (stored - 1);
-          if (reversed >= 2) return Math.round(reversed * 100) / 100;
+          var r = sane(reversed);
+          if (r != null && r >= 2) return Math.round(r * 100) / 100;
         }
-        return stored > 0 ? stored : 0;
+        var s = sane(stored);
+        if (s != null) return Math.round(s * 100) / 100;
+        // Último recurso: odd >= 500 só se veio da coluna da proteção
+        if (Number.isFinite(stored) && stored > 1.01) {
+          return Math.round(stored * 100) / 100;
+        }
+        return 0;
       }
       function teamsOf(it) {
         var meta = metaOf(it);

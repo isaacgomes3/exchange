@@ -10,7 +10,7 @@ REF="${ARBISHIELD_REF:-cursor/fix-reembolso-lucas-perdeu-723d}"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
-MARKER="protecoes-col-odd-valor-v2"
+MARKER="protecoes-col-odd-valor-v3"
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
