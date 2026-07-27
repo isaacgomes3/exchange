@@ -9,7 +9,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 **Status:** LOCKED — alterar **somente** com solicitação explícita do dono do produto  
 **Marker:** `DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST`  
-**Versão:** `protection-flow-contract-v8`  
+**Versão:** `protection-flow-contract-v9`  
 **Modelo vigente:** `stake_lock_v1`  
 **Fonte da verdade:** `scripts/lib/protection-flow-contract.mjs`  
 **Doc espelho:** `docs/PROTECTION_FLOW_LOCKED.md`  
@@ -37,10 +37,10 @@ Arquivos cobertos (lista mínima):
 3. **Sem entrada após o início:** não aceita ativação se `now >= starts_at` (kickoff). Grade e API recusam jogos já iniciados.
 4. **LAY** = responsabilidade; **BACK** = stake.
 5. **Ganhou na ArbiShield** (`outcome: arbishield` → `lost_exchange`): **credita o stake** no Saldo Reembolso (`deduction_balance_cents`) e **destrava**.
-6. **Ganhou na Exchange** (`outcome: exchange` → `won_exchange`): **R$ 0** (não credita Reembolso); **destrava e devolve** o stake à origem; **cobra dedução ArbiShield** + **comissão Exchange 4,5% do lucro**.
+6. **Ganhou na Exchange** (`outcome: exchange` → `won_exchange`): **R$ 0** (não credita Reembolso); **destrava e devolve** o stake à origem; **cobra só a dedução ArbiShield** (ex. LAY 1000@10 → R$ 91,11). A fatia Exchange 4,5% já entra no cálculo da dedução — **não** debita de novo.
 7. **Empate Anula / void:** **destrava o stake** (devolve à origem — Real/Demo/Investidor).
 8. **Cancelar proteção:** **destrava o stake** (devolve à origem).
-9. **LAY lucro (fees):** `responsabilidade / odd` — ex. R$1000 @10 = R$100 → cliente R$15 · Exchange R$4,50 · ArbiShield R$80,50 (`lay-lucro-responsabilidade-sobre-odd-v8`).
+9. **LAY lucro (fees):** `resp/(odd−1)` — ex. R$1000 @10 = R$111,11 → Exchange R$5 · cliente R$15 · ArbiShield R$91,11. Carteira: `+stake − 91,11` (ex. 8.067,52+1.000−91,11=**8.976,41**). Marker: `settle-exchange-cobra-so-deducao-v9`.
 
 Alterar qualquer item acima exige pedido explícito + atualização dos testes do contrato.
 <!-- END:protection-flow-lock -->

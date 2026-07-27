@@ -414,18 +414,21 @@
       }
       function deductionCentsOf(row) {
         var meta = metaOf(row);
-        // stake_lock ativo: sempre mostra fórmula vigente
-        // LAY: resp/odd − 4,5% − 1,5% (ex.: 1000@10 → 80,50; não stored 91,11/96,11).
+        // stake_lock ativo: sempre mostra fórmula vigente (lucro − 4,5% − 1,5%)
+        // ex.: 1000@10 → 91,11 (não stored 80,50/96,11).
         if (!isFeeUpfront(row)) {
           var stakeLive = nCents(row.responsibility_cents || row.amount_cents);
           var oddLive = Number(meta.market_odd);
           if (!(oddLive > 1.01)) oddLive = Number(row.odd || 0);
           var mtLive = String(meta.market_type || "").toUpperCase();
+          if (mtLive === "LAY" && oddLive > 1.01) {
+            oddLive = oddLive / (oddLive - 1);
+          }
           if (stakeLive > 0 && oddLive > 1.01) {
-            var profitLive =
-              mtLive === "LAY"
-                ? Math.max(0, Math.round(stakeLive / oddLive))
-                : Math.max(0, Math.round(stakeLive * oddLive) - stakeLive);
+            var profitLive = Math.max(
+              0,
+              Math.round(stakeLive * oddLive) - stakeLive
+            );
             var commissionLive = Math.round(profitLive * 0.045);
             var userLive = Math.round(stakeLive * 0.015);
             return Math.max(0, profitLive - commissionLive - userLive);
@@ -464,11 +467,9 @@
         var odd = Number(meta.market_odd);
         if (!(odd > 1.01)) odd = Number(row.odd || 0);
         var mt = String(meta.market_type || "").toUpperCase();
+        if (mt === "LAY" && odd > 1.01) odd = odd / (odd - 1);
         if (stake > 0 && odd > 1.01) {
-          var profit =
-            mt === "LAY"
-              ? Math.max(0, Math.round(stake / odd))
-              : Math.max(0, Math.round(stake * odd) - stake);
+          var profit = Math.max(0, Math.round(stake * odd) - stake);
           return Math.max(0, Math.round(profit * 0.045));
         }
         var gross = Number(meta.gross_profit_cents || 0);

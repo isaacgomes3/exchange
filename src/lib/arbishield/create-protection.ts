@@ -89,44 +89,25 @@ export function calcFeeUpfront(amountCents: number, odd: number) {
 
 /**
  * LAY — amountCents = responsabilidade da casa (não o stake).
- * Lucro fee = responsabilidade / odd (pedido explícito v8).
- * Ex.: 1000 @10 → 100 − 15 − 4,50 = 80,50 ArbiShield.
- * Na casa: stake LAY ≈ responsabilidade / (odd − 1) (só referência de mercado).
+ * Lucro fee = resp/(odd−1). Ex.: 1000 @10 → 111,11 → dedução 91,11.
+ * Na casa: stake LAY ≈ responsabilidade / (odd − 1).
  */
 export function calcLay(amountCents: number, odd: number, _lockRatio = 0.9073) {
   const marketOdd = Number.isFinite(odd) && odd > 1.01 ? odd : 1.01;
   const backOdd = layToBackOdd(marketOdd);
   const liability =
     Number.isFinite(amountCents) && amountCents > 0 ? Math.floor(amountCents) : 0;
-  const grossProfitCents =
-    marketOdd > 1.01 ? Math.max(0, Math.round(liability / marketOdd)) : 0;
-  const exchangeCommissionCents = Math.max(
-    0,
-    Math.round(grossProfitCents * 0.045)
-  );
-  const userProfitCents = Math.round(liability * 0.015);
-  const arbiShieldDeductionCents = Math.max(
-    0,
-    grossProfitCents - exchangeCommissionCents - userProfitCents
-  );
+  const c = calcFeeUpfront(liability, backOdd);
   const houseStakeCents =
     marketOdd > 1.01 ? Math.round(liability / (marketOdd - 1)) : 0;
   return {
+    ...c,
     stakeCents: houseStakeCents,
     responsibilityCents: liability,
     coverageCents: liability,
     odd: marketOdd,
     marketOdd,
     effectiveBackOdd: backOdd,
-    grossReturnCents: liability + grossProfitCents,
-    grossProfitCents,
-    userProfitCents,
-    arbiShieldDeductionCents,
-    exchangeCommissionCents,
-    exchangeFeeCents: exchangeCommissionCents,
-    lockedDeductionCents: 0,
-    exchangeProfitNetCents: grossProfitCents,
-    billing_model: "stake_lock_v1" as const,
     input_mode: "responsabilidade" as const,
   };
 }

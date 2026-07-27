@@ -1505,7 +1505,7 @@ async function loadExchangeSettlementPrior(protectionId) {
 }
 
 async function creditWalletForSettlement(row, outcome, now) {
-  // Marker: settle-exchange-devolve-cobra-v7 · settle-exchange-nunca-reembolso-v1
+  // Marker: settle-exchange-cobra-so-deducao-v9 · settle-exchange-nunca-reembolso-v1
   const amount = nCents(row.responsibility_cents || row.amount_cents);
   const parts = settlementCreditParts(row, outcome);
   const outcomeNorm = normalizeSettleOutcome(outcome);
@@ -1542,15 +1542,13 @@ async function creditWalletForSettlement(row, outcome, now) {
   }
 
   // Ganhou na Exchange: R$ 0 Reembolso; stake_lock DEVOLVE stake à origem;
-  // cobra dedução + comissão Exchange 4,5% do lucro.
+  // cobra SÓ dedução ArbiShield (4,5% já líquido nela — sem débito extra).
   // fee_upfront: dedução já cobrada na criação — só audita.
-  // Guarda: settle-exchange-devolve-cobra-v7
+  // Guarda: settle-exchange-cobra-so-deducao-v9
   if (!wonArbi && !isVoid) {
     const fee = settlementDeductionCents(row);
-    // Comissão 4,5% só no stake_lock (fee_upfront histórico já pagou fee “cheia”).
-    const commission = feeUpfront
-      ? 0
-      : settlementExchangeCommissionCents(row);
+    // v9: comissão NÃO debita carteira (já na fórmula da dedução)
+    const commission = 0;
     const stakeLock = isStakeLockProtection(row);
     const needsUnlock = (stakeLock || !feeUpfront) && amount > 0;
     const needsReturn = stakeLock && !feeUpfront && amount > 0;

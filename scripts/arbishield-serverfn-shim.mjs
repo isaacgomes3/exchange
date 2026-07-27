@@ -14,7 +14,7 @@ import { createRequire } from "node:module";
 // Contrato travado — import opcional (se lib faltar na VPS, usa fallback inline
 // para o shim não cair e a rota de saque continuar disponível).
 let PROTECTION_FLOW_LOCK = "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST";
-let PROTECTION_FLOW_CONTRACT_VERSION = "protection-flow-contract-v6";
+let PROTECTION_FLOW_CONTRACT_VERSION = "protection-flow-contract-v9";
 let isStakeLockProtection;
 let settlementCreditParts;
 let settlementCreditCents;
@@ -28,7 +28,7 @@ let cancelRefundCents;
 let CANCEL_FEE_UPFRONT_NO_STAKE_REFUND =
   "cancel-fee-upfront-nao-devolve-stake-v6";
 let isExchangeWalletComplete;
-let EXCHANGE_CHARGE_DEDUCTION_RULE = "settle-exchange-devolve-cobra-v7";
+let EXCHANGE_CHARGE_DEDUCTION_RULE = "settle-exchange-cobra-so-deducao-v9";
 let settlementExchangeCommissionCents;
 let EXCHANGE_COMMISSION_RATE = 0.045;
 
@@ -115,11 +115,9 @@ try {
     const mt = String(meta.market_type || "").toUpperCase();
     const compute = () => {
       if (!(stake > 0) || !(odd > 1.01)) return 0;
-      // lay-lucro-responsabilidade-sobre-odd-v8
-      const profit =
-        mt === "LAY"
-          ? Math.max(0, Math.round(stake / odd))
-          : Math.max(0, Math.round(stake * odd) - stake);
+      // lay-lucro-back-equiv-v9: LAY → backOdd
+      const eff = mt === "LAY" && odd > 1.01 ? odd / (odd - 1) : odd;
+      const profit = Math.max(0, Math.round(stake * eff) - stake);
       const commission = Math.round(profit * EXCHANGE_COMMISSION_RATE);
       const userProfit = Math.round(stake * 0.015);
       return Math.max(0, profit - commission - userProfit);
@@ -5188,11 +5186,8 @@ function calcLayContest(amountCents, odd, lockRatio = 0.9073) {
       : 0.9073;
   const stakeRealCents = Math.round(responsibilityCents / (o - 1));
   const lockedDeductionCents = Math.round(stakeRealCents * ratio);
-  // lay-lucro-responsabilidade-sobre-odd-v8: lucro = resp / odd
-  const exchangeProfitGrossCents = Math.max(
-    0,
-    Math.round(responsibilityCents / o)
-  );
+  // lay-lucro-back-equiv-v9: lucro = resp/(odd−1) (= stakeReal)
+  const exchangeProfitGrossCents = stakeRealCents;
   const exchangeFeeCents = Math.round(exchangeProfitGrossCents * 0.045);
   const exchangeProfitNetCents = exchangeProfitGrossCents - exchangeFeeCents;
   const userProfitCents = Math.round(responsibilityCents * 0.015);
@@ -6093,8 +6088,8 @@ async function creditWalletForSettlement(row, outcome, now) {
     return { refunded: 0, credited: 0, alreadyCredited: true };
   }
 
-  // Ganhou na Exchange: R$ 0 Reembolso; stake_lock DEVOLVE stake; cobra dedução + comissão 4,5%.
-  // Guarda: settle-exchange-devolve-cobra-v7
+  // Ganhou na Exchange: R$ 0 Reembolso; stake_lock DEVOLVE stake; cobra SÓ dedução.
+  // Guarda: settle-exchange-cobra-so-deducao-v9
   if (!wonArbi && !isVoid) {
     const fee =
       (typeof settlementDeductionCents === "function"
@@ -6102,12 +6097,8 @@ async function creditWalletForSettlement(row, outcome, now) {
         : 0) ||
       parts.fee ||
       0;
-    // Comissão 4,5% só no stake_lock (fee_upfront histórico já pagou fee “cheia”).
-    const commission = feeUpfront
-      ? 0
-      : typeof settlementExchangeCommissionCents === "function"
-        ? settlementExchangeCommissionCents(row)
-        : 0;
+    // v9: comissão NÃO debita carteira (já na fórmula da dedução)
+    const commission = 0;
     const stakeLock =
       typeof isStakeLockProtection === "function"
         ? isStakeLockProtection(row)

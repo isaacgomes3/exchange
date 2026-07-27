@@ -37,7 +37,9 @@ import {
   EXCHANGE_COMMISSION_RATE,
   exchangeCommissionCentsFromProfit,
   settlementExchangeCommissionCents,
+  settlementExchangeCommissionWalletCents,
   LAY_PROFIT_OVER_ODD_RULE,
+  EXCHANGE_NO_DOUBLE_COMMISSION_RULE,
   grossProfitCentsForFees,
 } from "./lib/protection-flow-contract.mjs";
 
@@ -46,7 +48,7 @@ const root = resolve(__dirname, "..");
 
 describe("contrato travado — metadados", () => {
   it("mantém versão e lock", () => {
-    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v8");
+    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v9");
     assert.equal(STAKE_LOCK_RULE, "stake-lock-v1");
     assert.equal(MAX_STAKE_FRACTION_OF_APOSTADOR, 0.5);
     assert.equal(ONE_OPERATION_PER_EVENT, true);
@@ -74,7 +76,7 @@ describe("contrato travado — metadados", () => {
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.chargeDeductionOnly, true);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.unlockWithoutReturn, false);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.unlockReturnToOrigin, true);
-    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.chargeExchangeCommission, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.chargeExchangeCommission, false);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.void.unlockReturnToOrigin, true);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.cancel.unlockReturnToOrigin, true);
   });
@@ -86,7 +88,7 @@ describe("contrato travado — metadados", () => {
       "utf8"
     );
     assert.match(agents, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
-    assert.match(agents, /protection-flow-contract-v8/);
+    assert.match(agents, /protection-flow-contract-v9/);
     assert.match(agents, /LOCKED/);
     assert.match(agents, /solicitação explícita/);
     assert.match(agents, /docs\/PROTECTION_FLOW_LOCKED\.md/);
@@ -100,16 +102,16 @@ describe("contrato travado — metadados", () => {
     assert.match(agents, /Ganhou na Exchange/);
     assert.match(agents, /destrava e devolve/);
     assert.match(agents, /Empate Anula/);
-    assert.match(agents, /80,?50|lay-lucro-responsabilidade-sobre-odd-v8/);
+    assert.match(agents, /8\.976,?41|91,?11|settle-exchange-cobra-so-deducao-v9/);
     assert.match(lockedDoc, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
-    assert.match(lockedDoc, /protection-flow-contract-v8/);
+    assert.match(lockedDoc, /protection-flow-contract-v9/);
     assert.match(lockedDoc, /LOCKED/);
     assert.match(lockedDoc, /solicitação explícita/);
     assert.match(lockedDoc, /Uma operação por evento|1 operação por evento|uma proteção por jogo/i);
     assert.match(lockedDoc, /antes do início|antes do kickoff/i);
-    assert.match(lockedDoc, /settle-exchange-devolve-cobra-v7/);
+    assert.match(lockedDoc, /settle-exchange-cobra-so-deducao-v9/);
     assert.match(lockedDoc, /Destrava e DEVOLVE|destrava e DEVOLVE|destrava e devolve/i);
-    assert.match(lockedDoc, /80,?50|responsabilidade \/ odd|lay-lucro-responsabilidade-sobre-odd-v8/);
+    assert.match(lockedDoc, /8\.976,?41|91,?11/);
   });
 
   it("prelive e shim importam o contrato", () => {
@@ -219,15 +221,14 @@ describe("ativação — 1 op/evento e antes do kickoff", () => {
 });
 
 describe("cálculo dedução", () => {
-  it("LAY @ 20 resp. R$1000 → lucro = resp/odd − 4,5% − 1,5%", () => {
+  it("LAY @ 20 resp. R$1000 → lucro = resp/(odd−1) − 4,5% − 1,5%", () => {
     const c = calcLay(100_000, 20);
     assert.equal(c.input_mode, "responsabilidade");
     assert.equal(c.odd, 20);
     assert.equal(c.billing_model, "stake_lock_v1");
-    // lucro 5000 − comissão 225 − usuário 1500 = 3275
-    assert.equal(c.grossProfitCents, 5000);
-    assert.equal(c.arbiShieldDeductionCents, 3275);
-    assert.equal(c.exchangeCommissionCents, 225);
+    // lucro 5263 − comissão 237 − usuário 1500 = 3526
+    assert.equal(c.arbiShieldDeductionCents, 3526);
+    assert.equal(c.exchangeCommissionCents, 237);
   });
 
   it("BACK usa stake direto", () => {
@@ -428,31 +429,32 @@ describe("cancel — fee_upfront nunca devolve stake", () => {
 });
 
 describe("Comissão Exchange 4,5% do lucro", () => {
-  it("LAY 1000 @10 → lucro 100 · cliente 15 · Exchange 4,50 · ArbiShield 80,50", () => {
+  it("LAY 1000 @10 → lucro 111,11 · cliente 15 · Exchange 5 · ArbiShield 91,11", () => {
     assert.equal(EXCHANGE_COMMISSION_RATE, 0.045);
-    assert.equal(
-      LAY_PROFIT_OVER_ODD_RULE,
-      "lay-lucro-responsabilidade-sobre-odd-v8"
-    );
-    assert.equal(grossProfitCentsForFees(100_000, 10, "LAY"), 10_000);
+    assert.equal(LAY_PROFIT_OVER_ODD_RULE, "lay-lucro-back-equiv-v9");
+    assert.equal(grossProfitCentsForFees(100_000, 10, "LAY"), 11_111);
     const c = calcLay(100_000, 10);
-    assert.equal(c.grossProfitCents, 10_000);
+    assert.equal(c.grossProfitCents, 11_111);
     assert.equal(c.userProfitCents, 1500);
-    assert.equal(c.exchangeCommissionCents, 450);
+    assert.equal(c.exchangeCommissionCents, Math.round(11111 * 0.045)); // 500
     assert.equal(c.exchangeFeeCents, c.exchangeCommissionCents);
-    // 10000 − 450 − 1500 = 8050
-    assert.equal(c.arbiShieldDeductionCents, 8050);
+    // 11111 − 500 − 1500 = 9111
+    assert.equal(c.arbiShieldDeductionCents, 9111);
+    // Carteira: 8067,52 + 1000 − 91,11 = 8976,41
+    assert.equal(806_752 + 100_000 - c.arbiShieldDeductionCents, 897_641);
+    // Comissão NÃO debita de novo
+    assert.equal(settlementExchangeCommissionWalletCents(c), 0);
     assert.equal(
-      exchangeCommissionCentsFromProfit(10_000),
-      c.exchangeCommissionCents
+      EXCHANGE_NO_DOUBLE_COMMISSION_RULE,
+      "settle-exchange-sem-comissao-extra-v9"
     );
   });
 
-  it("stake_lock com stored antigo 9111/9611 recalcula 8050 no settle", () => {
+  it("stake_lock com stored antigo 8050/9611 recalcula 9111 no settle", () => {
     const row = {
       amount_cents: 100_000,
       responsibility_cents: 100_000,
-      platform_deduction_cents: 9611,
+      platform_deduction_cents: 8050,
       odd: 10,
       metadata: {
         billing_model: "stake_lock_v1",
@@ -461,18 +463,19 @@ describe("Comissão Exchange 4,5% do lucro", () => {
         market_odd: 10,
       },
     };
-    assert.equal(settlementDeductionCents(row), 8050);
-    assert.equal(settlementExchangeCommissionCents(row), 450);
+    assert.equal(settlementDeductionCents(row), 9111);
+    assert.equal(settlementExchangeCommissionCents(row), 500);
+    assert.equal(settlementExchangeCommissionWalletCents(row), 0);
   });
 
   it("settlementExchangeCommissionCents lê exchange_fee_cents / meta", () => {
     assert.equal(
       settlementExchangeCommissionCents({
-        exchange_fee_cents: 450,
-        platform_deduction_cents: 8050,
+        exchange_fee_cents: 500,
+        platform_deduction_cents: 9111,
         metadata: { billing_model: "stake_lock_v1" },
       }),
-      450
+      500
     );
     assert.equal(
       settlementExchangeCommissionCents({
@@ -481,7 +484,7 @@ describe("Comissão Exchange 4,5% do lucro", () => {
         odd: 10,
         metadata: { market_type: "LAY", market_odd: 10 },
       }),
-      450
+      500
     );
   });
 
@@ -504,11 +507,11 @@ describe("Comissão Exchange 4,5% do lucro", () => {
   });
 });
 
-describe("Exchange/PERDEU — devolve stake · cobra dedução + comissão · R$ 0 Reembolso", () => {
-  it("guarda settle-exchange-devolve-cobra-v7", () => {
+describe("Exchange/PERDEU — devolve stake · cobra SÓ dedução · R$ 0 Reembolso", () => {
+  it("guarda settle-exchange-cobra-so-deducao-v9", () => {
     assert.equal(
       EXCHANGE_CHARGE_DEDUCTION_RULE,
-      "settle-exchange-devolve-cobra-v7"
+      "settle-exchange-cobra-so-deducao-v9"
     );
   });
 
@@ -529,13 +532,14 @@ describe("Exchange/PERDEU — devolve stake · cobra dedução + comissão · R$
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.unlockReturnToOrigin, true);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.unlockWithoutReturn, false);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.creditReembolso, false);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.chargeExchangeCommission, false);
   });
 
   it("isExchangeWalletComplete exige fee + devolução no stake_lock", () => {
     assert.equal(
       isExchangeWalletComplete({
         feeUpfront: false,
-        feeExpected: 8050,
+        feeExpected: 9111,
         feeCharged: 0,
         unlocked: true,
         needsUnlock: true,
@@ -547,8 +551,8 @@ describe("Exchange/PERDEU — devolve stake · cobra dedução + comissão · R$
     assert.equal(
       isExchangeWalletComplete({
         feeUpfront: false,
-        feeExpected: 8050,
-        feeCharged: 8050,
+        feeExpected: 9111,
+        feeCharged: 9111,
         unlocked: true,
         needsUnlock: true,
         stakeReturned: false,
@@ -559,8 +563,8 @@ describe("Exchange/PERDEU — devolve stake · cobra dedução + comissão · R$
     assert.equal(
       isExchangeWalletComplete({
         feeUpfront: false,
-        feeExpected: 8050,
-        feeCharged: 8050,
+        feeExpected: 9111,
+        feeCharged: 9111,
         unlocked: true,
         needsUnlock: true,
         stakeReturned: true,
@@ -580,7 +584,7 @@ describe("Exchange/PERDEU — devolve stake · cobra dedução + comissão · R$
     );
   });
 
-  it("prelive/shim cobram dedução e devolvem stake no Exchange", () => {
+  it("prelive/shim cobram SÓ dedução e devolvem stake no Exchange", () => {
     const prelive = readFileSync(
       resolve(root, "scripts/arbishield-prelive-events.mjs"),
       "utf8"
@@ -589,14 +593,14 @@ describe("Exchange/PERDEU — devolve stake · cobra dedução + comissão · R$
       resolve(root, "scripts/arbishield-serverfn-shim.mjs"),
       "utf8"
     );
-    assert.match(prelive, /settle-exchange-devolve-cobra-v7/);
-    assert.match(shim, /settle-exchange-devolve-cobra-v7/);
+    assert.match(prelive, /settle-exchange-cobra-so-deducao-v9/);
+    assert.match(shim, /settle-exchange-cobra-so-deducao-v9/);
     assert.match(prelive, /needsReturn/);
     assert.match(shim, /needsReturn/);
     assert.match(prelive, /stake_returned/);
     assert.match(shim, /stake_returned/);
-    assert.match(prelive, /destrava e devolve stake/);
-    assert.match(shim, /destrava e devolve stake/);
+    assert.match(prelive, /const commission = 0/);
+    assert.match(shim, /const commission = 0/);
     assert.match(prelive, /Exchange incompleto/);
     assert.match(shim, /Exchange incompleto/);
   });

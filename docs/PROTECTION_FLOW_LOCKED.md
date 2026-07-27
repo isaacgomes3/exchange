@@ -2,7 +2,7 @@
 
 **Status:** LOCKED  
 **Marker:** `DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST`  
-**Versão:** `protection-flow-contract-v8`  
+**Versão:** `protection-flow-contract-v9`  
 **Modelo:** `stake_lock_v1`  
 **Fonte da verdade:** `scripts/lib/protection-flow-contract.mjs`  
 **Espelho em:** `AGENTS.md` (bloco `<!-- BEGIN:protection-flow-lock -->`)  
@@ -67,22 +67,24 @@ Exemplo sucessivo:
 - **Destrava** o locked
 - **Não** cobra dedução
 
-### 3. Ganhou na Exchange (pedido explícito v7)
+### 3. Ganhou na Exchange (pedido explícito v9)
 
 - Outcome: `exchange` → status `won_exchange`
 - **R$ 0** no Saldo Reembolso (não credita)
 - **Destrava e DEVOLVE** o stake à origem (Apostador / Demo / Investidor)
-- **Cobra a dedução ArbiShield** (`lucro − 4,5% − 1,5%`)
-- **Cobra comissão Exchange 4,5%** sobre o lucro bruto da aposta
+- **Cobra SÓ a dedução ArbiShield** (`lucro − 4,5% − 1,5%`)
+- **NÃO** debita comissão Exchange de novo na carteira (já líquida na dedução)
+- Ex. LAY R$1000 @10: `8.067,52 + 1.000 − 91,11 = 8.976,41`
+- Marker: `settle-exchange-cobra-so-deducao-v9`
 
-### 3b. Lucro LAY para fees (pedido explícito v8)
+### 3b. Lucro LAY para fees
 
-- Lucro = **responsabilidade / odd** (não `/(odd−1)`)
-- Ex.: R$1000 @10 → lucro R$100
+- Lucro = **responsabilidade / (odd − 1)** (back equivalente)
+- Ex.: R$1000 @10 → lucro R$111,11
+  - Exchange (4,5% do lucro): **R$5,00** (só no cálculo)
   - Cliente (1,5% da resp.): **R$15,00**
-  - Exchange (4,5% do lucro): **R$4,50**
-  - ArbiShield: **R$80,50**
-- Marker: `lay-lucro-responsabilidade-sobre-odd-v8`
+  - ArbiShield (cobrado): **R$91,11**
+- Marker: `lay-lucro-back-equiv-v9`
 
 ### 4. Empate Anula / void
 
@@ -102,10 +104,10 @@ Exemplo sucessivo:
 ```
 ATIVAR   → só antes do kickoff · 1 op/evento · trava stake · máx 50% do restante
 ARBI     → stake → Saldo Reembolso + destrava
-EXCHANGE → R$ 0 Reembolso · destrava e devolve · cobra dedução + comissão 4,5%
+EXCHANGE → R$ 0 Reembolso · destrava e devolve · cobra só dedução (ex. −91,11)
 EMPATE   → destrava e devolve à origem
 CANCELAR → destrava e devolve à origem
 ```
 
 **Saldo Reembolso** = `profiles.deduction_balance_cents`  
-**Marker settle Exchange:** `settle-exchange-devolve-cobra-v7`
+**Marker settle Exchange:** `settle-exchange-cobra-so-deducao-v9`

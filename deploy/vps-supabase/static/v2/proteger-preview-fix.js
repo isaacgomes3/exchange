@@ -1,8 +1,9 @@
 /**
  * Override externo do preview Proteger.
  * Roda FORA do IIFE — regrava #preview depois do updatePreview legado.
- * LAY lucro fee = resp/odd (ex.: 1000@10 → 100);
- * dedução = lucro − 4,5% − 1,5% (= 80,50).
+ * LAY odd L → back L/(L-1); lucro = resp/(odd−1);
+ * dedução = lucro − 4,5% − 1,5% (= 91,11 em 1000@10).
+ * Carteira no PERDEU cobra só a dedução (sem comissão extra).
  */
 (function () {
   function money(cents) {
@@ -40,14 +41,8 @@
 
     var layOdd = odd > 1.01 ? odd : 1.01;
     var effOdd = mt === "LAY" ? layOdd / (layOdd - 1) : layOdd;
-    var retorno =
-      mt === "LAY"
-        ? amountCents + Math.max(0, Math.round(amountCents / layOdd))
-        : Math.round(amountCents * effOdd);
-    var lucroBruto =
-      mt === "LAY"
-        ? Math.max(0, Math.round(amountCents / layOdd))
-        : Math.max(0, retorno - amountCents);
+    var retorno = Math.round(amountCents * effOdd);
+    var lucroBruto = Math.max(0, retorno - amountCents);
     var seuLucro = Math.round(amountCents * 0.015);
     var comissaoEx = Math.round(Math.max(0, lucroBruto) * 0.045);
     var deducao = Math.max(0, lucroBruto - comissaoEx - seuLucro);
