@@ -114,12 +114,7 @@ let settlementDeductionCents;
 let calcLay;
 try {
   const mod = await import(
-    pathToFileURL(
-      path.resolve(
-        path.dirname(new URL(import.meta.url).pathname),
-        "lib/protection-flow-contract.mjs"
-      )
-    ).href
+    pathToFileURL(path.resolve(__dirname, "lib/protection-flow-contract.mjs")).href
   );
   settlementDeductionCents = mod.settlementDeductionCents;
   calcLay = mod.calcLay;
