@@ -88,6 +88,7 @@
     protection_settlement: "Liquidação de proteção",
     protection_lock: "Travamento de proteção",
     protection_fee: "Taxa de proteção",
+    exchange_commission: "Comissão Exchange (4,5%)",
     protection_refund: "Reembolso de proteção",
     protection_release: "Liberação de proteção",
     protection_unlock: "Destravamento de proteção",
@@ -151,6 +152,9 @@
       if (o === "exchange" || o === "won_exchange") return "Liquidação · Bateu Exchange";
       if (o === "void" || o === "empate_anula") return "Liquidação · Empate Anula";
       return "Liquidação de proteção";
+    }
+    if (t === "exchange_commission") {
+      return meta.label || "Comissão Exchange (4,5% do lucro)";
     }
     return TX_TYPE_LABELS[t] || (row && row.type) || "—";
   }

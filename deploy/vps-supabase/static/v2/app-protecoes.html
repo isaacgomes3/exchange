@@ -7,7 +7,7 @@
   <title>Gestão de Proteções — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="protecoes-cancel-stake-lock-v6" />
+  <meta name="arbishield-build" content="protecoes-exchange-comissao-45-v6e" />
   <link rel="stylesheet" href="/v2.css?v=protecoes-cancel-stake-lock-v6" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js?v=protecoes-cancel-stake-lock-v6"></script>
@@ -861,6 +861,25 @@
                 "</b></div>" +
                 '<div class="prot-kv-line"><span>Lucro do usuário (1,5%)</span><b>' +
                 money(lucroUser) +
+                "</b></div>" +
+                '<div class="prot-kv-line"><span>Comissão Exchange (4,5% do lucro)</span><b>' +
+                money(
+                  (function () {
+                    var m = meta;
+                    var raw =
+                      it.exchange_fee_cents != null
+                        ? it.exchange_fee_cents
+                        : m.exchange_commission_cents != null
+                          ? m.exchange_commission_cents
+                          : m.exchange_fee_cents;
+                    if (Number(raw) > 0) return Math.max(0, Number(raw) || 0);
+                    var gross = Number(m.gross_profit_cents || 0);
+                    if (!(gross > 0) && deducao > 0 && lucroUser >= 0) {
+                      gross = deducao + lucroUser;
+                    }
+                    return Math.max(0, Math.round(gross * 0.045));
+                  })()
+                ) +
                 "</b></div>" +
               "</div>" +
             "</div>" +

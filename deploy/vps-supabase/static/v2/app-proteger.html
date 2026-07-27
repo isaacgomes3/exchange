@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <meta name="arbishield-build" content="proteger-stake-lock-toast-v6d" />
+  <meta name="arbishield-build" content="proteger-exchange-comissao-45-v6e" />
   <meta name="arbishield-features" content="proteger-stake-lock-v6-max-btn-lime proteger-espelho-readonly-v13" />
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=proteger-stake-lock-toast-v6d" />
+  <link rel="stylesheet" href="/v2.css?v=proteger-exchange-comissao-45-v6e" />
   <style>
     .term-score {
       display: inline-flex;
@@ -68,8 +68,8 @@
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=proteger-stake-lock-toast-v6d"></script>
-  <script src="/v2-shell.js?v=proteger-stake-lock-toast-v6d" defer></script>
+  <script src="/v2.js?v=proteger-exchange-comissao-45-v6e"></script>
+  <script src="/v2-shell.js?v=proteger-exchange-comissao-45-v6e" defer></script>
 </head>
 <body data-shell="app" data-active="proteger">
   <div class="page-head term-head">
@@ -591,6 +591,9 @@
           "<div><span>Retorno casa externa</span><b>" + money(retorno) + "</b></div>" +
           "<div><span>Seu lucro (1,5%)</span><b>" + money(seuLucro) + "</b></div>" +
           "<div><span>Dedução se ganhar Exchange</span><b>" + money(deducao) + "</b></div>" +
+          "<div><span>Comissão Exchange (4,5% do lucro)</span><b>" +
+          money(Math.round(Math.max(0, lucroBruto) * 0.045)) +
+          "</b></div>" +
           "<div><span>Saldo disponível agora</span><b>" + money(avail) + "</b></div>" +
           maxLines;
       }

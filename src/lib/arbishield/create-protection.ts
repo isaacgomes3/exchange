@@ -61,6 +61,10 @@ export function calcFeeUpfront(amountCents: number, odd: number) {
   const grossProfitCents = Math.max(0, grossReturnCents - coverage);
   const userProfitCents = Math.round(coverage * 0.015);
   const arbiShieldDeductionCents = Math.max(0, grossProfitCents - userProfitCents);
+  const exchangeCommissionCents = Math.max(
+    0,
+    Math.round(grossProfitCents * 0.045)
+  );
   return {
     stakeCents: coverage,
     responsibilityCents: coverage,
@@ -71,7 +75,8 @@ export function calcFeeUpfront(amountCents: number, odd: number) {
     grossProfitCents,
     userProfitCents,
     arbiShieldDeductionCents,
-    exchangeFeeCents: 0,
+    exchangeCommissionCents,
+    exchangeFeeCents: exchangeCommissionCents,
     lockedDeductionCents: 0,
     exchangeProfitNetCents: grossProfitCents,
     billing_model: "stake_lock_v1" as const,
@@ -394,6 +399,11 @@ export async function createProtection(
     stake_cents: marketType === "BACK" ? amountCents : num(c.stakeCents),
     responsibility_cents:
       marketType === "LAY" ? amountCents : num(c.responsibilityCents),
+    gross_profit_cents: num(c.grossProfitCents),
+    user_profit_cents: num(c.userProfitCents),
+    exchange_commission_cents: num(c.exchangeCommissionCents || c.exchangeFeeCents),
+    exchange_commission_rate: 0.045,
+    exchange_fee_cents: num(c.exchangeCommissionCents || c.exchangeFeeCents),
     calculations: c,
     balance_type: balanceType,
   };
@@ -433,7 +443,7 @@ export async function createProtection(
         platform_deduction_cents: feeCents,
         platform_profit_cents: feeCents,
         locked_deduction_cents: 0,
-        exchange_fee_cents: 0,
+        exchange_fee_cents: Number(c.exchangeFeeCents || c.exchangeCommissionCents || 0),
         exchange_profit_net_cents: c.grossProfitCents,
         balance_before_cents: balanceBefore,
         balance_after_cents: balanceAfter,

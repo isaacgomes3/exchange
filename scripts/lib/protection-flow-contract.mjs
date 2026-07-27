@@ -371,7 +371,53 @@ export function settlementStatusForOutcome(outcome) {
 /**
  * fee_upfront / dedução sobre odd BACK efetiva.
  * amountCents = cobertura (LAY=responsabilidade · BACK=stake).
+ *
+ * Comissão Exchange (INSERT): 4,5% sobre o lucro bruto da aposta.
+ * Não altera a fórmula da dedução ArbiShield (lucro − 1,5%).
  */
+export const EXCHANGE_COMMISSION_RATE = 0.045;
+
+export function exchangeCommissionCentsFromProfit(grossProfitCents) {
+  return Math.max(
+    0,
+    Math.round(Math.max(0, n(grossProfitCents)) * EXCHANGE_COMMISSION_RATE)
+  );
+}
+
+/** Comissão Exchange persistida / recalculada (4,5% do lucro). */
+export function settlementExchangeCommissionCents(row) {
+  const meta =
+    row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  const raw =
+    row?.exchange_fee_cents != null
+      ? row.exchange_fee_cents
+      : meta.exchange_commission_cents != null
+        ? meta.exchange_commission_cents
+        : meta.exchange_fee_cents;
+  let fee = Math.max(0, n(raw));
+  if (fee > 0) return fee;
+  const gross =
+    meta.gross_profit_cents != null
+      ? n(meta.gross_profit_cents)
+      : row?.exchange_profit_net_cents != null
+        ? n(row.exchange_profit_net_cents)
+        : 0;
+  if (gross > 0) return exchangeCommissionCentsFromProfit(gross);
+  // Recalcula lucro a partir de stake/odd se necessário
+  const stake = n(
+    row?.responsibility_cents || row?.amount_cents || meta.stake_cents
+  );
+  let odd = Number(meta.market_odd);
+  if (!(odd > 1.01)) odd = Number(row?.odd || 0);
+  const mt = String(meta.market_type || "").toUpperCase();
+  if (mt === "LAY" && odd > 1.01) odd = odd / (odd - 1);
+  if (stake > 0 && odd > 1.01) {
+    const profit = Math.max(0, Math.round(stake * odd) - stake);
+    return exchangeCommissionCentsFromProfit(profit);
+  }
+  return 0;
+}
+
 export function calcFeeUpfront(amountCents, odd) {
   const coverage =
     Number.isFinite(amountCents) && amountCents > 0 ? Math.floor(amountCents) : 0;
@@ -383,6 +429,8 @@ export function calcFeeUpfront(amountCents, odd) {
     0,
     grossProfitCents - userProfitCents
   );
+  const exchangeCommissionCents =
+    exchangeCommissionCentsFromProfit(grossProfitCents);
   return {
     stakeCents: coverage,
     responsibilityCents: coverage,
@@ -393,6 +441,10 @@ export function calcFeeUpfront(amountCents, odd) {
     grossProfitCents,
     userProfitCents,
     arbiShieldDeductionCents,
+    /** Comissão Exchange 4,5% sobre o lucro (cobrada só no PERDEU/Exchange). */
+    exchangeCommissionCents,
+    exchangeFeeCents: exchangeCommissionCents,
+    exchange_commission_rate: EXCHANGE_COMMISSION_RATE,
     billing_model: "stake_lock_v1",
   };
 }

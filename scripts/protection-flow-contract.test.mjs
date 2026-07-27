@@ -34,6 +34,9 @@ import {
   CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
   EXCHANGE_CHARGE_DEDUCTION_RULE,
   isExchangeWalletComplete,
+  EXCHANGE_COMMISSION_RATE,
+  exchangeCommissionCentsFromProfit,
+  settlementExchangeCommissionCents,
 } from "./lib/protection-flow-contract.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -386,6 +389,61 @@ describe("cancel — fee_upfront nunca devolve stake", () => {
       metadata: { billing_model: "stake_lock_v1", stake_lock: true },
     };
     assert.equal(cancelRefundCents(row), 100_000);
+  });
+});
+
+describe("Comissão Exchange 4,5% do lucro", () => {
+  it("taxa 4,5% e não altera dedução (lucro − 1,5%)", () => {
+    assert.equal(EXCHANGE_COMMISSION_RATE, 0.045);
+    const c = calcLay(100_000, 10);
+    // lucro bruto LAY 1000 @10 → backOdd 1.111… → profit 11111
+    assert.equal(c.grossProfitCents, 11111);
+    assert.equal(c.userProfitCents, 1500);
+    assert.equal(c.arbiShieldDeductionCents, 9611); // inalterado
+    assert.equal(c.exchangeCommissionCents, Math.round(11111 * 0.045)); // 500
+    assert.equal(c.exchangeFeeCents, c.exchangeCommissionCents);
+    assert.equal(
+      exchangeCommissionCentsFromProfit(11111),
+      c.exchangeCommissionCents
+    );
+  });
+
+  it("settlementExchangeCommissionCents lê exchange_fee_cents / meta", () => {
+    assert.equal(
+      settlementExchangeCommissionCents({
+        exchange_fee_cents: 500,
+        platform_deduction_cents: 9611,
+        metadata: { billing_model: "stake_lock_v1" },
+      }),
+      500
+    );
+    assert.equal(
+      settlementExchangeCommissionCents({
+        amount_cents: 100_000,
+        responsibility_cents: 100_000,
+        odd: 10,
+        metadata: { market_type: "LAY", market_odd: 10, gross_profit_cents: 11111 },
+      }),
+      500
+    );
+  });
+
+  it("UI bilhete e extrato citam comissão 4,5%", () => {
+    const ui = readFileSync(
+      resolve(root, "deploy/vps-supabase/static/v2/app-proteger.html"),
+      "utf8"
+    );
+    const prot = readFileSync(
+      resolve(root, "deploy/vps-supabase/static/v2/app-protecoes.html"),
+      "utf8"
+    );
+    const pages = readFileSync(
+      resolve(root, "deploy/vps-supabase/static/v2/v2-pages.js"),
+      "utf8"
+    );
+    assert.match(ui, /Comissão Exchange \(4,5% do lucro\)/);
+    assert.match(prot, /Comissão Exchange \(4,5% do lucro\)/);
+    assert.match(pages, /exchange_commission/);
   });
 });
 

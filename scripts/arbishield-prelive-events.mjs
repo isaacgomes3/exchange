@@ -33,6 +33,8 @@ import {
   CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
   isExchangeWalletComplete,
   EXCHANGE_CHARGE_DEDUCTION_RULE,
+  settlementExchangeCommissionCents,
+  EXCHANGE_COMMISSION_RATE,
 } from "./lib/protection-flow-contract.mjs";
 import {
   BETBRA_INPLAY_SYNC_VERSION,
@@ -1444,11 +1446,12 @@ async function loadExchangeSettlementPrior(protectionId) {
     feeShortfall: 0,
     unlocked: false,
     hasTx: false,
+    commissionCharged: 0,
   };
   if (!protectionId) return empty;
   try {
     const rows = await sb(
-      `/rest/v1/wallet_transactions?ref=eq.${encodeURIComponent(protectionId)}&type=eq.protection_settlement&select=id,amount_cents,metadata&order=created_at.desc&limit=20`,
+      `/rest/v1/wallet_transactions?ref=eq.${encodeURIComponent(protectionId)}&type=in.(protection_settlement,exchange_commission)&select=id,type,amount_cents,metadata&order=created_at.desc&limit=40`,
       { token: SERVICE_KEY }
     );
     const list = Array.isArray(rows) ? rows : [];
@@ -1456,9 +1459,15 @@ async function loadExchangeSettlementPrior(protectionId) {
     let feeShortfall = 0;
     let unlocked = false;
     let hasTx = false;
+    let commissionCharged = 0;
     for (const t of list) {
       const meta =
         t.metadata && typeof t.metadata === "object" ? t.metadata : {};
+      if (String(t.type || "") === "exchange_commission") {
+        commissionCharged += Math.abs(nCents(t.amount_cents));
+        hasTx = true;
+        continue;
+      }
       if (meta.outcome && String(meta.outcome).toLowerCase() !== "exchange") {
         continue;
       }
@@ -1469,8 +1478,12 @@ async function loadExchangeSettlementPrior(protectionId) {
       }
       feeShortfall = Math.max(feeShortfall, nCents(meta.fee_shortfall_cents));
       if (meta.unlocked_locked === true) unlocked = true;
+      commissionCharged += Math.max(
+        0,
+        nCents(meta.exchange_commission_charged_cents)
+      );
     }
-    return { feeCharged, feeShortfall, unlocked, hasTx };
+    return { feeCharged, feeShortfall, unlocked, hasTx, commissionCharged };
   } catch {
     return empty;
   }
@@ -1518,6 +1531,7 @@ async function creditWalletForSettlement(row, outcome, now) {
   // Guarda: settle-exchange-cobra-deducao-v6
   if (!wonArbi && !isVoid) {
     const fee = settlementDeductionCents(row);
+    const commission = settlementExchangeCommissionCents(row);
     const stakeLock = isStakeLockProtection(row);
     const needsUnlock = (stakeLock || !feeUpfront) && amount > 0;
     const prior = await loadExchangeSettlementPrior(row.id);
@@ -1530,7 +1544,8 @@ async function creditWalletForSettlement(row, outcome, now) {
         feeShortfall: prior.feeShortfall,
         unlocked: prior.unlocked || !needsUnlock,
         needsUnlock,
-      })
+      }) &&
+      prior.commissionCharged >= commission
     ) {
       return {
         refunded: 0,
@@ -1539,6 +1554,7 @@ async function creditWalletForSettlement(row, outcome, now) {
         exchangeNoCredit: true,
         feeChargedCents: prior.feeCharged,
         feeShortfallCents: prior.feeShortfall,
+        exchangeCommissionChargedCents: prior.commissionCharged,
         unlocked: prior.unlocked,
       };
     }
@@ -1606,6 +1622,63 @@ async function creditWalletForSettlement(row, outcome, now) {
       feeShortfall = Math.max(0, left);
     }
 
+    // INSERT: Comissão Exchange 4,5% do lucro (não altera a lógica da dedução)
+    let commissionCharged = prior.commissionCharged || 0;
+    let commissionShortfall = 0;
+    let commissionNow = 0;
+    const commissionDue = Math.max(0, commission - commissionCharged);
+    if (commissionDue > 0) {
+      let left = commissionDue;
+      // saldos já refletidos no patch (pós-dedução)
+      const curDemo =
+        patch.demo_balance_cents != null
+          ? nCents(patch.demo_balance_cents)
+          : nCents(p.demo_balance_cents);
+      const curInv =
+        patch.investor_balance_cents != null
+          ? nCents(patch.investor_balance_cents)
+          : nCents(p.investor_balance_cents);
+      const curBal =
+        patch.balance_cents != null
+          ? nCents(patch.balance_cents)
+          : nCents(p.balance_cents) +
+            (patch.reusable_balance_cents != null
+              ? 0
+              : nCents(p.reusable_balance_cents));
+      const curDed =
+        patch.deduction_balance_cents != null
+          ? nCents(patch.deduction_balance_cents)
+          : nCents(p.deduction_balance_cents);
+      if (balanceType === "DEMO") {
+        const take = Math.min(curDemo, left);
+        patch.demo_balance_cents = curDemo - take;
+        commissionNow = take;
+        left -= take;
+      } else if (balanceType === "INVESTOR") {
+        const take = Math.min(curInv, left);
+        patch.investor_balance_cents = curInv - take;
+        commissionNow = take;
+        left -= take;
+      } else {
+        patch.reusable_balance_cents = 0;
+        if (curBal >= left) {
+          patch.balance_cents = curBal - left;
+          patch.deduction_balance_cents = curDed;
+          commissionNow = left;
+          left = 0;
+        } else {
+          left -= curBal;
+          const takeDed = Math.min(curDed, left);
+          patch.balance_cents = 0;
+          patch.deduction_balance_cents = curDed - takeDed;
+          commissionNow = curBal + takeDed;
+          left -= takeDed;
+        }
+      }
+      commissionCharged += commissionNow;
+      commissionShortfall = Math.max(0, left);
+    }
+
     // PATCH obrigatório — falha NÃO marca won_exchange
     await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
       method: "PATCH",
@@ -1645,6 +1718,9 @@ async function creditWalletForSettlement(row, outcome, now) {
             fee_charged_cents: feeCharged,
             fee_charged_now_cents: chargedNow,
             fee_shortfall_cents: feeShortfall,
+            exchange_commission_cents: commission,
+            exchange_commission_rate: EXCHANGE_COMMISSION_RATE,
+            exchange_commission_charged_cents: commissionCharged,
             billing_model: feeUpfront
               ? "fee_upfront_v1"
               : stakeLock
@@ -1661,6 +1737,34 @@ async function creditWalletForSettlement(row, outcome, now) {
     } catch (e) {
       console.warn("[settle] exchange no-credit tx:", e?.message || e);
     }
+    // Extrato: linha dedicada da comissão Exchange 4,5%
+    if (commissionNow > 0 || (commission > 0 && commissionCharged > 0 && commissionDue > 0)) {
+      try {
+        await sb("/rest/v1/wallet_transactions", {
+          method: "POST",
+          token: SERVICE_KEY,
+          body: {
+            user_id: row.user_id,
+            type: "exchange_commission",
+            amount_cents: commissionNow > 0 ? -commissionNow : 0,
+            ref: row.id,
+            metadata: {
+              protection_id: row.id,
+              match_id: row.match_id || null,
+              outcome: "exchange",
+              label: "Comissão Exchange (4,5% do lucro)",
+              exchange_commission_rate: EXCHANGE_COMMISSION_RATE,
+              exchange_commission_cents: commission,
+              exchange_commission_charged_cents: commissionCharged,
+              exchange_commission_shortfall_cents: commissionShortfall,
+              note: "Comissão Exchange 4,5% sobre o lucro da aposta (PERDEU/Exchange)",
+            },
+          },
+        });
+      } catch (e) {
+        console.warn("[settle] exchange_commission tx:", e?.message || e);
+      }
+    }
     return {
       refunded: 0,
       credited: 0,
@@ -1668,6 +1772,8 @@ async function creditWalletForSettlement(row, outcome, now) {
       feeUpfrontExchange: feeUpfront,
       feeChargedCents: feeCharged,
       feeShortfallCents: feeShortfall,
+      exchangeCommissionCents: commission,
+      exchangeCommissionChargedCents: commissionCharged,
       unlocked,
     };
   }
@@ -2464,6 +2570,10 @@ async function createProtection(body, userToken) {
     stake_cents: amountCents,
     user_profit_cents: c.userProfitCents,
     gross_profit_cents: c.grossProfitCents,
+    // Comissão Exchange 4,5% do lucro — cobrada só no PERDEU/Exchange
+    exchange_commission_cents: n(c.exchangeCommissionCents || c.exchangeFeeCents),
+    exchange_commission_rate: EXCHANGE_COMMISSION_RATE,
+    exchange_fee_cents: n(c.exchangeCommissionCents || c.exchangeFeeCents),
     effective_back_odd:
       marketType === "LAY" ? c.effectiveBackOdd : c.odd,
     calculations: c,
@@ -2513,7 +2623,7 @@ async function createProtection(body, userToken) {
           platform_deduction_cents: feeCents,
           platform_profit_cents: feeCents,
           locked_deduction_cents: 0,
-          exchange_fee_cents: 0,
+          exchange_fee_cents: n(c.exchangeCommissionCents || c.exchangeFeeCents),
           exchange_profit_net_cents: c.grossProfitCents,
           balance_before_cents: balanceBefore,
           balance_after_cents: balanceAfter,
