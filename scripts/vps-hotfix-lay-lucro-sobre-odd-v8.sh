@@ -1,15 +1,10 @@
 #!/usr/bin/env bash
-# Hotfix VPS: Dedução ArbiShield = lucro − 4,5% − 1,5%
-# v8: LAY lucro = responsabilidade / odd
-# Ex.: 1000 @10 = 100 → comissão 4,50 → usuário 15 → dedução 80,50
-# No PERDEU/Exchange (stake_lock): cobra 80,50 + comissão 4,50 (= 85,00 total).
+# Hotfix VPS: LAY lucro fee = responsabilidade / odd (v8)
+# Ex.: 1000 @10 = 100 → cliente 15 · Exchange 4,50 · ArbiShield 80,50
 #
-# Preferir o hotfix dedicado:
-#   scripts/vps-hotfix-lay-lucro-sobre-odd-v8.sh
-#
-# Na VPS (root), preferir download em 2 passos:
-#   curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-reembolso-lucas-perdeu-723d/scripts/vps-hotfix-deducao-menos-45-15.sh?$(date +%s)" -o /tmp/hf-deducao.sh
-#   bash /tmp/hf-deducao.sh
+# Na VPS (root):
+#   curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-reembolso-lucas-perdeu-723d/scripts/vps-hotfix-lay-lucro-sobre-odd-v8.sh?$(date +%s)" -o /tmp/hf-lay-v8.sh
+#   bash /tmp/hf-lay-v8.sh
 set -euo pipefail
 
 REF="${ARBISHIELD_REF:-cursor/fix-reembolso-lucas-perdeu-723d}"
@@ -19,7 +14,6 @@ API="https://api.github.com/repos/isaacgomes3/exchange/contents"
 SHIM_DIR="${ARBISHIELD_SHIM_DIR:-/opt/arbishield}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-$SHIM_DIR/scripts}"
 MARKER="lay-lucro-responsabilidade-sobre-odd-v8"
-UI_MARK="deducao-menos-45-15-v6f"
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
@@ -41,11 +35,11 @@ download_repo_file() {
   [[ -s "$out" ]] || die "download vazio: $rel"
 }
 
-log "1/5 contrato"
+log "1/5 contrato v8"
 tmp_c="$(mktemp)"
 download_repo_file "scripts/lib/protection-flow-contract.mjs" "$tmp_c"
 grep -q "$MARKER" "$tmp_c" || die "contrato sem $MARKER"
-grep -q 'profit - commission - userProfit' "$tmp_c" || die "contrato sem fórmula"
+grep -q 'protection-flow-contract-v8' "$tmp_c" || die "contrato sem v8"
 for dest in \
   "$SCRIPTS_DIR/lib/protection-flow-contract.mjs" \
   "$SHIM_DIR/lib/protection-flow-contract.mjs" \
@@ -58,8 +52,6 @@ rm -f "$tmp_c"
 log "2/5 prelive"
 tmp_pre="$(mktemp)"
 download_repo_file "scripts/arbishield-prelive-events.mjs" "$tmp_pre"
-grep -q 'feeUpfront' "$tmp_pre" || die "prelive sem feeUpfront"
-grep -q 'settlementExchangeCommissionCents' "$tmp_pre" || die "prelive sem commission"
 for dest in \
   "$SCRIPTS_DIR/arbishield-prelive-events.mjs" \
   "$SHIM_DIR/arbishield-prelive-events.mjs" \
@@ -75,13 +67,12 @@ rm -f "$tmp_pre"
 log "3/5 shim"
 tmp_shim="$(mktemp)"
 download_repo_file "scripts/arbishield-serverfn-shim.mjs" "$tmp_shim"
-grep -q 'Math.round(stake / odd)\|lay-lucro-responsabilidade-sobre-odd-v8' "$tmp_shim" \
-  || die "shim sem LAY resp/odd"
+grep -q "$MARKER\|Math.round(stake / odd)" "$tmp_shim" || die "shim sem LAY resp/odd"
 cp -f "$tmp_shim" "$SHIM_DIR/arbishield-serverfn-shim.mjs"
 chmod 0644 "$SHIM_DIR/arbishield-serverfn-shim.mjs"
 rm -f "$tmp_shim"
 
-log "4/5 UI (bilhete + protocolo + preview)"
+log "4/5 UI"
 for pair in \
   "deploy/vps-supabase/static/v2/app-proteger.html:app-proteger.html" \
   "deploy/vps-supabase/static/v2/app-protecoes.html:app-protecoes.html" \
@@ -90,10 +81,6 @@ do
   rel="${pair%%:*}"; name="${pair##*:}"
   tmp="$(mktemp)"
   download_repo_file "$rel" "$tmp"
-  if [[ "$name" == app-proteger.html || "$name" == app-protecoes.html ]]; then
-    grep -q "$UI_MARK\|lucroBruto - comissaoEx - seuLucro\|profitLive - commissionLive\|stakeLive / oddLive" "$tmp" \
-      || die "$name sem marca da fórmula"
-  fi
   n=0
   while IFS= read -r -d '' f; do
     cp -f "$tmp" "$f"; chmod 0644 "$f"; n=$((n+1)); echo "  OK $f"
@@ -112,8 +99,7 @@ if command -v pm2 >/dev/null 2>&1; then
 fi
 sleep 1
 echo
-echo "OK — Dedução = lucro − 4,5% − 1,5% (LAY lucro = resp/odd):"
-echo "  · Ex. LAY R\$1000 @10 → lucro R\$100 · cliente R\$15 · Exchange R\$4,50 · ArbiShield R\$80,50"
-echo "  · Protocolo ativo recalcula (não fica preso em R\$91,11/96,11 stored)"
-echo "  · Settle stake_lock cobra 80,50 + 4,50 (total 85,00)"
-echo "  · fee_upfront histórico: mantém stored; sem comissão extra no settle"
+echo "OK — LAY lucro = responsabilidade / odd (v8):"
+echo "  · Ex. R\$1000 @10 → lucro R\$100"
+echo "  · Cliente R\$15,00 · Exchange R\$4,50 · ArbiShield R\$80,50"
+echo "  · Marker: $MARKER"

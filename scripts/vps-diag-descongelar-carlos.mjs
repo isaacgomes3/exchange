@@ -20,9 +20,9 @@ const ZERO_ONLY = process.env.ZERO_ONLY === "1";
 const USER_ID_ENV = String(process.env.USER_ID || "").trim();
 const NAME = String(process.env.NAME || "Carlos Roberto").trim();
 const EMAIL = String(process.env.EMAIL || "carloskku4@gmail.com").trim().toLowerCase();
-const FEE = Math.trunc(Number(process.env.FEE_CENTS || 9111));
-const COMM = Math.trunc(Number(process.env.COMMISSION_CENTS || 500));
-const TAG = "diag-force-unfreeze-carlos-v7b";
+const FEE = Math.trunc(Number(process.env.FEE_CENTS || 8050));
+const COMM = Math.trunc(Number(process.env.COMMISSION_CENTS || 450));
+const TAG = "diag-force-unfreeze-carlos-v8";
 
 function loadEnvFile(file) {
   if (!fs.existsSync(file)) return false;

@@ -101,4 +101,4 @@ echo "  · destrava e DEVOLVE o stake à origem"
 echo "  · cobra dedução ArbiShield (lucro − 4,5% − 1,5%)"
 echo "  · cobra comissão Exchange 4,5% do lucro"
 echo
-echo "Ex. LAY R\$1000 @10: devolve R\$1000, cobra R\$91,11 + R\$5,00"
+echo "Ex. LAY R\$1000 @10: devolve R\$1000, cobra R\$80,50 + R\$4,50"

@@ -2,7 +2,7 @@
 
 **Status:** LOCKED  
 **Marker:** `DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST`  
-**Versão:** `protection-flow-contract-v7`  
+**Versão:** `protection-flow-contract-v8`  
 **Modelo:** `stake_lock_v1`  
 **Fonte da verdade:** `scripts/lib/protection-flow-contract.mjs`  
 **Espelho em:** `AGENTS.md` (bloco `<!-- BEGIN:protection-flow-lock -->`)  
@@ -74,6 +74,15 @@ Exemplo sucessivo:
 - **Destrava e DEVOLVE** o stake à origem (Apostador / Demo / Investidor)
 - **Cobra a dedução ArbiShield** (`lucro − 4,5% − 1,5%`)
 - **Cobra comissão Exchange 4,5%** sobre o lucro bruto da aposta
+
+### 3b. Lucro LAY para fees (pedido explícito v8)
+
+- Lucro = **responsabilidade / odd** (não `/(odd−1)`)
+- Ex.: R$1000 @10 → lucro R$100
+  - Cliente (1,5% da resp.): **R$15,00**
+  - Exchange (4,5% do lucro): **R$4,50**
+  - ArbiShield: **R$80,50**
+- Marker: `lay-lucro-responsabilidade-sobre-odd-v8`
 
 ### 4. Empate Anula / void
 

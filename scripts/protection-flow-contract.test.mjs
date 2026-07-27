@@ -37,6 +37,8 @@ import {
   EXCHANGE_COMMISSION_RATE,
   exchangeCommissionCentsFromProfit,
   settlementExchangeCommissionCents,
+  LAY_PROFIT_OVER_ODD_RULE,
+  grossProfitCentsForFees,
 } from "./lib/protection-flow-contract.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -44,7 +46,7 @@ const root = resolve(__dirname, "..");
 
 describe("contrato travado — metadados", () => {
   it("mantém versão e lock", () => {
-    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v7");
+    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v8");
     assert.equal(STAKE_LOCK_RULE, "stake-lock-v1");
     assert.equal(MAX_STAKE_FRACTION_OF_APOSTADOR, 0.5);
     assert.equal(ONE_OPERATION_PER_EVENT, true);
@@ -84,7 +86,7 @@ describe("contrato travado — metadados", () => {
       "utf8"
     );
     assert.match(agents, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
-    assert.match(agents, /protection-flow-contract-v7/);
+    assert.match(agents, /protection-flow-contract-v8/);
     assert.match(agents, /LOCKED/);
     assert.match(agents, /solicitação explícita/);
     assert.match(agents, /docs\/PROTECTION_FLOW_LOCKED\.md/);
@@ -98,14 +100,16 @@ describe("contrato travado — metadados", () => {
     assert.match(agents, /Ganhou na Exchange/);
     assert.match(agents, /destrava e devolve/);
     assert.match(agents, /Empate Anula/);
+    assert.match(agents, /80,?50|lay-lucro-responsabilidade-sobre-odd-v8/);
     assert.match(lockedDoc, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
-    assert.match(lockedDoc, /protection-flow-contract-v7/);
+    assert.match(lockedDoc, /protection-flow-contract-v8/);
     assert.match(lockedDoc, /LOCKED/);
     assert.match(lockedDoc, /solicitação explícita/);
     assert.match(lockedDoc, /Uma operação por evento|1 operação por evento|uma proteção por jogo/i);
     assert.match(lockedDoc, /antes do início|antes do kickoff/i);
     assert.match(lockedDoc, /settle-exchange-devolve-cobra-v7/);
     assert.match(lockedDoc, /Destrava e DEVOLVE|destrava e DEVOLVE|destrava e devolve/i);
+    assert.match(lockedDoc, /80,?50|responsabilidade \/ odd|lay-lucro-responsabilidade-sobre-odd-v8/);
   });
 
   it("prelive e shim importam o contrato", () => {
@@ -215,14 +219,15 @@ describe("ativação — 1 op/evento e antes do kickoff", () => {
 });
 
 describe("cálculo dedução", () => {
-  it("LAY @ 20 resp. R$1000 → dedução = lucro − 4,5% − 1,5%", () => {
+  it("LAY @ 20 resp. R$1000 → lucro = resp/odd − 4,5% − 1,5%", () => {
     const c = calcLay(100_000, 20);
     assert.equal(c.input_mode, "responsabilidade");
     assert.equal(c.odd, 20);
     assert.equal(c.billing_model, "stake_lock_v1");
-    // lucro 5263 − comissão 237 − usuário 1500 = 3526
-    assert.equal(c.arbiShieldDeductionCents, 3526);
-    assert.equal(c.exchangeCommissionCents, 237);
+    // lucro 5000 − comissão 225 − usuário 1500 = 3275
+    assert.equal(c.grossProfitCents, 5000);
+    assert.equal(c.arbiShieldDeductionCents, 3275);
+    assert.equal(c.exchangeCommissionCents, 225);
   });
 
   it("BACK usa stake direto", () => {
@@ -423,23 +428,27 @@ describe("cancel — fee_upfront nunca devolve stake", () => {
 });
 
 describe("Comissão Exchange 4,5% do lucro", () => {
-  it("dedução = lucro − 4,5% − 1,5% (ex.: 111,11 → 91,11)", () => {
+  it("LAY 1000 @10 → lucro 100 · cliente 15 · Exchange 4,50 · ArbiShield 80,50", () => {
     assert.equal(EXCHANGE_COMMISSION_RATE, 0.045);
-    const c = calcLay(100_000, 10);
-    // lucro bruto LAY 1000 @10 → backOdd 1.111… → profit 11111
-    assert.equal(c.grossProfitCents, 11111);
-    assert.equal(c.userProfitCents, 1500);
-    assert.equal(c.exchangeCommissionCents, Math.round(11111 * 0.045)); // 500
-    assert.equal(c.exchangeFeeCents, c.exchangeCommissionCents);
-    // 11111 − 500 − 1500 = 9111
-    assert.equal(c.arbiShieldDeductionCents, 9111);
     assert.equal(
-      exchangeCommissionCentsFromProfit(11111),
+      LAY_PROFIT_OVER_ODD_RULE,
+      "lay-lucro-responsabilidade-sobre-odd-v8"
+    );
+    assert.equal(grossProfitCentsForFees(100_000, 10, "LAY"), 10_000);
+    const c = calcLay(100_000, 10);
+    assert.equal(c.grossProfitCents, 10_000);
+    assert.equal(c.userProfitCents, 1500);
+    assert.equal(c.exchangeCommissionCents, 450);
+    assert.equal(c.exchangeFeeCents, c.exchangeCommissionCents);
+    // 10000 − 450 − 1500 = 8050
+    assert.equal(c.arbiShieldDeductionCents, 8050);
+    assert.equal(
+      exchangeCommissionCentsFromProfit(10_000),
       c.exchangeCommissionCents
     );
   });
 
-  it("stake_lock com stored antigo 9611 recalcula 9111 no settle", () => {
+  it("stake_lock com stored antigo 9111/9611 recalcula 8050 no settle", () => {
     const row = {
       amount_cents: 100_000,
       responsibility_cents: 100_000,
@@ -452,27 +461,27 @@ describe("Comissão Exchange 4,5% do lucro", () => {
         market_odd: 10,
       },
     };
-    assert.equal(settlementDeductionCents(row), 9111);
-    assert.equal(settlementExchangeCommissionCents(row), 500);
+    assert.equal(settlementDeductionCents(row), 8050);
+    assert.equal(settlementExchangeCommissionCents(row), 450);
   });
 
   it("settlementExchangeCommissionCents lê exchange_fee_cents / meta", () => {
     assert.equal(
       settlementExchangeCommissionCents({
-        exchange_fee_cents: 500,
-        platform_deduction_cents: 9111,
+        exchange_fee_cents: 450,
+        platform_deduction_cents: 8050,
         metadata: { billing_model: "stake_lock_v1" },
       }),
-      500
+      450
     );
     assert.equal(
       settlementExchangeCommissionCents({
         amount_cents: 100_000,
         responsibility_cents: 100_000,
         odd: 10,
-        metadata: { market_type: "LAY", market_odd: 10, gross_profit_cents: 11111 },
+        metadata: { market_type: "LAY", market_odd: 10 },
       }),
-      500
+      450
     );
   });
 
@@ -526,7 +535,7 @@ describe("Exchange/PERDEU — devolve stake · cobra dedução + comissão · R$
     assert.equal(
       isExchangeWalletComplete({
         feeUpfront: false,
-        feeExpected: 9111,
+        feeExpected: 8050,
         feeCharged: 0,
         unlocked: true,
         needsUnlock: true,
@@ -538,8 +547,8 @@ describe("Exchange/PERDEU — devolve stake · cobra dedução + comissão · R$
     assert.equal(
       isExchangeWalletComplete({
         feeUpfront: false,
-        feeExpected: 9111,
-        feeCharged: 9111,
+        feeExpected: 8050,
+        feeCharged: 8050,
         unlocked: true,
         needsUnlock: true,
         stakeReturned: false,
@@ -550,8 +559,8 @@ describe("Exchange/PERDEU — devolve stake · cobra dedução + comissão · R$
     assert.equal(
       isExchangeWalletComplete({
         feeUpfront: false,
-        feeExpected: 9111,
-        feeCharged: 9111,
+        feeExpected: 8050,
+        feeCharged: 8050,
         unlocked: true,
         needsUnlock: true,
         stakeReturned: true,

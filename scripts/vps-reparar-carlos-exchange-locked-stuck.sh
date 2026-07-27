@@ -55,7 +55,7 @@ log "3/3 FIX=1"
 
 echo
 echo "OK — conferir Centro Financeiro do Carlos:"
-echo "  Apostador ≈ R\$ 8.971,41 (8.067,52 + 1.000 − 91,11 − 5,00)"
+echo "  Apostador ≈ R\$ 8.982,52 (8.067,52 + 1.000 − 80,50 − 4,50)"
 echo "  Congelado = R\$ 0,00"
 echo "  Reembolso = R\$ 0,00"
 echo

@@ -258,15 +258,15 @@ async function main() {
 
   const prot = await loadCandidateProtection(user.id);
   let stake = EXPECT_LOCKED_CENTS;
-  let fee = 9111;
-  let commission = 500;
+  let fee = 8050;
+  let commission = 450;
   let protId = `orphan-locked:${user.id}`;
   let table = null;
 
   if (prot) {
     stake = n(prot.responsibility_cents || prot.amount_cents) || EXPECT_LOCKED_CENTS;
-    fee = settlementDeductionCents(prot) || 9111;
-    commission = settlementExchangeCommissionCents(prot) || 500;
+    fee = settlementDeductionCents(prot) || 8050;
+    commission = settlementExchangeCommissionCents(prot) || 450;
     protId = prot.id;
     table = prot._table === "back_protections" ? "back_protections" : "protections";
     console.log(
@@ -279,7 +279,7 @@ async function main() {
     );
   } else {
     console.warn(
-      "AVISO: proteção não encontrada — aplico force com stake=locked e fees LAY@10 (91,11+5,00)"
+      "AVISO: proteção não encontrada — aplico force com stake=locked e fees LAY@10 (80,50+4,50)"
     );
   }
 

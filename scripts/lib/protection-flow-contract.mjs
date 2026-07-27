@@ -8,7 +8,7 @@
  * de crédito no settle; os testes em protection-flow-contract.test.mjs
  * travam o comportamento no CI.
  *
- * Versão: protection-flow-contract-v7 (2026-07-27)
+ * Versão: protection-flow-contract-v8 (2026-07-27)
  *   Regra vigente (stake_lock_v1):
  *     - Ativação → trava stake; máx. 50% do Apostador RESTANTE naquele momento
  *       (evento 1: 50% da banca; evento 2: 50% do que sobrou; e assim por diante)
@@ -19,6 +19,8 @@
  *       cobra dedução ArbiShield + comissão Exchange 4,5% do lucro
  *     - Empate Anula → destrava stake (devolve à origem)
  *     - Cancelar → destrava stake (devolve à origem)
+ *     - LAY lucro fee = responsabilidade / odd (ex.: 1000@10 → 100;
+ *       cliente 15 · Exchange 4,50 · ArbiShield 80,50)
  *
  *   Histórico fee_upfront_v1 (linhas antigas): mantido só para settle/cancel
  *   de proteções já criadas com billing_model fee_upfront_v1.
@@ -28,7 +30,13 @@
  */
 
 export const PROTECTION_FLOW_CONTRACT_VERSION =
-  "protection-flow-contract-v7";
+  "protection-flow-contract-v8";
+
+/**
+ * LAY: lucro para fee = responsabilidade / odd de mercado.
+ * Pedido explícito: 1000 @10 = 100 → 15 cliente · 4,50 Exchange · 80,50 ArbiShield.
+ */
+export const LAY_PROFIT_OVER_ODD_RULE = "lay-lucro-responsabilidade-sobre-odd-v8";
 
 /** Marcador exigido pelos testes / hotfixes — não renomear. */
 export const PROTECTION_FLOW_LOCK =
@@ -278,6 +286,21 @@ export function isExchangeWalletComplete({
 }
 
 /**
+ * Lucro bruto usado nas fees.
+ * - LAY: responsabilidade / odd (marker lay-lucro-responsabilidade-sobre-odd-v8)
+ * - BACK: stake × (odd − 1)
+ */
+export function grossProfitCentsForFees(stakeCents, marketOdd, marketType) {
+  void LAY_PROFIT_OVER_ODD_RULE;
+  const stake = n(stakeCents);
+  const odd = Number(marketOdd);
+  const mt = String(marketType || "").toUpperCase();
+  if (!(stake > 0) || !(odd > 1.01)) return 0;
+  if (mt === "LAY") return Math.max(0, Math.round(stake / odd));
+  return Math.max(0, Math.round(stake * odd) - stake);
+}
+
+/**
  * Recalcula dedução vigente a partir de stake/odd:
  * lucro bruto − comissão 4,5% − lucro usuário 1,5%.
  */
@@ -290,9 +313,8 @@ export function computeArbiShieldDeductionCents(row) {
   let odd = Number(meta.market_odd);
   if (!(odd > 1.01)) odd = Number(row?.odd || 0);
   const mt = String(meta.market_type || "").toUpperCase();
-  if (mt === "LAY" && odd > 1.01) odd = odd / (odd - 1);
   if (!(stake > 0) || !(odd > 1.01)) return 0;
-  const profit = Math.max(0, Math.round(stake * odd) - stake);
+  const profit = grossProfitCentsForFees(stake, odd, mt || "BACK");
   const commission = exchangeCommissionCentsFromProfit(profit);
   const userProfit = Math.round(stake * 0.015);
   return Math.max(0, profit - commission - userProfit);
@@ -315,8 +337,8 @@ function storedPlatformDeductionCents(row) {
 /**
  * Dedução ArbiShield (cobrada no PERDEU).
  * - fee_upfront histórico: respeita stored (já cobrado na criação).
- * - stake_lock: sempre fórmula vigente lucro − 4,5% − 1,5%
- *   (ignora stored antigo 9611 para não somar comissão em dobro).
+ * - stake_lock: sempre fórmula vigente (LAY: resp/odd − 4,5% − 1,5%)
+ *   (ignora stored antigo 9111/9611 para não somar comissão em dobro).
  */
 export function settlementDeductionCents(row) {
   if (isFeeUpfrontProtection(row)) {
@@ -406,16 +428,16 @@ export function settlementStatusForOutcome(outcome) {
 }
 
 /**
- * fee_upfront / dedução sobre odd BACK efetiva.
+ * fee_upfront / dedução.
  * amountCents = cobertura (LAY=responsabilidade · BACK=stake).
  *
- * Fórmula (confirmada):
- *   lucro bruto
+ * Fórmula (pedido explícito v8):
+ *   lucro bruto (LAY = resp/odd · BACK = stake×(odd−1))
  *   − comissão Exchange 4,5% do lucro
  *   − lucro usuário 1,5% da cobertura
  *   = dedução ArbiShield
  *
- * Ex.: lucro 111,11 → comissão 5,00 → usuário 15,00 → dedução 91,11
+ * Ex. LAY 1000 @10 → lucro 100 → Exchange 4,50 · cliente 15 · ArbiShield 80,50
  */
 export const EXCHANGE_COMMISSION_RATE = 0.045;
 
@@ -452,14 +474,14 @@ export function settlementExchangeCommissionCents(row) {
   let odd = Number(meta.market_odd);
   if (!(odd > 1.01)) odd = Number(row?.odd || 0);
   const mt = String(meta.market_type || "").toUpperCase();
-  if (mt === "LAY" && odd > 1.01) odd = odd / (odd - 1);
   if (stake > 0 && odd > 1.01) {
-    const profit = Math.max(0, Math.round(stake * odd) - stake);
+    const profit = grossProfitCentsForFees(stake, odd, mt || "BACK");
     return exchangeCommissionCentsFromProfit(profit);
   }
   return 0;
 }
 
+/** BACK (e helper genérico): amountCents = stake; lucro = stake×(odd−1). */
 export function calcFeeUpfront(amountCents, odd) {
   const coverage =
     Number.isFinite(amountCents) && amountCents > 0 ? Math.floor(amountCents) : 0;
@@ -497,7 +519,11 @@ export function layToBackOdd(layOdd) {
   return o / (o - 1);
 }
 
-/** LAY: amountCents = responsabilidade. */
+/**
+ * LAY: amountCents = responsabilidade.
+ * Lucro fee = resp / odd (não resp/(odd−1)).
+ * Ex.: 1000 @10 → 100 − 15 − 4,50 = 80,50 ArbiShield.
+ */
 export function calcLay(amountCents, odd) {
   const marketOdd = Number.isFinite(odd) && odd > 1.01 ? odd : 1.01;
   const backOdd = layToBackOdd(marketOdd);
@@ -505,17 +531,35 @@ export function calcLay(amountCents, odd) {
     Number.isFinite(amountCents) && amountCents > 0
       ? Math.floor(amountCents)
       : 0;
-  const c = calcFeeUpfront(liability, backOdd);
+  const grossProfitCents = grossProfitCentsForFees(
+    liability,
+    marketOdd,
+    "LAY"
+  );
+  const exchangeCommissionCents =
+    exchangeCommissionCentsFromProfit(grossProfitCents);
+  const userProfitCents = Math.round(liability * 0.015);
+  const arbiShieldDeductionCents = Math.max(
+    0,
+    grossProfitCents - exchangeCommissionCents - userProfitCents
+  );
   const houseStakeCents =
     marketOdd > 1.01 ? Math.round(liability / (marketOdd - 1)) : 0;
   return {
-    ...c,
-    odd: marketOdd,
     stakeCents: houseStakeCents,
     responsibilityCents: liability,
     coverageCents: liability,
+    odd: marketOdd,
     marketOdd,
     effectiveBackOdd: backOdd,
+    grossReturnCents: liability + grossProfitCents,
+    grossProfitCents,
+    userProfitCents,
+    arbiShieldDeductionCents,
+    exchangeCommissionCents,
+    exchangeFeeCents: exchangeCommissionCents,
+    exchange_commission_rate: EXCHANGE_COMMISSION_RATE,
+    billing_model: "stake_lock_v1",
     input_mode: "responsabilidade",
   };
 }

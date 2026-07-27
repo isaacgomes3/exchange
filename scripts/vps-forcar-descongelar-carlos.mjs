@@ -5,7 +5,7 @@
  *
  * Regra Exchange v7:
  *   devolve stake (locked) ao Apostador
- *   cobra dedução 91,11 + comissão 5,00 (LAY 1000 @10)
+ *   cobra dedução 80,50 + comissão 4,50 (LAY 1000 @10)
  *   zera locked
  *
  * Alvo: Apostador R$ 8.971,41 · Congelado R$ 0,00
@@ -25,16 +25,16 @@ const NAME = String(process.env.NAME || "Carlos Roberto").trim();
 // Print atual
 const EXPECT_BALANCE = Math.trunc(Number(process.env.EXPECT_BALANCE_CENTS || 806_752));
 const EXPECT_LOCKED = Math.trunc(Number(process.env.EXPECT_LOCKED_CENTS || 100_000));
-// Fees LAY 1000 @10 (lucro 111,11 − 4,5% − 1,5%)
-const FEE_CENTS = Math.trunc(Number(process.env.FEE_CENTS || 9_111));
-const COMMISSION_CENTS = Math.trunc(Number(process.env.COMMISSION_CENTS || 500));
+// Fees LAY 1000 @10 (lucro 100 − 4,5% − 1,5% → ArbiShield 80,50)
+const FEE_CENTS = Math.trunc(Number(process.env.FEE_CENTS || 8_050));
+const COMMISSION_CENTS = Math.trunc(Number(process.env.COMMISSION_CENTS || 450));
 const TARGET_BALANCE = Math.trunc(
   Number(
     process.env.TARGET_BALANCE_CENTS ||
       EXPECT_BALANCE + EXPECT_LOCKED - FEE_CENTS - COMMISSION_CENTS
   )
-); // 897141
-const REPAIR_TAG = "force-unfreeze-carlos-exchange-v7";
+); // 898252
+const REPAIR_TAG = "force-unfreeze-carlos-exchange-v8";
 
 function loadEnvFile(file) {
   if (!fs.existsSync(file)) return;

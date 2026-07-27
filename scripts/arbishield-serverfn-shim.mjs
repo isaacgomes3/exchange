@@ -113,10 +113,13 @@ try {
     let odd = Number(meta.market_odd);
     if (!(odd > 1.01)) odd = Number(row?.odd || 0);
     const mt = String(meta.market_type || "").toUpperCase();
-    if (mt === "LAY" && odd > 1.01) odd = odd / (odd - 1);
     const compute = () => {
       if (!(stake > 0) || !(odd > 1.01)) return 0;
-      const profit = Math.max(0, Math.round(stake * odd) - stake);
+      // lay-lucro-responsabilidade-sobre-odd-v8
+      const profit =
+        mt === "LAY"
+          ? Math.max(0, Math.round(stake / odd))
+          : Math.max(0, Math.round(stake * odd) - stake);
       const commission = Math.round(profit * EXCHANGE_COMMISSION_RATE);
       const userProfit = Math.round(stake * 0.015);
       return Math.max(0, profit - commission - userProfit);
@@ -130,7 +133,7 @@ try {
           row?.locked_deduction_cents
       ) || 0
     );
-    // fee_upfront: stored; stake_lock: fórmula vigente (lucro − 4,5% − 1,5%)
+    // fee_upfront: stored; stake_lock: fórmula vigente (LAY: resp/odd − 4,5% − 1,5%)
     if (isFeeUpfrontProtection(row)) return stored > 0 ? stored : compute();
     const computed = compute();
     return computed > 0 ? computed : stored;
@@ -175,7 +178,22 @@ try {
     const meta = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
     let fee = Math.max(0, Number(row?.exchange_fee_cents ?? meta.exchange_commission_cents ?? meta.exchange_fee_cents) || 0);
     if (fee > 0) return fee;
-    const gross = Math.max(0, Number(meta.gross_profit_cents ?? row?.exchange_profit_net_cents) || 0);
+    let gross = Math.max(0, Number(meta.gross_profit_cents ?? row?.exchange_profit_net_cents) || 0);
+    if (!(gross > 0)) {
+      const stake = Math.max(
+        0,
+        Math.trunc(Number(row?.responsibility_cents || row?.amount_cents || meta.stake_cents) || 0)
+      );
+      let odd = Number(meta.market_odd);
+      if (!(odd > 1.01)) odd = Number(row?.odd || 0);
+      const mt = String(meta.market_type || "").toUpperCase();
+      if (stake > 0 && odd > 1.01) {
+        gross =
+          mt === "LAY"
+            ? Math.max(0, Math.round(stake / odd))
+            : Math.max(0, Math.round(stake * odd) - stake);
+      }
+    }
     if (gross > 0) return Math.round(gross * EXCHANGE_COMMISSION_RATE);
     return 0;
   };
@@ -5170,11 +5188,18 @@ function calcLayContest(amountCents, odd, lockRatio = 0.9073) {
       : 0.9073;
   const stakeRealCents = Math.round(responsibilityCents / (o - 1));
   const lockedDeductionCents = Math.round(stakeRealCents * ratio);
-  const exchangeProfitGrossCents = stakeRealCents;
+  // lay-lucro-responsabilidade-sobre-odd-v8: lucro = resp / odd
+  const exchangeProfitGrossCents = Math.max(
+    0,
+    Math.round(responsibilityCents / o)
+  );
   const exchangeFeeCents = Math.round(exchangeProfitGrossCents * 0.045);
   const exchangeProfitNetCents = exchangeProfitGrossCents - exchangeFeeCents;
   const userProfitCents = Math.round(responsibilityCents * 0.015);
-  const arbiShieldDeductionCents = exchangeProfitNetCents - userProfitCents;
+  const arbiShieldDeductionCents = Math.max(
+    0,
+    exchangeProfitGrossCents - exchangeFeeCents - userProfitCents
+  );
   return {
     responsibilityCents,
     odd: o,
