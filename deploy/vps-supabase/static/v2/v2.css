@@ -1936,7 +1936,7 @@ body[data-shell="app"] .btn-primary {
 .v2-bal-afiliado { border-color: rgba(250, 204, 21, 0.18); }
 .v2-bal-afiliado .l { color: rgba(250, 204, 21, 0.65); }
 .v2-bal-afiliado .v { color: #fde047; }
-.v2-bal-congelado { border-color: rgba(125, 211, 252, 0.22); }
+.v2-bal-congelado { display: none !important; } /* hide-congelado-visor-v1 */
 .v2-bal-congelado .l { color: rgba(125, 211, 252, 0.7); }
 .v2-bal-congelado .v { color: #7dd3fc; }
 .v2-bal-provedor { border-color: rgba(96, 165, 250, 0.22); }

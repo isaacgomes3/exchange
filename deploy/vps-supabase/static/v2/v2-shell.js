@@ -335,7 +335,9 @@
           '<a class="v2-bal-chip v2-bal-apostador" href="/app-carteira.html"><span class="l">Apostador</span><span class="v" id="v2BalApostador">—</span></a>' +
           '<a class="v2-bal-chip v2-bal-afiliado" href="/app-afiliados.html"><span class="l">Afiliado</span><span class="v" id="v2BalAfiliado">—</span></a>' +
           '<a class="v2-bal-chip v2-bal-desafio" href="/app-desafio.html"><span class="l">Desafio</span><span class="v" id="v2BalDesafio">—</span></a>' +
-          '<a class="v2-bal-chip v2-bal-congelado" href="/app-carteira.html" title="Capital bloqueado em proteções"><span class="l">Congelado</span><span class="v" id="v2BalCongelado">—</span></a>' +
+          // Marker: hide-congelado-visor-v1 — trava stake_lock continua no backend;
+          // o chip "Congelado" foi removido (fallback somava proteções ativas e
+          // divergia de locked_balance → anomalia visual / Espelho).
           '<a class="v2-bal-chip v2-bal-provedor" href="/app-partners.html"><span class="l">Provedor</span><span class="v" id="v2BalProvedor">—</span></a>' +
           "</div>";
         main.appendChild(balBar);
@@ -596,31 +598,8 @@
               Number(p.investor_balance_cents || 0) +
               Number(p.demo_balance_provider_cents || 0);
             var desafio = Number(p.desafio_balance_cents || 0);
-            var congelado = Number(p.locked_balance_cents || 0);
-            if (!(congelado > 0)) {
-              try {
-                var prot = await appSupa
-                  .from("protections")
-                  .select("amount_cents,status")
-                  .eq("user_id", viewUserId)
-                  .eq("status", "active")
-                  .limit(200);
-                var back = await appSupa
-                  .from("back_protections")
-                  .select("amount_cents,status")
-                  .eq("user_id", viewUserId)
-                  .eq("status", "active")
-                  .limit(200);
-                var sumP = 0;
-                (prot.data || []).forEach(function (r) {
-                  sumP += Number(r.amount_cents || 0);
-                });
-                (back.data || []).forEach(function (r) {
-                  sumP += Number(r.amount_cents || 0);
-                });
-                if (sumP > 0) congelado = sumP;
-              } catch (protErr) {}
-            }
+            // Congelado: NÃO exibir no header (hide-congelado-visor-v1).
+            // locked_balance_cents continua atualizado pelo settle/create.
             var afiliado = 0;
             try {
               var aff = await appSupa
@@ -640,7 +619,6 @@
             setTxt("v2BalApostador", apostador);
             setTxt("v2BalDesafio", desafio);
             setTxt("v2BalAfiliado", afiliado);
-            setTxt("v2BalCongelado", congelado);
             setTxt("v2BalProvedor", provedor);
             var displayName =
               p.full_name ||

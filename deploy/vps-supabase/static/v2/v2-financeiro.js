@@ -830,11 +830,21 @@
       btnXferDed.disabled = !(state.deductionBalance > 0);
     }
     setText("finProtCount", String(state.activeCount));
-    setText("finProtLocked", money(state.locked));
+    // hide-congelado-visor-v1: não mostrar R$ travado no card
+    setText(
+      "finProtLocked",
+      state.activeCount === 1 ? "1 em aberto" : "em aberto"
+    );
     setText("metTotal", money(state.metrics.total));
     setText("metMonthVar", "▲ +" + state.metrics.monthVar + "% este mês");
-    setText("metBlocked", money(state.metrics.blocked));
-    setText("metActiveSub", state.activeCount + " proteções ativas");
+    // hide-congelado-visor-v1: não exibir valor travado; só contagem de ativas
+    setText("metBlocked", String(state.activeCount));
+    setText(
+      "metActiveSub",
+      state.activeCount === 1
+        ? "1 proteção em aberto"
+        : state.activeCount + " proteções em aberto"
+    );
     setText("metProfit", money(state.metrics.profit));
     setText("metRefunded", money(state.metrics.refunded));
     setText("metPL", money(state.metrics.profit));
@@ -844,8 +854,7 @@
     // header mudar ao atualizar /app-carteira.html vs /app.html
     var hdr = document.getElementById("v2BalApostador");
     if (hdr) hdr.textContent = money(state.apostadorHeader);
-    var hdrCongelado = document.getElementById("v2BalCongelado");
-    if (hdrCongelado) hdrCongelado.textContent = money(state.locked);
+    // hide-congelado-visor-v1: não atualizar chip Congelado (removido do shell)
     var hdrProv = document.getElementById("v2BalProvedor");
     if (hdrProv) hdrProv.textContent = money(state.providerBalance);
     var hdrDesafio = document.getElementById("v2BalDesafio");

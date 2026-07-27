@@ -696,7 +696,7 @@
             Number(p.demo_balance_provider_cents || 0)
         );
         set("v2BalDesafio", Number(p.desafio_balance_cents || 0));
-        set("v2BalCongelado", Number(p.locked_balance_cents || 0));
+        // hide-congelado-visor-v1: chip Congelado removido do header
       }
       function closeDrawer() {
         document.getElementById("drawer").classList.remove("open");
