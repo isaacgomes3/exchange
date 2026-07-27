@@ -5,12 +5,16 @@
  * Caso: proteção LAY R$ 149 (Crvena Zvezda) encerrada PERDEU / REEMBOLSO UI R$ 0,
  * mas settle legado creditou +R$ 149 em deduction_balance_cents.
  *
+ * IMPORTANTE: NÃO apagar o valor. Mover Reembolso → Real (net zero).
+ * Se o Reembolso já foi zerado por clawback antigo, use:
+ *   scripts/vps-restaura-saldo-lucas-real.mjs
+ *
  * Relatório:
  *   node scripts/vps-estorno-reembolso-lucas-perdeu.mjs
  * Aplicar:
  *   FIX=1 node scripts/vps-estorno-reembolso-lucas-perdeu.mjs
  *
- * Marker: vps-estorno-reembolso-lucas-perdeu-v1
+ * Marker: vps-estorno-reembolso-lucas-perdeu-v2
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -112,8 +116,8 @@ async function sb(p, { method = "GET", body } = {}) {
 }
 
 async function main() {
-  console.log("==> Estorno Saldo Reembolso — Lucas PERDEU");
-  console.log("    marker: vps-estorno-reembolso-lucas-perdeu-v1");
+  console.log("==> Estorno Saldo Reembolso — Lucas PERDEU (mover → Real)");
+  console.log("    marker: vps-estorno-reembolso-lucas-perdeu-v2");
   console.log("    FIX:", FIX ? "SIM" : "não (só relatório)");
   console.log("    valor:", money(AMOUNT_CENTS));
 
@@ -184,7 +188,7 @@ async function main() {
   const already = (Array.isArray(clawbacks) ? clawbacks : []).find((t) => {
     const meta = t.metadata && typeof t.metadata === "object" ? t.metadata : {};
     return (
-      meta.kind === "clawback_exchange_reembolso_lucas" ||
+      meta.kind === "fix_lucas_reembolso_to_real" ||
       (n(t.amount_cents) === -AMOUNT_CENTS &&
         String(meta.reason || "").includes("estorno") &&
         String(meta.protection_id || "").startsWith(PROT_PREFIX))
@@ -196,19 +200,23 @@ async function main() {
     return;
   }
 
-  const before = n(p.deduction_balance_cents);
-  if (before < AMOUNT_CENTS) {
+  const beforeDed = n(p.deduction_balance_cents);
+  const beforeReal = n(p.balance_cents);
+  if (beforeDed < AMOUNT_CENTS) {
     console.error(
-      "ERRO: Saldo Reembolso insuficiente para estornar",
-      money(before),
+      "ERRO: Saldo Reembolso insuficiente para mover",
+      money(beforeDed),
       "<",
-      money(AMOUNT_CENTS)
+      money(AMOUNT_CENTS),
+      "\nSe já zerou com clawback antigo, rode vps-restaura-saldo-lucas-real.sh"
     );
     process.exit(3);
   }
-  const after = before - AMOUNT_CENTS;
-  console.log("\n==> Plano");
-  console.log("    deduction_balance_cents:", money(before), "→", money(after));
+  const afterDed = beforeDed - AMOUNT_CENTS;
+  const afterReal = beforeReal + AMOUNT_CENTS;
+  console.log("\n==> Plano (MOVER, não apagar)");
+  console.log("    Reembolso:", money(beforeDed), "→", money(afterDed));
+  console.log("    Real     :", money(beforeReal), "→", money(afterReal));
   console.log("    razão:", REASON);
 
   if (!FIX) {
@@ -221,24 +229,31 @@ async function main() {
     {
       method: "PATCH",
       body: {
-        deduction_balance_cents: after,
+        deduction_balance_cents: afterDed,
+        balance_cents: afterReal,
         updated_at: new Date().toISOString(),
       },
     }
   );
-  console.log("    profile patch OK", Array.isArray(patched) ? patched[0]?.deduction_balance_cents : patched);
+  console.log(
+    "    profile patch OK ded=",
+    Array.isArray(patched) ? patched[0]?.deduction_balance_cents : "?",
+    "real=",
+    Array.isArray(patched) ? patched[0]?.balance_cents : "?"
+  );
 
   await sb(`/rest/v1/wallet_transactions`, {
     method: "POST",
     body: {
       user_id: p.id,
       type: "admin_adjustment",
-      amount_cents: -AMOUNT_CENTS,
+      amount_cents: 0,
       ref: target ? String(target.id) : PROT_PREFIX,
       metadata: {
-        kind: "clawback_exchange_reembolso_lucas",
-        bucket: "deduction_balance_cents",
-        label: "Saldo Reembolso",
+        kind: "fix_lucas_reembolso_to_real",
+        from_bucket: "deduction_balance_cents",
+        to_bucket: "balance_cents",
+        amount_cents: AMOUNT_CENTS,
         reason: REASON,
         protection_id: target ? target.id : null,
         name: NAME,
@@ -247,8 +262,8 @@ async function main() {
       },
     },
   });
-  console.log("    wallet_transactions admin_adjustment OK");
-  console.log("\n==> Feito. Reembolso agora deve ser", money(after));
+  console.log("    wallet_transactions OK");
+  console.log("\n==> Feito. Real", money(afterReal), "| Reembolso", money(afterDed));
 }
 
 main().catch((e) => {
