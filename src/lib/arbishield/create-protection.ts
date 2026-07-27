@@ -2,10 +2,9 @@
  * Cria proteção LAY/BACK no mesmo schema do SPA (sem RPC legado).
  *
  * TRAVADO — DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST
- * Fonte da verdade: scripts/lib/protection-flow-contract.mjs (v6 stake_lock_v1)
- * Ativação trava stake (máx. 50% restante · 1 op/evento · só antes do kickoff) ·
- * Ganhou Arbi credita stake · Ganhou Exchange R$ 0 cobra dedução ·
- * Empate Anula / Cancelar destravam.
+ * Fonte da verdade: scripts/lib/protection-flow-contract.mjs (v11 fee_upfront_v1)
+ * Ativação cobra somente a taxa (sem locked), mantendo o teto de 50% para a
+ * responsabilidade/stake, 1 op/evento e entrada somente antes do kickoff.
  */
 
 export type BalanceType = "REAL" | "DEMO" | "INVESTOR";
@@ -28,11 +27,11 @@ export type CreateProtectionResult = {
   marketType: "LAY" | "BACK";
   amountCents: number;
   balanceAfterCents: number;
-  /** stake_lock: sempre 0 na criação (dedução só no Exchange). */
+  /** fee_upfront: taxa ArbiShield debitada na criação. */
   feeChargedCents?: number;
-  /** Valor travado em locked_balance_cents. */
+  /** fee_upfront: sempre 0; stake não é travado. */
   lockedCents?: number;
-  /** Dedução calculada (cobrada só se ganhar na Exchange). */
+  /** Taxa ArbiShield calculada e cobrada na criação. */
   platformDeductionCents?: number;
   billingModel?: string;
 };
@@ -50,7 +49,7 @@ export function layToBackOdd(layOdd: number) {
 }
 
 /**
- * Cálculo da dedução (cobrada no PERDEU) sobre odd BACK efetiva.
+ * Cálculo da taxa cobrada na ativação sobre odd BACK efetiva.
  * `amountCents` = cobertura: BACK → stake · LAY → responsabilidade
  */
 export function calcFeeUpfront(amountCents: number, odd: number) {
@@ -64,10 +63,10 @@ export function calcFeeUpfront(amountCents: number, odd: number) {
     Math.round(grossProfitCents * 0.045)
   );
   const userProfitCents = Math.round(coverage * 0.015);
-  // lucro − 4,5% − 1,5% = dedução
+  // fee-lucro-menos-1_5-v11: Exchange 4,5% é somente informativa.
   const arbiShieldDeductionCents = Math.max(
     0,
-    grossProfitCents - exchangeCommissionCents - userProfitCents
+    grossProfitCents - userProfitCents
   );
   return {
     stakeCents: coverage,
@@ -83,13 +82,13 @@ export function calcFeeUpfront(amountCents: number, odd: number) {
     exchangeFeeCents: exchangeCommissionCents,
     lockedDeductionCents: 0,
     exchangeProfitNetCents: grossProfitCents,
-    billing_model: "stake_lock_v1" as const,
+    billing_model: "fee_upfront_v1" as const,
   };
 }
 
 /**
  * LAY — amountCents = responsabilidade da casa (não o stake).
- * Lucro fee = resp/(odd−1). Ex.: 1000 @10 → 111,11 → dedução 91,11.
+ * Lucro fee = resp/(odd−1). Ex.: 1000 @10 → 111,11 → taxa 96,11.
  * Na casa: stake LAY ≈ responsabilidade / (odd − 1).
  */
 export function calcLay(amountCents: number, odd: number, _lockRatio = 0.9073) {
@@ -320,19 +319,17 @@ export async function createProtection(
 
   const c = marketType === "BACK" ? calcBack(amountCents, odd) : calcLay(amountCents, odd);
   const feeCents = Math.max(0, num(c.arbiShieldDeductionCents));
-  const lockCents = amountCents;
-
   const available = availableBalance(profile, balanceType);
-  if (lockCents > available) {
+  if (feeCents > available) {
     throw Object.assign(
       new Error(
-        `Saldo insuficiente para travar ${(lockCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
+        `Saldo insuficiente para cobrar a taxa ArbiShield de ${(feeCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
       ),
       { status: 400 }
     );
   }
   const maxLock = maxStakeLockCents(available);
-  if (lockCents > maxLock) {
+  if (amountCents > maxLock) {
     throw Object.assign(
       new Error(
         `Stake máximo neste evento é 50% do Apostador restante agora (${(maxLock / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}). Disponível: ${(available / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}. No próximo evento o teto será 50% do que sobrar.`
@@ -342,14 +339,11 @@ export async function createProtection(
   }
 
   const balanceBefore = available;
-  let patch: Record<string, number> = {
-    locked_balance_cents:
-      num(profile.locked_balance_cents) + lockCents,
-  };
+  let patch: Record<string, number> = {};
   let balanceAfter = 0;
 
   if (balanceType === "REAL") {
-    let left = lockCents;
+    let left = feeCents;
     const bal =
       num(profile.balance_cents) + num(profile.reusable_balance_cents);
     const ded = num(profile.deduction_balance_cents);
@@ -374,10 +368,10 @@ export async function createProtection(
   } else {
     const field = pickBalanceField(balanceType);
     const cur = num(profile[field]);
-    patch = { ...patch, [field]: cur - lockCents };
-    balanceAfter = cur - lockCents;
+    patch = { ...patch, [field]: cur - feeCents };
+    balanceAfter = cur - feeCents;
   }
-  // stake_lock_v1: trava stake; dedução só no PERDEU
+  // fee_upfront_v1: cobra somente a taxa; locked_balance_cents não muda.
 
   const { error: debitErr } = await admin
     .from("profiles")
@@ -392,11 +386,11 @@ export async function createProtection(
     market_name: market?.name || null,
     market_type: marketType,
     market_odd: market?.odd ?? odd,
-    source: "v2_create_protection_stake_lock",
-    billing_model: "stake_lock_v1",
-    stake_lock: true,
-    fee_upfront: false,
-    fee_charged_cents: 0,
+    source: "v2_create_protection_fee_upfront",
+    billing_model: "fee_upfront_v1",
+    stake_lock: false,
+    fee_upfront: true,
+    fee_charged_cents: feeCents,
     platform_deduction_cents: feeCents,
     // LAY = responsabilidade · BACK = stake
     input_mode: marketType === "LAY" ? "responsabilidade" : "stake",
@@ -468,6 +462,7 @@ export async function createProtection(
       .update({
         balance_cents: profile.balance_cents,
         reusable_balance_cents: profile.reusable_balance_cents,
+        deduction_balance_cents: profile.deduction_balance_cents,
         demo_balance_cents: profile.demo_balance_cents,
         investor_balance_cents: profile.investor_balance_cents,
         locked_balance_cents: profile.locked_balance_cents,
@@ -500,8 +495,8 @@ export async function createProtection(
 
   await admin.from("wallet_transactions").insert({
     user_id: input.userId,
-    type: "protection_lock",
-    amount_cents: -lockCents,
+    type: "protection_fee",
+    amount_cents: -feeCents,
     balance_before_cents: balanceBefore,
     balance_after_cents: balanceAfter,
     ref: protectionId,
@@ -510,10 +505,10 @@ export async function createProtection(
       match_id: input.matchId,
       market_type: marketType,
       balance_type: balanceType,
-      billing_model: "stake_lock_v1",
-      stake_cents: lockCents,
+      billing_model: "fee_upfront_v1",
+      stake_cents: amountCents,
       fee_cents: feeCents,
-      note: "Ativação: trava stake (dedução cobrada só no PERDEU)",
+      note: "Ativação: cobra somente a taxa ArbiShield; stake não travado",
     },
   });
 
@@ -522,10 +517,10 @@ export async function createProtection(
     protectionId,
     marketType,
     amountCents,
-    feeChargedCents: 0,
-    lockedCents: lockCents,
+    feeChargedCents: feeCents,
+    lockedCents: 0,
     platformDeductionCents: feeCents,
-    billingModel: "stake_lock_v1",
+    billingModel: "fee_upfront_v1",
     balanceAfterCents: balanceAfter,
   };
 }

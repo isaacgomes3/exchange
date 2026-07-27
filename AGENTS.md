@@ -9,15 +9,15 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 **Status:** LOCKED — alterar **somente** com solicitação explícita do dono do produto  
 **Marker:** `DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST`  
-**Versão:** `protection-flow-contract-v10`  
-**Modelo vigente:** `stake_lock_v1`  
+**Versão:** `protection-flow-contract-v11`
+**Modelo vigente:** `fee_upfront_v1`
 **Fonte da verdade:** `scripts/lib/protection-flow-contract.mjs`  
 **Doc espelho:** `docs/PROTECTION_FLOW_LOCKED.md`  
 **Testes CI:** `npm test` → `scripts/protection-flow-contract.test.mjs`
 
 ## Regra para agentes / PRs
 
-**NÃO alterar** o fluxo de proteção (criar, travar stake, liquidar, cancelar, buckets de saldo, teto 50%, 1 op/evento, bloqueio pós-kickoff) **sem solicitação explícita do usuário/dono do produto** nesta conversa ou issue.
+**NÃO alterar** o fluxo de proteção (criar, cobrar taxa, liquidar, cancelar, comprovante, buckets de saldo, teto 50%, 1 op/evento, bloqueio pós-kickoff) **sem solicitação explícita do usuário/dono do produto** nesta conversa ou issue.
 
 Se o pedido não for explícito: **não mexer**. Mudança permitida exige bump de versão + sync `AGENTS.md` + `docs/PROTECTION_FLOW_LOCKED.md` + testes.
 
@@ -30,17 +30,18 @@ Arquivos cobertos (lista mínima):
 - UI: `app-proteger.html`, `app-protecoes.html`, `admin-jogos.html`, `v2-financeiro.js`
 - `docs/PROTECTION_FLOW_LOCKED.md`
 
-## Regras de produto vigentes (`stake_lock_v1`)
+## Regras de produto vigentes (`fee_upfront_v1`)
 
-1. **Ativação:** **trava o stake** (`locked_balance_cents`). Em **cada** evento o usuário pode apostar **no máximo 50% do saldo Apostador restante naquele momento** (`maxStakeLockCents(disponível)`). Após travar, o disponível cai; no próximo evento o teto é de novo **50% do que sobrou**, e assim sucessivamente (ex.: R$ 1000 → máx R$ 500; após usar R$ 500 resta R$ 500 → máx R$ 250). Não cobra dedução na entrada.
+1. **Ativação:** cobra **somente a taxa ArbiShield** e **não trava o stake** (`locked_balance_cents` não muda). A responsabilidade/stake continua limitada a **50% do saldo Apostador restante naquele momento** (`maxStakeLockCents(disponível)`). Como a taxa reduz o disponível, em eventos seguintes o teto é recalculado sucessivamente sobre o saldo atual — **50% do que sobrou**.
 2. **Uma operação por evento:** o cliente só pode ter **uma** proteção por jogo (`user` + `match`). Proteção cancelada/estornada não conta (pode tentar de novo).
 3. **Sem entrada após o início:** não aceita ativação se `now >= starts_at` (kickoff). Grade e API recusam jogos já iniciados.
 4. **LAY** = responsabilidade; **BACK** = stake.
-5. **Ganhou na ArbiShield** (`outcome: arbishield` → `lost_exchange`): **credita o stake** no Saldo Reembolso (`deduction_balance_cents`) e **destrava**.
-6. **Ganhou na Exchange** (`outcome: exchange` → `won_exchange`): **R$ 0** (não credita Reembolso); **destrava e devolve** o stake à origem; **cobra só a dedução ArbiShield da odd canônica** (ex. LAY 1000@10 → R$ 91,11 · **1000@32 → R$ 15,81**). A fatia Exchange 4,5% já entra no cálculo da dedução — **não** debita de novo. **Heal:** `won_exchange` com tx zerada/incompleta **reprocessa** até `isExchangeWalletComplete` (marker `settle-exchange-heal-incompleto-v10`). Nunca marcar terminal sem carteira completa; nunca fee hardcoded 91,11 sem odd do bilhete.
-7. **Empate Anula / void:** **destrava o stake** (devolve à origem — Real/Demo/Investidor).
-8. **Cancelar proteção:** **destrava o stake** (devolve à origem).
-9. **LAY lucro (fees):** `resp/(odd−1)` — ex. R$1000 @10 = R$111,11 → fee **91,11** → carteira `8.067,52+1.000−91,11=**8.976,41**`; R$1000 @32 → fee **15,81** → `8.067,52+1.000−15,81=**9.051,71**`. Odd canônica: `approved_odd` > `calculations.marketOdd` > `metadata.market_odd` > `row.odd` (`settlement-odd-canonico-v10`). Marker settle: `settle-exchange-cobra-so-deducao-v9`. Helper anti-duplo: `settlementExchangeCommissionWalletCents()` sempre **0**.
+5. **Fórmula da taxa na criação:** lucro bruto menos **somente** o lucro do usuário (1,5% da cobertura). Não subtrair a comissão Exchange 4,5%, que pode ser armazenada apenas como informação. LAY R$1000@10: `111,11 − 15,00 = 96,11`; LAY R$1000@32: `32,26 − 15,00 = 17,26`. Marker: `fee-lucro-menos-1_5-v11`.
+6. **Ganhou na ArbiShield** (`outcome: arbishield` → `pending_refund`): exige comprovante (`arbishield-exige-comprovante-v11`) e **não credita automaticamente**. O settle retorna o valor elegível para o fluxo posterior de comprovantes.
+7. **Ganhou na Exchange** (`outcome: exchange` → `won_exchange`): crédito **R$ 0**; a taxa já foi cobrada; não há stake travado para destravar ou devolver.
+8. **Empate Anula / void:** devolve **somente a taxa** ao Saldo Reembolso (`deduction_balance_cents`).
+9. **Cancelar proteção:** devolve **somente a taxa** (`cancel-fee-upfront-nao-devolve-stake-v6`).
+10. Linhas históricas explicitamente `stake_lock_v1` mantêm o comportamento antigo: ArbiShield credita stake e usa `lost_exchange`; Exchange destrava/devolve e cobra a dedução antiga (`lucro − 4,5% − 1,5%`); void/cancel devolvem stake. Os helpers de odd canônica e heal continuam para essas linhas.
 
 Alterar qualquer item acima exige pedido explícito + atualização dos testes do contrato.
 <!-- END:protection-flow-lock -->

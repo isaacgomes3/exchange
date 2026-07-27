@@ -19,6 +19,7 @@ import {
   settlementStatusForOutcome,
   isFeeUpfrontProtection,
   isStakeLockProtection,
+  arbishieldRequiresProof,
   isVoidSettleOutcome,
   normalizeSettleOutcome,
   creditBucketForSettlement,
@@ -1520,6 +1521,14 @@ async function creditWalletForSettlement(row, outcome, now) {
   const wonArbi = outcomeNorm === "arbishield";
   const isVoid = outcomeNorm === "void" || isVoidSettleOutcome(outcome);
   const feeUpfront = isFeeUpfrontProtection(row);
+  if (wonArbi && arbishieldRequiresProof(row)) {
+    return {
+      deferredProof: true,
+      credited: 0,
+      refunded: 0,
+      eligibleRefundCents: Math.max(0, parts.total),
+    };
+  }
   // Guarda absoluta: Exchange nunca credita (mesmo se contrato antigo estiver carregado)
   let credit = parts.total;
   if (!wonArbi && !isVoid && credit > 0) {
@@ -1993,7 +2002,7 @@ async function settleOneProtectionRow(row, outcome, now) {
   const outcomeNorm = normalizeSettleOutcome(outcome);
   const wonArbi = outcomeNorm === "arbishield";
   const isVoid = outcomeNorm === "void";
-  const status = settlementStatusForOutcome(outcomeNorm);
+  const status = settlementStatusForOutcome(outcomeNorm, row);
   const amount = nCents(row.responsibility_cents || row.amount_cents);
 
   // Crédito OBRIGATÓRIO antes de marcar a proteção (não engolir erro de saldo)
@@ -2014,7 +2023,7 @@ async function settleOneProtectionRow(row, outcome, now) {
     { status, settled_at: now, result: status },
     { status, settled_at: now },
   ];
-  if (wonArbi) {
+  if (wonArbi && status !== "pending_refund") {
     // fallback se lost_exchange não existir no enum do banco
     attempts.push(
       {
@@ -2051,8 +2060,9 @@ async function settleOneProtectionRow(row, outcome, now) {
       });
       return {
         ok: true,
+        ...creditResult,
         refunded,
-        credited: refunded,
+        credited: creditResult.credited || 0,
         status: body.status,
         amount,
         alreadyCredited: !!creditResult.alreadyCredited,
@@ -2538,8 +2548,6 @@ async function createProtection(body, userToken) {
 
   const c = marketType === "BACK" ? calcBack(amountCents, odd) : calcLay(amountCents, odd);
   const feeCents = Math.max(0, n(c.arbiShieldDeductionCents));
-  // stake_lock_v1: trava o stake/responsabilidade (amountCents), não cobra dedução agora
-  const lockCents = amountCents;
 
   let available = 0;
   if (balanceType === "DEMO") available = n(profile.demo_balance_cents);
@@ -2551,27 +2559,27 @@ async function createProtection(body, userToken) {
       n(profile.reusable_balance_cents) +
       n(profile.deduction_balance_cents);
 
-  // stake_lock: precisa ter saldo para o STAKE (máx. 50% do restante Apostador)
+  // fee_upfront: precisa ter saldo para a TAXA; responsabilidade mantém teto de 50%.
   let walletType = balanceType;
-  if (lockCents > available && walletType === "REAL") {
+  if (feeCents > available && walletType === "REAL") {
     const demoAvail = n(profile.demo_balance_cents);
-    if (demoAvail >= lockCents) {
+    if (demoAvail >= feeCents) {
       walletType = "DEMO";
       available = demoAvail;
       console.warn(
-        "[createProtection] REAL sem saldo para stake — usando DEMO automaticamente"
+        "[createProtection] REAL sem saldo para taxa — usando DEMO automaticamente"
       );
     }
   }
-  if (lockCents > available) {
+  if (feeCents > available) {
     const err = new Error(
-      `Saldo insuficiente para travar ${(lockCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}. Saldo ${walletType}: ${(available / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`
+      `Saldo insuficiente para cobrar a taxa ArbiShield de ${(feeCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}. Saldo ${walletType}: ${(available / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`
     );
     err.status = 400;
     throw err;
   }
   const maxLock = maxStakeLockCents(available);
-  if (lockCents > maxLock) {
+  if (amountCents > maxLock) {
     const err = new Error(
       `Stake máximo neste evento é 50% do Apostador restante agora (${(maxLock / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}). Disponível: ${(available / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}. No próximo evento o teto será 50% do que sobrar.`
     );
@@ -2580,23 +2588,22 @@ async function createProtection(body, userToken) {
   }
 
   const balanceBefore = available;
-  // stake_lock_v1: TRAVA o stake em locked_balance (não debita dedução na ativação)
+  // fee_upfront_v1: cobra somente a taxa; não altera locked_balance_cents.
   const patch = {
     updated_at: new Date().toISOString(),
-    locked_balance_cents: n(profile.locked_balance_cents) + lockCents,
   };
   let balanceAfter = 0;
 
   if (walletType === "DEMO") {
-    patch.demo_balance_cents = n(profile.demo_balance_cents) - lockCents;
+    patch.demo_balance_cents = n(profile.demo_balance_cents) - feeCents;
     balanceAfter = patch.demo_balance_cents;
   } else if (walletType === "INVESTOR") {
     patch.investor_balance_cents =
-      n(profile.investor_balance_cents) - lockCents;
+      n(profile.investor_balance_cents) - feeCents;
     balanceAfter = patch.investor_balance_cents;
   } else {
     // Consome banca real + reusable primeiro; depois Saldo Reembolso
-    let left = lockCents;
+    let left = feeCents;
     const bal = n(profile.balance_cents) + n(profile.reusable_balance_cents);
     const ded = n(profile.deduction_balance_cents);
     patch.reusable_balance_cents = 0;
@@ -2625,24 +2632,24 @@ async function createProtection(body, userToken) {
   const patchedRow = Array.isArray(patchedProfile)
     ? patchedProfile[0]
     : patchedProfile;
-  if (lockCents > 0 && patchedRow) {
+  if (feeCents > 0 && patchedRow) {
     const okDebit =
       walletType === "DEMO"
         ? n(patchedRow.demo_balance_cents) ===
-          n(profile.demo_balance_cents) - lockCents
+          n(profile.demo_balance_cents) - feeCents
         : walletType === "INVESTOR"
           ? n(patchedRow.investor_balance_cents) ===
-            n(profile.investor_balance_cents) - lockCents
+            n(profile.investor_balance_cents) - feeCents
           : n(patchedRow.balance_cents) +
               n(patchedRow.deduction_balance_cents) +
               n(patchedRow.reusable_balance_cents) ===
             n(profile.balance_cents) +
               n(profile.reusable_balance_cents) +
               n(profile.deduction_balance_cents) -
-              lockCents;
+              feeCents;
     if (!okDebit) {
       const err = new Error(
-        `Falha ao travar stake ${walletType} (${lockCents} não debitado do saldo usável).`
+        `Falha ao cobrar taxa ${walletType} (${feeCents} não debitados do saldo usável).`
       );
       err.status = 500;
       throw err;
@@ -2660,17 +2667,17 @@ async function createProtection(body, userToken) {
     away_team: match.away_team || null,
     league: match.league || match.competition || null,
     starts_at: match.starts_at || null,
-    source: "v2_create_protection_stake_lock",
-    billing_model: "stake_lock_v1",
-    stake_lock: true,
-    fee_upfront: false,
-    // Dedução calculada — cobrada só no PERDEU
+    source: "v2_create_protection_fee_upfront",
+    billing_model: "fee_upfront_v1",
+    stake_lock: false,
+    fee_upfront: true,
+    // Taxa calculada e cobrada na ativação
     platform_deduction_cents: feeCents,
-    fee_charged_cents: 0,
+    fee_charged_cents: feeCents,
     stake_cents: amountCents,
     user_profit_cents: c.userProfitCents,
     gross_profit_cents: c.grossProfitCents,
-    // Comissão Exchange 4,5% do lucro — cobrada só no PERDEU/Exchange
+    // Comissão Exchange 4,5% do lucro — somente informativa
     exchange_commission_cents: n(c.exchangeCommissionCents || c.exchangeFeeCents),
     exchange_commission_rate: EXCHANGE_COMMISSION_RATE,
     exchange_fee_cents: n(c.exchangeCommissionCents || c.exchangeFeeCents),
@@ -2740,6 +2747,7 @@ async function createProtection(body, userToken) {
       body: {
         balance_cents: profile.balance_cents,
         reusable_balance_cents: profile.reusable_balance_cents,
+        deduction_balance_cents: profile.deduction_balance_cents,
         demo_balance_cents: profile.demo_balance_cents,
         investor_balance_cents: profile.investor_balance_cents,
         locked_balance_cents: profile.locked_balance_cents,
@@ -2774,8 +2782,8 @@ async function createProtection(body, userToken) {
     token: SERVICE_KEY,
     body: {
       user_id: userId,
-      type: "protection_lock",
-      amount_cents: -lockCents,
+      type: "protection_fee",
+      amount_cents: -feeCents,
       balance_before_cents: balanceBefore,
       balance_after_cents: balanceAfter,
       ref: protectionId,
@@ -2784,10 +2792,10 @@ async function createProtection(body, userToken) {
         match_id: matchId,
         market_type: marketType,
         balance_type: walletType,
-        billing_model: "stake_lock_v1",
-        stake_cents: lockCents,
+        billing_model: "fee_upfront_v1",
+        stake_cents: amountCents,
         fee_cents: feeCents,
-        note: "Ativação: trava stake (dedução cobrada só no PERDEU)",
+        note: "Ativação: cobra somente a taxa ArbiShield; stake não travado",
         user_profit_cents: c.userProfitCents,
       },
     },
@@ -2800,11 +2808,11 @@ async function createProtection(body, userToken) {
     protectionId,
     marketType,
     amountCents,
-    feeChargedCents: 0,
-    lockedCents: lockCents,
+    feeChargedCents: feeCents,
+    lockedCents: 0,
     platformDeductionCents: feeCents,
     userProfitCents: c.userProfitCents,
-    billingModel: "stake_lock_v1",
+    billingModel: "fee_upfront_v1",
     balanceType: walletType,
     balanceAfterCents: balanceAfter,
     sandboxWorker: IS_SANDBOX_WORKER,
@@ -3049,7 +3057,7 @@ async function refundAndCancelProtection(table, row, audit = {}) {
     meta.stake_lock === true ||
     String(meta.source || "").includes("stake_lock");
   const feeCents = settlementDeductionCents(row);
-  // vigente stake_lock: destrava stake · histórico fee_upfront: estorna só dedução
+  // histórico stake_lock: destrava stake · fee_upfront vigente: estorna só taxa
   // Guarda cancel-fee-upfront-nao-devolve-stake-v6
   // Guarda cancel-stake-lock-devolve-stake-v6
   const amount = cancelRefundCents(row);
@@ -4559,8 +4567,8 @@ async function handleApi(req, res) {
     return sendJson(res, 200, {
       ok: true,
       service: "arbishield-matches",
-      fix: "create-protection-stake-lock-v6",
-      createProtectionModel: "stake_lock_v1",
+      fix: "create-protection-fee-upfront-v11",
+      createProtectionModel: "fee_upfront_v1",
       cancelRefundGuard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
       exchangeChargeGuard: EXCHANGE_CHARGE_DEDUCTION_RULE,
       protectionFlowContract: PROTECTION_FLOW_CONTRACT_VERSION,

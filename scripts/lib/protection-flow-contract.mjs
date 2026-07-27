@@ -8,49 +8,52 @@
  * de crédito no settle; os testes em protection-flow-contract.test.mjs
  * travam o comportamento no CI.
  *
- * Versão: protection-flow-contract-v10 (2026-07-27)
- *   Pedido explícito: "esse erro não pode voltar a acontecer"
- *   (won_exchange sem devolver stake / fee odd errada).
+ * Versão: protection-flow-contract-v11 (2026-07-27)
+ *   Pedido explícito: fee_upfront_v1 volta a ser o modelo ativo.
  *
- *   Regra vigente (stake_lock_v1):
- *     - Ativação → trava stake; máx. 50% do Apostador RESTANTE naquele momento
+ *   Regra vigente (fee_upfront_v1):
+ *     - Ativação → cobra só a taxa ArbiShield; não trava stake
+ *     - Responsabilidade/stake continua limitada a 50% do Apostador restante
  *       (evento 1: 50% da banca; evento 2: 50% do que sobrou; e assim por diante)
  *     - 1 operação por evento (user + match): não cria 2ª proteção no mesmo jogo
  *     - Entradas só ANTES do início (starts_at); após kickoff recusa
- *     - Ganhou na ArbiShield → credita stake (Saldo Reembolso) e destrava
- *     - Ganhou na Exchange → R$ 0 Reembolso; destrava e DEVOLVE o stake à origem;
- *       cobra SÓ a dedução ArbiShield da ODD CANÔNICA do bilhete
- *       (ex.: 1000@10 → R$ 91,11 · 1000@32 → R$ 15,81).
- *       A fatia Exchange 4,5% já entra no cálculo da dedução — NÃO debita de novo.
+ *     - Fee = lucro bruto − lucro do usuário (1,5%); Exchange 4,5% é informativa
+ *       (ex.: LAY 1000@10 → R$ 96,11 · 1000@32 → R$ 17,26)
+ *     - Ganhou na ArbiShield → pending_refund; exige comprovante, sem crédito automático
+ *     - Ganhou na Exchange → R$ 0; taxa já cobrada; sem retorno de stake
  *     - Heal: won_exchange com tx zerada/incompleta NÃO conta como creditado;
  *       reprocessa até isExchangeWalletComplete.
- *     - Empate Anula → destrava stake (devolve à origem)
- *     - Cancelar → destrava stake (devolve à origem)
+ *     - Empate Anula → devolve só a taxa ao Saldo Reembolso
+ *     - Cancelar → devolve só a taxa
  *     - LAY lucro fee = responsabilidade × (odd/(odd−1) − 1)
- *       ex.: 1000@10 → lucro 111,11 → Exchange 5 · cliente 15 · ArbiShield 91,11
- *       carteira: 8.067,52 + 1.000 − 91,11 = 8.976,41
- *       ex.: 1000@32 → lucro 32,26 → fee 15,81 → 8.067,52+1.000−15,81=9.051,71
+ *       ex.: 1000@10 → lucro 111,11 · cliente 15 · taxa ArbiShield 96,11
+ *       ex.: 1000@32 → lucro 32,26 · cliente 15 · taxa ArbiShield 17,26
  *
- *   Histórico fee_upfront_v1 (linhas antigas): mantido só para settle/cancel
- *   de proteções já criadas com billing_model fee_upfront_v1.
+ *   Histórico stake_lock_v1: mantém settle antigo (crédito/destrava/devolve).
  *   Cancel fee_upfront → estorna SÓ a dedução (nunca o stake).
  *   Guarda: cancel-fee-upfront-nao-devolve-stake-v6
  * ============================================================================
  */
 
 export const PROTECTION_FLOW_CONTRACT_VERSION =
-  "protection-flow-contract-v10";
+  "protection-flow-contract-v11";
+
+/** Markers do pedido explícito v11 — não renomear. */
+export const FEE_UPFRONT_ACTIVE_RULE = "fee-upfront-ativo-v11";
+export const ARBISHIELD_REQUIRES_PROOF_RULE =
+  "arbishield-exige-comprovante-v11";
+export const FEE_FORMULA_GROSS_MINUS_USER = "fee-lucro-menos-1_5-v11";
 
 /**
  * LAY: lucro fee = responsabilidade × (backOdd − 1) = resp/(odd−1).
- * Ex.: 1000 @10 → 111,11 → dedução 91,11 (carteira: +1000 − 91,11).
+ * Ex.: 1000 @10 → lucro 111,11 (taxa ativa v11 = 96,11).
  */
 export const LAY_PROFIT_OVER_ODD_RULE = "lay-lucro-back-equiv-v9";
 
 /**
- * Exchange: NÃO debita comissão 4,5% de novo na carteira —
- * já está líquida na dedução (lucro − 4,5% − 1,5%).
- * Pedido explícito: 8.067,52 + 1.000 − 91,11 = 8.976,41.
+ * Guarda histórica stake_lock: NÃO debita comissão 4,5% de novo na carteira,
+ * pois ela já está líquida na dedução antiga (lucro − 4,5% − 1,5%).
+ * No fee_upfront v11 a comissão também é somente informativa.
  */
 export const EXCHANGE_NO_DOUBLE_COMMISSION_RULE =
   "settle-exchange-sem-comissao-extra-v9";
@@ -72,12 +75,12 @@ export const CANCEL_FEE_UPFRONT_NO_STAKE_REFUND =
  */
 export const PROTECTION_FLOW_SPEC = Object.freeze({
   version: PROTECTION_FLOW_CONTRACT_VERSION,
-  model: "stake_lock_v1",
+  model: "fee_upfront_v1",
   lock: PROTECTION_FLOW_LOCK,
   requiresExplicitRequestToChange: true,
   activation: Object.freeze({
-    locksStake: true,
-    chargesDeductionOnCreate: false,
+    locksStake: false,
+    chargesDeductionOnCreate: true,
     maxFractionOfRemainingApostador: 0.5,
     successiveCapOnRemaining: true,
     oneOperationPerEvent: true,
@@ -85,36 +88,37 @@ export const PROTECTION_FLOW_SPEC = Object.freeze({
   }),
   outcomes: Object.freeze({
     arbishield: Object.freeze({
-      creditStakeToReembolso: true,
-      unlock: true,
+      creditStakeToReembolso: false,
+      unlock: false,
       chargeDeduction: false,
+      requiresProof: true,
     }),
     exchange: Object.freeze({
       creditReembolso: false,
       creditTotal: 0,
-      chargeDeductionOnly: true,
-      /** Pedido explícito 2026-07-27: destrava E devolve o stake à origem. */
+      chargeDeductionOnly: false,
       unlockWithoutReturn: false,
-      unlockReturnToOrigin: true,
-      /** 4,5% já líquido na dedução — não debita de novo na carteira. */
+      unlockReturnToOrigin: false,
       chargeExchangeCommission: false,
     }),
     void: Object.freeze({
-      unlockReturnToOrigin: true,
-      creditReembolso: false,
+      unlockReturnToOrigin: false,
+      creditReembolso: true,
+      refundFeeOnly: true,
     }),
     cancel: Object.freeze({
-      unlockReturnToOrigin: true,
+      unlockReturnToOrigin: false,
+      refundFeeOnly: true,
     }),
   }),
 });
 
-/** Marker da regra vigente. */
+/** Marker do modelo histórico que ainda deve liquidar pelas regras antigas. */
 export const STAKE_LOCK_RULE = "stake-lock-v1";
 
 /**
- * Guarda Exchange/PERDEU: R$ 0 Reembolso · destrava e devolve stake ·
- * cobra SÓ dedução ArbiShield (sem comissão Exchange extra na carteira).
+ * Guarda Exchange/PERDEU histórica: R$ 0 Reembolso · stake_lock destrava e
+ * devolve stake · cobra só dedução (sem comissão Exchange extra).
  * Hotfix / health / CI devem conter esta string.
  */
 export const EXCHANGE_CHARGE_DEDUCTION_RULE =
@@ -146,9 +150,8 @@ export const EXCHANGE_CHARGE_DEDUCTION_RULE_V6 =
 
 /**
  * Comissão Exchange a debitar na carteira no settle.
- * v9: sempre 0 — a fatia 4,5% já sai no cálculo da dedução.
- * Qualquer caller que debitar settlementExchangeCommissionCents de novo
- * reintroduz o erro 8.982,52 em vez de 8.976,41.
+ * Sempre 0: fee_upfront v11 já cobrou a taxa; stake_lock histórico já inclui
+ * a fatia 4,5% no cálculo da dedução antiga.
  */
 export function settlementExchangeCommissionWalletCents(_row) {
   void EXCHANGE_NO_DOUBLE_COMMISSION_RULE;
@@ -165,7 +168,7 @@ export function exchangeWalletChargeCents(row) {
     Math.max(0, settlementExchangeCommissionWalletCents(row));
 }
 
-/** Fração máxima do saldo Apostador que pode ser travada na ativação. */
+/** Fração máxima do saldo Apostador para a responsabilidade/stake da proteção. */
 export const MAX_STAKE_FRACTION_OF_APOSTADOR = 0.5;
 
 /** Cliente: no máximo uma proteção por evento (match). */
@@ -257,11 +260,15 @@ export function normalizeSettleOutcome(outcome) {
   return o;
 }
 
-/** Proteções criadas no modelo antigo (só cobrava dedução na ativação). */
+/** Modelo ativo: taxa cobrada na ativação, sem trava de stake. */
 export function isFeeUpfrontProtection(row) {
   const meta =
     row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
-  if (meta.billing_model === "stake_lock_v1" || meta.stake_lock === true) {
+  if (
+    meta.billing_model === "stake_lock_v1" ||
+    meta.stake_lock === true ||
+    String(meta.source || "").includes("stake_lock")
+  ) {
     return false;
   }
   if (
@@ -271,21 +278,30 @@ export function isFeeUpfrontProtection(row) {
   ) {
     return true;
   }
-  // Create cobrou fee na ativação (fee_charged_cents) sem marker stake_lock
-  // → trata como histórico fee_upfront (evita cancel devolver stake).
+  // Create cobrou fee na ativação sem marker stake_lock → fee_upfront.
   if (n(meta.fee_charged_cents) > 0) return true;
-  return false;
+  // v11: linhas sem marker stake_lock seguem o modelo vigente.
+  return true;
 }
 
-/** Modelo vigente: trava stake na ativação. */
+/** Modelo histórico: trava stake na ativação. Só markers explícitos entram aqui. */
 export function isStakeLockProtection(row) {
   const meta =
     row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
-  if (meta.billing_model === "stake_lock_v1" || meta.stake_lock === true) {
-    return true;
-  }
-  // Sem marker fee_upfront → trata como trava stake (legado / vigente)
-  return !isFeeUpfrontProtection(row);
+  return (
+    meta.billing_model === "stake_lock_v1" ||
+    meta.stake_lock === true ||
+    String(meta.source || "").includes("stake_lock")
+  );
+}
+
+/**
+ * Vitória ArbiShield no modelo ativo aguarda comprovante.
+ * Apenas stake_lock_v1 explicitamente histórico mantém crédito automático.
+ */
+export function arbishieldRequiresProof(row) {
+  void ARBISHIELD_REQUIRES_PROOF_RULE;
+  return !isStakeLockProtection(row);
 }
 
 /**
@@ -414,8 +430,9 @@ export function grossProfitCentsForFees(stakeCents, marketOdd, marketType) {
 }
 
 /**
- * Recalcula dedução vigente a partir de stake/odd:
- * lucro bruto − comissão 4,5% − lucro usuário 1,5%.
+ * Recalcula dedução a partir de stake/odd:
+ * - fee_upfront vigente (inclusive sem marker): lucro bruto − usuário 1,5%
+ * - stake_lock histórico explícito: lucro bruto − Exchange 4,5% − usuário 1,5%
  */
 export function computeArbiShieldDeductionCents(row) {
   const meta =
@@ -427,8 +444,10 @@ export function computeArbiShieldDeductionCents(row) {
   const mt = settlementMarketType(row);
   if (!(stake > 0) || !(odd > 1.01)) return 0;
   const profit = grossProfitCentsForFees(stake, odd, mt);
-  const commission = exchangeCommissionCentsFromProfit(profit);
   const userProfit = Math.round(stake * 0.015);
+  const commission = isStakeLockProtection(row)
+    ? exchangeCommissionCentsFromProfit(profit)
+    : 0;
   return Math.max(0, profit - commission - userProfit);
 }
 
@@ -491,8 +510,8 @@ function storedPlatformDeductionCents(row) {
 
 /**
  * Dedução ArbiShield (cobrada no PERDEU).
- * - fee_upfront histórico: respeita stored (já cobrado na criação).
- * - stake_lock: sempre fórmula vigente (lucro − 4,5% − 1,5%)
+ * - fee_upfront vigente: respeita stored (já cobrado na criação).
+ * - stake_lock histórico: sempre fórmula antiga (lucro − 4,5% − 1,5%)
  *   (ignora stored antigo 8050/9611). Carteira cobra SÓ essa dedução.
  */
 export function settlementDeductionCents(row) {
@@ -507,7 +526,7 @@ export function settlementDeductionCents(row) {
 }
 
 /**
- * Regras de crédito no settle (TRAVADAS) — stake_lock_v1:
+ * Valores elegíveis no settle (o caller adia Arbi fee_upfront até comprovante):
  *
  *   - Ganhou na ArbiShield → stake (Saldo Reembolso) + destrava
  *   - Ganhou na Exchange   → 0 Reembolso; destrava e DEVOLVE stake à origem;
@@ -517,8 +536,8 @@ export function settlementDeductionCents(row) {
  * Ativação: trava stake; máx. 50% do Apostador restante naquele momento
  * (recalcula a cada evento sobre o que sobrou após travas anteriores).
  *
- * Histórico fee_upfront_v1 (só linhas antigas):
- *   - ArbiShield → stake + dedução (Reembolso)
+ * Fee_upfront_v1 vigente:
+ *   - ArbiShield → stake + dedução elegíveis, sem crédito automático
  *   - Exchange   → 0
  *   - void → só dedução (Reembolso)
  *
@@ -536,7 +555,7 @@ export function settlementCreditParts(row, outcome) {
     return { stake: 0, fee: 0, total: 0 };
   }
 
-  // Histórico fee_upfront
+  // Fee_upfront vigente: o total é elegível, mas o caller exige comprovante.
   if (isFeeUpfrontProtection(row)) {
     if (isVoid) return { stake: 0, fee, total: fee };
     return { stake: amount, fee, total: amount + fee };
@@ -574,10 +593,12 @@ export function creditBucketForSettlement(_balanceType, row, outcome) {
   return "deduction_balance_cents";
 }
 
-/** Status persistido na proteção conforme outcome. */
-export function settlementStatusForOutcome(outcome) {
+/** Status persistido na proteção conforme outcome e modelo da linha. */
+export function settlementStatusForOutcome(outcome, row) {
   const o = normalizeSettleOutcome(outcome);
-  if (o === "arbishield") return "lost_exchange";
+  if (o === "arbishield") {
+    return arbishieldRequiresProof(row) ? "pending_refund" : "lost_exchange";
+  }
   if (o === "void") return "void";
   return "won_exchange";
 }
@@ -586,14 +607,13 @@ export function settlementStatusForOutcome(outcome) {
  * fee_upfront / dedução.
  * amountCents = cobertura (LAY=responsabilidade · BACK=stake).
  *
- * Fórmula (pedido explícito v9):
+ * Fórmula ativa (pedido explícito v11):
  *   lucro bruto (LAY = resp/(odd−1) · BACK = stake×(odd−1))
- *   − comissão Exchange 4,5% do lucro   ← só no cálculo
  *   − lucro usuário 1,5% da cobertura
- *   = dedução ArbiShield (única cobrança na carteira no PERDEU)
+ *   = taxa ArbiShield cobrada na ativação
  *
- * Ex. LAY 1000 @10 → lucro 111,11 → Exchange 5,00 · cliente 15 · ArbiShield 91,11
- * Carteira: 8.067,52 + 1.000 − 91,11 = 8.976,41
+ * A comissão Exchange 4,5% continua calculada apenas como informação.
+ * Ex. LAY 1000 @10 → lucro 111,11 · cliente 15 · taxa 96,11.
  */
 export const EXCHANGE_COMMISSION_RATE = 0.045;
 
@@ -647,10 +667,11 @@ export function calcFeeUpfront(amountCents, odd) {
   const exchangeCommissionCents =
     exchangeCommissionCentsFromProfit(grossProfitCents);
   const userProfitCents = Math.round(coverage * 0.015);
-  // lucro − 4,5% − 1,5% = dedução
+  // fee-lucro-menos-1_5-v11: NÃO subtrair Exchange 4,5% da taxa cobrada.
+  void FEE_FORMULA_GROSS_MINUS_USER;
   const arbiShieldDeductionCents = Math.max(
     0,
-    grossProfitCents - exchangeCommissionCents - userProfitCents
+    grossProfitCents - userProfitCents
   );
   return {
     stakeCents: coverage,
@@ -662,11 +683,11 @@ export function calcFeeUpfront(amountCents, odd) {
     grossProfitCents,
     userProfitCents,
     arbiShieldDeductionCents,
-    /** Comissão Exchange 4,5% sobre o lucro (cobrada só no PERDEU/Exchange). */
+    /** Comissão Exchange 4,5% sobre o lucro (somente informativa). */
     exchangeCommissionCents,
     exchangeFeeCents: exchangeCommissionCents,
     exchange_commission_rate: EXCHANGE_COMMISSION_RATE,
-    billing_model: "stake_lock_v1",
+    billing_model: "fee_upfront_v1",
   };
 }
 
@@ -677,8 +698,7 @@ export function layToBackOdd(layOdd) {
 
 /**
  * LAY: amountCents = responsabilidade.
- * Lucro fee = resp/(odd−1). Ex.: 1000 @10 → 111,11 − 5 − 15 = 91,11.
- * Carteira no PERDEU cobra só 91,11 (sem comissão extra).
+ * Lucro fee = resp/(odd−1). Ex.: 1000 @10 → 111,11 − 15 = 96,11.
  */
 export function calcLay(amountCents, odd) {
   const marketOdd = Number.isFinite(odd) && odd > 1.01 ? odd : 1.01;

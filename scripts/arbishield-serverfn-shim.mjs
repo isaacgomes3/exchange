@@ -14,8 +14,9 @@ import { createRequire } from "node:module";
 // Contrato travado — import opcional (se lib faltar na VPS, usa fallback inline
 // para o shim não cair e a rota de saque continuar disponível).
 let PROTECTION_FLOW_LOCK = "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST";
-let PROTECTION_FLOW_CONTRACT_VERSION = "protection-flow-contract-v10";
+let PROTECTION_FLOW_CONTRACT_VERSION = "protection-flow-contract-v11";
 let isStakeLockProtection;
+let arbishieldRequiresProof;
 let settlementCreditParts;
 let settlementCreditCents;
 let settlementDeductionCents;
@@ -36,6 +37,7 @@ let SETTLEMENT_ODD_CANONICAL_RULE = "settlement-odd-canonico-v10";
 let settlementExchangeCommissionCents;
 let settlementExchangeCommissionWalletCents = () => 0;
 let EXCHANGE_COMMISSION_RATE = 0.045;
+let calcFeeUpfront;
 
 try {
   const mod = await import(
@@ -51,6 +53,7 @@ try {
   settlementStatusForOutcome = mod.settlementStatusForOutcome;
   isFeeUpfrontProtection = mod.isFeeUpfrontProtection;
   isStakeLockProtection = mod.isStakeLockProtection;
+  arbishieldRequiresProof = mod.arbishieldRequiresProof;
   isVoidSettleOutcome = mod.isVoidSettleOutcome;
   normalizeSettleOutcome = mod.normalizeSettleOutcome;
   creditBucketForSettlement = mod.creditBucketForSettlement;
@@ -82,6 +85,7 @@ try {
   if (mod.EXCHANGE_COMMISSION_RATE != null) {
     EXCHANGE_COMMISSION_RATE = mod.EXCHANGE_COMMISSION_RATE;
   }
+  calcFeeUpfront = mod.calcFeeUpfront;
 } catch (err) {
   console.warn(
     "[serverfn-shim] protection-flow-contract ausente — fallback inline:",
@@ -113,7 +117,11 @@ try {
   };
   isFeeUpfrontProtection = (row) => {
     const meta = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
-    if (meta.billing_model === "stake_lock_v1" || meta.stake_lock === true) {
+    if (
+      meta.billing_model === "stake_lock_v1" ||
+      meta.stake_lock === true ||
+      String(meta.source || "").includes("stake_lock")
+    ) {
       return false;
     }
     if (
@@ -123,7 +131,8 @@ try {
     ) {
       return true;
     }
-    return Number(meta.fee_charged_cents || 0) > 0;
+    if (Number(meta.fee_charged_cents || 0) > 0) return true;
+    return true;
   };
   settlementDeductionCents = (row) => {
     const meta = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
@@ -139,8 +148,13 @@ try {
       // lay-lucro-back-equiv-v9: LAY → backOdd
       const eff = mt === "LAY" && odd > 1.01 ? odd / (odd - 1) : odd;
       const profit = Math.max(0, Math.round(stake * eff) - stake);
-      const commission = Math.round(profit * EXCHANGE_COMMISSION_RATE);
       const userProfit = Math.round(stake * 0.015);
+      const commission =
+        meta.billing_model === "stake_lock_v1" ||
+        meta.stake_lock === true ||
+        String(meta.source || "").includes("stake_lock")
+          ? Math.round(profit * EXCHANGE_COMMISSION_RATE)
+          : 0;
       return Math.max(0, profit - commission - userProfit);
     };
     const stored = Math.max(
@@ -159,8 +173,39 @@ try {
   };
   isStakeLockProtection = (row) => {
     const meta = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
-    if (meta.billing_model === "stake_lock_v1" || meta.stake_lock === true) return true;
-    return !isFeeUpfrontProtection(row);
+    return (
+      meta.billing_model === "stake_lock_v1" ||
+      meta.stake_lock === true ||
+      String(meta.source || "").includes("stake_lock")
+    );
+  };
+  arbishieldRequiresProof = (row) => !isStakeLockProtection(row);
+  calcFeeUpfront = (amountCents, odd) => {
+    const coverage =
+      Number.isFinite(amountCents) && amountCents > 0
+        ? Math.floor(amountCents)
+        : 0;
+    const o = Number.isFinite(odd) && odd > 1.01 ? odd : 1.01;
+    const grossReturnCents = Math.round(coverage * o);
+    const grossProfitCents = Math.max(0, grossReturnCents - coverage);
+    const exchangeCommissionCents = Math.round(
+      grossProfitCents * EXCHANGE_COMMISSION_RATE
+    );
+    const userProfitCents = Math.round(coverage * 0.015);
+    return {
+      coverageCents: coverage,
+      odd: o,
+      grossReturnCents,
+      grossProfitCents,
+      exchangeCommissionCents,
+      exchangeFeeCents: exchangeCommissionCents,
+      userProfitCents,
+      arbiShieldDeductionCents: Math.max(
+        0,
+        grossProfitCents - userProfitCents
+      ),
+      billing_model: "fee_upfront_v1",
+    };
   };
   cancelRefundCents = (row) => {
     const stake = Math.max(
@@ -250,9 +295,11 @@ try {
     return "deduction_balance_cents";
   };
   settlementCreditCents = (row, outcome) => settlementCreditParts(row, outcome).total;
-  settlementStatusForOutcome = (outcome) => {
+  settlementStatusForOutcome = (outcome, row) => {
     const o = normalizeSettleOutcome(outcome);
-    if (o === "arbishield") return "lost_exchange";
+    if (o === "arbishield") {
+      return arbishieldRequiresProof(row) ? "pending_refund" : "lost_exchange";
+    }
     if (o === "void") return "void";
     return "won_exchange";
   };
@@ -4528,7 +4575,7 @@ async function closeProtectionNoRefund(token, body) {
 /**
  * Cancelamento: devolve à carteira de origem.
  * stake_lock → stake + destrava locked
- * fee_upfront histórico → só dedução (sem mexer locked)
+ * fee_upfront vigente → só taxa (sem mexer locked)
  * Nunca credita Saldo Reembolso no cancel.
  */
 async function refundProtectionCancelToWallet(row, opts) {
@@ -5250,15 +5297,12 @@ function calcLayContest(amountCents, odd, lockRatio = 0.9073) {
       : 0.9073;
   const stakeRealCents = Math.round(responsibilityCents / (o - 1));
   const lockedDeductionCents = Math.round(stakeRealCents * ratio);
-  // lay-lucro-back-equiv-v9: lucro = resp/(odd−1) (= stakeReal)
-  const exchangeProfitGrossCents = stakeRealCents;
-  const exchangeFeeCents = Math.round(exchangeProfitGrossCents * 0.045);
+  const feeCalc = calcFeeUpfront(responsibilityCents, o / (o - 1));
+  const exchangeProfitGrossCents = feeCalc.grossProfitCents;
+  const exchangeFeeCents = feeCalc.exchangeCommissionCents;
   const exchangeProfitNetCents = exchangeProfitGrossCents - exchangeFeeCents;
-  const userProfitCents = Math.round(responsibilityCents * 0.015);
-  const arbiShieldDeductionCents = Math.max(
-    0,
-    exchangeProfitGrossCents - exchangeFeeCents - userProfitCents
-  );
+  const userProfitCents = feeCalc.userProfitCents;
+  const arbiShieldDeductionCents = feeCalc.arbiShieldDeductionCents;
   return {
     responsibilityCents,
     odd: o,
@@ -5272,15 +5316,15 @@ function calcLayContest(amountCents, odd, lockRatio = 0.9073) {
 }
 
 function calcBackContest(amountCents, odd) {
-  const coverage =
-    Number.isFinite(amountCents) && amountCents > 0 ? Math.floor(amountCents) : 0;
-  const o = Number.isFinite(odd) && odd >= 1.01 ? odd : 1.01;
-  const grossReturnCents = Math.round(coverage * o);
-  const grossProfitCents = Math.max(0, grossReturnCents - coverage);
-  const exchangeFeeCents = Math.round(grossProfitCents * 0.045);
+  const c = calcFeeUpfront(amountCents, odd);
+  const coverage = c.coverageCents;
+  const o = c.odd;
+  const grossReturnCents = c.grossReturnCents;
+  const grossProfitCents = c.grossProfitCents;
+  const exchangeFeeCents = c.exchangeCommissionCents;
   const netProfitExchangeCents = grossProfitCents - exchangeFeeCents;
-  const userProfitCents = Math.round(coverage * 0.015);
-  const arbiShieldDeductionCents = netProfitExchangeCents - userProfitCents;
+  const userProfitCents = c.userProfitCents;
+  const arbiShieldDeductionCents = c.arbiShieldDeductionCents;
   return {
     coverageCents: coverage,
     odd: o,
@@ -6136,6 +6180,14 @@ async function creditWalletForSettlement(row, outcome, now) {
     outcomeNorm === "void" ||
     (isVoidSettleOutcome && isVoidSettleOutcome(outcome));
   const feeUpfront = isFeeUpfrontProtection(row);
+  if (wonArbi && arbishieldRequiresProof(row)) {
+    return {
+      deferredProof: true,
+      credited: 0,
+      refunded: 0,
+      eligibleRefundCents: Math.max(0, parts.total),
+    };
+  }
   let credit = parts.total;
   if (!wonArbi && !isVoid && credit > 0) {
     console.warn(
@@ -6602,7 +6654,7 @@ async function applyProtectionSettlement(row, table, outcome) {
     : String(outcome || "").toLowerCase();
   const wonArbi = outcomeNorm === "arbishield";
   const isVoid = outcomeNorm === "void";
-  const status = settlementStatusForOutcome(outcome);
+  const status = settlementStatusForOutcome(outcome, row);
   const now = new Date().toISOString();
 
   const creditResult = await creditWalletForSettlement(row, outcome, now);
@@ -6652,7 +6704,7 @@ async function applyProtectionSettlement(row, table, outcome) {
     { status, settled_at: now, result: status },
     { status, settled_at: now },
   ];
-  if (wonArbi) {
+  if (wonArbi && status !== "pending_refund") {
     attempts.push(
       {
         status: "won_platform",
@@ -6689,9 +6741,11 @@ async function applyProtectionSettlement(row, table, outcome) {
       });
       return {
         id: row.id,
+        ...creditResult,
         status: body.status,
         amount,
         refunded,
+        credited: creditResult.credited || 0,
         alreadyCredited: !!creditResult.alreadyCredited,
         treasury,
       };
@@ -8408,8 +8462,8 @@ const server = createServer(async (req, res) => {
     const base = {
       ok: true,
       service: "serverfn-shim",
-      fix: "create-protection-stake-lock-v6",
-      createProtectionModel: "stake_lock_v1",
+      fix: "create-protection-fee-upfront-v11",
+      createProtectionModel: "fee_upfront_v1",
       cancelRefundGuard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
       exchangeChargeGuard: EXCHANGE_CHARGE_DEDUCTION_RULE,
       protectionFlowContract: PROTECTION_FLOW_CONTRACT_VERSION,
