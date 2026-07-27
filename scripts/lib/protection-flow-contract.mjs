@@ -31,6 +31,45 @@ export const PROTECTION_FLOW_CONTRACT_VERSION =
 export const PROTECTION_FLOW_LOCK =
   "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST";
 
+/**
+ * Snapshot textual das regras vigentes — travado nos testes.
+ * Alterar só com pedido explícito do dono + bump de versão.
+ */
+export const PROTECTION_FLOW_SPEC = Object.freeze({
+  version: PROTECTION_FLOW_CONTRACT_VERSION,
+  model: "stake_lock_v1",
+  lock: PROTECTION_FLOW_LOCK,
+  requiresExplicitRequestToChange: true,
+  activation: Object.freeze({
+    locksStake: true,
+    chargesDeductionOnCreate: false,
+    maxFractionOfRemainingApostador: 0.5,
+    successiveCapOnRemaining: true,
+    oneOperationPerEvent: true,
+    entryOnlyBeforeKickoff: true,
+  }),
+  outcomes: Object.freeze({
+    arbishield: Object.freeze({
+      creditStakeToReembolso: true,
+      unlock: true,
+      chargeDeduction: false,
+    }),
+    exchange: Object.freeze({
+      creditReembolso: false,
+      creditTotal: 0,
+      chargeDeductionOnly: true,
+      unlockWithoutReturn: true,
+    }),
+    void: Object.freeze({
+      unlockReturnToOrigin: true,
+      creditReembolso: false,
+    }),
+    cancel: Object.freeze({
+      unlockReturnToOrigin: true,
+    }),
+  }),
+});
+
 /** Marker da regra vigente. */
 export const STAKE_LOCK_RULE = "stake-lock-v1";
 

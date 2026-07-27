@@ -10,6 +10,7 @@ import { describe, it } from "node:test";
 import {
   PROTECTION_FLOW_CONTRACT_VERSION,
   PROTECTION_FLOW_LOCK,
+  PROTECTION_FLOW_SPEC,
   STAKE_LOCK_RULE,
   MAX_STAKE_FRACTION_OF_APOSTADOR,
   ONE_OPERATION_PER_EVENT,
@@ -47,10 +48,37 @@ describe("contrato travado — metadados", () => {
     );
   });
 
-  it("AGENTS.md cita a regra vigente stake_lock + 50% + 1op + kickoff", () => {
+  it("PROTECTION_FLOW_SPEC espelha as regras vigentes (só muda com pedido explícito)", () => {
+    assert.equal(PROTECTION_FLOW_SPEC.requiresExplicitRequestToChange, true);
+    assert.equal(PROTECTION_FLOW_SPEC.lock, PROTECTION_FLOW_LOCK);
+    assert.equal(PROTECTION_FLOW_SPEC.version, PROTECTION_FLOW_CONTRACT_VERSION);
+    assert.equal(PROTECTION_FLOW_SPEC.model, "stake_lock_v1");
+    assert.equal(PROTECTION_FLOW_SPEC.activation.locksStake, true);
+    assert.equal(PROTECTION_FLOW_SPEC.activation.chargesDeductionOnCreate, false);
+    assert.equal(PROTECTION_FLOW_SPEC.activation.maxFractionOfRemainingApostador, 0.5);
+    assert.equal(PROTECTION_FLOW_SPEC.activation.successiveCapOnRemaining, true);
+    assert.equal(PROTECTION_FLOW_SPEC.activation.oneOperationPerEvent, true);
+    assert.equal(PROTECTION_FLOW_SPEC.activation.entryOnlyBeforeKickoff, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.arbishield.creditStakeToReembolso, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.creditReembolso, false);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.creditTotal, 0);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.chargeDeductionOnly, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.unlockWithoutReturn, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.void.unlockReturnToOrigin, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.cancel.unlockReturnToOrigin, true);
+  });
+
+  it("AGENTS.md e docs/PROTECTION_FLOW_LOCKED.md travam o fluxo", () => {
     const agents = readFileSync(resolve(root, "AGENTS.md"), "utf8");
+    const lockedDoc = readFileSync(
+      resolve(root, "docs/PROTECTION_FLOW_LOCKED.md"),
+      "utf8"
+    );
     assert.match(agents, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
     assert.match(agents, /protection-flow-contract-v6/);
+    assert.match(agents, /LOCKED/);
+    assert.match(agents, /solicitação explícita/);
+    assert.match(agents, /docs\/PROTECTION_FLOW_LOCKED\.md/);
     assert.match(agents, /stake_lock_v1/);
     assert.match(agents, /trava o stake/);
     assert.match(agents, /50%/);
@@ -60,6 +88,12 @@ describe("contrato travado — metadados", () => {
     assert.match(agents, /Ganhou na ArbiShield/);
     assert.match(agents, /Ganhou na Exchange/);
     assert.match(agents, /Empate Anula/);
+    assert.match(lockedDoc, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
+    assert.match(lockedDoc, /protection-flow-contract-v6/);
+    assert.match(lockedDoc, /LOCKED/);
+    assert.match(lockedDoc, /solicitação explícita/);
+    assert.match(lockedDoc, /Uma operação por evento|1 operação por evento|uma proteção por jogo/i);
+    assert.match(lockedDoc, /antes do início|antes do kickoff/i);
   });
 
   it("prelive e shim importam o contrato", () => {

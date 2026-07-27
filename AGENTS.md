@@ -7,15 +7,19 @@ This version has breaking changes — APIs, conventions, and file structure may 
 <!-- BEGIN:protection-flow-lock -->
 # Fluxo de Proteção — CONTRATO TRAVADO
 
+**Status:** LOCKED — alterar **somente** com solicitação explícita do dono do produto  
 **Marker:** `DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST`  
 **Versão:** `protection-flow-contract-v6`  
 **Modelo vigente:** `stake_lock_v1`  
 **Fonte da verdade:** `scripts/lib/protection-flow-contract.mjs`  
+**Doc espelho:** `docs/PROTECTION_FLOW_LOCKED.md`  
 **Testes CI:** `npm test` → `scripts/protection-flow-contract.test.mjs`
 
 ## Regra para agentes / PRs
 
-**NÃO alterar** o fluxo de proteção (criar, travar stake, liquidar, cancelar, buckets de saldo) **sem solicitação explícita do usuário/dono do produto** nesta conversa ou issue.
+**NÃO alterar** o fluxo de proteção (criar, travar stake, liquidar, cancelar, buckets de saldo, teto 50%, 1 op/evento, bloqueio pós-kickoff) **sem solicitação explícita do usuário/dono do produto** nesta conversa ou issue.
+
+Se o pedido não for explícito: **não mexer**. Mudança permitida exige bump de versão + sync `AGENTS.md` + `docs/PROTECTION_FLOW_LOCKED.md` + testes.
 
 Arquivos cobertos (lista mínima):
 
@@ -24,6 +28,7 @@ Arquivos cobertos (lista mínima):
 - `scripts/arbishield-serverfn-shim.mjs` (settle/cancel/saque)
 - `src/lib/arbishield/create-protection.ts`
 - UI: `app-proteger.html`, `app-protecoes.html`, `admin-jogos.html`, `v2-financeiro.js`
+- `docs/PROTECTION_FLOW_LOCKED.md`
 
 ## Regras de produto vigentes (`stake_lock_v1`)
 
