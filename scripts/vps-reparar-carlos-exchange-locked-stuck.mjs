@@ -262,36 +262,57 @@ async function main() {
   }
 
   const prot = await loadCandidateProtection(user.id);
-  if (!prot) {
-    throw new Error(
-      "Não achei proteção recente com stake = locked. Passe PROTECTION_ID= se souber."
+  let stake = EXPECT_LOCKED_CENTS;
+  let fee = 9111;
+  let commission = 500;
+  let protId = `orphan-locked:${user.id}`;
+  let table = null;
+
+  if (prot) {
+    stake = n(prot.responsibility_cents || prot.amount_cents) || EXPECT_LOCKED_CENTS;
+    fee = settlementDeductionCents(prot) || 9111;
+    commission = settlementExchangeCommissionCents(prot) || 500;
+    protId = prot.id;
+    table = prot._table === "back_protections" ? "back_protections" : "protections";
+    console.log(
+      "Proteção:",
+      prot.id,
+      "status=",
+      prot.status,
+      "outcome=",
+      prot.settled_outcome || "—"
+    );
+  } else {
+    console.warn(
+      "AVISO: proteção não encontrada — aplico force com stake=locked e fees LAY@10 (91,11+5,00)"
     );
   }
-  const stake = n(prot.responsibility_cents || prot.amount_cents);
-  const fee = settlementDeductionCents(prot);
-  const commission = settlementExchangeCommissionCents(prot);
+
+  // Nunca cobrir mais do que o locked atual
+  stake = Math.min(stake, n(user.locked_balance_cents));
   const totalFees = fee + commission;
   const targetBalance = n(user.balance_cents) + stake - totalFees;
   const targetLocked = Math.max(0, n(user.locked_balance_cents) - stake);
 
-  console.log("Proteção:", prot.id, "status=", prot.status, "outcome=", prot.settled_outcome || "—");
   console.log("Stake:", money(stake));
   console.log("Dedução ArbiShield:", money(fee));
   console.log("Comissão Exchange 4,5%:", money(commission));
   console.log("Alvo Apostador:", money(targetBalance), "| Locked:", money(targetLocked));
 
-  if (await alreadyRepaired(prot.id)) {
-    console.log("Já existe settle/repair com stake_returned — só ajusta locked se preciso.");
+  if (prot && (await alreadyRepaired(prot.id))) {
+    console.log("Já existe settle/repair com stake_returned — forço PATCH de locked mesmo assim.");
   }
 
   if (!FIX) {
     console.log("\nDry-run. Para aplicar:");
     console.log("  FIX=1 node scripts/vps-reparar-carlos-exchange-locked-stuck.mjs");
+    console.log("Ou force direto:");
+    console.log("  FIX=1 node scripts/vps-forcar-descongelar-carlos.mjs");
     return;
   }
 
-  // 1) wallet patch
-  await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}`, {
+  // 1) wallet patch — OBRIGATÓRIO zerar locked
+  const patched = await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}`, {
     method: "PATCH",
     body: {
       balance_cents: targetBalance,
@@ -300,6 +321,13 @@ async function main() {
       updated_at: new Date().toISOString(),
     },
   });
+  let row = Array.isArray(patched) ? patched[0] : patched;
+  if (!row || n(row.locked_balance_cents) > 0) {
+    await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}`, {
+      method: "PATCH",
+      body: { balance_cents: targetBalance, locked_balance_cents: 0 },
+    });
+  }
 
   // 2) txs audit
   await sb("/rest/v1/wallet_transactions", {
@@ -308,10 +336,10 @@ async function main() {
       user_id: user.id,
       type: "protection_settlement",
       amount_cents: -fee,
-      ref: prot.id,
+      ref: protId,
       metadata: {
-        protection_id: prot.id,
-        match_id: prot.match_id || null,
+        protection_id: protId,
+        match_id: prot?.match_id || null,
         outcome: "exchange",
         stake_cents: stake,
         fee_cents: fee,
@@ -333,9 +361,9 @@ async function main() {
         user_id: user.id,
         type: "exchange_commission",
         amount_cents: -commission,
-        ref: prot.id,
+        ref: protId,
         metadata: {
-          protection_id: prot.id,
+          protection_id: protId,
           outcome: "exchange",
           label: "Comissão Exchange (4,5% do lucro)",
           exchange_commission_cents: commission,
@@ -346,20 +374,20 @@ async function main() {
     });
   }
 
-  // 3) garante status won_exchange
-  const st = String(prot.status || "").toLowerCase();
-  if (st === "active" || st === "pending" || st === "review_odd" || !st) {
-    const table =
-      prot._table === "back_protections" ? "back_protections" : "protections";
-    await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(prot.id)}`, {
-      method: "PATCH",
-      body: {
-        status: "won_exchange",
-        settled_outcome: "exchange",
-        settled_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-    }).catch((e) => console.warn("status patch:", e.message || e));
+  // 3) garante status won_exchange se ainda ativa
+  if (prot && table) {
+    const st = String(prot.status || "").toLowerCase();
+    if (st === "active" || st === "pending" || st === "review_odd" || !st) {
+      await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(prot.id)}`, {
+        method: "PATCH",
+        body: {
+          status: "won_exchange",
+          settled_outcome: "exchange",
+          settled_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      }).catch((e) => console.warn("status patch:", e.message || e));
+    }
   }
 
   const after = await sb(
@@ -375,6 +403,9 @@ async function main() {
     "| Reembolso",
     money(p2?.deduction_balance_cents)
   );
+  if (n(p2?.locked_balance_cents) > 0) {
+    throw new Error("FALHOU: locked ainda > 0 após reparo");
+  }
   console.log("OK — reparo aplicado (" + REPAIR_TAG + ")");
 }
 
