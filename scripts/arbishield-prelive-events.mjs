@@ -1596,7 +1596,7 @@ async function creditWalletForSettlement(row, outcome, now) {
 
   const patch = { updated_at: now };
   // ArbiShield: stake → Reembolso. void stake_lock: stake → origem. fee_upfront void: fee → Reembolso.
-  const bucket = creditBucketForSettlement(balanceType, row, outcomeNorm);
+  let bucket = creditBucketForSettlement(balanceType, row, outcomeNorm);
   if (bucket === "demo_balance_cents") {
     patch.demo_balance_cents = nCents(p.demo_balance_cents) + credit;
   } else if (bucket === "investor_balance_cents") {
@@ -2812,8 +2812,12 @@ async function refundAndCancelProtection(table, row, audit = {}) {
           metadata: {
             protection_id: protectionId,
             auto_cancel: true,
-            billing_model: feeUpfront ? "fee_upfront_v1" : "legacy_lock",
-            refund_kind: feeUpfront ? "fee" : "stake",
+            billing_model: feeUpfront
+              ? "fee_upfront_v1"
+              : stakeLock
+                ? "stake_lock_v1"
+                : "legacy_lock",
+            refund_kind: feeUpfront && !stakeLock ? "fee" : "stake",
             fee_cents: feeCents,
             stake_cents: stakeCents,
             balance_type: balanceType,

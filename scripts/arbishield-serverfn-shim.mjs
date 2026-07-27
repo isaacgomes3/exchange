@@ -4356,6 +4356,90 @@ async function closeProtectionNoRefund(token, body) {
   return { ok: true, protectionId, status: "settled" };
 }
 
+/**
+ * Cancelamento: devolve à carteira de origem.
+ * stake_lock → stake + destrava locked
+ * fee_upfront histórico → só dedução (sem mexer locked)
+ * Nunca credita Saldo Reembolso no cancel.
+ */
+async function refundProtectionCancelToWallet(row, opts) {
+  const protectionId = opts.protectionId;
+  const amount = Math.max(0, n(opts.amount));
+  const stakeCents = Math.max(0, n(opts.stakeCents));
+  const feeCents = Math.max(0, n(opts.feeCents));
+  const feeUpfront = !!opts.feeUpfront;
+  const stakeLock = !!opts.stakeLock;
+  const balanceType = String(opts.balanceType || "REAL").toUpperCase();
+  const extraMeta =
+    opts.extraMeta && typeof opts.extraMeta === "object" ? opts.extraMeta : {};
+  if (!(row?.user_id && amount > 0)) return { refundedCents: 0 };
+
+  const prof = await sb(
+    `/rest/v1/profiles?select=balance_cents,locked_balance_cents,demo_balance_cents,investor_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const p = Array.isArray(prof) ? prof[0] : null;
+  if (!p) throw new Error("Perfil do usuário não encontrado");
+
+  const patchFull = { updated_at: new Date().toISOString() };
+  if (balanceType === "DEMO") {
+    patchFull.demo_balance_cents = n(p.demo_balance_cents) + amount;
+  } else if (balanceType === "INVESTOR") {
+    patchFull.investor_balance_cents = n(p.investor_balance_cents) + amount;
+  } else {
+    patchFull.balance_cents = n(p.balance_cents) + amount;
+  }
+  if (!(feeUpfront && !stakeLock)) {
+    patchFull.locked_balance_cents = Math.max(
+      0,
+      n(p.locked_balance_cents) - stakeCents
+    );
+  }
+  try {
+    await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: patchFull,
+    });
+  } catch {
+    const slim = { ...patchFull };
+    delete slim.updated_at;
+    await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: slim,
+    });
+  }
+  try {
+    await sb("/rest/v1/wallet_transactions", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        user_id: row.user_id,
+        type: "protection_refund",
+        amount_cents: amount,
+        ref: protectionId,
+        metadata: {
+          protection_id: protectionId,
+          billing_model: feeUpfront
+            ? "fee_upfront_v1"
+            : stakeLock
+              ? "stake_lock_v1"
+              : "legacy_lock",
+          refund_kind: feeUpfront && !stakeLock ? "fee" : "stake",
+          fee_cents: feeCents,
+          stake_cents: stakeCents,
+          balance_type: balanceType,
+          ...extraMeta,
+        },
+      },
+    });
+  } catch {
+    /* */
+  }
+  return { refundedCents: amount };
+}
+
 async function cancelProtectionRefund(token, body) {
   if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
   const protectionId = String(body?.protectionId || body?.id || "").trim();
@@ -4370,7 +4454,25 @@ async function cancelProtectionRefund(token, body) {
   if (st === "settled" || st === "closed") {
     throw new Error("Proteção já encerrada — use estorno manual se necessário");
   }
-  const amount = n(row.responsibility_cents || row.amount_cents);
+  const feeUpfront =
+    typeof isFeeUpfrontProtection === "function" && isFeeUpfrontProtection(row);
+  const stakeLock =
+    typeof isStakeLockProtection === "function"
+      ? isStakeLockProtection(row)
+      : !feeUpfront;
+  const feeCents =
+    typeof settlementDeductionCents === "function"
+      ? settlementDeductionCents(row)
+      : 0;
+  const stakeCents = n(row.responsibility_cents || row.amount_cents);
+  const amount = feeUpfront && !stakeLock ? feeCents : stakeCents;
+  const balanceType = String(
+    (row.metadata &&
+      (row.metadata.balance_type ||
+        row.metadata.balance_type_requested ||
+        row.metadata.balanceType)) ||
+      "REAL"
+  ).toUpperCase();
   const adminId = requireUserId(token);
 
   if (await protectionAlreadyCredited(protectionId)) {
@@ -4389,55 +4491,22 @@ async function cancelProtectionRefund(token, body) {
     return { ok: true, alreadyCancelled: true, protectionId, refundedCents: 0 };
   }
 
-  if (row.user_id && amount > 0) {
-    const prof = await sb(
-      `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
-      { token: SERVICE_KEY }
-    );
-    const p = Array.isArray(prof) ? prof[0] : null;
-    if (!p) throw new Error("Perfil do usuário não encontrado");
-    try {
-      await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
-        method: "PATCH",
-        token: SERVICE_KEY,
-        body: {
-          balance_cents: n(p.balance_cents) + amount,
-          locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
-          updated_at: new Date().toISOString(),
-        },
-      });
-    } catch {
-      await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
-        method: "PATCH",
-        token: SERVICE_KEY,
-        body: {
-          balance_cents: n(p.balance_cents) + amount,
-          locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
-        },
-      });
-    }
-    try {
-      await sb("/rest/v1/wallet_transactions", {
-        method: "POST",
-        token: SERVICE_KEY,
-        body: {
-          user_id: row.user_id,
-          type: "protection_refund",
-          amount_cents: amount,
-          ref: protectionId,
-          metadata: { protection_id: protectionId, marketType },
-        },
-      });
-    } catch {
-      /* */
-    }
-  }
+  await refundProtectionCancelToWallet(row, {
+    protectionId,
+    amount,
+    stakeCents,
+    feeCents,
+    feeUpfront,
+    stakeLock,
+    balanceType,
+    extraMeta: { marketType, cancelled_by_admin: adminId },
+  });
 
   const marketId =
     row.market_id ||
     (row.metadata && (row.metadata.market_id || row.metadata.marketId)) ||
     null;
-  await restoreMatchLiquidity(row.match_id, amount, marketId);
+  await restoreMatchLiquidity(row.match_id, stakeCents, marketId);
 
   try {
     await sb("/rest/v1/admin_audit_logs", {
@@ -5240,7 +5309,25 @@ async function submitContestation(token, body) {
         "Cancelamento bloqueado: faltam menos de 5 minutos para o início da partida (ou o jogo já começou)."
       );
     }
-    const amount = n(row.responsibility_cents || row.amount_cents);
+    const feeUpfront =
+      typeof isFeeUpfrontProtection === "function" && isFeeUpfrontProtection(row);
+    const stakeLock =
+      typeof isStakeLockProtection === "function"
+        ? isStakeLockProtection(row)
+        : !feeUpfront;
+    const feeCents =
+      typeof settlementDeductionCents === "function"
+        ? settlementDeductionCents(row)
+        : 0;
+    const stakeCents = n(row.responsibility_cents || row.amount_cents);
+    const amount = feeUpfront && !stakeLock ? feeCents : stakeCents;
+    const balanceType = String(
+      (row.metadata &&
+        (row.metadata.balance_type ||
+          row.metadata.balance_type_requested ||
+          row.metadata.balanceType)) ||
+        "REAL"
+    ).toUpperCase();
     if (st === "cancelled") {
       return { ok: true, alreadyCancelled: true, status: "cancelled", protectionId };
     }
@@ -5263,6 +5350,8 @@ async function submitContestation(token, body) {
       cancelled_at: new Date().toISOString(),
       cancelled_by: userId,
       auto: true,
+      refund_kind: feeUpfront && !stakeLock ? "fee" : "stake",
+      refund_cents: amount,
     };
     // Claim ANTES do crédito — impede F5 / race re-creditar
     const claimed = await claimProtectionCancelled(table, protectionId, {
@@ -5279,54 +5368,21 @@ async function submitContestation(token, body) {
         refundedCents: 0,
       };
     }
-    if (row.user_id && amount > 0) {
-      const prof = await sb(
-        `/rest/v1/profiles?select=balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
-        { token: SERVICE_KEY }
-      );
-      const p = Array.isArray(prof) ? prof[0] : null;
-      if (!p) throw new Error("Perfil do usuário não encontrado");
-      try {
-        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
-          method: "PATCH",
-          token: SERVICE_KEY,
-          body: {
-            balance_cents: n(p.balance_cents) + amount,
-            locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
-            updated_at: new Date().toISOString(),
-          },
-        });
-      } catch {
-        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
-          method: "PATCH",
-          token: SERVICE_KEY,
-          body: {
-            balance_cents: n(p.balance_cents) + amount,
-            locked_balance_cents: Math.max(0, n(p.locked_balance_cents) - amount),
-          },
-        });
-      }
-      try {
-        await sb("/rest/v1/wallet_transactions", {
-          method: "POST",
-          token: SERVICE_KEY,
-          body: {
-            user_id: row.user_id,
-            type: "protection_refund",
-            amount_cents: amount,
-            ref: protectionId,
-            metadata: { protection_id: protectionId, auto_cancel: true },
-          },
-        });
-      } catch {
-        /* */
-      }
-    }
+    await refundProtectionCancelToWallet(row, {
+      protectionId,
+      amount,
+      stakeCents,
+      feeCents,
+      feeUpfront,
+      stakeLock,
+      balanceType,
+      extraMeta: { auto_cancel: true, cancelled_by: userId },
+    });
     const marketId =
       row.market_id ||
       (row.metadata && (row.metadata.market_id || row.metadata.marketId)) ||
       null;
-    await restoreMatchLiquidity(row.match_id, amount, marketId);
+    await restoreMatchLiquidity(row.match_id, stakeCents, marketId);
     return {
       ok: true,
       action: "cancellation",
@@ -5924,7 +5980,7 @@ async function creditWalletForSettlement(row, outcome, now) {
   if ((typeof isStakeLockProtection === "function" && isStakeLockProtection(row)) || !feeUpfront) {
     patch.locked_balance_cents = Math.max(0, n(p.locked_balance_cents) - amount);
   }
-  const bucket = creditBucketForSettlement(balanceType, row, outcomeNorm);
+  let bucket = creditBucketForSettlement(balanceType, row, outcomeNorm);
   if (bucket === "demo_balance_cents") {
     patch.demo_balance_cents = n(p.demo_balance_cents) + credit;
   } else if (bucket === "investor_balance_cents") {
