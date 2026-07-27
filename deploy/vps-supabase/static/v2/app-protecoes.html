@@ -328,13 +328,16 @@
         }
         return typeof m === "object" && m ? m : {};
       }
+      /** Alinhado a scripts/lib/protection-flow-contract.mjs → isFeeUpfrontProtection.
+       * NÃO usar "v2_create_protection*" genérico: lock_fee_after / legado também
+       * usam esse prefixo e a UI mostrava REEMBOLSO R$ 0 enquanto o settle
+       * creditava stake no Saldo Reembolso (caso Lucas / PERDEU). */
       function isFeeUpfront(row) {
         var meta = metaOf(row);
         return (
           meta.billing_model === "fee_upfront_v1" ||
           meta.fee_upfront === true ||
-          String(meta.source || "").indexOf("fee_upfront") >= 0 ||
-          String(meta.source || "").indexOf("v2_create_protection") >= 0
+          String(meta.source || "").indexOf("fee_upfront") >= 0
         );
       }
       function deductionCentsOf(row) {
