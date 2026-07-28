@@ -762,16 +762,34 @@ async function fetchProtectionsNeedingCredit(matchId) {
       return [];
     }
   }
-  const [lays, backs] = await Promise.all([
+  async function loadActive(table) {
+    try {
+      const rows = await sb(
+        `/rest/v1/${table}?match_id=eq.${encodeURIComponent(matchId)}&status=in.(active,pending,review_odd)&select=*&limit=2000`,
+        { token: SERVICE_KEY }
+      );
+      return Array.isArray(rows) ? rows : [];
+    } catch {
+      return [];
+    }
+  }
+  const [lays, backs, activeLays, activeBacks] = await Promise.all([
     load("protections"),
     load("back_protections"),
+    loadActive("protections"),
+    loadActive("back_protections"),
   ]);
   const all = [
     ...lays.map((r) => ({ ...r, _table: "protections" })),
     ...backs.map((r) => ({ ...r, _table: "back_protections" })),
+    ...activeLays.map((r) => ({ ...r, _table: "protections" })),
+    ...activeBacks.map((r) => ({ ...r, _table: "back_protections" })),
   ];
+  const seen = new Set();
   const out = [];
   for (const row of all) {
+    if (!row.id || seen.has(row.id)) continue;
+    seen.add(row.id);
     if (!(await protectionAlreadyCredited(row.id))) out.push(row);
   }
   return out;
@@ -805,6 +823,11 @@ async function settleMatchFromBody(body, token) {
   let markets = Array.isArray(match.markets) ? [...match.markets] : [];
   markets = markets.map((m) => ({ ...m, settled_outcome: outcome }));
 
+  const matchStatus = String(match.status_v2 || match.status || "").toLowerCase();
+  const matchAlreadySettled =
+    match.settled_at ||
+    ["settled", "finished", "closed", "finalizado"].includes(matchStatus);
+
   // IMPORTANTE: liquidar proteções ANTES de marcar a partida.
   // Trigger legado no Postgres bloqueia UPDATE matches → settled enquanto
   // houver LAY/BACK ativos ("Encerramento bloqueado: existem N proteções…").
@@ -817,6 +840,9 @@ async function settleMatchFromBody(body, token) {
       open = needing;
       repaired = true;
     }
+  } else if (matchAlreadySettled) {
+    // Partida marcada encerrada mas proteções ainda abertas — força reparo
+    repaired = true;
   }
   let settledCount = 0;
   let refundedCents = 0;
@@ -1251,7 +1277,7 @@ async function createProtection(body, userToken) {
     token: SERVICE_KEY,
     body: {
       user_id: userId,
-      type: marketType === "BACK" ? "protection_lock" : "anchor_lock",
+      type: "protection_lock",
       amount_cents: -amountCents,
       balance_before_cents: balanceBefore,
       balance_after_cents: balanceAfter,
@@ -1261,6 +1287,7 @@ async function createProtection(body, userToken) {
         match_id: matchId,
         market_type: marketType,
         balance_type: balanceType,
+        fix: "protection-lock-v2",
       },
     },
   }).catch((e) => {

@@ -494,133 +494,137 @@
       el.addEventListener("click", doLogout);
     });
 
-    if (shell === "app") {
-      try {
-        if (global.ArbiV2 && global.ArbiV2.client) {
-          var appSupa = global.ArbiV2.client();
-          var appUserRes = await appSupa.auth.getUser();
-          var appUser = appUserRes.data && appUserRes.data.user;
-          if (appUser) {
-            var imp = global.ArbiV2.getImpersonation
-              ? global.ArbiV2.getImpersonation()
-              : null;
-            var viewUserId =
-              global.ArbiV2.getEffectiveUserId
-                ? global.ArbiV2.getEffectiveUserId(appUser)
-                : appUser.id;
-            if (imp && imp.id) {
-              var banner = document.getElementById("v2ImpersonateBanner");
-              if (!banner) {
-                banner = document.createElement("div");
-                banner.id = "v2ImpersonateBanner";
-                banner.setAttribute("role", "status");
-                banner.style.cssText =
-                  "position:sticky;top:0;z-index:90;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:10px 14px;background:#1a1400;border-bottom:1px solid rgba(245,158,11,0.45);color:#fde68a;font-size:12px;font-weight:800;letter-spacing:0.04em;text-transform:uppercase";
-                banner.innerHTML =
-                  '<span>Espelho · visualizando conta do cliente' +
-                  (imp.name ? ": " + String(imp.name) : "") +
-                  '</span><button type="button" id="v2ImpersonateExit" style="border:0;border-radius:10px;padding:8px 12px;background:#c9f223;color:#000;font-weight:900;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer">Sair do espelho</button>';
-                var first = document.body.firstChild;
-                document.body.insertBefore(banner, first);
-                var exitBtn = document.getElementById("v2ImpersonateExit");
-                if (exitBtn) {
-                  exitBtn.addEventListener("click", function () {
-                    global.ArbiV2.clearImpersonation({
-                      redirect: "/admin-users.html",
-                    });
-                  });
-                }
-              }
-            }
-            var balRes = await appSupa
-              .from("profiles")
-              .select(
-                "balance_cents,reusable_balance_cents,demo_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,locked_balance_cents,full_name,avatar_url"
-              )
-              .eq("id", viewUserId)
-              .maybeSingle();
-            var p = balRes.data || {};
-            var money = global.ArbiV2.money;
-            var apostador =
-              Number(p.balance_cents || 0) +
-              Number(p.reusable_balance_cents || 0) +
-              Number(p.demo_balance_cents || 0);
-            var provedor =
-              Number(p.investor_balance_cents || 0) +
-              Number(p.demo_balance_provider_cents || 0);
-            var desafio = Number(p.desafio_balance_cents || 0);
-            var congelado = Number(p.locked_balance_cents || 0);
-            if (!(congelado > 0)) {
-              try {
-                var prot = await appSupa
-                  .from("protections")
-                  .select("amount_cents,status")
-                  .eq("user_id", viewUserId)
-                  .eq("status", "active")
-                  .limit(200);
-                var back = await appSupa
-                  .from("back_protections")
-                  .select("amount_cents,status")
-                  .eq("user_id", viewUserId)
-                  .eq("status", "active")
-                  .limit(200);
-                var sumP = 0;
-                (prot.data || []).forEach(function (r) {
-                  sumP += Number(r.amount_cents || 0);
-                });
-                (back.data || []).forEach(function (r) {
-                  sumP += Number(r.amount_cents || 0);
-                });
-                if (sumP > 0) congelado = sumP;
-              } catch (protErr) {}
-            }
-            var afiliado = 0;
-            try {
-              var aff = await appSupa
-                .from("affiliate_stats")
-                .select("pending_cents,pendingCents,available_cents,balance_cents")
-                .eq("profile_id", viewUserId)
-                .maybeSingle();
-              var a = (aff && aff.data) || {};
-              afiliado = Number(
-                a.pending_cents || a.pendingCents || a.available_cents || a.balance_cents || 0
-              );
-            } catch (affErr) {}
-            function setTxt(id, val) {
-              var el = document.getElementById(id);
-              if (el) el.textContent = money(val);
-            }
-            setTxt("v2BalApostador", apostador);
-            setTxt("v2BalDesafio", desafio);
-            setTxt("v2BalAfiliado", afiliado);
-            setTxt("v2BalCongelado", congelado);
-            setTxt("v2BalProvedor", provedor);
-            var displayName =
-              p.full_name ||
-              (imp && imp.name) ||
-              (appUser.email ? appUser.email.split("@")[0] : "Membro");
-            var initials = String(displayName)
-              .split(/\s+/)
-              .slice(0, 2)
-              .map(function (w) {
-                return w[0] || "";
-              })
-              .join("")
-              .toUpperCase() || "U";
-            var first = initials.charAt(0) || "U";
-            var av = document.getElementById("v2AppAvatar");
-            if (av) av.textContent = initials;
-            var sideAv = document.getElementById("v2SideAvatar");
-            if (sideAv) sideAv.textContent = first;
-            var sideName = document.getElementById("v2SideName");
-            if (sideName) sideName.textContent = displayName;
-            var sideD = document.getElementById("v2SideBalD");
-            if (sideD) sideD.textContent = money(desafio);
-            var sideI = document.getElementById("v2SideBalI");
-            if (sideI) sideI.textContent = money(provedor);
+    async function refreshAppBalances() {
+      if (shell !== "app") return;
+      if (!(global.ArbiV2 && global.ArbiV2.client)) return;
+      var appSupa = global.ArbiV2.client();
+      var appUserRes = await appSupa.auth.getUser();
+      var appUser = appUserRes.data && appUserRes.data.user;
+      if (!appUser) return;
+      var imp = global.ArbiV2.getImpersonation
+        ? global.ArbiV2.getImpersonation()
+        : null;
+      var viewUserId =
+        global.ArbiV2.getEffectiveUserId
+          ? global.ArbiV2.getEffectiveUserId(appUser)
+          : appUser.id;
+      if (imp && imp.id) {
+        var banner = document.getElementById("v2ImpersonateBanner");
+        if (!banner) {
+          banner = document.createElement("div");
+          banner.id = "v2ImpersonateBanner";
+          banner.setAttribute("role", "status");
+          banner.style.cssText =
+            "position:sticky;top:0;z-index:90;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:10px 14px;background:#1a1400;border-bottom:1px solid rgba(245,158,11,0.45);color:#fde68a;font-size:12px;font-weight:800;letter-spacing:0.04em;text-transform:uppercase";
+          banner.innerHTML =
+            '<span>Espelho · visualizando conta do cliente' +
+            (imp.name ? ": " + String(imp.name) : "") +
+            '</span><button type="button" id="v2ImpersonateExit" style="border:0;border-radius:10px;padding:8px 12px;background:#c9f223;color:#000;font-weight:900;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer">Sair do espelho</button>';
+          var first = document.body.firstChild;
+          document.body.insertBefore(banner, first);
+          var exitBtn = document.getElementById("v2ImpersonateExit");
+          if (exitBtn) {
+            exitBtn.addEventListener("click", function () {
+              global.ArbiV2.clearImpersonation({
+                redirect: "/admin-users.html",
+              });
+            });
           }
         }
+      }
+      var balRes = await appSupa
+        .from("profiles")
+        .select(
+          "balance_cents,reusable_balance_cents,demo_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,locked_balance_cents,full_name,avatar_url"
+        )
+        .eq("id", viewUserId)
+        .maybeSingle();
+      var p = balRes.data || {};
+      var money = global.ArbiV2.money;
+      var apostador =
+        Number(p.balance_cents || 0) +
+        Number(p.reusable_balance_cents || 0) +
+        Number(p.demo_balance_cents || 0);
+      var provedor =
+        Number(p.investor_balance_cents || 0) +
+        Number(p.demo_balance_provider_cents || 0);
+      var desafio = Number(p.desafio_balance_cents || 0);
+      var congelado = Number(p.locked_balance_cents || 0);
+      try {
+        var prot = await appSupa
+          .from("protections")
+          .select("amount_cents,responsibility_cents,status")
+          .eq("user_id", viewUserId)
+          .eq("status", "active")
+          .limit(200);
+        var back = await appSupa
+          .from("back_protections")
+          .select("amount_cents,status")
+          .eq("user_id", viewUserId)
+          .eq("status", "active")
+          .limit(200);
+        var sumP = 0;
+        (prot.data || []).forEach(function (r) {
+          sumP += Number(r.responsibility_cents || r.amount_cents || 0);
+        });
+        (back.data || []).forEach(function (r) {
+          sumP += Number(r.amount_cents || 0);
+        });
+        if (sumP > congelado) congelado = sumP;
+      } catch (protErr) {}
+      var afiliado = 0;
+      try {
+        var aff = await appSupa
+          .from("affiliate_stats")
+          .select("pending_cents,pendingCents,available_cents,balance_cents")
+          .eq("profile_id", viewUserId)
+          .maybeSingle();
+        var a = (aff && aff.data) || {};
+        afiliado = Number(
+          a.pending_cents || a.pendingCents || a.available_cents || a.balance_cents || 0
+        );
+      } catch (affErr) {}
+      function setTxt(id, val) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = money(val);
+      }
+      setTxt("v2BalApostador", apostador);
+      setTxt("v2BalDesafio", desafio);
+      setTxt("v2BalAfiliado", afiliado);
+      setTxt("v2BalCongelado", congelado);
+      setTxt("v2BalProvedor", provedor);
+      var displayName =
+        p.full_name ||
+        (imp && imp.name) ||
+        (appUser.email ? appUser.email.split("@")[0] : "Membro");
+      var initials = String(displayName)
+        .split(/\s+/)
+        .slice(0, 2)
+        .map(function (w) {
+          return w[0] || "";
+        })
+        .join("")
+        .toUpperCase() || "U";
+      var first = initials.charAt(0) || "U";
+      var av = document.getElementById("v2AppAvatar");
+      if (av) av.textContent = initials;
+      var sideAv = document.getElementById("v2SideAvatar");
+      if (sideAv) sideAv.textContent = first;
+      var sideName = document.getElementById("v2SideName");
+      if (sideName) sideName.textContent = displayName;
+      var sideD = document.getElementById("v2SideBalD");
+      if (sideD) sideD.textContent = money(desafio);
+      var sideI = document.getElementById("v2SideBalI");
+      if (sideI) sideI.textContent = money(provedor);
+    }
+
+    if (shell === "app") {
+      try {
+        await refreshAppBalances();
       } catch (err) {}
+      document.addEventListener("arbishield:balances-changed", function () {
+        refreshAppBalances().catch(function () {});
+      });
     }
 
     if (shell === "admin") {
@@ -709,7 +713,11 @@
       })();
     }
 
-    global.ArbiV2Shell = { adminSections: ADMIN_SECTIONS, appSections: APP_SECTIONS };
+    global.ArbiV2Shell = {
+      adminSections: ADMIN_SECTIONS,
+      appSections: APP_SECTIONS,
+      refreshBalances: refreshAppBalances,
+    };
   }
 
   if (document.readyState === "loading") {

@@ -424,7 +424,16 @@
             );
           }
           closeDrawer();
-          showOk("Proteção ativada · " + String(data.protectionId).slice(0, 8) + "…");
+          showOk(
+            "Proteção ativada · " +
+              String(data.protectionId).slice(0, 8) +
+              "… · Saldo após: " +
+              money(Number(data.balanceAfterCents || 0))
+          );
+          document.dispatchEvent(new CustomEvent("arbishield:balances-changed"));
+          if (global.ArbiV2Shell && global.ArbiV2Shell.refreshBalances) {
+            global.ArbiV2Shell.refreshBalances().catch(function () {});
+          }
           await load();
         } catch (ex) {
           showErr(ex.message || "Erro ao ativar proteção");
