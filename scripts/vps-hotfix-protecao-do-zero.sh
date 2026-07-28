@@ -51,6 +51,8 @@ chmod 0755 "$PRELIVE"
 cp -f "$PRELIVE" /opt/arbishield/scripts/arbishield-prelive-events.mjs 2>/dev/null || true
 grep -q 'FLUXO_PROTECAO_V1' "$PRELIVE" || die "prelive sem FLUXO_PROTECAO_V1"
 grep -q 'missingCredit' "$PRELIVE" || die "prelive sem reparo de crédito Exchange"
+grep -q 'fluxo-protecao-v1-recredit\|creditedSettlementCents' "$PRELIVE" \
+  || die "prelive sem reparo de Reembolso (crédito stake)"
 # Anti-regressão: create/settle NÃO devem ser stub 501
 python3 - "$PRELIVE" <<'PY' || die "createProtection ainda é stub"
 import sys
@@ -82,6 +84,8 @@ cp -f "$SHIM" /opt/arbishield/arbishield-serverfn-shim.mjs 2>/dev/null || true
 cp -f "$SHIM" /opt/arbishield/scripts/arbishield-serverfn-shim.mjs 2>/dev/null || true
 grep -q 'FLUXO_PROTECAO_V1' "$SHIM" || die "shim sem FLUXO_PROTECAO_V1"
 grep -q 'missingCredit' "$SHIM" || die "shim sem reparo de crédito Exchange"
+grep -q 'creditedSettlementCents\|fluxo-protecao-v1-recredit' "$SHIM" \
+  || die "shim sem reparo de Reembolso (crédito stake)"
 grep -q 'creditWalletForSettlement' "$SHIM" || die "shim sem creditWalletForSettlement"
 # shim settle não deve ser só throw 501
 python3 - "$SHIM" <<'PY' || die "shim settle ainda é stub"

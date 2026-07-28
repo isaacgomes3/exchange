@@ -4020,30 +4020,27 @@ function settlementStatusForOutcome(outcome) {
     : "won_exchange";
 }
 
-async function protectionAlreadyCredited(protectionId) {
-  if (!protectionId) return false;
+async function creditedSettlementCents(protectionId) {
+  if (!protectionId) return 0;
   try {
     const rows = await sb(
-      `/rest/v1/wallet_transactions?ref=eq.${encodeURIComponent(protectionId)}&type=in.(protection_settlement,protection_release,protection_refund)&select=id&limit=1`,
+      `/rest/v1/wallet_transactions?ref=eq.${encodeURIComponent(protectionId)}&type=in.(protection_settlement,protection_release,protection_refund)&select=amount_cents&limit=50`,
       { token: SERVICE_KEY }
     );
-    if (Array.isArray(rows) && rows.length > 0) return true;
-  } catch {
-    /* */
-  }
-  try {
-    const rows = await sb(
-      `/rest/v1/wallet_transactions?type=eq.protection_refund&select=id,metadata&order=created_at.desc&limit=200`,
-      { token: SERVICE_KEY }
-    );
-    return (Array.isArray(rows) ? rows : []).some(
-      (t) =>
-        t?.metadata &&
-        String(t.metadata.protection_id || "") === String(protectionId)
+    return (Array.isArray(rows) ? rows : []).reduce(
+      (s, t) => s + Math.max(0, n(t.amount_cents)),
+      0
     );
   } catch {
-    return false;
+    return 0;
   }
+}
+
+/** R$0 no extrato NÃO conta como creditado (bug que zerava Congelado sem somar Apostador). */
+async function protectionAlreadyCredited(protectionId, expectedCents = null) {
+  const sum = await creditedSettlementCents(protectionId);
+  if (expectedCents != null && expectedCents > 0) return sum >= expectedCents;
+  return sum > 0;
 }
 
 /** Claim atômico cancelled — impede re-crédito em F5 / listagens. */
@@ -4082,7 +4079,7 @@ async function claimProtectionCancelled(table, protectionId, extraBody = {}) {
 }
 
 async function creditWalletForSettlement(row, outcome, now) {
-  // FLUXO_PROTECAO_V1: destrava sempre · Exchange devolve max(0,R−margem)
+  // FLUXO_PROTECAO_V1: Congelado −stake · Apostador +crédito (Reembolso = 100%)
   const amount = n(row.responsibility_cents || row.amount_cents);
   const credit = settlementCreditCents(row, outcome);
   const wonArbi = String(outcome).toLowerCase() === "arbishield";
@@ -4091,7 +4088,8 @@ async function creditWalletForSettlement(row, outcome, now) {
     return { refunded: 0, credited: 0, skipped: true };
   }
 
-  const already = await protectionAlreadyCredited(row.id);
+  const priorCredited = await creditedSettlementCents(row.id);
+  const already = credit > 0 ? priorCredited >= credit : priorCredited > 0;
 
   const prof = await sb(
     `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
@@ -4102,22 +4100,6 @@ async function creditWalletForSettlement(row, outcome, now) {
 
   const lockedBefore = n(p.locked_balance_cents);
   const locked = Math.max(0, lockedBefore - amount);
-
-  let priorCredited = 0;
-  if (already) {
-    try {
-      const txs = await sb(
-        `/rest/v1/wallet_transactions?ref=eq.${encodeURIComponent(row.id)}&type=in.(protection_settlement,protection_release,protection_refund)&select=amount_cents&limit=20`,
-        { token: SERVICE_KEY }
-      );
-      priorCredited = (Array.isArray(txs) ? txs : []).reduce(
-        (s, t) => s + Math.max(0, n(t.amount_cents)),
-        0
-      );
-    } catch {
-      priorCredited = 0;
-    }
-  }
   const missingCredit = Math.max(0, credit - priorCredited);
   const needUnlock = lockedBefore > locked;
 
@@ -4125,10 +4107,10 @@ async function creditWalletForSettlement(row, outcome, now) {
     return { refunded: credit, credited: credit, alreadyCredited: true };
   }
 
-  // Um único PATCH: Congelado −stake · Apostador +crédito (sem crédito em dobro)
+  const balanceBefore = n(p.balance_cents);
   const patch = {
     locked_balance_cents: locked,
-    balance_cents: n(p.balance_cents) + missingCredit,
+    balance_cents: balanceBefore + missingCredit,
   };
 
   let creditedOk = false;
@@ -4150,7 +4132,26 @@ async function creditWalletForSettlement(row, outcome, now) {
     throw lastErr || new Error("Falha ao creditar carteira do cliente");
   }
 
-  if (missingCredit > 0 || !already) {
+  if (missingCredit > 0) {
+    try {
+      const check = await sb(
+        `/rest/v1/profiles?select=balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+        { token: SERVICE_KEY }
+      );
+      const after = Array.isArray(check) ? check[0] : null;
+      if (n(after?.balance_cents) < balanceBefore + missingCredit) {
+        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+          method: "PATCH",
+          token: SERVICE_KEY,
+          body: { balance_cents: balanceBefore + missingCredit },
+        });
+      }
+    } catch {
+      /* */
+    }
+  }
+
+  if (missingCredit > 0 || (!already && credit === 0 && needUnlock)) {
     try {
       await sb("/rest/v1/wallet_transactions", {
         method: "POST",
@@ -4158,7 +4159,7 @@ async function creditWalletForSettlement(row, outcome, now) {
         body: {
           user_id: row.user_id,
           type: "protection_settlement",
-          amount_cents: missingCredit > 0 ? missingCredit : credit,
+          amount_cents: missingCredit,
           ref: row.id,
           metadata: {
             protection_id: row.id,
@@ -4168,8 +4169,9 @@ async function creditWalletForSettlement(row, outcome, now) {
             fee_cents: fee,
             expected_credit_cents: credit,
             prior_credited_cents: priorCredited,
+            balance_before_cents: balanceBefore,
             bucket: "balance_cents",
-            fix: "fluxo-protecao-v1",
+            fix: "fluxo-protecao-v1-recredit",
           },
         },
       });
@@ -4180,9 +4182,9 @@ async function creditWalletForSettlement(row, outcome, now) {
 
   return {
     refunded: credit,
-    credited: missingCredit > 0 ? missingCredit : credit,
+    credited: missingCredit,
     alreadyCredited: already,
-    repaired: already && (missingCredit > 0 || needUnlock),
+    repaired: priorCredited > 0 || missingCredit > 0,
   };
 }
 
@@ -4367,7 +4369,15 @@ async function settleMatch(token, body) {
     ];
     const needing = [];
     for (const row of candidates) {
-      if (!(await protectionAlreadyCredited(row.id))) needing.push(row);
+      const rowOutcome =
+        String(row.settled_outcome || "").toLowerCase() === "exchange" ||
+        String(row.status || "").toLowerCase() === "won_exchange"
+          ? "exchange"
+          : outcome || "arbishield";
+      const expected = settlementCreditCents(row, rowOutcome);
+      if (expected <= 0) continue;
+      const got = await creditedSettlementCents(row.id);
+      if (got < expected) needing.push(row);
     }
     if (needing.length) {
       all = needing;
