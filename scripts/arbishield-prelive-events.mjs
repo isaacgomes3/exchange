@@ -2,7 +2,7 @@
 /**
  * Serviço ArbiShield (VPS): matches manuais, settle e proteções.
  * Catálogo/API BetBra removidos — lançamento só via modo manual.
- * PROTECAO_DO_ZERO: create/settle stub — reimplementar do zero.
+ * FLUXO_PROTECAO_V1: create/settle oficiais (Apostador↔Congelado).
  *
  *   node scripts/arbishield-prelive-events.mjs --serve
  *   PRELIVE_LISTEN=127.0.0.1:3098 node scripts/arbishield-prelive-events.mjs --serve
@@ -797,13 +797,165 @@ async function fetchProtectionsNeedingCredit(matchId) {
 }
 
 async function settleMatchFromBody(body, token) {
-  // PROTECAO_DO_ZERO: settle antigo removido — reimplementar do zero
-  await requireAdminToken(token);
-  const err = new Error(
-    "Liquidação em reconstrução (do zero). Use apenas após nova lógica de proteção."
+  // FLUXO_PROTECAO_V1: ArbiShield 100% | Exchange max(0,R-margem)
+  const adminId = await requireAdminToken(token);
+  const matchId = String(body?.matchId || body?.id || "").trim();
+  if (!matchId) throw new Error("matchId obrigatório");
+  let outcome = String(body?.outcome || "").toLowerCase();
+  if (outcome !== "arbishield" && outcome !== "exchange") {
+    throw new Error("outcome inválido (use arbishield ou exchange)");
+  }
+  let finalScore = body?.finalScore || body?.final_score || null;
+  if (
+    !finalScore &&
+    (body?.homeScore != null || body?.awayScore != null)
+  ) {
+    finalScore = `${Number(body.homeScore || 0)}-${Number(body.awayScore || 0)}`;
+  }
+  if (!finalScore) throw new Error("placar obrigatório");
+
+  const rows = await sb(
+    `/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}&select=*&limit=1`,
+    { token: SERVICE_KEY }
   );
-  err.status = 501;
-  throw err;
+  const match = Array.isArray(rows) ? rows[0] : null;
+  if (!match) throw new Error("Partida não encontrada");
+
+  const now = new Date().toISOString();
+  let markets = Array.isArray(match.markets) ? [...match.markets] : [];
+  markets = markets.map((m) => ({ ...m, settled_outcome: outcome }));
+
+  const matchStatus = String(match.status_v2 || match.status || "").toLowerCase();
+  const matchAlreadySettled =
+    match.settled_at ||
+    ["settled", "finished", "closed", "finalizado"].includes(matchStatus);
+
+  // IMPORTANTE: liquidar proteções ANTES de marcar a partida.
+  // Trigger legado no Postgres bloqueia UPDATE matches → settled enquanto
+  // houver LAY/BACK ativos ("Encerramento bloqueado: existem N proteções…").
+  let open = await fetchOpenProtectionsForMatch(matchId);
+  let repaired = false;
+  if (open.length === 0) {
+    // Partida já encerrada sem crédito na carteira (bug anterior) — reprocessa
+    const needing = await fetchProtectionsNeedingCredit(matchId);
+    if (needing.length) {
+      open = needing;
+      repaired = true;
+    }
+  } else if (matchAlreadySettled) {
+    // Partida marcada encerrada mas proteções ainda abertas — força reparo
+    repaired = true;
+  }
+  let settledCount = 0;
+  let refundedCents = 0;
+  const settleErrors = [];
+
+  for (const row of open) {
+    try {
+      const r = await settleOneProtectionRow(row, outcome, now);
+      settledCount += 1;
+      refundedCents += r.refunded || 0;
+    } catch (err) {
+      settleErrors.push(
+        `${row._table}/${row.id}: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  if (!repaired) {
+    const still = await countOpenProtections(matchId);
+    if (still.total > 0) {
+      const detail = settleErrors.length
+        ? ` Detalhes: ${settleErrors.slice(0, 3).join(" | ")}`
+        : "";
+      throw Object.assign(
+        new Error(
+          `Não foi possível liquidar todas as proteções (${still.lay} LAY / ${still.back} BACK ainda abertas).${detail}`
+        ),
+        { status: 409 }
+      );
+    }
+  } else if (settleErrors.length) {
+    throw Object.assign(
+      new Error(
+        `Falha ao reparar crédito na carteira: ${settleErrors.slice(0, 3).join(" | ")}`
+      ),
+      { status: 409 }
+    );
+  } else if (settledCount === 0 && settleErrors.length === 0 && open.length === 0) {
+    // sem abertas e sem reparo — ainda assim marca placar se pedido
+  }
+
+  // Só agora marca a partida (evita o trigger de proteções ativas)
+  const basePatch = {
+    final_score: String(finalScore),
+    settled_at: now,
+    status: "settled",
+    markets,
+    updated_at: now,
+  };
+  try {
+    await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: { ...basePatch, status_v2: "settled" },
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    try {
+      await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: basePatch,
+      });
+    } catch (err2) {
+      const msg2 = err2 instanceof Error ? err2.message : String(err2);
+      if (/bloqueado|ativas|liquidação oficial|liquidacao oficial/i.test(msg2 + msg)) {
+        const again = await countOpenProtections(matchId);
+        throw Object.assign(
+          new Error(
+            `Encerramento ainda bloqueado pelo banco (${again.lay} LAY / ${again.back} BACK). Proteções liquidadas nesta rodada: ${settledCount}.`
+          ),
+          { status: 409 }
+        );
+      }
+      throw err2;
+    }
+  }
+
+  try {
+    await sb("/rest/v1/admin_audit_logs", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        admin_id: adminId,
+        action: "ADMIN_ACTION_SETTLE",
+        entity_type: "matches",
+        entity_id: matchId,
+        details: {
+          outcome,
+          finalScore,
+          settledCount,
+          refundedCents,
+          repaired,
+          fix: "sem-betbra-api-v1",
+        },
+      },
+    });
+  } catch {
+    /* */
+  }
+
+  return {
+    ok: true,
+    matchId,
+    outcome,
+    finalScore: String(finalScore),
+    settledCount,
+    refundedCents,
+    repaired,
+    fix: "sem-betbra-api-v1",
+  };
 }
 
 function decodeJwtPayload(token) {
@@ -877,12 +1029,281 @@ function calcBack(amountCents, odd) {
 }
 
 async function createProtection(body, userToken) {
-  // PROTECAO_DO_ZERO: logica antiga removida — reimplementar do zero
-  const err = new Error(
-    "Proteção em reconstrução (do zero). Modelos legado/fee_upfront/lock_fee_after desativados."
+  // FLUXO_PROTECAO_V1: Apostador -R · Congelado +R · platform_deduction = margem
+  if (!SERVICE_KEY) throw new Error("SERVICE_ROLE_KEY ausente no .env da VPS");
+  const payload = decodeJwtPayload(userToken);
+  const userId = payload?.sub;
+  if (!userId) {
+    const err = new Error("Não autorizado");
+    err.status = 401;
+    throw err;
+  }
+
+  const matchId = String(body.matchId || "");
+  const marketId = body.marketId ? String(body.marketId) : null;
+  const amountCents = Math.floor(Number(body.amountCents));
+  const odd = Number(body.odd);
+  const balanceType = String(body.balanceType || "REAL").toUpperCase();
+  const side = body.side ? String(body.side) : "home";
+
+  if (!matchId) {
+    const err = new Error("matchId obrigatório");
+    err.status = 400;
+    throw err;
+  }
+  if (!(amountCents > 0)) {
+    const err = new Error("Valor inválido");
+    err.status = 400;
+    throw err;
+  }
+  if (!(odd > 1.01)) {
+    const err = new Error("Odd inválida");
+    err.status = 400;
+    throw err;
+  }
+
+  const matchRows = await sb(
+    `/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}&select=id,home_team,away_team,starts_at,status,status_v2,is_published,deleted_at,markets,max_protection_cents,used_protection_cents,metadata&limit=1`,
+    { token: SERVICE_KEY }
   );
-  err.status = 501;
-  throw err;
+  const match = Array.isArray(matchRows) ? matchRows[0] : null;
+  if (!match || match.deleted_at) {
+    const err = new Error("Jogo não encontrado");
+    err.status = 404;
+    throw err;
+  }
+  if (match.is_published === false) {
+    const err = new Error("Jogo não publicado");
+    err.status = 400;
+    throw err;
+  }
+  if (match.starts_at && new Date(match.starts_at).getTime() <= Date.now()) {
+    const err = new Error(
+      "Jogo já iniciado. Não é possível criar novas proteções."
+    );
+    err.status = 400;
+    throw err;
+  }
+
+  const markets = Array.isArray(match.markets) ? [...match.markets] : [];
+  let market =
+    (marketId && markets.find((m) => String(m.id) === marketId)) ||
+    markets[0] ||
+    null;
+
+  const marketType =
+    body.marketType === "BACK" || body.marketType === "LAY"
+      ? body.marketType
+      : String(market?.market_type || "").toUpperCase() === "BACK"
+        ? "BACK"
+        : "LAY";
+
+  if (market) {
+    const liq = n(market.liquidity);
+    const used = n(market.used_liquidity);
+    if (liq > 0 && amountCents > liq - used) {
+      const err = new Error("Liquidez insuficiente neste mercado");
+      err.status = 400;
+      throw err;
+    }
+  }
+
+  const usedMatch = n(match.used_protection_cents);
+  const maxMatch = n(match.max_protection_cents);
+  if (maxMatch > 0 && amountCents > maxMatch - usedMatch) {
+    const err = new Error("Liquidez insuficiente neste jogo");
+    err.status = 400;
+    throw err;
+  }
+
+  const profileRows = await sb(
+    `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=id,balance_cents,reusable_balance_cents,demo_balance_cents,investor_balance_cents,account_status,locked_balance_cents&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const profile = Array.isArray(profileRows) ? profileRows[0] : null;
+  if (!profile) {
+    const err = new Error("Perfil não encontrado");
+    err.status = 404;
+    throw err;
+  }
+  const st = String(profile.account_status || "").toLowerCase();
+  if (["blocked", "suspended", "banned", "inactive", "inativo"].includes(st)) {
+    const err = new Error("Conta bloqueada para operar");
+    err.status = 403;
+    throw err;
+  }
+
+  let available = 0;
+  if (balanceType === "DEMO") available = n(profile.demo_balance_cents);
+  else if (balanceType === "INVESTOR")
+    available = n(profile.investor_balance_cents);
+  else
+    available = n(profile.balance_cents) + n(profile.reusable_balance_cents);
+
+  if (amountCents > available) {
+    const err = new Error("Saldo insuficiente");
+    err.status = 400;
+    throw err;
+  }
+
+  const balanceBefore = available;
+  const patch = {
+    locked_balance_cents: n(profile.locked_balance_cents) + amountCents,
+    updated_at: new Date().toISOString(),
+  };
+  let balanceAfter = 0;
+
+  if (balanceType === "DEMO") {
+    patch.demo_balance_cents = n(profile.demo_balance_cents) - amountCents;
+    balanceAfter = patch.demo_balance_cents;
+  } else if (balanceType === "INVESTOR") {
+    patch.investor_balance_cents =
+      n(profile.investor_balance_cents) - amountCents;
+    balanceAfter = patch.investor_balance_cents;
+  } else {
+    // Política: sem carteira reutilizável — consolida e debita só balance_cents
+    const bal = n(profile.balance_cents) + n(profile.reusable_balance_cents);
+    patch.balance_cents = bal - amountCents;
+    patch.reusable_balance_cents = 0;
+    balanceAfter = bal - amountCents;
+  }
+
+  await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: patch,
+  });
+
+  const meta = {
+    ...(body.metadata && typeof body.metadata === "object" ? body.metadata : {}),
+    market_id: market?.id || marketId || null,
+    market_name: market?.name || null,
+    market_type: marketType,
+    market_odd: market?.odd ?? odd,
+    source: "v2_create_protection",
+  };
+
+  let protectionId = "";
+  try {
+    if (marketType === "BACK") {
+      const c = calcBack(amountCents, odd);
+      const inserted = await sb("/rest/v1/back_protections", {
+        method: "POST",
+        token: SERVICE_KEY,
+        body: {
+          user_id: userId,
+          match_id: matchId,
+          odd: c.odd,
+          status: "active",
+          amount_cents: c.coverageCents,
+          user_profit_cents: c.userProfitCents,
+          platform_deduction_cents: c.arbiShieldDeductionCents,
+          balance_before_cents: balanceBefore,
+          balance_after_cents: balanceAfter,
+          metadata: {
+            ...meta,
+            exchange_fee_cents: c.exchangeFeeCents,
+            calculations: c,
+            balance_type: balanceType,
+          },
+        },
+      });
+      protectionId = Array.isArray(inserted) ? inserted[0]?.id : inserted?.id;
+    } else {
+      const c = calcLay(amountCents, odd);
+      const inserted = await sb("/rest/v1/protections", {
+        method: "POST",
+        token: SERVICE_KEY,
+        body: {
+          user_id: userId,
+          match_id: matchId,
+          side,
+          odd: c.odd,
+          status: "active",
+          amount_cents: c.responsibilityCents,
+          responsibility_cents: c.responsibilityCents,
+          user_profit_cents: c.userProfitCents,
+          platform_deduction_cents: c.arbiShieldDeductionCents,
+          platform_profit_cents: c.arbiShieldDeductionCents,
+          locked_deduction_cents: c.lockedDeductionCents,
+          exchange_fee_cents: c.exchangeFeeCents,
+          exchange_profit_net_cents: c.exchangeProfitNetCents,
+          balance_before_cents: balanceBefore,
+          balance_after_cents: balanceAfter,
+          metadata: {
+            ...meta,
+            balance_type: balanceType,
+          },
+        },
+      });
+      protectionId = Array.isArray(inserted) ? inserted[0]?.id : inserted?.id;
+    }
+    if (!protectionId) throw new Error("Falha ao gravar proteção");
+  } catch (err) {
+    await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: {
+        balance_cents: profile.balance_cents,
+        reusable_balance_cents: profile.reusable_balance_cents,
+        demo_balance_cents: profile.demo_balance_cents,
+        investor_balance_cents: profile.investor_balance_cents,
+        locked_balance_cents: profile.locked_balance_cents,
+        updated_at: new Date().toISOString(),
+      },
+    }).catch(() => {});
+    throw err;
+  }
+
+  if (market) {
+    const idx = markets.findIndex((m) => String(m.id) === String(market.id));
+    if (idx >= 0) {
+      markets[idx] = {
+        ...markets[idx],
+        used_liquidity: n(markets[idx].used_liquidity) + amountCents,
+      };
+    }
+  }
+
+  await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(matchId)}`, {
+    method: "PATCH",
+    token: SERVICE_KEY,
+    body: {
+      markets,
+      used_protection_cents: usedMatch + amountCents,
+      updated_at: new Date().toISOString(),
+    },
+  });
+
+  await sb("/rest/v1/wallet_transactions", {
+    method: "POST",
+    token: SERVICE_KEY,
+    body: {
+      user_id: userId,
+      type: "protection_lock",
+      amount_cents: -amountCents,
+      balance_before_cents: balanceBefore,
+      balance_after_cents: balanceAfter,
+      ref: protectionId,
+      metadata: {
+        protection_id: protectionId,
+        match_id: matchId,
+        market_type: marketType,
+        balance_type: balanceType,
+        fix: "protection-lock-v2",
+      },
+    },
+  }).catch((e) => {
+    console.warn("[createProtection] wallet_transactions:", e.message || e);
+  });
+
+  return {
+    ok: true,
+    protectionId,
+    marketType,
+    amountCents,
+    balanceAfterCents: balanceAfter,
+  };
 }
 
 const CONTESTATION_LOCK_MS = 5 * 60 * 1000;
@@ -1620,7 +2041,7 @@ async function handleApi(req, res) {
     return sendJson(res, 200, {
       ok: true,
       service: "arbishield-matches",
-      fix: "protecao-do-zero-v1",
+      fix: "fluxo-protecao-v1",
     });
   }
 

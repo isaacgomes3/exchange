@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # OBSOLETO — proteção do zero. Não reinstala lógica antiga.
 echo "ABORTADO: logica de protecao antiga excluida (protecao-do-zero)." >&2
-echo "Use: scripts/vps-hotfix-protecao-do-zero.sh  (stub 501)" >&2
+echo "Use: scripts/vps-hotfix-protecao-do-zero.sh  (FLUXO_PROTECAO_V1)" >&2
 echo "Depois implemente a nova logica em scripts/lib/protection-flow-scaffold.mjs" >&2
 exit 1
 
