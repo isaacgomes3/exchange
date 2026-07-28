@@ -5,7 +5,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/tirar-jogo-fila-47c1/scripts/vps-hotfix-tirar-jogo-fila.sh")
 #
 # Só despublicar o teste sem atualizar UI:
-#   UNQUEUE_MATCH="teste" bash <(curl -fsSL ".../vps-hotfix-tirar-jogo-fila.sh") --only-unqueue
+#   UNQUEUE_MATCH="teste" bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/tirar-jogo-fila-47c1/scripts/vps-hotfix-tirar-jogo-fila.sh") --only-unqueue
 set -euo pipefail
 
 REF="${ARBISHIELD_REF:-cursor/tirar-jogo-fila-47c1}"
@@ -22,21 +22,57 @@ log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "$1 não encontrado"; }
 need curl
+need python3
 
-load_env() {
-  [[ -f "$ENV_FILE" ]] || return 0
-  set -a
-  # shellcheck disable=SC1090
-  source "$ENV_FILE"
-  set +a
+# Lê só KEY=VALUE do .env (não usa source — .env da VPS tem linhas inválidas p/ bash)
+load_env_keys() {
+  local f="$1"
+  [[ -f "$f" ]] || return 0
+  # Exporta SERVICE_ROLE / SUPABASE_URL sem executar o arquivo
+  eval "$(
+    python3 - "$f" <<'PY'
+import re, shlex, sys
+path = sys.argv[1]
+want = {
+  "ARBISHIELD_SERVICE_ROLE_KEY",
+  "SERVICE_ROLE_KEY",
+  "SUPABASE_SERVICE_ROLE_KEY",
+  "ARBISHIELD_SUPABASE_URL",
+  "SUPABASE_URL",
+  "API_EXTERNAL_URL",
+}
+out = {}
+with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+  for raw in fh:
+    line = raw.strip()
+    if not line or line.startswith("#"):
+      continue
+    if "=" not in line:
+      continue
+    k, _, v = line.partition("=")
+    k = k.strip()
+    if k.startswith("export "):
+      k = k[7:].strip()
+    if k not in want:
+      continue
+    v = v.strip()
+    if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+      v = v[1:-1]
+    out[k] = v
+for k, v in out.items():
+  print(f"export {k}={shlex.quote(v)}")
+PY
+  )"
 }
 
 unqueue_by_name() {
-  load_env
+  load_env_keys "$ENV_FILE"
+  # fallbacks comuns na VPS
+  [[ -f /opt/arbishield/.env ]] && load_env_keys /opt/arbishield/.env
   local key="${ARBISHIELD_SERVICE_ROLE_KEY:-${SERVICE_ROLE_KEY:-${SUPABASE_SERVICE_ROLE_KEY:-}}}"
   local url="${ARBISHIELD_SUPABASE_URL:-${SUPABASE_URL:-${API_EXTERNAL_URL:-http://127.0.0.1:8000}}}"
   url="${url%/}"
-  [[ -n "$key" ]] || die "SERVICE_ROLE_KEY ausente em $ENV_FILE"
+  [[ -n "$key" ]] || die "SERVICE_ROLE_KEY ausente (arquivo $ENV_FILE)"
   local q
   q=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$UNQUEUE_MATCH")
   log "Despublicando jogos com nome ~ '$UNQUEUE_MATCH'…"
@@ -56,6 +92,10 @@ for r in rows:
 " || true
   local ids
   ids=$(echo "$rows" | python3 -c "import json,sys; print(' '.join(r['id'] for r in json.load(sys.stdin)))" 2>/dev/null || true)
+  if [[ -z "${ids// /}" ]]; then
+    log "Nada a despublicar."
+    return 0
+  fi
   for id in $ids; do
     curl -fsSL -X PATCH \
       -H "apikey: $key" \
@@ -73,7 +113,6 @@ if [[ "$ONLY_UNQUEUE" -eq 1 ]]; then
   exit 0
 fi
 
-need mkdir
 mkdir -p "$WEB" "$WEB_ROOT"
 
 log "1/2 UI — admin-jogos.html (Tirar da fila)"
