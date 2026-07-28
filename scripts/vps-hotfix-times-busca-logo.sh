@@ -2,7 +2,7 @@
 # Hotfix: busca de times + logos no Lançar Evento Manual (mesma API do desafio)
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/vps-hotfix-times-busca-logo.sh?v=7")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/vps-hotfix-times-busca-logo.sh?v=8")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/manual-evento-escudo-times-bb44}"
@@ -30,10 +30,8 @@ chmod 0644 "$WEB/admin-jogos.html"
 cp -f "$WEB/admin-jogos.html" "$WEB_ROOT/admin-jogos.html" 2>/dev/null || true
 cp -f "$WEB/admin-jogos.html" "$WEB_ROOT/admin-jogos-vps.html" 2>/dev/null || true
 
-grep -q 'positionTeamSuggest' "$WEB/admin-jogos.html" || die "HTML sem positionTeamSuggest"
-grep -q 'fetchTeamsForPicker' "$WEB/admin-jogos.html" || die "HTML sem fetchTeamsForPicker"
-grep -q 'Lançar manual' "$WEB/admin-jogos.html" || die "HTML sem Lançar manual"
-! grep -q 'Lançar jogo (BetBra)' "$WEB/admin-jogos.html" || die "HTML ainda tem botão BetBra"
+grep -q 'manualLaunchPanel' "$WEB/admin-jogos.html" || die "HTML sem manualLaunchPanel"
+! grep -q 'drawer-backdrop' "$WEB/admin-jogos.html" || die "HTML ainda usa drawer lateral"
 
 log "UI Proteger (exibe logos)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/app-proteger.html" -o "$WEB/app-proteger.html"
