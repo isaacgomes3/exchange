@@ -244,9 +244,7 @@
         ) {
           return false;
         }
-        // Precisa ter sido configurado com alguma liquidez (mesmo que já esgotada)
-        var max = Number(m.max_protection_cents || 0);
-        if (!(max > 0)) return false;
+        // Publicado + na janela de exibição (liquidez só afeta o botão Proteger)
         return start + LIVE_WINDOW_MS > now;
       }
       function hasProtectLiquidity(m) {
