@@ -121,6 +121,9 @@ grep -q 'Destrava (Congelado → Apostador) e Devolve 100% do stake' "$WEB/admin
   || die "admin-jogos sem texto oficial do Reembolso"
 grep -q 'Destrava (Congelado → Apostador) o stake menos a taxa' "$WEB/admin-jogos.html" \
   || die "admin-jogos sem texto oficial do Venceu Exchange"
+# sem conceito de fila
+grep -qi 'Fila (atuais)' "$WEB/admin-jogos.html" && die "admin-jogos ainda tem Fila (atuais)"
+grep -qi 'Tirar da fila' "$WEB/admin-jogos.html" && die "admin-jogos ainda tem Tirar da fila"
 # bust cache leve
 touch "$WEB/.fluxo-protecao-v1" 2>/dev/null || true
 
