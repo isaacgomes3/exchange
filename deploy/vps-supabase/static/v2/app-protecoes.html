@@ -338,7 +338,15 @@
         if (st === "review_odd") return "Em Contestação";
         if (st === "active") return "Ativa";
         if (st === "cancelled") return "Cancelada";
-        if (st === "settled" || st === "won_exchange" || st === "lost_exchange") return "Encerrada";
+        if (
+          st === "settled" ||
+          st === "won_exchange" ||
+          st === "lost_exchange" ||
+          st === "won_platform" ||
+          st === "lost_platform"
+        ) {
+          return "Encerrada";
+        }
         return st || "—";
       }
       function statusClass(st) {
@@ -346,7 +354,15 @@
         if (st === "review_odd") return "review";
         if (st === "active") return "active";
         if (st === "cancelled") return "cancelled";
-        if (st === "settled" || st === "won_exchange" || st === "lost_exchange") return "settled";
+        if (
+          st === "settled" ||
+          st === "won_exchange" ||
+          st === "lost_exchange" ||
+          st === "won_platform" ||
+          st === "lost_platform"
+        ) {
+          return "settled";
+        }
         return "";
       }
       function nCents(v) {
@@ -394,9 +410,9 @@
         }
         if (o === "exchange" || o === "lost" || o === "loss") return "exchange";
         var st = String(row && row.status || "").toLowerCase();
-        // Contrato: arbishield → lost_exchange; exchange → won_exchange
-        if (st === "lost_exchange") return "arbishield";
-        if (st === "won_exchange") return "exchange";
+        // Contrato settle: arbishield → won_platform / lost_exchange; exchange → won_exchange
+        if (st === "won_platform" || st === "lost_exchange") return "arbishield";
+        if (st === "won_exchange" || st === "lost_platform") return "exchange";
         return "";
       }
       function resultInfo(row) {
@@ -416,7 +432,9 @@
           refund = Math.max(0, amount - Math.min(fee, amount));
         }
         return {
-          label: won ? "Ganhou" : "Perdeu",
+          label: won
+            ? "Liquidação · Bateu ArbiShield"
+            : "Liquidação · Bateu Exchange",
           kind: won ? "won" : "lost",
           refundCents: refund,
         };
