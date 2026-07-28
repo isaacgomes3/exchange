@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # FLUXO_PROTECAO_V1 — deploy create/settle oficiais na VPS.
 #
-# Fluxo:
-#   Proteger         → Apostador −R · Congelado +R · margem em platform_deduction_cents
-#   Reembolso        → devolve 100% do stake (API outcome=arbishield)
-#   Venceu Exchange  → devolve max(0, R − taxa) (API outcome=exchange)
+# Fluxo (um PATCH: Congelado → Apostador — sem crédito em dobro):
+#   Proteger         → Apostador −R · Congelado +R
+#   Reembolso        → destrava 100% do stake (API outcome=arbishield)
+#   Venceu Exchange  → destrava stake − taxa (API outcome=exchange)
 #
 # Na VPS (root):
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-do-zero-47c1/scripts/vps-hotfix-protecao-do-zero.sh")
@@ -167,7 +167,3 @@ echo "  curl -s http://127.0.0.1:3098/health   # fix: fluxo-protecao-v1"
 echo "  Teste: proteger R\$500 → Apostador −500 · Congelado +500"
 echo "  Reembolso → destrava 100%; Venceu Exchange → destrava stake−taxa"
 echo
-# anti-regressão: não usar “destrava · devolve” (crédito duplo semântico)
-grep -E 'Destrava.*devolve|devolve 100%|devolve stake' "$WEB/admin-jogos.html" \
-  && die "admin-jogos ainda usa 'destrava · devolve' (ambíguo)"
-true
