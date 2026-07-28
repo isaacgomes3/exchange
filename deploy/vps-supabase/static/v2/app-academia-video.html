@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Aula — Academia ArbiShield</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js"></script>
+  <script src="/v2-shell.js" defer></script>
+</head>
+<body data-shell="app" data-active="academia">
+  <div id="acVideoRoot" class="ac-video-root">
+    <div class="ac-loading">Carregando aula…</div>
+  </div>
+  <script>
+    (async function () {
+      var PROGRESS_KEY = "arbishield_academia_progress_v1";
+      var params = new URLSearchParams(location.search);
+      var videoId = params.get("v") || "";
+      var root = document.getElementById("acVideoRoot");
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+
+      function esc(s) {
+        return String(s || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/"/g, "&quot;");
+      }
+      function saveProgress(id, percent) {
+        try {
+          var t = JSON.parse(localStorage.getItem(PROGRESS_KEY) || "{}");
+          var prev = (t[id] && t[id].percent) || 0;
+          t[id] = {
+            videoId: id,
+            percent: Math.max(prev, Math.max(0, Math.min(100, percent))),
+            updatedAt: Date.now(),
+          };
+          localStorage.setItem(PROGRESS_KEY, JSON.stringify(t));
+        } catch (e) {}
+      }
+
+      var video = null;
+      try {
+        var res = await supa.from("academia_videos").select("*").eq("is_active", true).limit(200);
+        var rows = res.data || [];
+        var hit = rows.find(function (t) {
+          return String(t.slug || "") === videoId || String(t.id) === videoId;
+        });
+        if (hit) {
+          video = {
+            id: hit.slug || hit.id,
+            title: hit.title,
+            description: hit.description || "",
+            youtubeId: hit.youtube_id,
+            videoUrl: hit.video_url,
+            duration: hit.duration || "00:00",
+            category: hit.category,
+            level: hit.level,
+          };
+        }
+      } catch (e) {}
+
+      if (!video) {
+        root.innerHTML =
+          '<div class="ac-soon"><h1>Aula não encontrada</h1>' +
+          '<a class="btn btn-primary" href="/app-academia.html">Voltar à Academia</a></div>';
+        return;
+      }
+
+      var playerHtml = "";
+      if (video.videoUrl) {
+        try {
+          var signed = await supa.storage.from("academia-videos").createSignedUrl(video.videoUrl, 7200);
+          var src = signed.data && signed.data.signedUrl;
+          playerHtml = src
+            ? '<video id="acPlayer" controls playsinline controlslist="nodownload" src="' +
+              esc(src) +
+              '"></video>'
+            : '<div class="ac-loading">Não foi possível carregar o vídeo.</div>';
+        } catch (e2) {
+          playerHtml = '<div class="ac-loading">Erro ao carregar MP4.</div>';
+        }
+      } else if (video.youtubeId) {
+        playerHtml =
+          '<iframe id="acYt" src="https://www.youtube-nocookie.com/embed/' +
+          esc(video.youtubeId) +
+          '?rel=0&modestbranding=1" title="' +
+          esc(video.title) +
+          '" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>';
+      } else {
+        playerHtml = '<div class="ac-loading">Vídeo sem fonte configurada.</div>';
+      }
+
+      root.innerHTML =
+        '<a class="ac-back" href="/app-academia.html">← Academia</a>' +
+        '<div class="ac-watch">' +
+        '<div class="ac-player">' +
+        playerHtml +
+        "</div>" +
+        '<aside class="ac-watch-meta">' +
+        "<h1>" +
+        esc(video.title) +
+        "</h1>" +
+        '<div class="ac-meta"><em>' +
+        esc(video.category) +
+        "</em><span>•</span><span>" +
+        esc(video.level) +
+        "</span><span>•</span><span>" +
+        esc(video.duration) +
+        "</span></div>" +
+        "<p>" +
+        esc(video.description) +
+        "</p>" +
+        "</aside></div>";
+
+      var vid = document.getElementById("acPlayer");
+      if (vid) {
+        vid.addEventListener("timeupdate", function () {
+          if (vid.duration > 0) saveProgress(video.id, (vid.currentTime / vid.duration) * 100);
+        });
+        vid.addEventListener("ended", function () {
+          saveProgress(video.id, 100);
+        });
+      } else if (video.youtubeId) {
+        // marca progresso parcial ao abrir (YouTube embed sem API completa)
+        saveProgress(video.id, Math.max(5, (readPct(video.id) || 0)));
+      }
+
+      function readPct(id) {
+        try {
+          var t = JSON.parse(localStorage.getItem(PROGRESS_KEY) || "{}");
+          return t[id] && t[id].percent;
+        } catch (e) {
+          return 0;
+        }
+      }
+    })();
+  </script>
+</body>
+</html>
