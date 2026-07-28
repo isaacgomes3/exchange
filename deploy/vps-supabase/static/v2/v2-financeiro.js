@@ -267,7 +267,7 @@
           je = "Reembolso";
           pe = Ne;
           Ae = true;
-          Qe = "Reembolso · descongelou · capital devolvido 100%";
+          Qe = "Reembolso · destravou 100% (Congelado → Apostador)";
         } else if (isExch) {
           je = "Venceu Exchange";
           var fee = Math.max(0, Ye);
@@ -276,11 +276,11 @@
           Ae = true;
           Qe =
             fee > 0
-              ? "Venceu Exchange · taxa " +
-                money(Math.min(fee, Ne)) +
-                " · devolvido " +
-                money(refund)
-              : "Venceu Exchange · capital devolvido";
+              ? "Venceu Exchange · destravou " +
+                money(refund) +
+                " · taxa retida " +
+                money(Math.min(fee, Ne))
+              : "Venceu Exchange · destravou o stake";
         } else if (Se === "won" || Se === "win" || Se === "user_won") {
           je = "Vitória";
           pe = Je > 0 ? Je : Ne;

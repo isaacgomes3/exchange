@@ -117,6 +117,10 @@ grep -qi 'sem reembolso ao usuário' "$WEB/admin-jogos.html" \
   && die "admin-jogos ainda diz sem reembolso (Exchange)"
 grep -q 'REEMBOLSO' "$WEB/admin-jogos.html" || die "admin-jogos sem botão REEMBOLSO"
 grep -qi 'VENCEU EXCHANGE' "$WEB/admin-jogos.html" || die "admin-jogos sem botão VENCEU EXCHANGE"
+# anti-regressão: “destrava · devolve” sugere crédito em dobro
+if grep -Eiq 'Destrava.*devolve|devolve 100% do stake|devolve stake menos' "$WEB/admin-jogos.html"; then
+  die "admin-jogos ainda usa 'destrava · devolve' (ambíguo)"
+fi
 # bust cache leve
 touch "$WEB/.fluxo-protecao-v1" 2>/dev/null || true
 
@@ -161,5 +165,9 @@ echo "OK — FLUXO_PROTECAO_V1 ativo."
 echo "  Backup: $BACKUP_DIR"
 echo "  curl -s http://127.0.0.1:3098/health   # fix: fluxo-protecao-v1"
 echo "  Teste: proteger R\$500 → Apostador −500 · Congelado +500"
-echo "  Encerrar Reembolso → devolve 100%; Venceu Exchange → max(0, R−taxa)"
+echo "  Reembolso → destrava 100%; Venceu Exchange → destrava stake−taxa"
 echo
+# anti-regressão: não usar “destrava · devolve” (crédito duplo semântico)
+grep -E 'Destrava.*devolve|devolve 100%|devolve stake' "$WEB/admin-jogos.html" \
+  && die "admin-jogos ainda usa 'destrava · devolve' (ambíguo)"
+true

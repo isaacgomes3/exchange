@@ -583,14 +583,14 @@
         <div id="settleOutcomeBox" style="display:grid;gap:10px;margin-top:8px">
           <button type="button" class="btn btn-ghost" id="btnOutcomeArbi" data-outcome="arbishield" style="justify-content:flex-start;text-align:left;padding:14px 16px;border-color:rgba(201,242,35,0.45)">
             <span style="display:block;font-size:11px;letter-spacing:0.08em">REEMBOLSO</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Destrava (descongela) · devolve 100% do stake ao Apostador</span>
-            <span id="settleRefundHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">A reembolsar: —</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Destrava 100% do stake (Congelado → Apostador)</span>
+            <span id="settleRefundHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Destrava: —</span>
           </button>
           <button type="button" class="btn btn-ghost" id="btnOutcomeExch" data-outcome="exchange" style="justify-content:flex-start;text-align:left;padding:14px 16px">
             <span style="display:block;font-size:11px;letter-spacing:0.08em">VENCEU EXCHANGE</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Destrava · devolve stake menos a taxa (4,5% + 1,5% no lucro)</span>
-            <span id="settleDeductHint" style="display:block;margin-top:8px;color:var(--amber);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Taxa (margem): —</span>
-            <span id="settleExchRefundHint" style="display:block;margin-top:6px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">A reembolsar: —</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Destrava o stake menos a taxa (4,5% + 1,5% no lucro)</span>
+            <span id="settleDeductHint" style="display:block;margin-top:8px;color:var(--amber);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Taxa retida: —</span>
+            <span id="settleExchRefundHint" style="display:block;margin-top:6px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Destrava: —</span>
             <span id="settleStakeKeepHint" style="display:block;margin-top:4px;color:var(--muted);font-size:11px;font-weight:600;text-transform:none;letter-spacing:0"></span>
           </button>
         </div>
@@ -2262,24 +2262,24 @@
           money(stake);
         if ($("settleRefundHint")) {
           $("settleRefundHint").textContent =
-            "Reembolso 100%: " + money(refund);
+            "Destrava 100%: " + money(refund);
         }
         if ($("settleDeductHint")) {
           $("settleDeductHint").textContent =
             margin > 0
-              ? "Taxa (4,5% + 1,5% no lucro): " + money(margin)
-              : "Taxa (4,5% + 1,5% no lucro): — (sem margem gravada)";
+              ? "Taxa retida (4,5% + 1,5% no lucro): " + money(margin)
+              : "Taxa retida: — (sem margem gravada)";
         }
         var exchRefund = Math.max(0, stake - Math.max(0, margin));
         if ($("settleExchRefundHint")) {
           $("settleExchRefundHint").textContent =
-            "Venceu Exchange · a devolver: " + money(exchRefund);
+            "Destrava (stake − taxa): " + money(exchRefund);
         }
         if ($("settleStakeKeepHint")) {
           $("settleStakeKeepHint").textContent =
             margin > stake
-              ? "Odd baixa: taxa ≥ stake → devolve R$ 0 (congelado consome na taxa)."
-              : "Congelado −" +
+              ? "Odd baixa: taxa ≥ stake → destrava R$ 0 ao Apostador (taxa consome o congelado)."
+              : "Uma só operação: Congelado −" +
                 money(stake) +
                 " · Apostador +" +
                 money(exchRefund) +
@@ -2385,8 +2385,8 @@
               Number(data.settledCount || 0) +
               " proteção(ões) · " +
               (outcome === "exchange"
-                ? "Venceu Exchange · devolvido " + money(data.refundedCents || 0)
-                : "Reembolso · devolvido " + money(data.refundedCents || 0) + " (100%)")
+                ? "Venceu Exchange · destravado " + money(data.refundedCents || 0)
+                : "Reembolso · destravado " + money(data.refundedCents || 0) + " (100%)")
           );
           $("settleModal").classList.remove("show");
           platformLoaded = false;

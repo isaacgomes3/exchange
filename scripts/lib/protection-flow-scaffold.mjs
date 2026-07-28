@@ -1,19 +1,13 @@
 /**
  * Fluxo oficial de proteção ArbiShield — FLUXO_PROTECAO_V1
  *
- * Spec:
- *   Proteger         → Apostador −R · Congelado +R · status active · extrato protection_lock
- *                      grava margem em platform_deduction_cents
- *   Reembolso        → Congelado −R · Apostador +R (100%) · status lost_exchange
- *                      (API outcome: "arbishield")
- *   Venceu Exchange  → Congelado −R · Apostador +max(0, R − margem) · status won_exchange
- *                      (API outcome: "exchange")
- *                      taxa = 4,5% no lucro exchange + 1,5% do stake (fatia usuário)
+ * Spec (uma operação de carteira por liquidação — NÃO destrava + devolve em dobro):
+ *   Proteger         → Apostador −R · Congelado +R · protection_lock
+ *   Reembolso        → Congelado −R · Apostador +R (100%)   [API: arbishield]
+ *   Venceu Exchange  → Congelado −R · Apostador +(R−taxa)   [API: exchange]
+ *                      taxa = 4,5% no lucro + 1,5% do stake
  *
- * Implementação runtime:
- *   - scripts/arbishield-prelive-events.mjs  createProtection / settleMatchFromBody
- *   - scripts/arbishield-serverfn-shim.mjs   settleMatch / creditWalletForSettlement
- *   - src/lib/arbishield/create-protection.ts
+ * “Destravar” = mover Congelado → Apostador no mesmo PATCH (não são 2 créditos).
  */
 
 export const PROTECTION_FLOW_VERSION = "fluxo-protecao-v1";

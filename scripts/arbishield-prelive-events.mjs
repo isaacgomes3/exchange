@@ -664,7 +664,8 @@ async function creditWalletForSettlement(row, outcome, now) {
     return { refunded: credit, credited: credit, alreadyCredited: true };
   }
 
-  // FLUXO_PROTECAO_V1: Apostador += reembolso · Congelado − stake
+  // FLUXO_PROTECAO_V1: um único PATCH — Congelado −stake · Apostador +crédito
+  // (não “destrava” e depois “devolve” de novo — evita crédito em dobro)
   const patch = {
     locked_balance_cents: locked,
     balance_cents: nCents(p.balance_cents) + missingCredit,
