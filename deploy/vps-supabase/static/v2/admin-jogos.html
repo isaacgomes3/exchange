@@ -438,8 +438,8 @@
         <p class="sub">Cockpit de Eventos e Risco · Catálogo Pré-Live BetBra</p>
       </div>
       <div class="actions">
-        <button class="btn btn-primary" id="btnManualMatch" type="button">Lançar evento manual</button>
-        <button class="btn btn-ghost" id="btnAddMatch" type="button">+ BetBra (cadastrar)</button>
+        <button class="btn btn-primary" id="btnAddMatch" type="button">+ Lançar jogo (BetBra)</button>
+        <button class="btn btn-ghost" id="btnManualMatch" type="button">Lançar manual</button>
         <button class="btn btn-ghost" id="btnRefresh" type="button">Atualizar</button>
       </div>
     </header>
@@ -455,10 +455,9 @@
     </div>
 
     <div id="settleHint" class="auth-banner show" style="margin-bottom:14px;border-color:rgba(201,242,35,0.35);background:rgba(201,242,35,0.08)">
-      <strong style="color:var(--lime)">Lançar jogo:</strong>
-      use <strong>Lançar evento manual</strong> (mesmo formulário do site antigo) ou
-      <strong>+ BetBra (cadastrar)</strong> para puxar da casa.
-      Isso <em>não</em> é Desafio — Desafios ficam em Gestão de Desafios.
+      <strong style="color:var(--lime)">Lançar jogo normal:</strong>
+      use <strong>+ Lançar jogo (BetBra)</strong> → escolha o jogo → mercado → <strong>Lançar evento</strong>.
+      Isso <em>não</em> é Desafio (Desafios ficam em Gestão de Desafios).
       <span style="display:block;margin-top:6px">
         <strong>Encerrar:</strong> aba Encerrar / Eventos ArbiShield → filtro A liquidar → Encerrar partida.
       </span>
@@ -558,67 +557,64 @@
   <div class="drawer-backdrop" id="manualDrawer">
     <div class="drawer">
       <h3>Lançar evento <span>manual</span></h3>
-      <p class="hint">Mesmo formulário do site antigo · Gestão de Jogos (não é Desafio)</p>
+      <p class="hint">Só para jogos que não estão na BetBra. Fluxo normal = botão “Lançar jogo (BetBra)”. Isto não cria Desafio.</p>
 
       <div class="toggle-row">
         <div>
-          <div class="t">Liberar proteção</div>
-          <div class="s">Cliente pode proteger neste jogo (publicar na fila)</div>
+          <div class="t">Status de publicação</div>
+          <div class="s">Deixe pronto e publique quando desejar</div>
         </div>
-        <button type="button" class="switch on" id="manLiberarProtecao" aria-pressed="true"></button>
+        <button type="button" class="switch" id="manPublish" aria-pressed="false"></button>
       </div>
       <div class="toggle-row">
         <div>
-          <div class="t">Liberar live</div>
-          <div class="s">Exibe o selo AO VIVO no card do jogo</div>
+          <div class="t">Sincronismo API</div>
+          <div class="s">Habilitar atualização automática de placar e logos</div>
         </div>
-        <button type="button" class="switch" id="manLiberarLive" aria-pressed="false"></button>
+        <button type="button" class="switch" id="manScoreSync" aria-pressed="false"></button>
       </div>
       <div class="toggle-row">
         <div>
-          <div class="t">Esconder do site</div>
-          <div class="s">Não aparece para o cliente (rascunho / oculto)</div>
+          <div class="t">Transmissão ao vivo?</div>
+          <div class="s">Exibe o selo AO VIVO com ícone de play no card do jogo</div>
         </div>
-        <button type="button" class="switch" id="manEsconder" aria-pressed="false"></button>
+        <button type="button" class="switch" id="manLive" aria-pressed="false"></button>
       </div>
 
-      <div class="sec-label">Dados da partida</div>
+      <div class="sec-label">Partida</div>
       <div class="field">
-        <label for="manLeague">Nome do evento</label>
-        <input id="manLeague" placeholder="Ex: SERIE B" />
+        <label for="manExternalId">ID da partida (API-Football)</label>
+        <input id="manExternalId" placeholder="Ex: 868688" />
       </div>
-      <div class="field team-pick" data-side="home">
-        <label for="manHome">Time de casa</label>
-        <div class="team-pick-row">
-          <div class="team-logo-box" id="manHomeLogoPrev"><span class="ph">logo</span></div>
-          <div style="min-width:0;position:relative">
+      <div class="grid2">
+        <div class="field team-pick" data-side="home">
+          <label for="manHome">Time da casa</label>
+          <div style="position:relative;min-width:0">
             <input id="manHome" required placeholder="Buscar time… Ex: Flamengo" autocomplete="off" />
             <div class="team-suggest" id="manHomeSuggest" role="listbox"></div>
           </div>
         </div>
-        <div class="team-logo-url field" style="margin:8px 0 0">
-          <label for="manHomeLogo">URL logo (preenchida automaticamente)</label>
+        <div class="field">
+          <label for="manHomeLogo">URL logo casa</label>
           <input id="manHomeLogo" placeholder="URL Logo" />
         </div>
       </div>
-      <div class="field team-pick" data-side="away">
-        <label for="manAway">Time de fora</label>
-        <div class="team-pick-row">
-          <div class="team-logo-box" id="manAwayLogoPrev"><span class="ph">logo</span></div>
-          <div style="min-width:0;position:relative">
+      <div class="grid2">
+        <div class="field team-pick" data-side="away">
+          <label for="manAway">Time de fora</label>
+          <div style="position:relative;min-width:0">
             <input id="manAway" required placeholder="Buscar time… Ex: Palmeiras" autocomplete="off" />
             <div class="team-suggest" id="manAwaySuggest" role="listbox"></div>
           </div>
         </div>
-        <div class="team-logo-url field" style="margin:8px 0 0">
-          <label for="manAwayLogo">URL logo (preenchida automaticamente)</label>
+        <div class="field">
+          <label for="manAwayLogo">URL logo fora</label>
           <input id="manAwayLogo" placeholder="URL Logo" />
         </div>
       </div>
       <div class="field">
-        <label for="manStarts">Data e hora início</label>
-        <input id="manStarts" type="datetime-local" required />
-        <p class="hint" style="margin:6px 0 0">Formato: DD/MM/AAAA HH:MM (seletor do navegador)</p>
+        <label for="manLeague">Liga / campeonato</label>
+        <input id="manLeague" placeholder="Ex: Brasileirão Série A" />
       </div>
       <div class="grid2">
         <div class="field">
@@ -632,7 +628,7 @@
           </select>
         </div>
         <div class="field">
-          <label for="manStatus">Estado do jogo</label>
+          <label for="manStatus">Status do jogo</label>
           <select id="manStatus">
             <option value="open">Aberto</option>
             <option value="live">Ao vivo</option>
@@ -645,20 +641,19 @@
         </div>
       </div>
       <div class="field">
-        <label for="manExternalId">ID do jogo</label>
-        <input id="manExternalId" placeholder="Ex: 10574843" />
+        <label for="manStarts">Data e horário</label>
+        <input id="manStarts" type="datetime-local" required />
+      </div>
+      <div class="field">
+        <label for="manBetLink">Link da casa de aposta</label>
+        <input id="manBetLink" placeholder="https://www.bet365.com/..." />
       </div>
 
-      <details style="margin:18px 0 8px;border-top:1px solid var(--border);padding-top:14px">
-        <summary style="cursor:pointer;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted)">
-          Mercados de proteção (opcional)
-        </summary>
-        <p class="hint" style="margin:10px 0">Se vazio, cria LAY HOME @ 2.00 com R$ 2.000 de liquidez.</p>
-        <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
-          <button type="button" class="btn btn-primary btn-sm" id="btnAddMarket">+ Adicionar mercado</button>
-        </div>
-        <div id="manMarkets"></div>
-      </details>
+      <div class="sec-label" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <span>Mercados de proteção</span>
+        <button type="button" class="btn btn-primary btn-sm" id="btnAddMarket">+ Adicionar mercado</button>
+      </div>
+      <div id="manMarkets"></div>
 
       <div class="drawer-actions">
         <button type="button" class="btn btn-ghost" id="btnCancelManual">Cancelar</button>
@@ -1889,27 +1884,24 @@
         $("manAway").value = "";
         $("manHomeLogo").value = "";
         $("manAwayLogo").value = "";
-        setTeamLogoPreview("home", "");
-        setTeamLogoPreview("away", "");
         hideTeamSuggest("home");
         hideTeamSuggest("away");
         $("manLeague").value = "";
         $("manExternalId").value = "";
+        $("manBetLink").value = "";
         $("manSport").value = "futebol";
         $("manStatus").value = "open";
         $("manStarts").value = "";
-        ["manLiberarProtecao", "manLiberarLive", "manEsconder"].forEach(function (id) {
+        ["manPublish", "manScoreSync", "manLive"].forEach(function (id) {
           var el = $(id);
           if (!el) return;
           el.classList.remove("on");
           el.setAttribute("aria-pressed", "false");
         });
-        // Liberar proteção ON por padrão (igual site antigo)
-        if ($("manLiberarProtecao")) {
-          $("manLiberarProtecao").classList.add("on");
-          $("manLiberarProtecao").setAttribute("aria-pressed", "true");
+        if ($("manPublish")) {
+          $("manPublish").classList.add("on");
+          $("manPublish").setAttribute("aria-pressed", "true");
         }
-        // Mercado padrão oculto — só cria no save se a lista estiver vazia
         manualMarkets = [];
         renderManualMarkets();
         $("manualDrawer").classList.add("show");
@@ -1917,12 +1909,6 @@
 
       function closeManualDrawer() {
         $("manualDrawer").classList.remove("show");
-      }
-
-      function manualIsPublished() {
-        var liberar = $("manLiberarProtecao") && $("manLiberarProtecao").classList.contains("on");
-        var esconder = $("manEsconder") && $("manEsconder").classList.contains("on");
-        return Boolean(liberar && !esconder);
       }
 
       async function fillMissingManualLogos() {
@@ -1967,20 +1953,12 @@
           return;
         }
         if (!starts) {
-          alert("Informe data e hora início.");
+          alert("Informe data e horário.");
           return;
         }
         if (!manualMarkets.length) {
-          manualMarkets = [
-            {
-              market_type: "LAY",
-              name: "LAY HOME",
-              external_id: "",
-              odd: "2.00",
-              liquidity_brl: "2000",
-              display_brl: "",
-            },
-          ];
+          alert("Adicione ao menos um mercado de proteção.");
+          return;
         }
         var markets = manualMarkets.map(function (m) {
           var odd = Number(String(m.odd).replace(",", "."));
@@ -1995,7 +1973,6 @@
             display_liquidity: dispBrl != null ? Math.round(dispBrl * 100) : null,
           };
         });
-        var published = manualIsPublished();
         var btn = $("btnSaveManual");
         btn.disabled = true;
         btn.textContent = "Buscando logos…";
@@ -2013,20 +1990,16 @@
             starts_at: new Date(starts).toISOString(),
             sport_type: $("manSport").value,
             status: $("manStatus").value,
-            is_published: published,
-            score_sync_enabled: false,
-            has_live_stream: $("manLiberarLive") && $("manLiberarLive").classList.contains("on"),
-            hide_from_site: $("manEsconder") && $("manEsconder").classList.contains("on"),
-            external_bet_link: null,
+            is_published: $("manPublish").classList.contains("on"),
+            score_sync_enabled: $("manScoreSync").classList.contains("on"),
+            has_live_stream: $("manLive").classList.contains("on"),
+            external_bet_link: $("manBetLink").value.trim() || null,
             markets: markets,
           });
           closeManualDrawer();
           alert(
             result.action === "created"
-              ? "Jogo criado com sucesso!" +
-                (result.match && result.match.is_published
-                  ? " Proteção liberada na fila do cliente."
-                  : " Salvo oculto / sem liberar proteção.")
+              ? "Jogo criado com sucesso!"
               : "Evento salvo."
           );
           platformLoaded = false;
@@ -2284,9 +2257,9 @@
           });
         });
 
-        bindSwitch("manLiberarProtecao");
-        bindSwitch("manLiberarLive");
-        bindSwitch("manEsconder");
+        bindSwitch("manPublish");
+        bindSwitch("manScoreSync");
+        bindSwitch("manLive");
         $("btnAddMatch").addEventListener("click", openNormalLaunch);
         if ($("btnManualMatch")) {
           $("btnManualMatch").addEventListener("click", openManualDrawer);
