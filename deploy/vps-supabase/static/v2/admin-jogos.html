@@ -289,25 +289,33 @@
     .v2-nav a.active, .v2-nav a:hover {
       color: #000; background: var(--lime); border-color: transparent;
     }
-    .drawer-backdrop {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.72);
-      display: none; z-index: 60; justify-content: flex-end;
+    .manual-launch-panel {
+      display: none;
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 8px 20px 48px;
     }
-    .drawer-backdrop.show { display: flex; }
-    .drawer {
-      width: min(640px, 100%); height: 100%; background: #0a0a0a;
-      border-left: 1px solid var(--border); padding: 22px 20px 40px;
-      overflow-y: auto;
-      overflow-x: visible;
+    body.jogos-manual-open #app { display: none !important; }
+    body.jogos-manual-open .manual-launch-panel { display: block; }
+    .manual-launch-panel .page-back {
+      margin: 0 0 16px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
     }
-    .drawer h3 {
+    .manual-launch-panel h3 {
       margin: 0; font-size: 1.35rem; font-weight: 900; font-style: italic;
       text-transform: uppercase; letter-spacing: -0.03em;
     }
-    .drawer h3 span { color: var(--lime); }
-    .drawer .hint {
+    .manual-launch-panel h3 span { color: var(--lime); }
+    .manual-launch-panel .hint {
       margin: 6px 0 18px; color: var(--muted); font-size: 10px;
       font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+    }
+    .manual-launch-actions {
+      display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;
+      padding-top: 12px;
     }
     .field { display: grid; gap: 6px; margin-bottom: 12px; }
     .field label {
@@ -347,10 +355,6 @@
     }
     .market-card .mh strong {
       font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
-    }
-    .drawer-actions {
-      display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;
-      position: sticky; bottom: 0; padding-top: 12px; background: linear-gradient(transparent, #0a0a0a 30%);
     }
     .sec-label {
       margin: 18px 0 10px; font-size: 11px; font-weight: 900; font-style: italic;
@@ -544,10 +548,10 @@
     </div>
   </div>
 
-  <div class="drawer-backdrop" id="manualDrawer">
-    <div class="drawer">
-      <h3>Lançar evento <span>manual</span></h3>
-      <p class="hint">Cadastro manual de partida na plataforma. Isto não cria Desafio.</p>
+  <section class="manual-launch-panel" id="manualLaunchPanel" hidden>
+    <button type="button" class="btn btn-ghost page-back" id="btnManualBack">← Voltar</button>
+    <h3>Lançar evento <span>manual</span></h3>
+    <p class="hint">Cadastro manual de partida na plataforma. Isto não cria Desafio.</p>
 
       <div class="toggle-row">
         <div>
@@ -645,12 +649,11 @@
       </div>
       <div id="manMarkets"></div>
 
-      <div class="drawer-actions">
+      <div class="manual-launch-actions">
         <button type="button" class="btn btn-ghost" id="btnCancelManual">Cancelar</button>
         <button type="button" class="btn btn-primary" id="btnSaveManual">Lançar evento</button>
       </div>
-    </div>
-  </div>
+  </section>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
@@ -1093,7 +1096,7 @@
       bindTeamPicker("away");
 
       (function bindTeamSuggestReposition() {
-        var drawer = document.querySelector("#manualDrawer .drawer");
+        var panel = document.getElementById("manualLaunchPanel");
         function repaintOpen() {
           ["home", "away"].forEach(function (side) {
             var el = getTeamSuggestEl(side);
@@ -1102,7 +1105,7 @@
         }
         window.addEventListener("resize", repaintOpen);
         window.addEventListener("scroll", repaintOpen, true);
-        if (drawer) drawer.addEventListener("scroll", repaintOpen);
+        if (panel) panel.addEventListener("scroll", repaintOpen);
       })();
 
       function filterText(ev) {
@@ -1880,11 +1883,17 @@
         }
         manualMarkets = [];
         renderManualMarkets();
-        $("manualDrawer").classList.add("show");
+        $("app").hidden = true;
+        $("manualLaunchPanel").hidden = false;
+        document.body.classList.add("jogos-manual-open");
+        document.body.style.overflow = "hidden";
       }
 
       function closeManualDrawer() {
-        $("manualDrawer").classList.remove("show");
+        $("manualLaunchPanel").hidden = true;
+        $("app").hidden = false;
+        document.body.classList.remove("jogos-manual-open");
+        document.body.style.overflow = "";
       }
 
       async function fillMissingManualLogos() {
@@ -2239,6 +2248,7 @@
         if ($("btnManualMatch")) {
           $("btnManualMatch").addEventListener("click", openManualDrawer);
         }
+        $("btnManualBack").addEventListener("click", closeManualDrawer);
         $("btnCancelManual").addEventListener("click", closeManualDrawer);
         $("btnSaveManual").addEventListener("click", saveManualMatch);
         $("btnAddMarket").addEventListener("click", function () {
@@ -2253,8 +2263,8 @@
           });
           renderManualMarkets();
         });
-        $("manualDrawer").addEventListener("click", function (e) {
-          if (e.target === $("manualDrawer")) closeManualDrawer();
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape" && !$("manualLaunchPanel").hidden) closeManualDrawer();
         });
 
         await loadPrelive();
