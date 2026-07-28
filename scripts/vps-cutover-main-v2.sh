@@ -5,10 +5,13 @@
 #   A  legado  →  mesmo IP de arbishield.app
 #
 # Uso (root na VPS):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/arbishield-v2-backup-723d/scripts/vps-cutover-main-v2.sh?v=4")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-do-zero-47c1/scripts/vps-cutover-main-v2.sh")
+#
+# Proteção: NÃO sobrescreve prelive/shim com branch antiga.
+# Após cutover nginx, rode: scripts/vps-hotfix-protecao-do-zero.sh
 set -euo pipefail
 
-BRANCH="${ARBISHIELD_BRANCH:-cursor/arbishield-v2-backup-723d}"
+BRANCH="${ARBISHIELD_BRANCH:-cursor/protecao-do-zero-47c1}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${BRANCH}"
 WEB="${ARBISHIELD_WEB:-/var/www/arbishield}"
 LEGADO_HOST="${LEGADO_HOST:-legado.arbishield.app}"
@@ -22,6 +25,13 @@ need() { command -v "$1" >/dev/null || die "$1 não encontrado"; }
 need curl
 need nginx
 need python3
+
+# Bloqueia branches históricas que reinstalam modelo paralelo de proteção
+case "$BRANCH" in
+  *arbishield-v2-backup*|*fix-settle*|*fee_upfront*|*lock_fee*)
+    die "BRANCH=$BRANCH proibida: reinstala modelo antigo. Use cursor/protecao-do-zero-47c1"
+    ;;
+esac
 
 mkdir -p "$WEB/v2"
 
@@ -162,16 +172,15 @@ print("fallback cert arbishield.app aplicado em", p)
 PY
 fi
 
-log "5/5 — nginx -t && reload + worker proteções :3098"
-# atualiza worker com POST /api/arbishield/protections
-if [[ -d /opt/arbishield/scripts ]]; then
-  curl -fsSL "$RAW/scripts/arbishield-prelive-events.mjs" -o /opt/arbishield/scripts/arbishield-prelive-events.mjs
-  chmod 755 /opt/arbishield/scripts/arbishield-prelive-events.mjs
-  if systemctl is-active --quiet arbishield-prelive-events.service 2>/dev/null; then
-    systemctl restart arbishield-prelive-events.service
-    echo "  prelive :3098 reiniciado (protections)"
+log "5/5 — nginx -t && reload (proteção = só FLUXO_PROTECAO_V1)"
+# NÃO baixar prelive de branch histórica aqui — evita oscilar modelo.
+# Aplique o único fluxo oficial:
+#   bash <(curl -fsSL ".../scripts/vps-hotfix-protecao-do-zero.sh")
+if [[ -f /opt/arbishield/scripts/arbishield-prelive-events.mjs ]]; then
+  if grep -q 'FLUXO_PROTECAO_V1' /opt/arbishield/scripts/arbishield-prelive-events.mjs; then
+    echo "  prelive já é FLUXO_PROTECAO_V1 (mantido)"
   else
-    echo "  AVISO: arbishield-prelive-events inativo — suba o worker :3098"
+    echo "  AVISO: prelive sem FLUXO_PROTECAO_V1 — rode vps-hotfix-protecao-do-zero.sh"
   fi
 fi
 nginx -t
@@ -190,6 +199,7 @@ echo
 echo "OK — cutover aplicado"
 echo "  Novo (principal): https://arbishield.app/"
 echo "  Antigo (SPA):     https://$LEGADO_HOST/"
+echo "  Proteção: rode scripts/vps-hotfix-protecao-do-zero.sh se ainda não V1"
 echo
 echo "DNS necessário (mesmo IP da VPS que arbishield.app):"
 IPV4="$(curl -4 -fsS ifconfig.me 2>/dev/null || curl -4 -fsS icanhazip.com 2>/dev/null || true)"

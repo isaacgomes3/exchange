@@ -1245,6 +1245,7 @@ async function createProtection(body, userToken) {
     market_type: marketType,
     market_odd: market?.odd ?? odd,
     source: "v2_create_protection",
+    billing_model: "fluxo-protecao-v1",
   };
 
   let protectionId = "";

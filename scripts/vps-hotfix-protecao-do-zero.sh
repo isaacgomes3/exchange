@@ -53,6 +53,11 @@ grep -q 'FLUXO_PROTECAO_V1' "$PRELIVE" || die "prelive sem FLUXO_PROTECAO_V1"
 grep -q 'missingCredit' "$PRELIVE" || die "prelive sem reparo de crédito Exchange"
 grep -q 'fluxo-protecao-v1-recredit\|creditedSettlementCents' "$PRELIVE" \
   || die "prelive sem reparo de Reembolso (crédito stake)"
+# Único modelo: rejeita paralelos
+grep -qE 'fee_upfront|lock_fee_after' "$PRELIVE" \
+  && die "prelive contém fee_upfront/lock_fee_after (modelo paralelo)"
+grep -q 'settle-arbishield-saldo-real-v1' "$PRELIVE" \
+  && die "prelive contém settle-arbishield-saldo-real-v1 (modelo paralelo)"
 # Anti-regressão: create/settle NÃO devem ser stub 501
 python3 - "$PRELIVE" <<'PY' || die "createProtection ainda é stub"
 import sys
@@ -87,6 +92,10 @@ grep -q 'missingCredit' "$SHIM" || die "shim sem reparo de crédito Exchange"
 grep -q 'creditedSettlementCents\|fluxo-protecao-v1-recredit' "$SHIM" \
   || die "shim sem reparo de Reembolso (crédito stake)"
 grep -q 'creditWalletForSettlement' "$SHIM" || die "shim sem creditWalletForSettlement"
+grep -qE 'fee_upfront|lock_fee_after' "$SHIM" \
+  && die "shim contém fee_upfront/lock_fee_after (modelo paralelo)"
+grep -q 'settle-arbishield-saldo-real-v1' "$SHIM" \
+  && die "shim contém settle-arbishield-saldo-real-v1 (modelo paralelo)"
 # shim settle não deve ser só throw 501
 python3 - "$SHIM" <<'PY' || die "shim settle ainda é stub"
 import sys
@@ -137,46 +146,73 @@ grep -E '\bglobal\.ArbiV2Shell' "$WEB/app-proteger.html" \
 # bust cache leve
 touch "$WEB/.fluxo-protecao-v1" 2>/dev/null || true
 
-log "4/5 Scaffold + docs math"
+log "4/5 Scaffold + purge contratos/modelos paralelos"
 mkdir -p "$SCRIPTS_DIR/lib"
 dl "scripts/lib/protection-flow-scaffold.mjs" "$SCRIPTS_DIR/lib/protection-flow-scaffold.mjs"
+dl "scripts/lib/ABORT-PROTECAO-ANTIGA.sh" "$SCRIPTS_DIR/lib/ABORT-PROTECAO-ANTIGA.sh" || true
+chmod +x "$SCRIPTS_DIR/lib/ABORT-PROTECAO-ANTIGA.sh" 2>/dev/null || true
 dl "scripts/protection-flow-v1.test.mjs" "$SCRIPTS_DIR/protection-flow-v1.test.mjs" || true
-# arquivar contrato antigo se existir
-if [[ -f "$SCRIPTS_DIR/lib/protection-flow-contract.mjs" ]]; then
-  mv "$SCRIPTS_DIR/lib/protection-flow-contract.mjs" \
-     "$BACKUP_DIR/protection-flow-contract.mjs.bak"
-  echo "  contrato antigo arquivado (fee_upfront/lock_fee_after)"
-fi
+dl "scripts/protection-flow-no-regression.test.mjs" \
+  "$SCRIPTS_DIR/protection-flow-no-regression.test.mjs" || true
+dl "scripts/vps-diagnostico-logica-protecao.sh" \
+  "$SCRIPTS_DIR/vps-diagnostico-logica-protecao.sh" || true
+chmod +x "$SCRIPTS_DIR/vps-diagnostico-logica-protecao.sh" 2>/dev/null || true
+# apaga contrato antigo (fee_upfront / lock_fee_after) — não arquivar como “opção”
+for c in \
+  "$SCRIPTS_DIR/lib/protection-flow-contract.mjs" \
+  /opt/arbishield/scripts/lib/protection-flow-contract.mjs \
+  /opt/arbishield/lib/protection-flow-contract.mjs
+do
+  if [[ -f "$c" ]]; then
+    mv "$c" "$BACKUP_DIR/$(basename "$c").bak"
+    echo "  contrato antigo removido: $c"
+  fi
+done
 
-log "5/5 Manter hotfixes antigos bloqueados"
-mkdir -p "$SCRIPTS_DIR/obsolete-hotfixes"
-cat > "$SCRIPTS_DIR/obsolete-hotfixes/ABORT-PROTECAO-ANTIGA.sh" <<'EOF'
+log "5/5 Excluir hotfixes de modelo paralelo (abort-only no disco)"
+ABORT="$SCRIPTS_DIR/lib/ABORT-PROTECAO-ANTIGA.sh"
+if [[ ! -f "$ABORT" ]]; then
+  mkdir -p "$SCRIPTS_DIR/lib" "$SCRIPTS_DIR/obsolete-hotfixes"
+  cat > "$SCRIPTS_DIR/obsolete-hotfixes/ABORT-PROTECAO-ANTIGA.sh" <<'EOF'
 #!/usr/bin/env bash
-echo "ABORTADO: use o FLUXO_PROTECAO_V1 (vps-hotfix-protecao-do-zero.sh)." >&2
-echo "Nao reinstale fee_upfront / lock_fee_after / settle fragmentados." >&2
+echo "ABORTADO: modelo de proteção antigo excluído." >&2
+echo "Use apenas: scripts/vps-hotfix-protecao-do-zero.sh (FLUXO_PROTECAO_V1)" >&2
 exit 1
 EOF
-chmod +x "$SCRIPTS_DIR/obsolete-hotfixes/ABORT-PROTECAO-ANTIGA.sh"
+  ABORT="$SCRIPTS_DIR/obsolete-hotfixes/ABORT-PROTECAO-ANTIGA.sh"
+  chmod +x "$ABORT"
+fi
 
 for name in \
   vps-hotfix-proteger-so-com-liquidez.sh \
   vps-hotfix-proteger-sem-liquidez.sh \
+  vps-hotfix-ver-jogos-sem-saldo.sh \
+  vps-hotfix-fix-partidas-sumiram.sh \
   vps-hotfix-settle-arbishield-saldo-real.sh \
   vps-hotfix-settle-credito-carteira.sh \
   vps-hotfix-saldo-protecao-refresh.sh \
   vps-hotfix-consolidado-proteger-settle.sh \
   vps-hotfix-encerrar-protecoes-primeiro.sh \
+  vps-hotfix-encerrar-odd-invalida.sh \
   vps-hotfix-jogos-liquidar.sh \
-  vps-hotfix-salvar-protecao.sh
+  vps-hotfix-salvar-protecao.sh \
+  vps-hotfix-tirar-jogo-fila.sh \
+  vps-hotfix-sem-saldo-reutilizavel.sh \
+  vps-hotfix-saldo-f5-overcredit.sh \
+  vps-hotfix-saldo-seguro-global.sh \
+  vps-deploy-protections.sh
 do
-  ln -sfn "$SCRIPTS_DIR/obsolete-hotfixes/ABORT-PROTECAO-ANTIGA.sh" \
-    "$SCRIPTS_DIR/$name" 2>/dev/null || true
+  # sobrescreve corpo antigo no disco (não deixa curl de branch velha reaparecer)
+  cp -f "$ABORT" "$SCRIPTS_DIR/$name" 2>/dev/null || true
+  chmod +x "$SCRIPTS_DIR/$name" 2>/dev/null || true
+  ln -sfn "$ABORT" "$SCRIPTS_DIR/obsolete-hotfixes/$name" 2>/dev/null || true
 done
 
 echo
-echo "OK — FLUXO_PROTECAO_V1 ativo."
+echo "OK — FLUXO_PROTECAO_V1 ativo (único modelo)."
 echo "  Backup: $BACKUP_DIR"
 echo "  curl -s http://127.0.0.1:3098/health   # fix: fluxo-protecao-v1"
+echo "  Diagnóstico: bash $SCRIPTS_DIR/vps-diagnostico-logica-protecao.sh"
 echo "  Teste: proteger R\$500 → Apostador −500 · Congelado +500"
 echo "  Reembolso → Destrava + Devolve 100%; Venceu Exchange → Destrava stake−taxa"
 echo
