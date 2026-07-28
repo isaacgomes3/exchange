@@ -81,16 +81,19 @@
       mt +
       "</b></div>" +
       oddLine +
-      "<div><span>Valor (stake)</span><b>" +
+      "<div><span>Valor (responsabilidade/stake)</span><b>" +
       money(amountCents) +
+      "</b></div>" +
+      "<div><span>Lucro bruto (base da taxa)</span><b>" +
+      money(lucroBruto) +
       "</b></div>" +
       "<div><span>Retorno casa externa</span><b>" +
       money(retorno) +
       "</b></div>" +
-      "<div><span>Comissão Exchange (4,5% do lucro)</span><b>" +
+      "<div><span>Comissão Exchange (4,5% do lucro bruto)</span><b>" +
       money(comissaoEx) +
       "</b></div>" +
-      "<div><span>Seu lucro (1,5%)</span><b>" +
+      "<div><span>Sua fatia (1,5% da cobertura)</span><b>" +
       money(seuLucro) +
       "</b></div>" +
       "<div><span>Dedução ArbiShield</span><b>" +

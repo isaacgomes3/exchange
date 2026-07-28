@@ -550,21 +550,37 @@
         var mt = state.selected.marketType;
         syncAmountLabels(mt);
         // LAY: amount = responsabilidade · BACK: amount = stake
+        // Taxa: lucro bruto − 4,5% − 1,5% (contrato lay-lucro-back-equiv-v9)
+        var c = calcForMarket(mt, amountCents, odd);
         var layOdd = Number(odd) > 1.01 ? Number(odd) : 1.01;
-        var effOdd = mt === "LAY" ? layOdd / (layOdd - 1) : layOdd;
-        var retorno = Math.round(amountCents * effOdd);
-        var lucroBruto = Math.max(0, retorno - amountCents);
-        var seuLucro = Math.round(amountCents * 0.015);
-        var comissaoEx = Math.round(Math.max(0, lucroBruto) * 0.045);
-        var deducao = Math.max(0, lucroBruto - comissaoEx - seuLucro);
+        var lucroBruto = Math.max(0, Number(c.grossProfitCents || 0));
+        var seuLucro = Math.max(0, Number(c.userProfitCents || 0));
+        var comissaoEx = Math.max(0, Number(c.exchangeCommissionCents || c.exchangeFeeCents || 0));
+        if (!(comissaoEx > 0) && lucroBruto > 0) {
+          comissaoEx = Math.round(lucroBruto * 0.045);
+        }
+        var deducao = Math.max(
+          0,
+          Number(c.feeChargedCents != null ? c.feeChargedCents : c.arbiShieldDeductionCents) ||
+            lucroBruto - comissaoEx - seuLucro
+        );
+        var retorno =
+          mt === "LAY" && layOdd > 1.01
+            ? Math.round(amountCents / (layOdd - 1)) + amountCents
+            : Math.round(amountCents * (Number(odd) > 1.01 ? Number(odd) : 1.01));
+        // calcLay já devolve stake/retorno coerentes
+        if (c.grossReturnCents > 0) retorno = Number(c.grossReturnCents);
         var avail = available(document.getElementById("balanceType").value);
         var maxLock = maxStakeLockCents(avail);
         var maxEff = currentEventMaxCents();
         var valorLabel = mt === "LAY" ? "Responsabilidade" : "Stake";
         var extraLine = "";
         if (mt === "LAY" && amountCents > 0 && layOdd > 1.01) {
-          // Na casa: stake LAY = responsabilidade / (odd − 1)
-          var stakeLay = Math.round(amountCents / (layOdd - 1));
+          var stakeLay = Math.max(
+            0,
+            Number(c.stakeCents) || Math.round(amountCents / (layOdd - 1))
+          );
+          var effOdd = Number(c.effectiveBackOdd) || layOdd / (layOdd - 1);
           extraLine =
             "<div><span>Stake equivalente (casa)</span><b>" +
             money(stakeLay) +
@@ -572,10 +588,12 @@
             "<div><span>Odd LAY → back equiv.</span><b>" +
             Number(effOdd).toFixed(3).replace(".", ",") +
             "</b></div>";
-        } else if (mt === "BACK" && amountCents > 0) {
-          extraLine =
-            "<div><span>Lucro bruto (casa)</span><b>" + money(lucroBruto) + "</b></div>";
         }
+        // Sempre mostra lucro bruto — base da comissão 4,5% (não confundir com fatia 1,5%)
+        extraLine +=
+          "<div><span>Lucro bruto (base da taxa)</span><b>" +
+          money(lucroBruto) +
+          "</b></div>";
         var maxLines =
           "<div><span>Máx. 50% do Apostador restante</span><b>" +
           money(maxLock) +
@@ -592,11 +610,11 @@
           "<div><span>" + valorLabel + " (trava)</span><b>" + money(amountCents) + "</b></div>" +
           extraLine +
           "<div><span>Retorno casa externa</span><b>" + money(retorno) + "</b></div>" +
-          "<div><span>Seu lucro (1,5%)</span><b>" + money(seuLucro) + "</b></div>" +
-          "<div><span>Dedução se ganhar Exchange</span><b>" + money(deducao) + "</b></div>" +
-          "<div><span>Comissão Exchange (4,5% do lucro)</span><b>" +
+          "<div><span>Comissão Exchange (4,5% do lucro bruto)</span><b>" +
           money(comissaoEx) +
           "</b></div>" +
+          "<div><span>Sua fatia (1,5% da cobertura)</span><b>" + money(seuLucro) + "</b></div>" +
+          "<div><span>Dedução se ganhar Exchange</span><b>" + money(deducao) + "</b></div>" +
           "<div><span>Saldo disponível agora</span><b>" + money(avail) + "</b></div>" +
           maxLines;
       }
