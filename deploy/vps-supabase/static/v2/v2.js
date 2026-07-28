@@ -136,8 +136,9 @@
     var all = [];
     for (var i = 0; i < variants.length; i++) {
       var term = variants[i];
-      var batch = await fromApi(term);
-      if (!batch.length) batch = await fromTsdb(term);
+      var tsdbBatch = await fromTsdb(term);
+      var apiBatch = tsdbBatch.length ? [] : await fromApi(term);
+      var batch = tsdbBatch.length ? tsdbBatch : apiBatch;
       for (var j = 0; j < batch.length; j++) {
         var t = batch[j];
         var key = String(t.name || "").toLowerCase();

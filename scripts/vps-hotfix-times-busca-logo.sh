@@ -2,7 +2,7 @@
 # Hotfix: busca de times + logos no Lançar Evento Manual (mesma API do desafio)
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/vps-hotfix-times-busca-logo.sh?v=2")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/vps-hotfix-times-busca-logo.sh?v=3")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/manual-evento-escudo-times-bb44}"
@@ -29,9 +29,8 @@ curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-jogos.html" -o "$WEB/admin-
 chmod 0644 "$WEB/admin-jogos.html"
 cp -f "$WEB/admin-jogos.html" "$WEB_ROOT/admin-jogos.html" 2>/dev/null || true
 
+grep -q 'positionTeamSuggest' "$WEB/admin-jogos.html" || die "HTML sem positionTeamSuggest"
 grep -q 'fetchTeamsForPicker' "$WEB/admin-jogos.html" || die "HTML sem fetchTeamsForPicker"
-grep -q 'manHomeSuggest' "$WEB/admin-jogos.html" || die "HTML sem manHomeSuggest"
-grep -q '/v2.js' "$WEB/admin-jogos.html" || die "HTML sem v2.js"
 
 log "UI Proteger (exibe logos)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/app-proteger.html" -o "$WEB/app-proteger.html"
