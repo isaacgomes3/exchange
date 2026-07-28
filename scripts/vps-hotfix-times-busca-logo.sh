@@ -2,7 +2,7 @@
 # Hotfix: busca de times + logos + formulário full-page no Lançar Evento Manual
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/vps-hotfix-times-busca-logo.sh?v=12")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/vps-hotfix-times-busca-logo.sh?v=13")
 set -euo pipefail
 
 REPO="isaacgomes3/exchange"
@@ -55,7 +55,7 @@ fetch() {
   curl -fsSL "${RAW}/${rel}" -o "$dest"
 }
 
-log "1/4 — admin-jogos.html (formulário full-page, NÃO drawer)"
+log "1/5 — admin-jogos.html (formulário full-page, NÃO drawer)"
 fetch "deploy/vps-supabase/static/v2/admin-jogos.html" "$WEB/admin-jogos.html"
 chmod 0644 "$WEB/admin-jogos.html"
 verify_html "$WEB/admin-jogos.html"
@@ -63,21 +63,26 @@ cp -f "$WEB/admin-jogos.html" "$WEB_ROOT/admin-jogos.html" 2>/dev/null || true
 BUILD=$(grep -o 'manualLaunchPanel-v[0-9]*' "$WEB/admin-jogos.html" | head -1 || echo "manualLaunchPanel")
 log "  ok $WEB/admin-jogos.html ($(wc -c < "$WEB/admin-jogos.html") bytes, $BUILD)"
 
-log "2/4 — v2.js (ArbiV2.searchFootballTeams + fallback TheSportsDB)"
+log "2/5 — v2.js (ArbiV2.searchFootballTeams + fallback TheSportsDB)"
 fetch "deploy/vps-supabase/static/v2/v2.js" "$WEB/v2.js"
 chmod 0644 "$WEB/v2.js"
 cp -f "$WEB/v2.js" "$WEB_ROOT/v2.js" 2>/dev/null || true
 grep -q 'searchFootballTeams' "$WEB/v2.js" || die "v2.js sem searchFootballTeams"
 
-log "3/4 — UI Proteger (exibe logos)"
+log "3/5 — UI Proteger + Minhas Proteções (protocolo de auditoria)"
 fetch "deploy/vps-supabase/static/v2/app-proteger.html" "$WEB/app-proteger.html"
 chmod 0644 "$WEB/app-proteger.html"
+fetch "deploy/vps-supabase/static/v2/app-protecoes.html" "$WEB/app-protecoes.html"
+chmod 0644 "$WEB/app-protecoes.html"
+cp -f "$WEB/app-protecoes.html" "$WEB_ROOT/app-protecoes.html" 2>/dev/null || true
 fetch "deploy/vps-supabase/static/v2/v2.css" "$WEB/v2.css"
 chmod 0644 "$WEB/v2.css"
 grep -q 'home_logo' "$WEB/app-proteger.html" || die "proteger sem home_logo"
 grep -q 'term-team-logo' "$WEB/v2.css" || die "v2.css sem term-team-logo"
+grep -q 'Protocolo de auditoria' "$WEB/app-protecoes.html" || die "protecoes sem Protocolo de auditoria"
+grep -q 'Dedução ArbiShield' "$WEB/app-protecoes.html" || die "protecoes sem bloco financeiro"
 
-log "4/4 — Prelive API (endpoint /football-teams)"
+log "4/5 — Prelive API (endpoint /football-teams)"
 fetch "scripts/arbishield-prelive-events.mjs" "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
 chmod 0755 "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
 grep -q 'searchFootballTeams' "$SCRIPTS_DIR/arbishield-prelive-events.mjs" || die "prelive sem searchFootballTeams"
