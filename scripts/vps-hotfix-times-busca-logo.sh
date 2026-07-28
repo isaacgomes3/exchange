@@ -2,7 +2,7 @@
 # Hotfix: busca de times + logos + formulário full-page + Saldo Reembolso
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/vps-hotfix-times-busca-logo.sh?v=15")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/vps-hotfix-times-busca-logo.sh?v=16")
 set -euo pipefail
 
 REPO="isaacgomes3/exchange"
@@ -111,7 +111,7 @@ grep -q 'Reembolso correto' "$WEB/app-protecoes.html" || die "protecoes sem labe
 grep -q 'Ganhou na exchange' "$WEB/app-protecoes.html" || die "protecoes sem label Ganhou na exchange"
 grep -q 'Reembolso correto' "$WEB/v2-financeiro.js" || die "financeiro sem label Reembolso correto"
 grep -q 'finBalDeduction' "$WEB/app-carteira.html" || die "carteira sem Saldo Reembolso"
-grep -q 'carteira-saldo-reembolso-v15' "$WEB/app-carteira.html" || die "carteira sem marker v15"
+grep -q 'carteira-saldo-reembolso-v1[56]\|saldo-reembolso-v1[56]' "$WEB/app-carteira.html" || die "carteira sem marker saldo-reembolso"
 grep -q 'finBalDeduction' "$WEB/v2-financeiro.js" || die "financeiro sem finBalDeduction"
 grep -q 'TRANSFER_DESAFIO_BLOCKED' "$WEB/v2-financeiro.js" || die "financeiro sem bloqueio Banca→Desafio"
 grep -q 'deduction_balance_cents' "$WEB/v2-shell.js" || die "shell sem deduction_balance_cents"

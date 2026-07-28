@@ -1,7 +1,11 @@
 /**
  * Centro Financeiro v2 — extrato consolidado (paridade com SPA Vnt / carteira).
+ * Marker: saldo-reembolso-v16
  */
 (function () {
+  try {
+    console.info("[ArbiV2 financeiro] saldo-reembolso-v16");
+  } catch (_) {}
   var PERIODS = [
     { id: "today", label: "Hoje" },
     { id: "7d", label: "7 dias" },
