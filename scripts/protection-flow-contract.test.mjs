@@ -550,6 +550,10 @@ describe("Comissão Exchange 4,5% do lucro", () => {
     assert.match(ui, /Lucro bruto \(base da taxa\)/);
     assert.match(ui, /Sua fatia \(1,5% da cobertura\)/);
     assert.match(pages, /exchange_commission/);
+    assert.doesNotMatch(ui, /Stake equivalente \(casa\)/);
+    assert.doesNotMatch(ui, /Odd LAY → back equiv\./);
+    assert.doesNotMatch(preview, /Odd LAY → back equiv\./);
+    assert.doesNotMatch(preview, /Stake equivalente \(casa\)/);
   });
 
   it("LAY @1,10 resp. R$500 → comissão R$225 (4,5% de R$5.000, não da fatia 1,5%)", () => {

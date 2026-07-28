@@ -55,12 +55,7 @@
         : "";
     } catch (e) {}
 
-    var oddLine =
-      mt === "LAY"
-        ? "<div><span>Odd LAY → back equiv.</span><b>" +
-          effOdd.toFixed(3).replace(".", ",") +
-          "</b></div>"
-        : "";
+    // Sem stake equivalente / Odd LAY → back equiv. no preview (pedido UI).
 
     // preserva saldo disponível se já estiver no preview
     var availHtml = "";
@@ -80,7 +75,6 @@
       "<div><span>Tipo</span><b>" +
       mt +
       "</b></div>" +
-      oddLine +
       "<div><span>Valor (responsabilidade/stake)</span><b>" +
       money(amountCents) +
       "</b></div>" +

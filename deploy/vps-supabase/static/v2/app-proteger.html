@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <meta name="arbishield-build" content="proteger-comissao-lucro-bruto-v1" />
-  <meta name="arbishield-features" content="proteger-stake-lock-v6-max-btn-lime proteger-espelho-readonly-v13 hide-congelado-visor-v1" />
+  <meta name="arbishield-build" content="proteger-sem-stake-equiv-v1" />
+  <meta name="arbishield-features" content="proteger-stake-lock-v6-max-btn-lime proteger-espelho-readonly-v13 hide-congelado-visor-v1 proteger-sem-stake-equiv-v1" />
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=proteger-comissao-lucro-bruto-v1" />
+  <link rel="stylesheet" href="/v2.css?v=proteger-sem-stake-equiv-v1" />
   <style>
     .term-score {
       display: inline-flex;
@@ -574,23 +574,8 @@
         var maxLock = maxStakeLockCents(avail);
         var maxEff = currentEventMaxCents();
         var valorLabel = mt === "LAY" ? "Responsabilidade" : "Stake";
-        var extraLine = "";
-        if (mt === "LAY" && amountCents > 0 && layOdd > 1.01) {
-          var stakeLay = Math.max(
-            0,
-            Number(c.stakeCents) || Math.round(amountCents / (layOdd - 1))
-          );
-          var effOdd = Number(c.effectiveBackOdd) || layOdd / (layOdd - 1);
-          extraLine =
-            "<div><span>Stake equivalente (casa)</span><b>" +
-            money(stakeLay) +
-            "</b></div>" +
-            "<div><span>Odd LAY → back equiv.</span><b>" +
-            Number(effOdd).toFixed(3).replace(".", ",") +
-            "</b></div>";
-        }
-        // Sempre mostra lucro bruto — base da comissão 4,5% (não confundir com fatia 1,5%)
-        extraLine +=
+        // Sem stake equivalente / odd back equiv. no preview (pedido UI).
+        var lucroBrutoLine =
           "<div><span>Lucro bruto (base da taxa)</span><b>" +
           money(lucroBruto) +
           "</b></div>";
@@ -608,7 +593,7 @@
         document.getElementById("preview").innerHTML =
           "<div><span>Tipo</span><b>" + mt + "</b></div>" +
           "<div><span>" + valorLabel + " (trava)</span><b>" + money(amountCents) + "</b></div>" +
-          extraLine +
+          lucroBrutoLine +
           "<div><span>Retorno casa externa</span><b>" + money(retorno) + "</b></div>" +
           "<div><span>Comissão Exchange (4,5% do lucro bruto)</span><b>" +
           money(comissaoEx) +
