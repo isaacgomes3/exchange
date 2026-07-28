@@ -93,11 +93,16 @@ async function main() {
     const txs = await api(
       `/rest/v1/wallet_transactions?select=id,amount_cents,metadata&type=eq.protection_settlement&ref=eq.${encodeURIComponent(row.id)}&limit=20`
     );
-    const credited = (Array.isArray(txs) ? txs : []).some(
+    const credits = (Array.isArray(txs) ? txs : []).filter(
       (tx) => cents(tx.amount_cents) >= expected
     );
-    if (credited) {
-      console.log(`  pular ${row.id}: já possui crédito de ${expected}¢`);
+    if (credits.length) {
+      const buckets = credits
+        .map((tx) => String(tx.metadata?.bucket || "sem_bucket"))
+        .join(",");
+      console.log(
+        `  pular ${row.id}: já possui crédito de ${expected}¢ (bucket: ${buckets})`
+      );
       continue;
     }
     total += expected;
