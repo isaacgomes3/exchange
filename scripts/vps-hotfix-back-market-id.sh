@@ -62,6 +62,7 @@ done
 
 grep -q "$MARKER" "$PRELIVE_DST" || die "prelive sem $MARKER"
 grep -q 'market_id: resolvedMarketId' "$PRELIVE_DST" || die "prelive sem market_id no INSERT BACK"
+grep -q 'calculations: c,' "$PRELIVE_DST" || die "prelive sem coluna calculations no INSERT BACK"
 
 systemctl restart arbishield-prelive-events.service 2>/dev/null || \
   systemctl restart arbishield-prelive.service 2>/dev/null || \

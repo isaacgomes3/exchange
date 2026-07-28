@@ -1204,6 +1204,7 @@ async function createProtection(body, userToken) {
           market_id: resolvedMarketId,
           odd: c.odd,
           status: "active",
+          calculations: c,
           amount_cents: c.coverageCents,
           user_profit_cents: c.userProfitCents,
           platform_deduction_cents: c.arbiShieldDeductionCents,
