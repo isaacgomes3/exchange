@@ -112,6 +112,20 @@ export function settlementDeductionCents(row) {
   return fee;
 }
 
+function settlementGrossProfitCents(row) {
+  const meta =
+    row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  const calculated = n(meta.calculations?.grossProfitCents);
+  if (calculated > 0) return calculated;
+  const amount = n(row?.responsibility_cents || row?.amount_cents);
+  let odd = Number(meta.market_odd);
+  if (!(odd > 1.01)) odd = Number(row?.odd || 0);
+  if (String(meta.market_type || "").toUpperCase() === "LAY" && odd > 1.01) {
+    odd = odd / (odd - 1);
+  }
+  return amount > 0 && odd > 1.01 ? Math.max(0, Math.round(amount * odd) - amount) : 0;
+}
+
 /**
  * Regras de crédito no settle (TRAVADAS):
  *
@@ -140,8 +154,15 @@ export function settlementCreditParts(row, outcome) {
   const isVoid = o === "void";
   if (isLockedMarginProtection(row)) {
     if (isVoid || wonArbi) return { stake: amount, fee: 0, total: amount };
-    const keep = Math.min(fee, amount);
-    return { stake: Math.max(0, amount - keep), fee: keep, total: Math.max(0, amount - keep) };
+    const deduction = Math.min(
+      amount,
+      Math.max(0, settlementGrossProfitCents(row) - fee)
+    );
+    return {
+      stake: Math.max(0, amount - deduction),
+      fee: deduction,
+      total: Math.max(0, amount - deduction),
+    };
   }
   if (isFeeUpfrontProtection(row)) {
     if (isVoid) return { stake: 0, fee, total: fee };

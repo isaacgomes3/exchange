@@ -121,14 +121,18 @@ describe("settle — locked_margin_v2", () => {
   const row = {
     amount_cents: 100_000,
     responsibility_cents: 100_000,
-    platform_deduction_cents: 6000,
-    metadata: { billing_model: "locked_margin_v2", locked_margin: true },
+    platform_deduction_cents: 2000,
+    metadata: {
+      billing_model: "locked_margin_v2",
+      locked_margin: true,
+      calculations: { grossProfitCents: 11_111 },
+    },
   };
 
   it("detecta modelo bloqueado e margem", () => {
     assert.equal(isLockedMarginProtection(row), true);
     assert.equal(isFeeUpfrontProtection(row), false);
-    assert.equal(settlementDeductionCents(row), 6000);
+    assert.equal(settlementDeductionCents(row), 2000);
   });
 
   it("ArbiShield devolve 100% ao Saldo Apostador", () => {
@@ -136,11 +140,11 @@ describe("settle — locked_margin_v2", () => {
     assert.deepEqual(p, { stake: 100_000, fee: 0, total: 100_000 });
   });
 
-  it("Exchange retém a margem e devolve o restante ao Saldo Apostador", () => {
+  it("Exchange desconta lucro bruto menos margem e devolve o restante", () => {
     assert.deepEqual(settlementCreditParts(row, "exchange"), {
-      stake: 94_000,
-      fee: 6000,
-      total: 94_000,
+      stake: 90_889,
+      fee: 9111,
+      total: 90_889,
     });
   });
 

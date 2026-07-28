@@ -36,7 +36,8 @@ Se um pedido tangenciar esses arquivos por outro motivo (hotfix de JS, Encerrado
 3. **Bateu ArbiShield:** destrava 100% da stake/responsabilidade ao
    `balance_cents` (**Saldo Apostador**) e paga mais 100% no
    `deduction_balance_cents` (**Saldo Reembolso**).
-4. **Bateu Exchange:** retém a margem e devolve o restante ao `balance_cents`.
+4. **Bateu Exchange:** deduz `lucro bruto − margem` e devolve o restante ao
+   `balance_cents`.
 5. **Empate Anula / void:** devolve 100% ao `balance_cents`. Não é vitória Arbi nem Exchange.
 6. **Cancelar proteção:** devolve 100% ao `balance_cents` e libera o lock.
 7. Cliente **não** precisa pedir reembolso para ver a stake/responsabilidade quando o resultado é ArbiShield — o crédito é imediato.
