@@ -138,6 +138,9 @@
       var supa = ArbiV2.client();
       var user = await ArbiV2.requireUser(supa);
       if (!user) return;
+      var viewUserId = ArbiV2.getEffectiveUserId
+        ? ArbiV2.getEffectiveUserId(user)
+        : user.id;
 
       function showErr(msg) {
         var err = document.getElementById("err");
@@ -198,7 +201,7 @@
           .select(
             "full_name,balance_cents,reusable_balance_cents,deduction_balance_cents,demo_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,cpf,pix_key,pix_priority_type,pix_bank,pix_account,pix_account_holder,phone"
           )
-          .eq("id", user.id)
+          .eq("id", viewUserId)
           .maybeSingle();
         if (profileRes.error) throw profileRes.error;
         var p = profileRes.data || {};
@@ -229,7 +232,7 @@
               .select(
                 "balance_cents,reusable_balance_cents,deduction_balance_cents,demo_balance_cents,investor_balance_cents,demo_balance_provider_cents"
               )
-              .eq("id", user.id)
+              .eq("id", viewUserId)
               .maybeSingle();
             var fresh = freshRes.data || {};
             var freshApostador =
@@ -278,7 +281,7 @@
         var protRes = await supa
           .from("protections")
           .select("id,status,amount_cents,profit_cents,pnl_cents,created_at")
-          .eq("user_id", user.id)
+          .eq("user_id", viewUserId)
           .limit(500);
         var rows = (protRes.data || []).slice();
         var active = rows.filter(function (r) {
@@ -304,7 +307,7 @@
           var ref = await supa
             .from("refunds")
             .select("id", { count: "exact", head: true })
-            .eq("user_id", user.id);
+            .eq("user_id", viewUserId);
           refundCount = ref.count || 0;
         } catch (refErr) {}
 
