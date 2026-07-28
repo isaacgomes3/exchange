@@ -49,6 +49,7 @@ describe("contrato travado — metadados", () => {
     );
     assert.match(html, /Saldo Reembolso/);
     assert.doesNotMatch(html, /Saldo Dedução/);
+    assert.match(html, /v2-financeiro\.js\?v=saldo-reembolso-render-2/);
   });
 
   it("carrega Saldo Reembolso isoladamente após fallback do perfil", () => {
