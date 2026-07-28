@@ -637,6 +637,12 @@
               var el = document.getElementById(id);
               if (el) el.textContent = money(val);
             }
+            global.addEventListener("arbishield:balance-updated", function (event) {
+              var balance = event && event.detail && event.detail.apostador;
+              if (Number.isFinite(Number(balance))) {
+                setTxt("v2BalApostador", Number(balance));
+              }
+            });
             setTxt("v2BalApostador", apostador);
             setTxt("v2BalDesafio", desafio);
             setTxt("v2BalAfiliado", afiliado);

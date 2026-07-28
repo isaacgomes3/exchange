@@ -215,6 +215,11 @@
         set("kBalApostador", money(apostador));
         set("kBalProvedor", money(provedor));
         set("evoToday", money(apostador + provedor));
+        window.dispatchEvent(
+          new CustomEvent("arbishield:balance-updated", {
+            detail: { apostador: apostador },
+          })
+        );
 
         var missing = [];
         if (!p.full_name) missing.push("Nome completo");
