@@ -527,7 +527,7 @@ describe("Comissão Exchange 4,5% do lucro", () => {
     );
   });
 
-  it("UI bilhete e extrato citam comissão 4,5%", () => {
+  it("UI bilhete e extrato citam comissão 4,5% do lucro bruto", () => {
     const ui = readFileSync(
       resolve(root, "deploy/vps-supabase/static/v2/app-proteger.html"),
       "utf8"
@@ -540,9 +540,24 @@ describe("Comissão Exchange 4,5% do lucro", () => {
       resolve(root, "deploy/vps-supabase/static/v2/v2-pages.js"),
       "utf8"
     );
-    assert.match(ui, /Comissão Exchange \(4,5% do lucro\)/);
-    assert.match(prot, /Comissão Exchange \(4,5% do lucro\)/);
+    const preview = readFileSync(
+      resolve(root, "deploy/vps-supabase/static/v2/proteger-preview-fix.js"),
+      "utf8"
+    );
+    assert.match(ui, /Comissão Exchange \(4,5% do lucro bruto\)/);
+    assert.match(prot, /Comissão Exchange \(4,5% do lucro bruto\)/);
+    assert.match(preview, /Comissão Exchange \(4,5% do lucro bruto\)/);
+    assert.match(ui, /Lucro bruto \(base da taxa\)/);
+    assert.match(ui, /Sua fatia \(1,5% da cobertura\)/);
     assert.match(pages, /exchange_commission/);
+  });
+
+  it("LAY @1,10 resp. R$500 → comissão R$225 (4,5% de R$5.000, não da fatia 1,5%)", () => {
+    const c = calcLay(50_000, 1.1);
+    assert.equal(c.grossProfitCents, 500_000); // resp/(odd−1) = 5000
+    assert.equal(c.exchangeCommissionCents, 22_500); // 4,5% de 5000
+    assert.equal(c.userProfitCents, 750); // 1,5% da cobertura (500)
+    assert.equal(c.arbiShieldDeductionCents, 476_750); // 5000 − 225 − 7,50
   });
 });
 

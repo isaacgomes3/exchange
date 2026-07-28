@@ -127,7 +127,7 @@
           if (o === "void" || o === "empate_anula") return "Liquidação · Empate Anula";
         }
         if (t === "exchange_commission") {
-          return meta.label || "Comissão Exchange (4,5% do lucro)";
+          return meta.label || "Comissão Exchange (4,5% do lucro bruto)";
         }
         if (t === "internal_transfer") {
           var from = meta.from_bucket || meta.from || "";

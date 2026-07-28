@@ -7,7 +7,7 @@
   <title>Gestão de Proteções — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="protecoes-cancel-devolve-stake-v6g" />
+  <meta name="arbishield-build" content="proteger-comissao-lucro-bruto-v1" />
   <link rel="stylesheet" href="/v2.css?v=protecoes-cancel-devolve-stake-v6g" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js?v=protecoes-cancel-devolve-stake-v6g"></script>
@@ -897,13 +897,16 @@
               "<span>Valor protegido</span>" +
               "<strong>" + money(amount) + "</strong>" +
               '<div class="prot-kv-lines">' +
+                '<div class="prot-kv-line"><span>Lucro bruto (base da taxa)</span><b>' +
+                money(Math.max(0, lucroUser + deducao + exchangeCommissionCentsOf(it))) +
+                "</b></div>" +
                 '<div class="prot-kv-line"><span>Dedução ArbiShield</span><b>' +
                 money(deducao) +
                 "</b></div>" +
-                '<div class="prot-kv-line"><span>Lucro do usuário (1,5%)</span><b>' +
+                '<div class="prot-kv-line"><span>Sua fatia (1,5% da cobertura)</span><b>' +
                 money(lucroUser) +
                 "</b></div>" +
-                '<div class="prot-kv-line"><span>Comissão Exchange (4,5% do lucro)</span><b>' +
+                '<div class="prot-kv-line"><span>Comissão Exchange (4,5% do lucro bruto)</span><b>' +
                 money(exchangeCommissionCentsOf(it)) +
                 "</b></div>" +
               "</div>" +

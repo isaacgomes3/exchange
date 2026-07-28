@@ -154,7 +154,7 @@
       return "Liquidação de proteção";
     }
     if (t === "exchange_commission") {
-      return meta.label || "Comissão Exchange (4,5% do lucro)";
+      return meta.label || "Comissão Exchange (4,5% do lucro bruto)";
     }
     return TX_TYPE_LABELS[t] || (row && row.type) || "—";
   }
