@@ -438,8 +438,7 @@
         <p class="sub">Cockpit de Eventos e Risco · Catálogo Pré-Live BetBra</p>
       </div>
       <div class="actions">
-        <button class="btn btn-primary" id="btnAddMatch" type="button">+ Lançar jogo (BetBra)</button>
-        <button class="btn btn-ghost" id="btnManualMatch" type="button">Lançar manual</button>
+        <button class="btn btn-primary" id="btnManualMatch" type="button">Lançar manual</button>
         <button class="btn btn-ghost" id="btnRefresh" type="button">Atualizar</button>
       </div>
     </header>
@@ -455,8 +454,8 @@
     </div>
 
     <div id="settleHint" class="auth-banner show" style="margin-bottom:14px;border-color:rgba(201,242,35,0.35);background:rgba(201,242,35,0.08)">
-      <strong style="color:var(--lime)">Lançar jogo normal:</strong>
-      use <strong>+ Lançar jogo (BetBra)</strong> → escolha o jogo → mercado → <strong>Lançar evento</strong>.
+      <strong style="color:var(--lime)">Lançar jogo:</strong>
+      use <strong>Lançar manual</strong> para cadastrar partida na plataforma.
       Isso <em>não</em> é Desafio (Desafios ficam em Gestão de Desafios).
       <span style="display:block;margin-top:6px">
         <strong>Encerrar:</strong> aba Encerrar / Eventos ArbiShield → filtro A liquidar → Encerrar partida.
@@ -557,7 +556,7 @@
   <div class="drawer-backdrop" id="manualDrawer">
     <div class="drawer">
       <h3>Lançar evento <span>manual</span></h3>
-      <p class="hint">Só para jogos que não estão na BetBra. Fluxo normal = botão “Lançar jogo (BetBra)”. Isto não cria Desafio.</p>
+      <p class="hint">Cadastro manual de partida na plataforma. Isto não cria Desafio.</p>
 
       <div class="toggle-row">
         <div>
@@ -1769,18 +1768,6 @@
         else if (!selectedEvent) renderPreliveList();
       }
 
-      /** Fluxo normal de cadastro: catálogo BetBra (não drawer manual / não desafio). */
-      function openNormalLaunch() {
-        closeManualDrawer();
-        selectedEvent = null;
-        setView("prelive");
-        if (!preliveEvents.length) loadPrelive();
-        else renderPreliveList();
-        try {
-          $("prelivePanel").scrollIntoView({ behavior: "smooth", block: "start" });
-        } catch (e) {}
-      }
-
       var manualMarkets = [];
 
       function bindSwitch(id, onChange) {
@@ -2260,7 +2247,6 @@
         bindSwitch("manPublish");
         bindSwitch("manScoreSync");
         bindSwitch("manLive");
-        $("btnAddMatch").addEventListener("click", openNormalLaunch);
         if ($("btnManualMatch")) {
           $("btnManualMatch").addEventListener("click", openManualDrawer);
         }
