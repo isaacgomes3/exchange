@@ -92,13 +92,12 @@ app-config.html
 app-desafio.html
 app-partners.html
 app-perfil.html
-app-protecoes.html
 app-proteger.html
 app-suporte.html
 EOF
 
 echo
 echo "OK — UI v2 atualizada (afiliados + provedor + financeiro + depósito + academia)"
-echo "  Admin Jogos NÃO incluído — use vps-hotfix-lancar-evento-manual.sh"
+echo "  Admin Jogos / Minhas Proteções: use vps-hotfix-lancar-evento-manual.sh"
 echo "  Abra https://arbishield.app/app-afiliados.html (Ctrl+Shift+R)"
 echo "  Admin: https://arbishield.app/admin.html"
