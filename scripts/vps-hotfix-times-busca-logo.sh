@@ -2,7 +2,7 @@
 # Hotfix: busca de times + logos + formulário full-page no Lançar Evento Manual
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/vps-hotfix-times-busca-logo.sh?v=9")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/vps-hotfix-times-busca-logo.sh?v=10")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/manual-evento-escudo-times-bb44}"
@@ -11,7 +11,7 @@ WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield}"
 NGINX_SITE="${ARBISHIELD_NGINX_SITE:-/etc/nginx/sites-available/arbishield.app}"
-BUILD_MARKER="manualLaunchPanel-v9"
+BUILD_MARKER="manualLaunchPanel-v10"
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }

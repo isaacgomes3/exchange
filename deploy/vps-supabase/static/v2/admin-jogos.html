@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta name="arbishield-vps-page" content="jogos" />
-  <meta name="arbishield-build" content="manualLaunchPanel-v9" />
+  <meta name="arbishield-build" content="manualLaunchPanel-v10" />
   <title>Gestão de Jogos — ArbiShield v2</title>
   <link rel="stylesheet" href="/v2.css" />
   <script src="/v2-shell.js" defer></script>
@@ -292,9 +292,10 @@
     }
     .manual-launch-panel {
       display: none;
-      max-width: 920px;
-      margin: 0 auto;
-      padding: 8px 20px 48px;
+      width: 100%;
+      max-width: none;
+      margin: 0;
+      padding: 0 0 48px;
     }
     body.jogos-manual-open #app { display: none !important; }
     body.jogos-manual-open .manual-launch-panel { display: block; }
@@ -306,17 +307,56 @@
       text-transform: uppercase;
     }
     .manual-launch-panel h3 {
-      margin: 0; font-size: 1.35rem; font-weight: 900; font-style: italic;
+      margin: 0; font-size: clamp(1.35rem, 2.5vw, 1.75rem); font-weight: 900; font-style: italic;
       text-transform: uppercase; letter-spacing: -0.03em;
     }
     .manual-launch-panel h3 span { color: var(--lime); }
     .manual-launch-panel .hint {
-      margin: 6px 0 18px; color: var(--muted); font-size: 10px;
+      margin: 6px 0 20px; color: var(--muted); font-size: 10px;
       font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
     }
+    .manual-launch-toggles {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    @media (max-width: 900px) {
+      .manual-launch-toggles { grid-template-columns: 1fr; }
+    }
+    .manual-launch-toggles .toggle-row { margin-bottom: 0; height: 100%; }
+    .manual-launch-body {
+      display: grid;
+      gap: 0;
+      width: 100%;
+    }
+    .grid-teams {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+    .grid-meta {
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+    .grid-schedule {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .grid-teams,
+      .grid-meta,
+      .grid-schedule { grid-template-columns: 1fr; }
+    }
     .manual-launch-actions {
-      display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;
-      padding-top: 12px;
+      display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;
+      padding-top: 16px; border-top: 1px solid var(--border);
+      width: 100%;
     }
     .field { display: grid; gap: 6px; margin-bottom: 12px; }
     .field label {
@@ -554,6 +594,7 @@
     <h3>Lançar evento <span>manual</span></h3>
     <p class="hint">Cadastro manual de partida na plataforma. Isto não cria Desafio.</p>
 
+    <div class="manual-launch-toggles">
       <div class="toggle-row">
         <div>
           <div class="t">Status de publicação</div>
@@ -575,13 +616,15 @@
         </div>
         <button type="button" class="switch" id="manLive" aria-pressed="false"></button>
       </div>
+    </div>
 
+    <div class="manual-launch-body">
       <div class="sec-label">Partida</div>
       <div class="field">
         <label for="manExternalId">ID da partida (API-Football)</label>
         <input id="manExternalId" placeholder="Ex: 868688" />
       </div>
-      <div class="grid2">
+      <div class="grid-teams">
         <div class="field team-pick" data-side="home">
           <label for="manHome">Time da casa</label>
           <div style="position:relative;min-width:0">
@@ -593,8 +636,6 @@
           <label for="manHomeLogo">URL logo casa</label>
           <input id="manHomeLogo" placeholder="URL Logo" />
         </div>
-      </div>
-      <div class="grid2">
         <div class="field team-pick" data-side="away">
           <label for="manAway">Time de fora</label>
           <div style="position:relative;min-width:0">
@@ -607,11 +648,11 @@
           <input id="manAwayLogo" placeholder="URL Logo" />
         </div>
       </div>
-      <div class="field">
-        <label for="manLeague">Liga / campeonato</label>
-        <input id="manLeague" placeholder="Ex: Brasileirão Série A" />
-      </div>
-      <div class="grid2">
+      <div class="grid-meta">
+        <div class="field">
+          <label for="manLeague">Liga / campeonato</label>
+          <input id="manLeague" placeholder="Ex: Brasileirão Série A" />
+        </div>
         <div class="field">
           <label for="manSport">Esporte</label>
           <select id="manSport">
@@ -635,13 +676,15 @@
           </select>
         </div>
       </div>
-      <div class="field">
-        <label for="manStarts">Data e horário</label>
-        <input id="manStarts" type="datetime-local" required />
-      </div>
-      <div class="field">
-        <label for="manBetLink">Link da casa de aposta</label>
-        <input id="manBetLink" placeholder="https://www.bet365.com/..." />
+      <div class="grid-schedule">
+        <div class="field">
+          <label for="manStarts">Data e horário</label>
+          <input id="manStarts" type="datetime-local" required />
+        </div>
+        <div class="field">
+          <label for="manBetLink">Link da casa de aposta</label>
+          <input id="manBetLink" placeholder="https://www.bet365.com/..." />
+        </div>
       </div>
 
       <div class="sec-label" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
@@ -654,6 +697,7 @@
         <button type="button" class="btn btn-ghost" id="btnCancelManual">Cancelar</button>
         <button type="button" class="btn btn-primary" id="btnSaveManual">Lançar evento</button>
       </div>
+    </div>
   </section>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
