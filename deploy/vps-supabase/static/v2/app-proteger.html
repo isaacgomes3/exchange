@@ -87,14 +87,18 @@
   <div class="drawer-backdrop" id="drawer" aria-hidden="true">
     <div class="drawer" role="dialog" aria-labelledby="drawerTitle">
       <h2 id="drawerTitle">Nova proteção</h2>
-      <p class="hint" id="drawerHint">—</p>
+      <div class="drawer-match-head" id="drawerMatchHead"></div>
       <div class="field">
-        <label for="amount">Valor (R$)</label>
-        <input id="amount" type="number" min="1" step="0.01" inputmode="decimal" placeholder="0,00" />
+        <label for="amount" id="amountLabel">Valor (R$)</label>
+        <div class="drawer-amount-row">
+          <input id="amount" type="number" min="1" step="0.01" inputmode="decimal" placeholder="0,00" />
+          <button type="button" class="drawer-max-btn" id="btnAmountMax">MAX · R$ 0,00</button>
+        </div>
       </div>
+      <p class="drawer-field-hint" id="amountHint"></p>
       <div class="field">
         <label for="odd">Odd</label>
-        <input id="odd" type="number" min="1.01" step="0.01" />
+        <input id="odd" type="number" min="1.01" step="0.01" inputmode="decimal" />
       </div>
       <div class="field">
         <label for="balanceType">Saldo</label>
@@ -158,24 +162,46 @@
       }
 
       function calcLay(amountCents, odd) {
-        var r = Math.floor(amountCents);
-        var a = odd > 1.01 ? odd : 1.01;
-        var stake = Math.round(r / (a - 1));
-        var locked = Math.round(stake * 0.9073);
-        var fee = Math.round(stake * 0.045);
-        var net = stake - fee;
-        var userProfit = Math.round(r * 0.015);
-        return { kind: "LAY", stakeRealCents: stake, lockedDeductionCents: locked, userProfitCents: userProfit, platformCents: net - userProfit };
+        var responsibilityCents = Math.floor(amountCents);
+        var o = odd > 1.01 ? odd : 1.01;
+        var stakeRealCents = Math.round(responsibilityCents / (o - 1));
+        var exchangeFeeCents = Math.round(stakeRealCents * 0.045);
+        var exchangeProfitNetCents = stakeRealCents - exchangeFeeCents;
+        var userProfitCents = Math.round(responsibilityCents * 0.015);
+        var arbiShieldDeductionCents = exchangeProfitNetCents - userProfitCents;
+        var backEquivOdd = responsibilityCents > 0 ? 1 + stakeRealCents / responsibilityCents : 0;
+        var externalReturnCents = Math.round(stakeRealCents * o);
+        return {
+          kind: "LAY",
+          responsibilityCents: responsibilityCents,
+          stakeRealCents: stakeRealCents,
+          exchangeFeeCents: exchangeFeeCents,
+          exchangeProfitNetCents: exchangeProfitNetCents,
+          userProfitCents: userProfitCents,
+          arbiShieldDeductionCents: arbiShieldDeductionCents,
+          backEquivOdd: backEquivOdd,
+          externalReturnCents: externalReturnCents,
+        };
       }
       function calcBack(amountCents, odd) {
-        var n = Math.floor(amountCents);
-        var a = odd >= 1.01 ? odd : 1.01;
-        var gross = Math.round(n * a);
-        var profit = Math.max(0, gross - n);
-        var fee = Math.round(profit * 0.045);
-        var net = profit - fee;
-        var userProfit = Math.round(n * 0.015);
-        return { kind: "BACK", stakeRealCents: n, lockedDeductionCents: n, userProfitCents: userProfit, platformCents: net - userProfit };
+        var coverageCents = Math.floor(amountCents);
+        var o = odd >= 1.01 ? odd : 1.01;
+        var grossReturnCents = Math.round(coverageCents * o);
+        var grossProfitCents = Math.max(0, grossReturnCents - coverageCents);
+        var exchangeFeeCents = Math.round(grossProfitCents * 0.045);
+        var netProfitExchangeCents = grossProfitCents - exchangeFeeCents;
+        var userProfitCents = Math.round(coverageCents * 0.015);
+        var arbiShieldDeductionCents = netProfitExchangeCents - userProfitCents;
+        return {
+          kind: "BACK",
+          coverageCents: coverageCents,
+          grossReturnCents: grossReturnCents,
+          grossProfitCents: grossProfitCents,
+          exchangeFeeCents: exchangeFeeCents,
+          netProfitExchangeCents: netProfitExchangeCents,
+          userProfitCents: userProfitCents,
+          arbiShieldDeductionCents: arbiShieldDeductionCents,
+        };
       }
       function available(type) {
         var p = state.profile || {};
@@ -222,29 +248,128 @@
         });
       }
 
+      function marketLiqLeft(market, match) {
+        var liq = Number(market && market.liquidity != null ? market.liquidity : 0);
+        var used = Number(market && market.used_liquidity != null ? market.used_liquidity : 0);
+        if (liq > 0) return Math.max(0, liq - used);
+        return liqLeft(match);
+      }
+      function maxAllowedCents(match, market, balanceType) {
+        var avail = available(balanceType);
+        var halfBalance = Math.floor(avail * 0.5);
+        var eventLeft = liqLeft(match);
+        var mktLeft = marketLiqLeft(market, match);
+        return Math.max(0, Math.min(halfBalance, eventLeft, mktLeft));
+      }
+      function previewRow(label, value, accent) {
+        return (
+          "<div><span>" +
+          esc(label) +
+          '</span><b class="' +
+          (accent ? "accent" : "") +
+          '">' +
+          esc(value) +
+          "</b></div>"
+        );
+      }
+      function fmtOdd(n) {
+        return Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+      }
+
       function updatePreview() {
         if (!state.selected) return;
         var amountReais = Number(document.getElementById("amount").value || 0);
         var odd = Number(document.getElementById("odd").value || 0);
         var amountCents = Math.round(amountReais * 100);
+        var balanceType = document.getElementById("balanceType").value;
         var mt = state.selected.marketType;
-        var c = mt === "BACK" ? calcBack(amountCents, odd) : calcLay(amountCents, odd);
-        document.getElementById("preview").innerHTML =
-          "<div><span>Tipo</span><b>" + mt + "</b></div>" +
-          "<div><span>Valor</span><b>" + money(amountCents) + "</b></div>" +
-          "<div><span>Lucro estimado (1,5%)</span><b>" + money(c.userProfitCents) + "</b></div>" +
-          "<div><span>Saldo disponível</span><b>" + money(available(document.getElementById("balanceType").value)) + "</b></div>";
+        var match = state.selected.match;
+        var market = state.selected.market;
+        var maxCents = maxAllowedCents(match, market, balanceType);
+        var maxBtn = document.getElementById("btnAmountMax");
+        if (maxBtn) maxBtn.textContent = "MAX · " + money(maxCents);
+
+        var html = "";
+        if (mt === "BACK") {
+          var cb = calcBack(amountCents, odd);
+          html +=
+            previewRow("Tipo", "BACK") +
+            previewRow("Cobertura (trava)", money(cb.coverageCents)) +
+            previewRow("Retorno bruto (casa)", money(cb.grossReturnCents)) +
+            previewRow("Odd BACK", fmtOdd(odd)) +
+            previewRow("Seu lucro (1,5%)", money(cb.userProfitCents), true) +
+            previewRow("Dedução se ganhar Exchange", money(cb.arbiShieldDeductionCents)) +
+            previewRow("Comissão Exchange (4,5% do lucro)", money(cb.exchangeFeeCents)) +
+            previewRow("Saldo disponível agora", money(available(balanceType))) +
+            previewRow("Máx. 50% do Apostador restante", money(Math.floor(available(balanceType) * 0.5))) +
+            previewRow("Máx. neste evento", money(maxCents));
+        } else {
+          var cl = calcLay(amountCents, odd);
+          html +=
+            previewRow("Tipo", "LAY") +
+            previewRow("Responsabilidade (trava)", money(cl.responsibilityCents)) +
+            previewRow("Stake equivalente (casa)", money(cl.stakeRealCents)) +
+            previewRow("Odd LAY · back equiv.", fmtOdd(cl.backEquivOdd)) +
+            previewRow("Retorno casa externa", money(cl.externalReturnCents)) +
+            previewRow("Seu lucro (1,5%)", money(cl.userProfitCents), true) +
+            previewRow("Dedução se ganhar Exchange", money(cl.arbiShieldDeductionCents)) +
+            previewRow("Comissão Exchange (4,5% do lucro)", money(cl.exchangeFeeCents)) +
+            previewRow("Saldo disponível agora", money(available(balanceType))) +
+            previewRow("Máx. 50% do Apostador restante", money(Math.floor(available(balanceType) * 0.5))) +
+            previewRow("Máx. neste evento", money(maxCents));
+        }
+        document.getElementById("preview").innerHTML = html;
+      }
+
+      function renderDrawerMatchHead(match, market) {
+        var homeLogo = match.home_logo
+          ? '<img src="' + esc(match.home_logo) + '" alt="" onerror="this.style.display=\'none\'" />'
+          : "";
+        var awayLogo = match.away_logo
+          ? '<img src="' + esc(match.away_logo) + '" alt="" onerror="this.style.display=\'none\'" />'
+          : "";
+        document.getElementById("drawerMatchHead").innerHTML =
+          homeLogo +
+          "<span>" +
+          esc(match.home_team || "?") +
+          " × " +
+          esc(match.away_team || "?") +
+          "</span>" +
+          awayLogo +
+          '<span class="market-tag">· ' +
+          esc(market.name || "Mercado") +
+          "</span>";
+      }
+
+      function updateAmountHint(match, market, mt, balanceType) {
+        var maxCents = maxAllowedCents(match, market, balanceType);
+        var label = document.getElementById("amountLabel");
+        var hint = document.getElementById("amountHint");
+        if (mt === "BACK") {
+          label.textContent = "Cobertura (R$)";
+          hint.textContent =
+            "BACK · informe o valor da cobertura · máx. neste evento: " +
+            money(maxCents) +
+            " (50% do restante)";
+        } else {
+          label.textContent = "Responsabilidade (R$)";
+          hint.textContent =
+            "LAY · informe a responsabilidade da casa (não o stake) · máx. neste evento: " +
+            money(maxCents) +
+            " (50% do restante)";
+        }
       }
 
       function openDrawer(match, market) {
         var mt = String(market.market_type || "LAY").toUpperCase() === "BACK" ? "BACK" : "LAY";
         state.selected = { match: match, market: market, marketType: mt };
-        document.getElementById("drawerTitle").textContent = "Proteger · " + mt;
-        document.getElementById("drawerHint").textContent =
-          (match.home_team || "?") + " vs " + (match.away_team || "?") + " · " + (market.name || "Mercado");
+        document.getElementById("drawerTitle").textContent =
+          "Proteger · " + mt + (mt === "LAY" ? " (responsabilidade)" : " (cobertura)");
+        renderDrawerMatchHead(match, market);
         document.getElementById("odd").value = Number(market.odd || 0).toFixed(2);
         document.getElementById("amount").value = "";
         document.getElementById("balanceType").value = "REAL";
+        updateAmountHint(match, market, mt, "REAL");
         updatePreview();
         document.getElementById("drawer").classList.add("open");
         document.getElementById("drawer").setAttribute("aria-hidden", "false");
@@ -259,9 +384,36 @@
       document.getElementById("drawer").addEventListener("click", function (e) {
         if (e.target.id === "drawer") closeDrawer();
       });
+      document.getElementById("btnAmountMax").addEventListener("click", function () {
+        if (!state.selected) return;
+        var balanceType = document.getElementById("balanceType").value;
+        var maxCents = maxAllowedCents(state.selected.match, state.selected.market, balanceType);
+        document.getElementById("amount").value = (maxCents / 100).toFixed(2);
+        updatePreview();
+      });
       ["amount", "odd", "balanceType"].forEach(function (id) {
-        document.getElementById(id).addEventListener("input", updatePreview);
-        document.getElementById(id).addEventListener("change", updatePreview);
+        document.getElementById(id).addEventListener("input", function () {
+          if (id === "balanceType" && state.selected) {
+            updateAmountHint(
+              state.selected.match,
+              state.selected.market,
+              state.selected.marketType,
+              document.getElementById("balanceType").value
+            );
+          }
+          updatePreview();
+        });
+        document.getElementById(id).addEventListener("change", function () {
+          if (id === "balanceType" && state.selected) {
+            updateAmountHint(
+              state.selected.match,
+              state.selected.market,
+              state.selected.marketType,
+              document.getElementById("balanceType").value
+            );
+          }
+          updatePreview();
+        });
       });
 
       document.getElementById("btnConfirm").onclick = async function () {
@@ -272,6 +424,15 @@
         var amountCents = Math.round(amountReais * 100);
         if (!(amountCents > 0)) {
           showErr("Insira um valor para ativar a proteção.");
+          return;
+        }
+        var maxCents = maxAllowedCents(
+          state.selected.match,
+          state.selected.market,
+          document.getElementById("balanceType").value
+        );
+        if (amountCents > maxCents) {
+          showErr("Valor acima do máximo permitido (" + money(maxCents) + ").");
           return;
         }
         var btn = document.getElementById("btnConfirm");
