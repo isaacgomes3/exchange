@@ -1601,6 +1601,19 @@
     if (profileRes.error) throw profileRes.error;
     state.profile = profileRes.data || {};
 
+    // O fallback acima existe para instalações com schema legado. Não deixe uma
+    // coluna opcional indisponível esconder o Saldo Reembolso quando a coluna
+    // dele já está disponível no perfil.
+    var deductionRes = await supa
+      .from("profiles")
+      .select("deduction_balance_cents")
+      .eq("id", userId)
+      .maybeSingle();
+    if (!deductionRes.error && deductionRes.data) {
+      state.profile.deduction_balance_cents =
+        deductionRes.data.deduction_balance_cents;
+    }
+
     var protections = await safeQuery(supa, "protections", protSelect, function (q) {
       return q.eq("user_id", userId).order("created_at", { ascending: false }).limit(1000);
     });

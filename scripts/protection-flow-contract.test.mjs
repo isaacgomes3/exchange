@@ -51,6 +51,21 @@ describe("contrato travado — metadados", () => {
     assert.doesNotMatch(html, /Saldo Dedução/);
   });
 
+  it("carrega Saldo Reembolso isoladamente após fallback do perfil", () => {
+    const financeiro = readFileSync(
+      resolve(root, "deploy/vps-supabase/static/v2/v2-financeiro.js"),
+      "utf8"
+    );
+    assert.match(
+      financeiro,
+      /\.select\("deduction_balance_cents"\)\s*\.eq\("id", userId\)\s*\.maybeSingle\(\)/
+    );
+    assert.match(
+      financeiro,
+      /state\.profile\.deduction_balance_cents\s*=\s*deductionRes\.data\.deduction_balance_cents/
+    );
+  });
+
   it("prelive e shim importam o contrato (não reimplementam settle credit)", () => {
     const prelive = readFileSync(
       resolve(root, "scripts/arbishield-prelive-events.mjs"),
