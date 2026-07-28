@@ -47,7 +47,7 @@ GOOD_UPDATE = r'''
         var deducao = Math.max(0, lucroBruto - seuLucro);
         var avail = typeof available === "function" ? available(document.getElementById("balanceType").value) : 0;
         var oddLine = mt === "LAY"
-          ? "<div><span>Odd LAY → back equiv.</span><b>" + Number(effOdd).toFixed(3).replace(".", ",") + "</b></div>"
+          ? ""
           : "";
         document.getElementById("preview").innerHTML =
           "<div><span>Tipo</span><b>" + mt + "</b></div>" + oddLine +
@@ -83,8 +83,7 @@ OVERRIDE = r'''
     var deducao=Math.max(0,lucroBruto-seuLucro);
     var availMatch=(preview.innerHTML||"").match(/<div><span>Saldo dispon[^<]*<\/span><b>([^<]*)<\/b><\/div>/i);
     var availHtml=availMatch?("<div><span>Saldo disponível</span><b>"+availMatch[1]+"</b></div>"):"";
-    var oddLine=mt==="LAY"?("<div><span>Odd LAY → back equiv.</span><b>"+effOdd.toFixed(3).replace(".",",")+"</b></div>"):"";
-    preview.innerHTML="<div><span>Tipo</span><b>"+mt+"</b></div>"+oddLine+
+    preview.innerHTML="<div><span>Tipo</span><b>"+mt+"</b></div>"+
       "<div><span>Valor (stake)</span><b>"+money(amountCents)+"</b></div>"+
       "<div><span>Retorno casa externa</span><b>"+money(retorno)+"</b></div>"+
       "<div><span>Seu lucro (1,5%)</span><b>"+money(seuLucro)+"</b></div>"+

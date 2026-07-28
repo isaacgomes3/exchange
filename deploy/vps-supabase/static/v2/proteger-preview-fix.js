@@ -1,11 +1,14 @@
 /**
  * Override externo do preview Proteger.
- * Roda FORA do IIFE — regrava #preview depois do updatePreview legado.
- * LAY odd L → back L/(L-1); lucro = resp/(odd−1);
- * dedução = lucro − 4,5% − 1,5% (= 91,11 em 1000@10).
- * Carteira no PERDEU cobra só a dedução (sem comissão extra).
+ * Marker: proteger-sem-stake-equiv-v1
+ *
+ * 1) Regrava #preview sem as linhas de stake/odd equivalentes do LAY.
+ * 2) Remove essas linhas se o updatePreview legado recolocá-las.
  */
 (function () {
+  var HIDE_RE = /stake\s*equivalente|odd\s*lay\s*→\s*back|odd\s*lay\s*->\s*back|back\s*equiv/i;
+  var MARKER = "proteger-sem-stake-equiv-v1";
+
   function money(cents) {
     if (window.ArbiV2 && typeof window.ArbiV2.money === "function") {
       return window.ArbiV2.money(cents);
@@ -20,21 +23,40 @@
     return Number(String(v == null ? "" : v).replace(",", ".")) || 0;
   }
 
+  function stripBannedRows(preview) {
+    if (!preview) return;
+    var kids = Array.prototype.slice.call(preview.children || []);
+    for (var i = 0; i < kids.length; i++) {
+      var el = kids[i];
+      var span = el.querySelector && el.querySelector("span");
+      var label = ((span && span.textContent) || el.textContent || "").trim();
+      if (HIDE_RE.test(label)) {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      }
+    }
+  }
+
   function fix() {
     var amountEl = document.getElementById("amount");
     var oddEl = document.getElementById("odd");
-    var balEl = document.getElementById("balanceType");
     var preview = document.getElementById("preview");
     var drawer = document.getElementById("drawer");
-    if (!amountEl || !oddEl || !preview) return;
+    if (!preview) return;
+
+    // Sempre remove linhas banidas, mesmo se o drawer estiver fechando.
+    stripBannedRows(preview);
+
+    if (!amountEl || !oddEl) return;
     if (drawer && !drawer.classList.contains("open")) return;
 
     var amountReais = num(amountEl.value);
     var amountCents = Math.round(amountReais * 100);
     var odd = num(oddEl.value);
-    if (!(odd > 1.01)) return;
+    if (!(odd > 1.01)) {
+      stripBannedRows(preview);
+      return;
+    }
 
-    // Tipo: texto do título "Proteger · LAY"
     var title = document.getElementById("drawerTitle");
     var mt = "LAY";
     if (title && /BACK/i.test(title.textContent || "")) mt = "BACK";
@@ -47,17 +69,6 @@
     var comissaoEx = Math.round(Math.max(0, lucroBruto) * 0.045);
     var deducao = Math.max(0, lucroBruto - comissaoEx - seuLucro);
 
-    var availTxt = "—";
-    try {
-      // melhor esforço: pega o último "Saldo disponível" se profile não estiver exposto
-      availTxt = preview.querySelector
-        ? ""
-        : "";
-    } catch (e) {}
-
-    // Preview sem campos de stake equivalente / odd back (pedido UI).
-
-    // preserva saldo disponível se já estiver no preview
     var availHtml = "";
     var prev = preview.innerHTML || "";
     var m = prev.match(
@@ -66,11 +77,9 @@
     if (m) {
       availHtml =
         "<div><span>Saldo disponível</span><b>" + m[1] + "</b></div>";
-    } else {
-      availHtml =
-        "<div><span>Saldo disponível</span><b>" + availTxt + "</b></div>";
     }
 
+    // Não inclui Stake equivalente / Odd LAY → back equiv.
     preview.innerHTML =
       "<div><span>Tipo</span><b>" +
       mt +
@@ -95,13 +104,15 @@
       "</b></div>" +
       availHtml;
 
-    preview.setAttribute("data-fix-preview", "1");
+    preview.setAttribute("data-fix-preview", MARKER);
+    stripBannedRows(preview);
   }
 
   function schedule() {
     setTimeout(fix, 0);
-    setTimeout(fix, 50);
-    setTimeout(fix, 150);
+    setTimeout(fix, 40);
+    setTimeout(fix, 120);
+    setTimeout(fix, 300);
   }
 
   document.addEventListener(
@@ -120,18 +131,20 @@
     },
     true
   );
-  document.addEventListener(
-    "click",
-    function () {
-      schedule();
-    },
-    true
-  );
+  document.addEventListener("click", schedule, true);
 
-  var obs = new MutationObserver(schedule);
+  var obs = new MutationObserver(function () {
+    schedule();
+  });
   function watch() {
     var preview = document.getElementById("preview");
-    if (preview) obs.observe(preview, { childList: true, subtree: true, characterData: true });
+    if (preview) {
+      obs.observe(preview, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    }
   }
 
   if (document.readyState === "loading") {
