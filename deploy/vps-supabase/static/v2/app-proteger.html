@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Proteger Aposta — ArbiShield</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css?v=proteger-logos-odd-2" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js"></script>
+  <script src="/v2-shell.js?v=responsivo-26" defer></script>
+</head>
+<body data-shell="app" data-active="proteger">
+  <div class="page-head term-head">
+    <div>
+      <h1>Proteger <span>Aposta</span></h1>
+      <p class="sub">Terminal de Liquidez • Mercado ao Vivo</p>
+    </div>
+    <div class="term-head-actions">
+      <a class="term-ghost-btn" href="/app-protecoes.html"><span aria-hidden="true">&gt;_</span> Minhas Proteções</a>
+      <button type="button" class="term-icon-btn" id="btnRefresh" title="Atualizar mercados" aria-label="Atualizar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="ok" class="ok-msg"></div>
+  <div id="err" class="err"></div>
+
+  <div class="term-kpis">
+    <article class="term-kpi">
+      <div class="term-kpi-top"><span>Jogos Disponíveis</span><span class="ico" aria-hidden="true">▦</span></div>
+      <div class="v" id="stGames">0</div>
+      <p class="h">Ao vivo e futuros</p>
+    </article>
+    <article class="term-kpi">
+      <div class="term-kpi-top"><span>Liquidez Total</span><span class="ico" aria-hidden="true">↗</span></div>
+      <div class="v" id="stLiq">R$ 0,00</div>
+      <p class="h">Capital disponível</p>
+    </article>
+    <article class="term-kpi">
+      <div class="term-kpi-top"><span>Proteções Ativas</span><span class="ico" aria-hidden="true">⛨</span></div>
+      <div class="v" id="stAct">0</div>
+      <p class="h">Em operação agora</p>
+    </article>
+    <article class="term-kpi">
+      <div class="term-kpi-top"><span>Taxa Operacional</span><span class="ico" aria-hidden="true">%</span></div>
+      <div class="v">1,5%</div>
+      <p class="h">Por operação</p>
+    </article>
+  </div>
+
+  <div class="term-filters">
+    <div class="term-sports" id="sportTabs" role="tablist" aria-label="Esportes"></div>
+    <label class="term-search">
+      <span class="sr-only">Buscar</span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input id="q" type="search" placeholder="Buscar jogo ou campeonato" autocomplete="off" />
+    </label>
+    <div class="term-side-tabs" id="sideTabs" role="group" aria-label="Filtro de mercado">
+      <button type="button" class="active" data-side="all">Todos</button>
+      <button type="button" data-side="lay">LAY</button>
+      <button type="button" data-side="back">BACK</button>
+      <button type="button" data-side="live"><i class="live-dot" aria-hidden="true"></i> Ao Vivo</button>
+    </div>
+  </div>
+
+  <div class="term-panel">
+    <div class="term-table-head" aria-hidden="true">
+      <span>Horário</span>
+      <span>Confronto</span>
+      <span>Competição</span>
+      <span class="c">LAY/BACK</span>
+      <span class="c">Mercado</span>
+      <span class="r">Liquidez</span>
+      <span class="r">Ação</span>
+    </div>
+    <div id="list" class="term-list">
+      <div class="term-empty">
+        <div class="term-empty-ico" aria-hidden="true">☰</div>
+        <h2>Sem partidas disponíveis</h2>
+        <p>Carregando…</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="drawer-backdrop" id="drawer" aria-hidden="true">
+    <div class="drawer" role="dialog" aria-labelledby="drawerTitle">
+      <h2 id="drawerTitle">Nova proteção</h2>
+      <p class="hint" id="drawerHint">—</p>
+      <div class="field">
+        <label for="amount">Valor (R$)</label>
+        <input id="amount" type="number" min="1" step="0.01" inputmode="decimal" placeholder="0,00" />
+      </div>
+      <div class="field">
+        <label for="odd">Odd</label>
+        <input id="odd" type="number" min="1.01" step="0.01" readonly tabindex="-1" aria-readonly="true" title="Odd definida pelo mercado — não editável" class="term-odd-locked" />
+      </div>
+      <div class="field">
+        <label for="balanceType">Saldo</label>
+        <select id="balanceType">
+          <option value="REAL">Real</option>
+          <option value="DEMO">Demo</option>
+          <option value="INVESTOR">Investidor</option>
+        </select>
+      </div>
+      <div class="preview" id="preview"></div>
+      <div class="drawer-actions">
+        <button type="button" class="btn btn-primary" id="btnConfirm">Ativar proteção</button>
+        <button type="button" class="btn btn-ghost" id="btnCancel">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (async function () {
+      var money = ArbiV2.money;
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+
+      var SPORTS = [
+        { id: "todos", label: "Todos", icon: "🏆" },
+        { id: "futebol", label: "Futebol", icon: "⚽" },
+        { id: "basquete", label: "Basquete", icon: "🏀" },
+        { id: "tenis", label: "Tênis", icon: "🎾" },
+        { id: "volei", label: "Vôlei", icon: "🏐" },
+        { id: "mma", label: "MMA", icon: "🥊" },
+      ];
+
+      var state = {
+        profile: null,
+        matches: [],
+        selected: null,
+        sport: "todos",
+        side: "all",
+        q: "",
+        syncIn: 30,
+        timer: null,
+        loading: false,
+      };
+
+      function showErr(msg) {
+        var el = document.getElementById("err");
+        el.textContent = msg || "";
+        el.classList.toggle("show", !!msg);
+      }
+      function showOk(msg) {
+        var el = document.getElementById("ok");
+        el.textContent = msg || "";
+        el.classList.toggle("show", !!msg);
+      }
+      function esc(s) {
+        return String(s || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function teamLogoHtml(url) {
+        if (!url) return "";
+        return (
+          '<img class="term-team-logo" src="' +
+          esc(url) +
+          '" alt="" width="22" height="22" onerror="this.style.display=\'none\'" />'
+        );
+      }
+
+      function calcLay(amountCents, odd) {
+        var r = Math.floor(amountCents);
+        var a = odd > 1.01 ? odd : 1.01;
+        var stake = Math.round(r / (a - 1));
+        var locked = Math.round(stake * 0.9073);
+        var fee = Math.round(stake * 0.045);
+        var net = stake - fee;
+        var userProfit = Math.round(r * 0.015);
+        return { kind: "LAY", stakeRealCents: stake, lockedDeductionCents: locked, userProfitCents: userProfit, platformCents: net - userProfit };
+      }
+      function calcBack(amountCents, odd) {
+        var n = Math.floor(amountCents);
+        var a = odd >= 1.01 ? odd : 1.01;
+        var gross = Math.round(n * a);
+        var profit = Math.max(0, gross - n);
+        var fee = Math.round(profit * 0.045);
+        var net = profit - fee;
+        var userProfit = Math.round(n * 0.015);
+        return { kind: "BACK", stakeRealCents: n, lockedDeductionCents: n, userProfitCents: userProfit, platformCents: net - userProfit };
+      }
+      function available(type) {
+        var p = state.profile || {};
+        if (type === "DEMO") return Number(p.demo_balance_cents || 0);
+        if (type === "INVESTOR") return Number(p.investor_balance_cents || 0);
+        return Number(p.balance_cents || 0) + Number(p.reusable_balance_cents || 0);
+      }
+      function liqLeft(m) {
+        // Legado Ye: soma liquidez restante dos mercados; senão max−used da partida
+        var markets = Array.isArray(m.markets) ? m.markets : [];
+        if (markets.length > 0) {
+          return markets.reduce(function (acc, mk) {
+            var max = Number(
+              mk.liquidity != null
+                ? mk.liquidity
+                : mk.max_cents != null
+                  ? mk.max_cents
+                  : mk.max_protection_cents != null
+                    ? mk.max_protection_cents
+                    : 0
+            );
+            var used = Number(
+              mk.used_liquidity != null
+                ? mk.used_liquidity
+                : mk.used_cents != null
+                  ? mk.used_cents
+                  : mk.used_protection_cents != null
+                    ? mk.used_protection_cents
+                    : 0
+            );
+            return acc + Math.max(0, max - used);
+          }, 0);
+        }
+        var max = Number(m.max_protection_cents || 0);
+        var used = Number(m.used_protection_cents || 0);
+        return Math.max(0, max - used);
+      }
+      /** Janela pós-kickoff do legado (9000s ≈ 2h30). */
+      var LIVE_WINDOW_MS = 9000 * 1000;
+      /**
+       * Grade do cliente: mostra jogos publicados na janela (mesmo sem liquidez restante).
+       * Sem liquidez → botão desabilitado. Saldo do usuário NÃO esconde a lista.
+       */
+      function isOnAvailableGrid(m) {
+        if (!m || !m.starts_at) return false;
+        var now = Date.now();
+        var start = new Date(m.starts_at).getTime();
+        if (!Number.isFinite(start)) return false;
+        var status = m.status_v2 || m.status || "open";
+        if (
+          status === "FINISHED" ||
+          ["closed", "cancelled", "finished", "settled", "finalizado", "void"].indexOf(
+            String(status).toLowerCase()
+          ) >= 0
+        ) {
+          return false;
+        }
+        // Publicado + na janela de exibição (liquidez só afeta o botão Proteger)
+        return start + LIVE_WINDOW_MS > now;
+      }
+      function hasProtectLiquidity(m) {
+        var max = Number(m.max_protection_cents || 0);
+        var used = Number(m.used_protection_cents || 0);
+        if (!(max > 0 && used < max)) return false;
+        return liqLeft(m) > 0;
+      }
+      function marketsOf(m) {
+        if (Array.isArray(m.markets) && m.markets.length) return m.markets;
+        var odd = (m.protection_odds && (m.protection_odds.home || m.protection_odds.lay)) || 0;
+        return [{ id: null, name: "Mercado principal", odd: odd, market_type: "LAY", liquidity: m.max_protection_cents, used_liquidity: m.used_protection_cents }];
+      }
+      function isLive(m) {
+        // Legado Ne: kickoff <= now < kickoff + 2h30 e não encerrado
+        if (!m || !m.starts_at) return false;
+        var now = Date.now();
+        var start = new Date(m.starts_at).getTime();
+        if (!Number.isFinite(start)) return false;
+        var status = m.status_v2 || m.status || "open";
+        if (
+          status === "FINISHED" ||
+          ["closed", "cancelled", "finished", "settled", "finalizado", "void"].indexOf(
+            String(status).toLowerCase()
+          ) >= 0
+        ) {
+          return false;
+        }
+        return now >= start && now < start + LIVE_WINDOW_MS;
+      }
+      function sportOf(m) {
+        return String(m.sport_type || m.sport || "futebol").toLowerCase();
+      }
+      function hasSide(m, side) {
+        var mks = marketsOf(m);
+        if (side === "all" || side === "live") return true;
+        return mks.some(function (mk) {
+          return String(mk.market_type || "LAY").toUpperCase() === side.toUpperCase();
+        });
+      }
+      function filtered() {
+        var q = state.q.trim().toLowerCase();
+        return state.matches.filter(function (m) {
+          if (!isOnAvailableGrid(m)) return false;
+          if (state.sport !== "todos" && sportOf(m) !== state.sport) return false;
+          if (state.side === "live" && !isLive(m)) return false;
+          if ((state.side === "lay" || state.side === "back") && !hasSide(m, state.side)) return false;
+          if (!q) return true;
+          var blob = [m.home_team, m.away_team, m.league, m.competition].join(" ").toLowerCase();
+          return blob.indexOf(q) >= 0;
+        });
+      }
+
+      function updatePreview() {
+        if (!state.selected) return;
+        var amountReais = Number(document.getElementById("amount").value || 0);
+        // Odd sempre do mercado (nunca confiar em edição do cliente)
+        var odd = Number(state.selected.market && state.selected.market.odd) || Number(document.getElementById("odd").value || 0);
+        var amountCents = Math.round(amountReais * 100);
+        var mt = state.selected.marketType;
+        var c = mt === "BACK" ? calcBack(amountCents, odd) : calcLay(amountCents, odd);
+        document.getElementById("preview").innerHTML =
+          "<div><span>Tipo</span><b>" + mt + "</b></div>" +
+          "<div><span>Valor</span><b>" + money(amountCents) + "</b></div>" +
+          "<div><span>Lucro estimado (1,5%)</span><b>" + money(c.userProfitCents) + "</b></div>" +
+          "<div><span>Saldo disponível</span><b>" + money(available(document.getElementById("balanceType").value)) + "</b></div>";
+      }
+
+      function openDrawer(match, market) {
+        var mt = String(market.market_type || "LAY").toUpperCase() === "BACK" ? "BACK" : "LAY";
+        state.selected = { match: match, market: market, marketType: mt };
+        document.getElementById("drawerTitle").textContent = "Proteger · " + mt;
+        var hint = document.getElementById("drawerHint");
+        hint.innerHTML =
+          '<span class="term-match-teams term-drawer-teams">' +
+          teamLogoHtml(match.home_logo) +
+          "<strong>" +
+          esc(match.home_team || "?") +
+          " <span>×</span> " +
+          esc(match.away_team || "?") +
+          "</strong>" +
+          teamLogoHtml(match.away_logo) +
+          "</span> · " +
+          esc(market.name || "Mercado");
+        document.getElementById("odd").value = Number(market.odd || 0).toFixed(2);
+        document.getElementById("odd").readOnly = true;
+        document.getElementById("amount").value = "";
+        document.getElementById("balanceType").value = "REAL";
+        updatePreview();
+        document.getElementById("drawer").classList.add("open");
+        document.getElementById("drawer").setAttribute("aria-hidden", "false");
+      }
+      function closeDrawer() {
+        document.getElementById("drawer").classList.remove("open");
+        document.getElementById("drawer").setAttribute("aria-hidden", "true");
+        state.selected = null;
+      }
+
+      document.getElementById("btnCancel").onclick = closeDrawer;
+      document.getElementById("drawer").addEventListener("click", function (e) {
+        if (e.target.id === "drawer") closeDrawer();
+      });
+      ["amount", "balanceType"].forEach(function (id) {
+        document.getElementById(id).addEventListener("input", updatePreview);
+        document.getElementById(id).addEventListener("change", updatePreview);
+      });
+      document.getElementById("odd").addEventListener("keydown", function (e) {
+        e.preventDefault();
+      });
+
+      document.getElementById("btnConfirm").onclick = async function () {
+        if (!state.selected) return;
+        showErr("");
+        var amountReais = Number(document.getElementById("amount").value || 0);
+        var odd = Number(document.getElementById("odd").value || 0);
+        var amountCents = Math.round(amountReais * 100);
+        if (!(amountCents > 0)) {
+          showErr("Insira um valor para ativar a proteção.");
+          return;
+        }
+        var balType = document.getElementById("balanceType").value;
+        if (!(available(balType) >= amountCents)) {
+          showErr(
+            "Saldo insuficiente nesta carteira (" +
+              money(available(balType)) +
+              "). O jogo continua visível — deposite ou escolha outro saldo."
+          );
+          return;
+        }
+        var btn = document.getElementById("btnConfirm");
+        btn.disabled = true;
+        btn.textContent = "Processando…";
+        try {
+          var sess = await supa.auth.getSession();
+          var token = sess.data.session && sess.data.session.access_token;
+          if (!token) throw new Error("Sessão expirada. Faça login novamente.");
+          var payload = {
+            matchId: state.selected.match.id,
+            marketId: state.selected.market.id,
+            amountCents: amountCents,
+            odd: odd,
+            balanceType: document.getElementById("balanceType").value,
+            marketType: state.selected.marketType,
+            side: "home",
+          };
+          var headers = {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          };
+          var res = await fetch("/api/arbishield/protections", {
+            method: "POST",
+            headers: headers,
+            body: JSON.stringify(payload),
+          });
+          // Fallback se nginx ainda não proxiar /protections (405 HTML)
+          if (res.status === 404 || res.status === 405) {
+            res = await fetch("/api/arbishield/create-protection", {
+              method: "POST",
+              headers: headers,
+              body: JSON.stringify(payload),
+            });
+          }
+          var raw = await res.text();
+          var data = {};
+          try {
+            data = raw ? JSON.parse(raw) : {};
+          } catch (parseErr) {
+            throw new Error(
+              res.status === 405
+                ? "API de proteção indisponível (nginx). Peça ao admin para aplicar o hotfix de /protections."
+                : "Resposta inválida do servidor (HTTP " + res.status + ")."
+            );
+          }
+          if (!res.ok || !data.ok) {
+            throw new Error(
+              (data && data.error) || "Falha ao processar proteção (HTTP " + res.status + ")"
+            );
+          }
+          closeDrawer();
+          showOk(
+            "Proteção ativada · " +
+              String(data.protectionId).slice(0, 8) +
+              "… · Saldo após: " +
+              money(Number(data.balanceAfterCents || 0))
+          );
+          document.dispatchEvent(new CustomEvent("arbishield:balances-changed"));
+          if (global.ArbiV2Shell && global.ArbiV2Shell.refreshBalances) {
+            global.ArbiV2Shell.refreshBalances().catch(function () {});
+          }
+          await load();
+        } catch (ex) {
+          showErr(ex.message || "Erro ao ativar proteção");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Ativar proteção";
+        }
+      };
+
+      function renderSports() {
+        var counts = {};
+        state.matches.forEach(function (m) {
+          var s = sportOf(m);
+          counts[s] = (counts[s] || 0) + 1;
+        });
+        var ordered = SPORTS.slice(1).sort(function (a, b) {
+          return (counts[b.id] || 0) - (counts[a.id] || 0);
+        });
+        var tabs = [SPORTS[0]].concat(ordered);
+        var host = document.getElementById("sportTabs");
+        host.innerHTML = tabs
+          .map(function (sp) {
+            return (
+              '<button type="button" class="term-sport' +
+              (state.sport === sp.id ? " active" : "") +
+              '" data-sport="' +
+              sp.id +
+              '"><span class="emoji">' +
+              sp.icon +
+              "</span>" +
+              esc(sp.label) +
+              "</button>"
+            );
+          })
+          .join("");
+        host.querySelectorAll("[data-sport]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            state.sport = btn.getAttribute("data-sport");
+            renderSports();
+            render();
+          });
+        });
+      }
+
+      function emptyHtml() {
+        return (
+          '<div class="term-empty">' +
+          '<div class="term-empty-ico" aria-hidden="true">☰</div>' +
+          "<h2>Sem partidas na janela agora</h2>" +
+          "<p>Nenhum jogo publicado neste momento. Jogos sem liquidez restante continuam visíveis com o botão desabilitado.</p>" +
+          '<button type="button" class="term-sync-btn" id="btnSync">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+          "Sincronizar API</button></div>"
+        );
+      }
+
+      function loadingHtml() {
+        return (
+          '<div class="term-empty">' +
+          '<div class="term-empty-ico" aria-hidden="true">☰</div>' +
+          "<h2>Carregando partidas</h2>" +
+          "<p>Buscando jogos publicados…</p></div>"
+        );
+      }
+
+      function render() {
+        var rows = filtered();
+        var totalLiq = state.matches.reduce(function (acc, m) {
+          return acc + liqLeft(m);
+        }, 0);
+        document.getElementById("stGames").textContent = String(state.matches.length);
+        document.getElementById("stLiq").textContent = money(totalLiq);
+
+        var el = document.getElementById("list");
+        if (!rows.length) {
+          el.innerHTML = emptyHtml();
+          var syncBtn = document.getElementById("btnSync");
+          if (syncBtn) syncBtn.onclick = function () { load(true); };
+          return;
+        }
+
+        el.innerHTML = rows
+          .map(function (m) {
+            var mks = marketsOf(m);
+            var hasLay = mks.some(function (mk) {
+              return String(mk.market_type || "LAY").toUpperCase() === "LAY";
+            });
+            var hasBack = mks.some(function (mk) {
+              return String(mk.market_type || "").toUpperCase() === "BACK";
+            });
+            var left = liqLeft(m);
+            var canProtect = hasProtectLiquidity(m);
+            var max = Math.max(Number(m.max_protection_cents || 0), 1);
+            var pct = Math.min(100, Math.round((left / max) * 100));
+            var primary =
+              mks.find(function (mk) {
+                return String(mk.market_type || "LAY").toUpperCase() === (state.side === "back" ? "BACK" : "LAY");
+              }) || mks[0];
+            var whenHtml;
+            if (isLive(m)) {
+              whenHtml = '<span class="term-live">AO VIVO</span>';
+            } else if (!m.starts_at) {
+              whenHtml = "—";
+            } else {
+              var d = new Date(m.starts_at);
+              whenHtml =
+                '<span class="term-time">' +
+                d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) +
+                '</span><span class="term-date">' +
+                d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) +
+                "</span>";
+            }
+            var competition = String(m.league || m.competition || "").trim();
+            var marketLabel =
+              primary && primary.name && String(primary.name).trim()
+                ? String(primary.name).trim()
+                : "—";
+            var actionBtn = canProtect
+              ? '<button type="button" class="term-protect-btn" data-protect="1">Proteger</button>'
+              : '<button type="button" class="term-protect-btn" disabled title="Liquidez esgotada">Sem liquidez</button>';
+            return (
+              '<article class="term-row' +
+              (canProtect ? "" : " is-exhausted") +
+              '" data-id="' +
+              esc(m.id) +
+              '">' +
+              '<div class="term-col-time">' +
+              whenHtml +
+              "</div>" +
+              '<div class="term-col-match"><div class="term-match-teams">' +
+              teamLogoHtml(m.home_logo) +
+              "<strong>" +
+              esc(m.home_team || "?") +
+              " <span>×</span> " +
+              esc(m.away_team || "?") +
+              "</strong>" +
+              teamLogoHtml(m.away_logo) +
+              "</div></div>" +
+              '<div class="term-col-comp">' +
+              '<span class="term-comp">' +
+              esc(competition || "—") +
+              "</span></div>" +
+              '<div class="term-col-sides">' +
+              (hasLay ? '<span class="term-side lay">LAY</span>' : "") +
+              (hasBack ? '<span class="term-side back">BACK</span>' : "") +
+              (!hasLay && !hasBack ? '<span class="term-side lay">LAY</span>' : "") +
+              "</div>" +
+              '<div class="term-col-market">' +
+              '<span class="term-market">' +
+              esc(marketLabel) +
+              "</span></div>" +
+              '<div class="term-col-liq">' +
+              "<strong>" +
+              money(left) +
+              "</strong>" +
+              '<div class="term-bar"><i style="width:' +
+              pct +
+              '%"></i></div></div>' +
+              '<div class="term-col-action">' +
+              actionBtn +
+              "</div>" +
+              "</article>"
+            );
+          })
+          .join("");
+
+        el.querySelectorAll("[data-protect]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var card = btn.closest(".term-row");
+            var match = state.matches.find(function (x) {
+              return x.id === card.getAttribute("data-id");
+            });
+            if (!match) return;
+            if (!hasProtectLiquidity(match)) {
+              showErr("Este jogo ficou sem liquidez e não aceita novas proteções.");
+              return;
+            }
+            var wallet =
+              available("REAL") + available("DEMO") + available("INVESTOR");
+            if (!(wallet > 0)) {
+              showErr(
+                "Os jogos estão visíveis. Deposite saldo para ativar uma proteção."
+              );
+              var dep = document.querySelector("[data-open-deposit]");
+              if (dep) dep.click();
+            }
+            var mks = marketsOf(match);
+            var preferred =
+              mks.find(function (mk) {
+                return String(mk.market_type || "LAY").toUpperCase() === (state.side === "back" ? "BACK" : "LAY");
+              }) || mks[0];
+            openDrawer(match, preferred);
+          });
+        });
+      }
+
+      async function load(manual) {
+        if (state.loading) return;
+        state.loading = true;
+        var refreshBtn = document.getElementById("btnRefresh");
+        if (refreshBtn) refreshBtn.classList.add("spin");
+        showErr("");
+        document.getElementById("list").innerHTML = loadingHtml();
+        try {
+          var profileRes = await supa
+            .from("profiles")
+            .select("balance_cents,reusable_balance_cents,demo_balance_cents,investor_balance_cents")
+            .eq("id", user.id)
+            .maybeSingle();
+          if (profileRes.error) throw profileRes.error;
+          state.profile = profileRes.data;
+
+          var act = await supa
+            .from("protections")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .eq("status", "active");
+          document.getElementById("stAct").textContent = String(act.count || 0);
+
+          var matchesRes = await supa
+            .from("matches")
+            .select(
+              "id,home_team,away_team,home_logo,away_logo,league,starts_at,status,status_v2,sport_type,is_published,markets,max_protection_cents,used_protection_cents,protection_odds"
+            )
+            .is("deleted_at", null)
+            .eq("is_published", true)
+            .order("starts_at", { ascending: true })
+            .limit(150);
+          if (matchesRes.error) throw matchesRes.error;
+
+          state.matches = (matchesRes.data || []).filter(function (m) {
+            return isOnAvailableGrid(m);
+          });
+
+          state.syncIn = 30;
+          renderSports();
+          render();
+          if (manual) showOk("Mercados atualizados");
+        } catch (ex) {
+          showErr(ex.message || "Erro ao carregar");
+          document.getElementById("list").innerHTML = emptyHtml();
+          var syncBtn = document.getElementById("btnSync");
+          if (syncBtn) syncBtn.onclick = function () { load(true); };
+        } finally {
+          state.loading = false;
+          if (refreshBtn) refreshBtn.classList.remove("spin");
+        }
+      }
+
+      document.getElementById("q").addEventListener("input", function (e) {
+        state.q = e.target.value || "";
+        render();
+      });
+      document.getElementById("sideTabs").addEventListener("click", function (e) {
+        var btn = e.target.closest("[data-side]");
+        if (!btn) return;
+        state.side = btn.getAttribute("data-side");
+        document.querySelectorAll("#sideTabs button").forEach(function (b) {
+          b.classList.toggle("active", b === btn);
+        });
+        render();
+      });
+      document.getElementById("btnRefresh").onclick = function () {
+        load(true);
+      };
+
+      state.timer = setInterval(function () {
+        state.syncIn -= 1;
+        if (state.syncIn <= 0) {
+          load(false);
+          return;
+        }
+        var p = document.querySelector(".term-empty p");
+        if (p && /Sincronizando/.test(p.textContent || "")) {
+          p.textContent = "Sincronizando em " + state.syncIn + "s…";
+        }
+      }, 1000);
+
+      await load(false);
+    })();
+  </script>
+</body>
+</html>
