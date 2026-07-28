@@ -9,6 +9,7 @@ import { settlementCreditParts } from "./lib/protection-flow-contract.mjs";
 
 const EMAIL = String(process.env.EMAIL || "carloskku4@gmail.com").trim().toLowerCase();
 const APPLY = process.env.APPLY === "1";
+const MIGRATE_LEGACY_BUCKET = process.env.MIGRATE_LEGACY_BUCKET === "1";
 
 function loadEnv(file) {
   if (!fs.existsSync(file)) return;
@@ -72,7 +73,7 @@ function cents(value) {
 async function main() {
   const userId = await userIdForEmail();
   const profile = (await api(
-    `/rest/v1/profiles?select=id,full_name,deduction_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`
+    `/rest/v1/profiles?select=id,full_name,balance_cents,deduction_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`
   ))[0];
   if (!profile) throw new Error("perfil não encontrado");
 
@@ -85,6 +86,8 @@ async function main() {
   }
 
   let total = 0;
+  let legacyBalanceCents = 0;
+  const legacyTransactions = [];
   console.log(`==> Reparo Saldo Reembolso: ${profile.full_name || EMAIL}`);
   console.log(`    modo: ${APPLY ? "APLICAR" : "SIMULAÇÃO"}`);
   for (const row of rows) {
@@ -103,6 +106,12 @@ async function main() {
       console.log(
         `  pular ${row.id}: já possui crédito de ${expected}¢ (bucket: ${buckets})`
       );
+      if (credits.some((tx) => tx.metadata?.bucket === "balance_cents")) {
+        legacyBalanceCents += expected;
+        legacyTransactions.push(
+          ...credits.filter((tx) => tx.metadata?.bucket === "balance_cents")
+        );
+      }
       continue;
     }
     total += expected;
@@ -134,6 +143,43 @@ async function main() {
     });
   }
   console.log(`TOTAL ${APPLY ? "creditado" : "a creditar"}: ${(total / 100).toFixed(2)}`);
+  if (legacyBalanceCents > 0) {
+    console.log(
+      `TOTAL a migrar Saldo Real → Reembolso: ${(legacyBalanceCents / 100).toFixed(2)}`
+    );
+    if (APPLY && MIGRATE_LEGACY_BUCKET) {
+      const current = (await api(
+        `/rest/v1/profiles?select=balance_cents,deduction_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`
+      ))[0];
+      if (cents(current?.balance_cents) < legacyBalanceCents) {
+        throw new Error("Saldo Real insuficiente para migrar os reembolsos legados");
+      }
+      await api(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+        method: "PATCH",
+        body: {
+          balance_cents: cents(current.balance_cents) - legacyBalanceCents,
+          deduction_balance_cents:
+            cents(current.deduction_balance_cents) + legacyBalanceCents,
+        },
+      });
+      for (const tx of legacyTransactions) {
+        await api(`/rest/v1/wallet_transactions?id=eq.${encodeURIComponent(tx.id)}`, {
+          method: "PATCH",
+          body: {
+            metadata: {
+              ...(tx.metadata || {}),
+              bucket: "deduction_balance_cents",
+              migrated_from_bucket: "balance_cents",
+              migration: "legacy_reembolso_bucket_v1",
+            },
+          },
+        });
+      }
+      console.log("Migração de buckets aplicada sem alterar o saldo total.");
+    } else {
+      console.log("Para migrar, confirme com APPLY=1 MIGRATE_LEGACY_BUCKET=1.");
+    }
+  }
   if (!APPLY) console.log("Revise a lista e rode novamente com APPLY=1 para confirmar.");
 }
 
