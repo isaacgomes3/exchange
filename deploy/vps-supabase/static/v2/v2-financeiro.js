@@ -276,11 +276,11 @@
           Ae = true;
           Qe =
             fee > 0
-              ? "Venceu Exchange · destravou " +
+              ? "Venceu Exchange · Destrava (Congelado → Apostador) o stake menos a taxa · destravou " +
                 money(refund) +
                 " · taxa retida " +
                 money(Math.min(fee, Ne))
-              : "Venceu Exchange · destravou o stake";
+              : "Venceu Exchange · Destrava (Congelado → Apostador) o stake";
         } else if (Se === "won" || Se === "win" || Se === "user_won") {
           je = "Vitória";
           pe = Je > 0 ? Je : Ne;

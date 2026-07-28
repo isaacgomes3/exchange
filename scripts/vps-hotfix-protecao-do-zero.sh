@@ -4,7 +4,7 @@
 # Fluxo (um PATCH: Congelado → Apostador — sem crédito em dobro):
 #   Proteger         → Apostador −R · Congelado +R
 #   Reembolso        → Destrava (Congelado → Apostador) e Devolve 100% (API: arbishield)
-#   Venceu Exchange  → Destrava stake − taxa (API: exchange)
+#   Venceu Exchange  → Destrava (Congelado → Apostador) o stake menos a taxa (API: exchange)
 #
 # Na VPS (root):
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-do-zero-47c1/scripts/vps-hotfix-protecao-do-zero.sh")
@@ -119,11 +119,8 @@ grep -q 'REEMBOLSO' "$WEB/admin-jogos.html" || die "admin-jogos sem botão REEMB
 grep -qi 'VENCEU EXCHANGE' "$WEB/admin-jogos.html" || die "admin-jogos sem botão VENCEU EXCHANGE"
 grep -q 'Destrava (Congelado → Apostador) e Devolve 100% do stake' "$WEB/admin-jogos.html" \
   || die "admin-jogos sem texto oficial do Reembolso"
-# anti-regressão: Venceu Exchange não usa “devolve” ambíguo de stake integral
-if grep -Eiq 'VENCEU EXCHANGE|Venceu Exchange' "$WEB/admin-jogos.html" \
-  && grep -Eiq 'devolve stake menos|Destrava · devolve stake' "$WEB/admin-jogos.html"; then
-  die "Venceu Exchange ainda usa 'destrava · devolve' ambíguo"
-fi
+grep -q 'Destrava (Congelado → Apostador) o stake menos a taxa' "$WEB/admin-jogos.html" \
+  || die "admin-jogos sem texto oficial do Venceu Exchange"
 # bust cache leve
 touch "$WEB/.fluxo-protecao-v1" 2>/dev/null || true
 
@@ -168,5 +165,5 @@ echo "OK — FLUXO_PROTECAO_V1 ativo."
 echo "  Backup: $BACKUP_DIR"
 echo "  curl -s http://127.0.0.1:3098/health   # fix: fluxo-protecao-v1"
 echo "  Teste: proteger R\$500 → Apostador −500 · Congelado +500"
-echo "  Reembolso → destrava 100%; Venceu Exchange → destrava stake−taxa"
+echo "  Reembolso → Destrava + Devolve 100%; Venceu Exchange → Destrava stake−taxa"
 echo

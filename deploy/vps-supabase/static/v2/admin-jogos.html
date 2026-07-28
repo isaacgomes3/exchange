@@ -588,8 +588,8 @@
           </button>
           <button type="button" class="btn btn-ghost" id="btnOutcomeExch" data-outcome="exchange" style="justify-content:flex-start;text-align:left;padding:14px 16px">
             <span style="display:block;font-size:11px;letter-spacing:0.08em">VENCEU EXCHANGE</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Destrava o stake menos a taxa (4,5% + 1,5% no lucro)</span>
-            <span id="settleDeductHint" style="display:block;margin-top:8px;color:var(--amber);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Taxa retida: —</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Destrava (Congelado → Apostador) o stake menos a taxa</span>
+            <span id="settleDeductHint" style="display:block;margin-top:8px;color:var(--amber);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Taxa retida (4,5% + 1,5% no lucro): —</span>
             <span id="settleExchRefundHint" style="display:block;margin-top:6px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Destrava: —</span>
             <span id="settleStakeKeepHint" style="display:block;margin-top:4px;color:var(--muted);font-size:11px;font-weight:600;text-transform:none;letter-spacing:0"></span>
           </button>
@@ -2273,7 +2273,8 @@
         var exchRefund = Math.max(0, stake - Math.max(0, margin));
         if ($("settleExchRefundHint")) {
           $("settleExchRefundHint").textContent =
-            "Destrava (stake − taxa): " + money(exchRefund);
+            "Destrava (Congelado → Apostador) o stake menos a taxa: " +
+            money(exchRefund);
         }
         if ($("settleStakeKeepHint")) {
           $("settleStakeKeepHint").textContent =
@@ -2385,7 +2386,7 @@
               Number(data.settledCount || 0) +
               " proteção(ões) · " +
               (outcome === "exchange"
-                ? "Venceu Exchange · destravado " + money(data.refundedCents || 0)
+                ? "Venceu Exchange · destravou " + money(data.refundedCents || 0) + " (stake − taxa)"
                 : "Reembolso · destravou e devolveu " + money(data.refundedCents || 0) + " (100%)")
           );
           $("settleModal").classList.remove("show");
