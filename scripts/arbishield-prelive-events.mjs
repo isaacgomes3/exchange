@@ -622,12 +622,12 @@ async function creditWalletForSettlement(row, outcome, now) {
   const amount = nCents(row.responsibility_cents || row.amount_cents);
   const credit = settlementCreditCents(row, outcome);
   const wonArbi = String(outcome).toLowerCase() === "arbishield";
+  const fee = wonArbi ? 0 : settlementDeductionCents(row);
   if (!row.user_id || amount <= 0) {
     return { refunded: 0, credited: 0, skipped: true };
   }
-  if (await protectionAlreadyCredited(row.id)) {
-    return { refunded: 0, credited: 0, alreadyCredited: true };
-  }
+
+  const already = await protectionAlreadyCredited(row.id);
 
   const prof = await sb(
     `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
@@ -636,13 +636,39 @@ async function creditWalletForSettlement(row, outcome, now) {
   const p = Array.isArray(prof) ? prof[0] : null;
   if (!p) throw new Error(`Perfil ${row.user_id} não encontrado para crédito`);
 
-  const locked = Math.max(0, nCents(p.locked_balance_cents) - amount);
-  // Sempre saldo real (balance_cents): ArbiShield devolve stake integral;
-  // Exchange devolve stake − taxa. Antes ArbiShield ia para reusable e o
-  // cliente não via reembolso imediato no saldo Apostador/carteira.
+  const lockedBefore = nCents(p.locked_balance_cents);
+  // Sempre destrava o stake desta proteção (mesmo em reparo / alreadyCredited)
+  const locked = Math.max(0, lockedBefore - amount);
+
+  // Se já houve lançamento no extrato, ainda assim:
+  // 1) libera Congelado se ficou preso
+  // 2) completa crédito faltante (ledger com R$0 bloqueava o reparo)
+  let priorCredited = 0;
+  if (already) {
+    try {
+      const txs = await sb(
+        `/rest/v1/wallet_transactions?ref=eq.${encodeURIComponent(row.id)}&type=in.(protection_settlement,protection_release,protection_refund)&select=amount_cents&limit=20`,
+        { token: SERVICE_KEY }
+      );
+      priorCredited = (Array.isArray(txs) ? txs : []).reduce(
+        (s, t) => s + Math.max(0, nCents(t.amount_cents)),
+        0
+      );
+    } catch {
+      priorCredited = 0;
+    }
+  }
+  const missingCredit = Math.max(0, credit - priorCredited);
+  const needUnlock = lockedBefore > locked;
+
+  if (already && missingCredit <= 0 && !needUnlock) {
+    return { refunded: credit, credited: credit, alreadyCredited: true };
+  }
+
+  // FLUXO_PROTECAO_V1: Apostador += reembolso · Congelado − stake
   const patch = {
     locked_balance_cents: locked,
-    balance_cents: nCents(p.balance_cents) + credit,
+    balance_cents: nCents(p.balance_cents) + missingCredit,
   };
 
   let creditedOk = false;
@@ -664,34 +690,43 @@ async function creditWalletForSettlement(row, outcome, now) {
     throw lastErr || new Error("Falha ao creditar carteira do cliente");
   }
 
-  try {
-    await sb("/rest/v1/wallet_transactions", {
-      method: "POST",
-      token: SERVICE_KEY,
-      body: {
-        user_id: row.user_id,
-        type: "protection_settlement",
-        amount_cents: credit,
-        ref: row.id,
-        metadata: {
-          protection_id: row.id,
-          match_id: row.match_id || null,
-          outcome: String(outcome).toLowerCase(),
-          stake_cents: amount,
-          fee_cents: wonArbi ? 0 : settlementDeductionCents(row),
-          bucket: "balance_cents",
-          fix: "settle-arbishield-saldo-real-v1",
+  if (missingCredit > 0 || !already) {
+    try {
+      await sb("/rest/v1/wallet_transactions", {
+        method: "POST",
+        token: SERVICE_KEY,
+        body: {
+          user_id: row.user_id,
+          type: "protection_settlement",
+          amount_cents: missingCredit > 0 ? missingCredit : credit,
+          ref: row.id,
+          metadata: {
+            protection_id: row.id,
+            match_id: row.match_id || null,
+            outcome: String(outcome).toLowerCase(),
+            stake_cents: amount,
+            fee_cents: fee,
+            expected_credit_cents: credit,
+            prior_credited_cents: priorCredited,
+            bucket: "balance_cents",
+            fix: "fluxo-protecao-v1",
+          },
         },
-      },
-    });
-  } catch (e) {
-    console.warn(
-      "[settle] wallet_transactions:",
-      e instanceof Error ? e.message : e
-    );
+      });
+    } catch (e) {
+      console.warn(
+        "[settle] wallet_transactions:",
+        e instanceof Error ? e.message : e
+      );
+    }
   }
 
-  return { refunded: credit, credited: credit };
+  return {
+    refunded: credit,
+    credited: missingCredit > 0 ? missingCredit : credit,
+    alreadyCredited: already,
+    repaired: already && (missingCredit > 0 || needUnlock),
+  };
 }
 
 async function settleOneProtectionRow(row, outcome, now) {

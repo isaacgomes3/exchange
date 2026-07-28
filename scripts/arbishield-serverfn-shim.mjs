@@ -4080,16 +4080,16 @@ async function claimProtectionCancelled(table, protectionId, extraBody = {}) {
 }
 
 async function creditWalletForSettlement(row, outcome, now) {
-  // FLUXO_PROTECAO_V1
+  // FLUXO_PROTECAO_V1: destrava sempre · Exchange devolve max(0,R−margem)
   const amount = n(row.responsibility_cents || row.amount_cents);
   const credit = settlementCreditCents(row, outcome);
   const wonArbi = String(outcome).toLowerCase() === "arbishield";
+  const fee = wonArbi ? 0 : settlementDeductionCents(row);
   if (!row.user_id || amount <= 0) {
     return { refunded: 0, credited: 0, skipped: true };
   }
-  if (await protectionAlreadyCredited(row.id)) {
-    return { refunded: 0, credited: 0, alreadyCredited: true };
-  }
+
+  const already = await protectionAlreadyCredited(row.id);
 
   const prof = await sb(
     `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
@@ -4098,12 +4098,34 @@ async function creditWalletForSettlement(row, outcome, now) {
   const p = Array.isArray(prof) ? prof[0] : null;
   if (!p) throw new Error(`Perfil ${row.user_id} não encontrado para crédito`);
 
-  const locked = Math.max(0, n(p.locked_balance_cents) - amount);
-  // ArbiShield e Exchange → saldo real (balance_cents). Antes ArbiShield
-  // creditava reusable_balance_cents e o cliente não via reembolso na hora.
+  const lockedBefore = n(p.locked_balance_cents);
+  const locked = Math.max(0, lockedBefore - amount);
+
+  let priorCredited = 0;
+  if (already) {
+    try {
+      const txs = await sb(
+        `/rest/v1/wallet_transactions?ref=eq.${encodeURIComponent(row.id)}&type=in.(protection_settlement,protection_release,protection_refund)&select=amount_cents&limit=20`,
+        { token: SERVICE_KEY }
+      );
+      priorCredited = (Array.isArray(txs) ? txs : []).reduce(
+        (s, t) => s + Math.max(0, n(t.amount_cents)),
+        0
+      );
+    } catch {
+      priorCredited = 0;
+    }
+  }
+  const missingCredit = Math.max(0, credit - priorCredited);
+  const needUnlock = lockedBefore > locked;
+
+  if (already && missingCredit <= 0 && !needUnlock) {
+    return { refunded: credit, credited: credit, alreadyCredited: true };
+  }
+
   const patch = {
     locked_balance_cents: locked,
-    balance_cents: n(p.balance_cents) + credit,
+    balance_cents: n(p.balance_cents) + missingCredit,
   };
 
   let creditedOk = false;
@@ -4125,31 +4147,40 @@ async function creditWalletForSettlement(row, outcome, now) {
     throw lastErr || new Error("Falha ao creditar carteira do cliente");
   }
 
-  try {
-    await sb("/rest/v1/wallet_transactions", {
-      method: "POST",
-      token: SERVICE_KEY,
-      body: {
-        user_id: row.user_id,
-        type: "protection_settlement",
-        amount_cents: credit,
-        ref: row.id,
-        metadata: {
-          protection_id: row.id,
-          match_id: row.match_id || null,
-          outcome: String(outcome).toLowerCase(),
-          stake_cents: amount,
-          fee_cents: wonArbi ? 0 : settlementDeductionCents(row),
-          bucket: "balance_cents",
-          fix: "settle-arbishield-saldo-real-v1",
+  if (missingCredit > 0 || !already) {
+    try {
+      await sb("/rest/v1/wallet_transactions", {
+        method: "POST",
+        token: SERVICE_KEY,
+        body: {
+          user_id: row.user_id,
+          type: "protection_settlement",
+          amount_cents: missingCredit > 0 ? missingCredit : credit,
+          ref: row.id,
+          metadata: {
+            protection_id: row.id,
+            match_id: row.match_id || null,
+            outcome: String(outcome).toLowerCase(),
+            stake_cents: amount,
+            fee_cents: fee,
+            expected_credit_cents: credit,
+            prior_credited_cents: priorCredited,
+            bucket: "balance_cents",
+            fix: "fluxo-protecao-v1",
+          },
         },
-      },
-    });
-  } catch {
-    /* */
+      });
+    } catch {
+      /* */
+    }
   }
 
-  return { refunded: credit, credited: credit };
+  return {
+    refunded: credit,
+    credited: missingCredit > 0 ? missingCredit : credit,
+    alreadyCredited: already,
+    repaired: already && (missingCredit > 0 || needUnlock),
+  };
 }
 
 async function applyProtectionSettlement(row, table, outcome) {

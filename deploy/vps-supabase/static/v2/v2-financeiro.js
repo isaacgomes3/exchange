@@ -223,7 +223,7 @@
       var re = String(se.status || "").toLowerCase();
       var Se = String(se.settled_outcome || "").toLowerCase();
       var Ce = re === "cancelled" || re === "canceled";
-      var Ne = Number(se.amount_cents || 0);
+      var Ne = Number(se.responsibility_cents || se.amount_cents || 0);
       var Je = Number(se.user_profit_cents || 0);
       var Ye = Number(
         se.platform_deduction_cents != null
@@ -257,22 +257,27 @@
       } else if (se.settled_at) {
         ze = "Proteção Encerrada";
         Ue = se.settled_at;
-        if (Se === "arbishield") {
+        var isArbi =
+          Se === "arbishield" || re === "lost_exchange" || re === "won_platform";
+        var isExch = Se === "exchange" || re === "won_exchange";
+        if (isArbi) {
           je = "ArbiShield";
           pe = Ne;
           Ae = true;
-          Qe = "Coberto pela ArbiShield • capital devolvido";
-        } else if (Se === "exchange") {
+          Qe = "Coberto pela ArbiShield • capital devolvido 100%";
+        } else if (isExch) {
           je = "Exchange";
-          if (Ye > 0) {
-            pe = Ye;
-            Ae = false;
-            Qe = "Bateu na exchange • dedução da taxa (devolvido " + money(Ne - Ye) + ")";
-          } else {
-            pe = Ne;
-            Ae = true;
-            Qe = "Bateu na exchange • capital devolvido";
-          }
+          var fee = Math.max(0, Ye);
+          var refund = Math.max(0, Ne - Math.min(fee, Ne));
+          pe = refund;
+          Ae = true;
+          Qe =
+            fee > 0
+              ? "Bateu na exchange • taxa " +
+                money(Math.min(fee, Ne)) +
+                " · reembolso " +
+                money(refund)
+              : "Bateu na exchange • capital devolvido";
         } else if (Se === "won" || Se === "win" || Se === "user_won") {
           je = "Vitória";
           pe = Je > 0 ? Je : Ne;

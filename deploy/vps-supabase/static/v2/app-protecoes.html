@@ -335,8 +335,8 @@
       async function load() {
         showErr("");
         var [lay, back] = await Promise.all([
-          supa.from("protections").select("id,status,amount_cents,responsibility_cents,odd,match_id,created_at,metadata,user_profit_cents").eq("user_id", user.id).order("created_at", { ascending: false }).limit(150),
-          supa.from("back_protections").select("id,status,amount_cents,odd,match_id,created_at,metadata,user_profit_cents").eq("user_id", user.id).order("created_at", { ascending: false }).limit(150),
+          supa.from("protections").select("id,status,amount_cents,responsibility_cents,odd,match_id,created_at,metadata,user_profit_cents,platform_deduction_cents,locked_deduction_cents,settled_outcome,settled_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(150),
+          supa.from("back_protections").select("id,status,amount_cents,odd,match_id,created_at,metadata,user_profit_cents,platform_deduction_cents,locked_deduction_cents,settled_outcome,settled_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(150),
         ]);
         if (lay.error) throw lay.error;
         if (back.error) throw back.error;
@@ -408,7 +408,19 @@
           return;
         }
         var gate = canContest(it);
-        var amount = it.responsibility_cents || it.amount_cents || 0;
+        var amount = Number(it.responsibility_cents || it.amount_cents || 0);
+        var margin = Number(
+          it.platform_deduction_cents != null
+            ? it.platform_deduction_cents
+            : it.locked_deduction_cents || 0
+        );
+        var st = String(it.status || "").toLowerCase();
+        var outcome = String(it.settled_outcome || "").toLowerCase();
+        var isExch = outcome === "exchange" || st === "won_exchange";
+        var isArbi = outcome === "arbishield" || st === "lost_exchange" || st === "won_platform";
+        var refund = null;
+        if (isArbi) refund = amount;
+        else if (isExch) refund = Math.max(0, amount - Math.min(Math.max(0, margin), amount));
         var starts = it.matches && it.matches.starts_at
           ? new Date(it.matches.starts_at).toLocaleString("pt-BR")
           : "—";
@@ -420,6 +432,19 @@
             "<div><span>Odd alvo</span><strong>" + Number(it.odd || 0).toFixed(2) + "</strong></div>" +
             "<div><span>Valor protegido</span><strong>" + money(amount) + "</strong></div>" +
             "<div><span>Início</span><strong>" + starts + "</strong></div>" +
+            (margin > 0
+              ? "<div><span>Margem (taxa)</span><strong>" + money(margin) + "</strong></div>"
+              : "") +
+            (refund != null
+              ? "<div><span>Reembolso</span><strong style=\"color:#c9f223\">" +
+                money(refund) +
+                "</strong></div>"
+              : "") +
+            (isExch
+              ? "<div><span>Resultado</span><strong>Exchange</strong></div>"
+              : isArbi
+                ? "<div><span>Resultado</span><strong>ArbiShield</strong></div>"
+                : "") +
           "</div>" +
           '<div class="prot-actions">' +
             '<button type="button" class="btn btn-primary" id="btnContest"' + (gate.ok ? "" : " disabled") + ">Contestar proteção</button>" +
