@@ -110,8 +110,9 @@ log "3/5 Front admin + cliente (Exchange com reembolso)"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
 mkdir -p "$WEB"
-for f in admin-jogos.html v2-financeiro.js app-protecoes.html; do
+for f in admin-jogos.html v2-financeiro.js app-protecoes.html app-proteger.html; do
   dl "deploy/vps-supabase/static/v2/$f" "$WEB/$f"
+  cp -f "$WEB/$f" "$WEB_ROOT/$f" 2>/dev/null || true
   echo "  updated $WEB/$f"
 done
 # anti-regressão: admin usa nomenclatura Reembolso / Venceu Exchange
@@ -128,6 +129,11 @@ grep -q 'Destrava (Congelado → Apostador) o stake menos a taxa' "$WEB/admin-jo
 # sem conceito de fila
 grep -qi 'Fila (atuais)' "$WEB/admin-jogos.html" && die "admin-jogos ainda tem Fila (atuais)"
 grep -qi 'Tirar da fila' "$WEB/admin-jogos.html" && die "admin-jogos ainda tem Tirar da fila"
+# browser: window.ArbiV2Shell (Node `global` quebra com "global is not defined")
+grep -q 'window.ArbiV2Shell' "$WEB/app-proteger.html" \
+  || die "app-proteger sem window.ArbiV2Shell"
+grep -E '\bglobal\.ArbiV2Shell' "$WEB/app-proteger.html" \
+  && die "app-proteger ainda usa global.ArbiV2Shell (Node)"
 # bust cache leve
 touch "$WEB/.fluxo-protecao-v1" 2>/dev/null || true
 
