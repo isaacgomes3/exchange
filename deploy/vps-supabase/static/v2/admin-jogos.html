@@ -573,23 +573,23 @@
   <div class="modal-backdrop" id="settleModal">
     <div class="modal" style="width:min(560px,100%)">
       <h3>Encerrar <span style="color:var(--lime)">partida</span></h3>
-      <p id="settleSummary" class="hint">Registre o placar e onde o jogo bateu.</p>
+      <p id="settleSummary" class="hint">Registre o placar e o resultado da proteção.</p>
       <div class="grid" style="margin-top:12px">
         <div class="field"><label>Placar casa</label><input id="settleHome" type="number" min="0" step="1" placeholder="0" /></div>
         <div class="field"><label>Placar fora</label><input id="settleAway" type="number" min="0" step="1" placeholder="0" /></div>
       </div>
       <div class="field" style="margin-top:14px">
-        <label>Onde bateu?</label>
+        <label>Resultado da proteção</label>
         <div id="settleOutcomeBox" style="display:grid;gap:10px;margin-top:8px">
           <button type="button" class="btn btn-ghost" id="btnOutcomeArbi" data-outcome="arbishield" style="justify-content:flex-start;text-align:left;padding:14px 16px;border-color:rgba(201,242,35,0.45)">
-            <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU ARBISHIELD</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção válida · devolver só o stake/responsabilidade</span>
+            <span style="display:block;font-size:11px;letter-spacing:0.08em">REEMBOLSO</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Destrava (descongela) · devolve 100% do stake ao Apostador</span>
             <span id="settleRefundHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">A reembolsar: —</span>
           </button>
           <button type="button" class="btn btn-ghost" id="btnOutcomeExch" data-outcome="exchange" style="justify-content:flex-start;text-align:left;padding:14px 16px">
-            <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU CASA EXTERNA (EXCHANGE)</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Destrava congelado · devolve max(0, stake − margem) ao Apostador</span>
-            <span id="settleDeductHint" style="display:block;margin-top:8px;color:var(--amber);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Margem ArbiShield (taxa): —</span>
+            <span style="display:block;font-size:11px;letter-spacing:0.08em">VENCEU EXCHANGE</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Destrava · devolve stake menos a taxa (4,5% + 1,5% no lucro)</span>
+            <span id="settleDeductHint" style="display:block;margin-top:8px;color:var(--amber);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Taxa (margem): —</span>
             <span id="settleExchRefundHint" style="display:block;margin-top:6px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">A reembolsar: —</span>
             <span id="settleStakeKeepHint" style="display:block;margin-top:4px;color:var(--muted);font-size:11px;font-weight:600;text-transform:none;letter-spacing:0"></span>
           </button>
@@ -1681,7 +1681,7 @@
               );
               openByMatch[p.match_id].count += 1;
               openByMatch[p.match_id].cents += amt;
-              // Reembolso ArbiShield = só stake/responsabilidade (sem lucro)
+              // Reembolso = 100% do stake/responsabilidade
               openByMatch[p.match_id].refund += amt;
               openByMatch[p.match_id].margin += Math.max(0, margin);
             });
@@ -2262,30 +2262,28 @@
           money(stake);
         if ($("settleRefundHint")) {
           $("settleRefundHint").textContent =
-            "A reembolsar: " + money(refund) + "  ·  100% do stake";
+            "Reembolso 100%: " + money(refund);
         }
         if ($("settleDeductHint")) {
           $("settleDeductHint").textContent =
             margin > 0
-              ? "Margem ArbiShield (taxa): " + money(margin)
-              : "Margem ArbiShield (taxa): — (sem platform_deduction nesta proteção)";
+              ? "Taxa (4,5% + 1,5% no lucro): " + money(margin)
+              : "Taxa (4,5% + 1,5% no lucro): — (sem margem gravada)";
         }
         var exchRefund = Math.max(0, stake - Math.max(0, margin));
         if ($("settleExchRefundHint")) {
           $("settleExchRefundHint").textContent =
-            "A reembolsar: " +
-            money(exchRefund) +
-            "  ·  max(0, stake − margem)";
+            "Venceu Exchange · a devolver: " + money(exchRefund);
         }
         if ($("settleStakeKeepHint")) {
           $("settleStakeKeepHint").textContent =
             margin > stake
-              ? "Odd baixa: margem ≥ stake → reembolso R$ 0 (taxa consome o congelado)."
+              ? "Odd baixa: taxa ≥ stake → devolve R$ 0 (congelado consome na taxa)."
               : "Congelado −" +
                 money(stake) +
                 " · Apostador +" +
                 money(exchRefund) +
-                " · taxa retida " +
+                " · taxa " +
                 money(Math.min(margin, stake)) +
                 ".";
         }
@@ -2347,7 +2345,7 @@
         var away = String($("settleAway").value || "0").trim() || "0";
         var outcome = $("settleOutcome").value;
         if (outcome !== "arbishield" && outcome !== "exchange") {
-          alert("Selecione onde bateu: ArbiShield ou Casa externa.");
+          alert("Selecione o resultado: Reembolso ou Venceu Exchange.");
           return;
         }
         $("btnConfirmSettle").disabled = true;
@@ -2385,11 +2383,10 @@
           alert(
             "Partida encerrada · " +
               Number(data.settledCount || 0) +
-              " proteção(ões) · reembolso " +
-              money(data.refundedCents || 0) +
+              " proteção(ões) · " +
               (outcome === "exchange"
-                ? " (Exchange: stake − margem)"
-                : " (ArbiShield: 100%)")
+                ? "Venceu Exchange · devolvido " + money(data.refundedCents || 0)
+                : "Reembolso · devolvido " + money(data.refundedCents || 0) + " (100%)")
           );
           $("settleModal").classList.remove("show");
           platformLoaded = false;

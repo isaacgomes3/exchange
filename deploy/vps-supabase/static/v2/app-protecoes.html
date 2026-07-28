@@ -267,7 +267,9 @@
         if (st === "review_odd") return "Em Contestação";
         if (st === "active") return "Ativa";
         if (st === "cancelled") return "Cancelada";
-        if (st === "settled" || st === "won_exchange" || st === "lost_exchange") return "Encerrada";
+        if (st === "lost_exchange" || st === "won_platform") return "Reembolso";
+        if (st === "won_exchange") return "Venceu Exchange";
+        if (st === "settled") return "Encerrada";
         return st || "—";
       }
       function statusClass(st) {
@@ -441,9 +443,9 @@
                 "</strong></div>"
               : "") +
             (isExch
-              ? "<div><span>Resultado</span><strong>Exchange</strong></div>"
+              ? "<div><span>Resultado</span><strong>Venceu Exchange</strong></div>"
               : isArbi
-                ? "<div><span>Resultado</span><strong>ArbiShield</strong></div>"
+                ? "<div><span>Resultado</span><strong>Reembolso</strong></div>"
                 : "") +
           "</div>" +
           '<div class="prot-actions">' +

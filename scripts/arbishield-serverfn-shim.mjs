@@ -4007,12 +4007,14 @@ function settlementCreditCents(row, outcome) {
   const amount = n(row.responsibility_cents || row.amount_cents);
   if (amount <= 0) return 0;
   const wonArbi = String(outcome).toLowerCase() === "arbishield";
+  // Reembolso (arbishield): 100% · Venceu Exchange: stake − taxa
   if (wonArbi) return amount;
   const fee = Math.min(settlementDeductionCents(row), amount);
   return Math.max(0, amount - fee);
 }
 
 function settlementStatusForOutcome(outcome) {
+  // Reembolso → lost_exchange · Venceu Exchange → won_exchange
   return String(outcome).toLowerCase() === "arbishield"
     ? "lost_exchange"
     : "won_exchange";
@@ -4251,7 +4253,7 @@ async function applyProtectionSettlement(row, table, outcome) {
 }
 
 async function settleMatch(token, body) {
-  // FLUXO_PROTECAO_V1: ArbiShield 100% | Exchange max(0,R-margem)
+  // FLUXO_PROTECAO_V1: Reembolso 100% | Venceu Exchange max(0,R−taxa)
   if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
   const matchId = String(body?.matchId || body?.id || "").trim();
   if (!matchId) throw new Error("matchId obrigatório");

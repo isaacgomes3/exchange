@@ -2,17 +2,13 @@
  * Fluxo oficial de proteção ArbiShield — FLUXO_PROTECAO_V1
  *
  * Spec:
- *   Proteger  → Apostador −R · Congelado +R · status active · extrato protection_lock
- *               grava margem em platform_deduction_cents
- *   ArbiShield→ Congelado −R · Apostador +R (100%) · status lost_exchange
- *   Exchange  → Congelado −R · Apostador +max(0, R − margem) · status won_exchange
- *
- * Margem LAY (responsabilidade R, odd O):
- *   lucro bruto = R / (O − 1)
- *   taxa 4,5%   = lucro bruto × 0.045
- *   líquido     = lucro − 4,5%
- *   fatia 1,5%  = R × 0.015
- *   margem      = líquido − 1,5%
+ *   Proteger         → Apostador −R · Congelado +R · status active · extrato protection_lock
+ *                      grava margem em platform_deduction_cents
+ *   Reembolso        → Congelado −R · Apostador +R (100%) · status lost_exchange
+ *                      (API outcome: "arbishield")
+ *   Venceu Exchange  → Congelado −R · Apostador +max(0, R − margem) · status won_exchange
+ *                      (API outcome: "exchange")
+ *                      taxa = 4,5% no lucro exchange + 1,5% do stake (fatia usuário)
  *
  * Implementação runtime:
  *   - scripts/arbishield-prelive-events.mjs  createProtection / settleMatchFromBody

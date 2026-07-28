@@ -589,17 +589,16 @@ function settlementCreditCents(row, outcome) {
   const amount = nCents(row.responsibility_cents || row.amount_cents);
   if (amount <= 0) return 0;
   const wonArbi = String(outcome).toLowerCase() === "arbishield";
-  // Legado:
-  // - ArbiShield: devolve stake inteiro (cobertura)
-  // - Exchange: devolve stake − taxa/dedução da plataforma
+  // Reembolso (arbishield): 100% do stake
+  // Venceu Exchange: stake − taxa (4,5% + 1,5% no lucro)
   if (wonArbi) return amount;
   const fee = Math.min(settlementDeductionCents(row), amount);
   return Math.max(0, amount - fee);
 }
 
 function settlementStatusForOutcome(outcome) {
-  // lost_exchange = cobertura ArbiShield (UI: "ArbiShield", capital reutilizável)
-  // won_exchange = bateu na casa externa (UI: "Exchange")
+  // Reembolso (API: arbishield) → lost_exchange
+  // Venceu Exchange (API: exchange) → won_exchange
   return String(outcome).toLowerCase() === "arbishield"
     ? "lost_exchange"
     : "won_exchange";
@@ -832,7 +831,7 @@ async function fetchProtectionsNeedingCredit(matchId) {
 }
 
 async function settleMatchFromBody(body, token) {
-  // FLUXO_PROTECAO_V1: ArbiShield 100% | Exchange max(0,R-margem)
+  // FLUXO_PROTECAO_V1: Reembolso 100% | Venceu Exchange max(0,R−taxa)
   const adminId = await requireAdminToken(token);
   const matchId = String(body?.matchId || body?.id || "").trim();
   if (!matchId) throw new Error("matchId obrigatório");

@@ -45,10 +45,10 @@ const row = {
   amount_cents: 50000,
   platform_deduction_cents: lay.platformDeductionCents,
 };
-assert(settlementCreditCents(row, "arbishield") === 50000, "ArbiShield devolve 100%");
-assert(settlementCreditCents(row, "exchange") === 0, "Exchange reembolso 0 (margem > R)");
-assert(settlementStatusForOutcome("arbishield") === "lost_exchange", "status Arbi");
-assert(settlementStatusForOutcome("exchange") === "won_exchange", "status Exchange");
+assert(settlementCreditCents(row, "arbishield") === 50000, "Reembolso devolve 100%");
+assert(settlementCreditCents(row, "exchange") === 0, "Venceu Exchange reembolso 0 (margem > R)");
+assert(settlementStatusForOutcome("arbishield") === "lost_exchange", "status Reembolso");
+assert(settlementStatusForOutcome("exchange") === "won_exchange", "status Venceu Exchange");
 
 // Odd alta: margem < R → reembolso parcial
 const layHi = calcLay(50000, 3.0);

@@ -2,9 +2,9 @@
 # FLUXO_PROTECAO_V1 — deploy create/settle oficiais na VPS.
 #
 # Fluxo:
-#   Proteger  → Apostador −R · Congelado +R · margem em platform_deduction_cents
-#   ArbiShield→ devolve 100% do stake
-#   Exchange  → devolve max(0, R − margem)
+#   Proteger         → Apostador −R · Congelado +R · margem em platform_deduction_cents
+#   Reembolso        → devolve 100% do stake (API outcome=arbishield)
+#   Venceu Exchange  → devolve max(0, R − taxa) (API outcome=exchange)
 #
 # Na VPS (root):
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-do-zero-47c1/scripts/vps-hotfix-protecao-do-zero.sh")
@@ -110,12 +110,13 @@ for f in admin-jogos.html v2-financeiro.js app-protecoes.html; do
   dl "deploy/vps-supabase/static/v2/$f" "$WEB/$f"
   echo "  updated $WEB/$f"
 done
-# anti-regressão: admin NÃO pode mais dizer "sem reembolso"
-grep -q 'sem reembolso ao usuário' "$WEB/admin-jogos.html" \
+# anti-regressão: admin usa nomenclatura Reembolso / Venceu Exchange
+grep -qi 'BATEU ARBISHIELD' "$WEB/admin-jogos.html" \
+  && die "admin-jogos ainda diz BATEU ARBISHIELD"
+grep -qi 'sem reembolso ao usuário' "$WEB/admin-jogos.html" \
   && die "admin-jogos ainda diz sem reembolso (Exchange)"
-grep -q 'max(0, stake' "$WEB/admin-jogos.html" \
-  || grep -q 'stake − margem' "$WEB/admin-jogos.html" \
-  || die "admin-jogos sem texto de reembolso Exchange"
+grep -q 'REEMBOLSO' "$WEB/admin-jogos.html" || die "admin-jogos sem botão REEMBOLSO"
+grep -qi 'VENCEU EXCHANGE' "$WEB/admin-jogos.html" || die "admin-jogos sem botão VENCEU EXCHANGE"
 # bust cache leve
 touch "$WEB/.fluxo-protecao-v1" 2>/dev/null || true
 
@@ -160,5 +161,5 @@ echo "OK — FLUXO_PROTECAO_V1 ativo."
 echo "  Backup: $BACKUP_DIR"
 echo "  curl -s http://127.0.0.1:3098/health   # fix: fluxo-protecao-v1"
 echo "  Teste: proteger R\$500 → Apostador −500 · Congelado +500"
-echo "  Encerrar ArbiShield → devolve 100%; Exchange → max(0, R−margem)"
+echo "  Encerrar Reembolso → devolve 100%; Venceu Exchange → max(0, R−taxa)"
 echo
