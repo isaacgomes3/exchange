@@ -1372,11 +1372,21 @@
     state.backProtections = await safeQuery(
       supa,
       "back_protections",
-      protSelectPlain + ",odd",
+      backProtSelect,
       function (q) {
         return q.eq("user_id", userId).order("created_at", { ascending: false }).limit(1000);
       }
     );
+    if (!state.backProtections.length) {
+      state.backProtections = await safeQuery(
+        supa,
+        "back_protections",
+        backProtSelectPlain,
+        function (q) {
+          return q.eq("user_id", userId).order("created_at", { ascending: false }).limit(1000);
+        }
+      );
+    }
 
     state.refunds = await safeQuery(
       supa,
