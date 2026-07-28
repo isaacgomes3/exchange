@@ -1688,7 +1688,7 @@
           } catch (e1) {}
           try {
             var openBack = await rest(
-              "back_protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,platform_deduction_cents,locked_deduction_cents&limit=1000",
+              "back_protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,platform_deduction_cents&limit=1000",
               auth.token
             );
             (openBack || []).forEach(function (p) {
@@ -1702,11 +1702,7 @@
                 };
               }
               var amt = Number(p.amount_cents || 0);
-              var margin = Number(
-                p.platform_deduction_cents != null
-                  ? p.platform_deduction_cents
-                  : p.locked_deduction_cents || 0
-              );
+              var margin = Number(p.platform_deduction_cents || 0);
               openByMatch[p.match_id].count += 1;
               openByMatch[p.match_id].cents += amt;
               openByMatch[p.match_id].refund += amt;

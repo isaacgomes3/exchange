@@ -1343,6 +1343,11 @@
       "id,user_id,match_id,side,odd,status,amount_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents,created_at,settled_at,refunded_at,settled_outcome,updated_at,market_category,match:matches(home_team,away_team,league)";
     var protSelectPlain =
       "id,user_id,match_id,side,odd,status,amount_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents,created_at,settled_at,refunded_at,settled_outcome,updated_at";
+    // back_protections: sem locked_deduction_cents / side / market_category no schema VPS
+    var backProtSelect =
+      "id,user_id,match_id,odd,status,amount_cents,user_profit_cents,platform_deduction_cents,created_at,settled_at,refunded_at,settled_outcome,updated_at,match:matches(home_team,away_team,league)";
+    var backProtSelectPlain =
+      "id,user_id,match_id,odd,status,amount_cents,user_profit_cents,platform_deduction_cents,created_at,settled_at,refunded_at,settled_outcome,updated_at";
 
     var profileRes = await supa
       .from("profiles")
