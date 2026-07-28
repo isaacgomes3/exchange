@@ -8,7 +8,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 # Fluxo de Proteção — CONTRATO TRAVADO
 
 **Marker:** `DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST`  
-**Versão:** `protection-flow-contract-v3`
+**Versão:** `protection-flow-contract-v4`
 **Fonte da verdade:** `scripts/lib/protection-flow-contract.mjs`  
 **Testes CI:** `npm test` → `scripts/protection-flow-contract.test.mjs`
 
@@ -26,16 +26,18 @@ Arquivos cobertos (lista mínima):
 
 Se um pedido tangenciar esses arquivos por outro motivo (hotfix de JS, Encerrado por, etc.), **preserve** as regras abaixo; não “aproveite” para mudar crédito/dedução.
 
-## Regras de produto travadas (fee_upfront_v1)
+## Regras de produto travadas (locked_margin_v2)
 
-1. **Ativação:** cobra só a **dedução ArbiShield** (lucro bruto − 1,5% da cobertura). Não trava o stake/responsabilidade.
+1. **Ativação:** debita 100% da stake/responsabilidade exclusivamente do
+   `balance_cents` (**Saldo Apostador**) e incrementa `locked_balance_cents`.
+   A margem é apenas registrada: 1,5% da stake/responsabilidade + 4,5% do
+   lucro bruto.
 2. **LAY** = responsabilidade; **BACK** = stake. Nunca lançar LAY+BACK no mesmo evento de teste.
-3. **Bateu ArbiShield:** credita **somente a stake/responsabilidade** automaticamente em
-   `deduction_balance_cents` (UI: **Saldo Reembolso** — usável + sacável), independente
-   da carteira usada na ativação (REAL/DEMO só define de onde a dedução foi cobrada).
-4. **Bateu Exchange:** não devolve nada (dedução já cobrada na entrada).
-5. **Empate Anula / void:** devolve **só a dedução** (Saldo Reembolso). Não é vitória Arbi nem Exchange.
-6. **Cancelar proteção:** estorna a dedução (fee_upfront); cliente não precisa solicitar reembolso no caso ArbiShield.
+3. **Bateu ArbiShield:** move 100% da stake/responsabilidade automaticamente em
+   `deduction_balance_cents` (UI: **Saldo Reembolso** — usável + sacável).
+4. **Bateu Exchange:** retém a margem e devolve o restante ao `balance_cents`.
+5. **Empate Anula / void:** devolve 100% ao `balance_cents`. Não é vitória Arbi nem Exchange.
+6. **Cancelar proteção:** devolve 100% ao `balance_cents` e libera o lock.
 7. Cliente **não** precisa pedir reembolso para ver a stake/responsabilidade quando o resultado é ArbiShield — o crédito é imediato.
 
 Alterar qualquer item acima exige pedido explícito + atualização dos testes do contrato.

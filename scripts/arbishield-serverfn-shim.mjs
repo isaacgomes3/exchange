@@ -14,15 +14,17 @@ import { createRequire } from "node:module";
 // Contrato travado — import opcional (se lib faltar na VPS, usa fallback inline
 // para o shim não cair e a rota de saque continuar disponível).
 let PROTECTION_FLOW_LOCK = "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST";
-let PROTECTION_FLOW_CONTRACT_VERSION = "protection-flow-contract-v2";
+let PROTECTION_FLOW_CONTRACT_VERSION = "protection-flow-contract-v4";
 let settlementCreditParts;
 let settlementCreditCents;
 let settlementDeductionCents;
 let settlementStatusForOutcome;
 let isFeeUpfrontProtection;
+let isLockedMarginProtection;
 let isVoidSettleOutcome;
 let normalizeSettleOutcome;
 let creditBucketForSettlement = () => "deduction_balance_cents";
+let settlementCreditBucket = () => "deduction_balance_cents";
 
 try {
   const mod = await import(
@@ -37,9 +39,11 @@ try {
   settlementDeductionCents = mod.settlementDeductionCents;
   settlementStatusForOutcome = mod.settlementStatusForOutcome;
   isFeeUpfrontProtection = mod.isFeeUpfrontProtection;
+  isLockedMarginProtection = mod.isLockedMarginProtection;
   isVoidSettleOutcome = mod.isVoidSettleOutcome;
   normalizeSettleOutcome = mod.normalizeSettleOutcome;
   creditBucketForSettlement = mod.creditBucketForSettlement;
+  settlementCreditBucket = mod.settlementCreditBucket;
 } catch (err) {
   console.warn(
     "[serverfn-shim] protection-flow-contract ausente — fallback inline:",
@@ -77,11 +81,16 @@ try {
       String(meta.source || "").includes("fee_upfront")
     );
   };
+  isLockedMarginProtection = (row) => {
+    const meta = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
+    return meta.billing_model === "locked_margin_v2" || meta.locked_margin === true;
+  };
   settlementDeductionCents = (row) => {
     const meta = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
     const raw =
       row?.platform_deduction_cents ??
       row?.platform_profit_cents ??
+      meta.margin_cents ??
       meta.fee_charged_cents ??
       row?.locked_deduction_cents;
     return Math.max(0, Number(raw) || 0);
@@ -95,6 +104,11 @@ try {
     const o = normalizeSettleOutcome(outcome);
     const wonArbi = o === "arbishield";
     const isVoid = o === "void";
+    if (isLockedMarginProtection(row)) {
+      if (isVoid || wonArbi) return { stake: amount, fee: 0, total: amount };
+      const keep = Math.min(fee, amount);
+      return { stake: amount - keep, fee: keep, total: amount - keep };
+    }
     if (isFeeUpfrontProtection(row)) {
       if (isVoid) return { stake: 0, fee, total: fee };
       if (!wonArbi) return { stake: 0, fee: 0, total: 0 };
@@ -5704,6 +5718,7 @@ async function creditWalletForSettlement(row, outcome, now) {
   const wonArbi = outcomeNorm === "arbishield";
   const isVoid = outcomeNorm === "void" || (isVoidSettleOutcome && isVoidSettleOutcome(outcome));
   const feeUpfront = isFeeUpfrontProtection(row);
+  const lockedMargin = isLockedMarginProtection(row);
   const balanceType = String(
     (row.metadata &&
       (row.metadata.balance_type ||
@@ -5762,8 +5777,12 @@ async function creditWalletForSettlement(row, outcome, now) {
   if (!feeUpfront) {
     patch.locked_balance_cents = Math.max(0, n(p.locked_balance_cents) - amount);
   }
-  const bucket = creditBucketForSettlement(balanceType);
-  if (bucket === "demo_balance_cents") {
+  let bucket = lockedMargin
+    ? settlementCreditBucket(row, outcome)
+    : creditBucketForSettlement(balanceType);
+  if (bucket === "balance_cents") {
+    patch.balance_cents = n(p.balance_cents) + credit;
+  } else if (bucket === "demo_balance_cents") {
     patch.demo_balance_cents = n(p.demo_balance_cents) + credit;
   } else if (bucket === "investor_balance_cents") {
     patch.investor_balance_cents = n(p.investor_balance_cents) + credit;
@@ -5822,15 +5841,19 @@ async function creditWalletForSettlement(row, outcome, now) {
           fee_cents: parts.fee,
           fee_returned_cents: wonArbi || isVoid ? parts.fee : 0,
           bucket,
-          billing_model: feeUpfront ? "fee_upfront_v1" : "legacy_lock",
-          fix: isVoid
-            ? "settle-empate-anula-deducao-v1"
-            : "settle-arbishield-stake-mais-deducao-v1",
-          note: isVoid
-            ? "Empate Anula: devolve só a dedução (Saldo Reembolso)"
-            : wonArbi
-              ? "ArbiShield: somente stake/responsabilidade creditada (Saldo Reembolso)"
-              : undefined,
+          billing_model: lockedMargin
+            ? "locked_margin_v2"
+            : feeUpfront
+              ? "fee_upfront_v1"
+              : "legacy_lock",
+          margin_retained_cents: lockedMargin && !wonArbi && !isVoid ? parts.fee : 0,
+          note: lockedMargin
+            ? wonArbi
+              ? "ArbiShield: 100% da stake/responsabilidade para Saldo Reembolso"
+              : isVoid
+                ? "Empate Anula: 100% devolvido ao Saldo Apostador"
+                : "Exchange: margem retida e restante devolvido ao Saldo Apostador"
+            : undefined,
         },
       },
     });

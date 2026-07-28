@@ -18,9 +18,11 @@ import {
   settlementDeductionCents,
   settlementStatusForOutcome,
   isFeeUpfrontProtection,
+  isLockedMarginProtection,
   isVoidSettleOutcome,
   normalizeSettleOutcome,
   creditBucketForSettlement,
+  settlementCreditBucket,
   calcFeeUpfront,
   calcLay,
   calcBack,
@@ -1435,6 +1437,7 @@ async function creditWalletForSettlement(row, outcome, now) {
   const wonArbi = outcomeNorm === "arbishield";
   const isVoid = outcomeNorm === "void" || isVoidSettleOutcome(outcome);
   const feeUpfront = isFeeUpfrontProtection(row);
+  const lockedMargin = isLockedMarginProtection(row);
   const balanceType = String(
     (row.metadata &&
       (row.metadata.balance_type ||
@@ -1494,7 +1497,7 @@ async function creditWalletForSettlement(row, outcome, now) {
   if (!p) throw new Error(`Perfil ${row.user_id} não encontrado para crédito`);
 
   const patch = { updated_at: now };
-  // Legado: solta o stake do locked. fee_upfront não travou stake.
+  // Todo modelo bloqueado (legado e locked_margin_v2) solta a stake.
   if (!feeUpfront) {
     patch.locked_balance_cents = Math.max(
       0,
@@ -1502,8 +1505,12 @@ async function creditWalletForSettlement(row, outcome, now) {
     );
   }
   // ArbiShield: somente stake/responsabilidade → Saldo Reembolso.
-  const bucket = creditBucketForSettlement(balanceType);
-  if (bucket === "demo_balance_cents") {
+  let bucket = lockedMargin
+    ? settlementCreditBucket(row, outcome)
+    : creditBucketForSettlement(balanceType);
+  if (bucket === "balance_cents") {
+    patch.balance_cents = nCents(p.balance_cents) + credit;
+  } else if (bucket === "demo_balance_cents") {
     patch.demo_balance_cents = nCents(p.demo_balance_cents) + credit;
   } else if (bucket === "investor_balance_cents") {
     patch.investor_balance_cents = nCents(p.investor_balance_cents) + credit;
@@ -1526,8 +1533,16 @@ async function creditWalletForSettlement(row, outcome, now) {
     attempts.push({
       updated_at: now,
       balance_cents: nCents(p.balance_cents) + credit,
+      ...(patch.locked_balance_cents != null
+        ? { locked_balance_cents: patch.locked_balance_cents }
+        : {}),
     });
-    attempts.push({ balance_cents: nCents(p.balance_cents) + credit });
+    attempts.push({
+      balance_cents: nCents(p.balance_cents) + credit,
+      ...(patch.locked_balance_cents != null
+        ? { locked_balance_cents: patch.locked_balance_cents }
+        : {}),
+    });
   }
   for (const body of attempts) {
     try {
@@ -1566,15 +1581,19 @@ async function creditWalletForSettlement(row, outcome, now) {
           fee_cents: parts.fee,
           fee_returned_cents: wonArbi || isVoid ? parts.fee : 0,
           bucket,
-          billing_model: feeUpfront ? "fee_upfront_v1" : "legacy_lock",
-          fix: isVoid
-            ? "settle-empate-anula-deducao-v1"
-            : "settle-arbishield-stake-mais-deducao-v1",
-          note: isVoid
-            ? "Empate Anula: devolve só a dedução (Saldo Reembolso)"
-            : wonArbi
-              ? "ArbiShield: somente stake/responsabilidade creditada (Saldo Reembolso)"
-              : undefined,
+          billing_model: lockedMargin
+            ? "locked_margin_v2"
+            : feeUpfront
+              ? "fee_upfront_v1"
+              : "legacy_lock",
+          margin_retained_cents: lockedMargin && !wonArbi && !isVoid ? parts.fee : 0,
+          note: lockedMargin
+            ? wonArbi
+              ? "ArbiShield: 100% da stake/responsabilidade para Saldo Reembolso"
+              : isVoid
+                ? "Empate Anula: 100% devolvido ao Saldo Apostador"
+                : "Exchange: margem retida e restante devolvido ao Saldo Apostador"
+            : undefined,
         },
       },
     });
@@ -2108,7 +2127,7 @@ async function createProtection(body, userToken) {
   }
 
   const c = marketType === "BACK" ? calcBack(amountCents, odd) : calcLay(amountCents, odd);
-  const feeCents = Math.max(0, n(c.arbiShieldDeductionCents));
+  const marginCents = Math.max(0, n(c.marginCents ?? c.arbiShieldDeductionCents));
 
   let available = 0;
   if (balanceType === "DEMO") available = n(profile.demo_balance_cents);
@@ -2120,60 +2139,27 @@ async function createProtection(body, userToken) {
       n(profile.reusable_balance_cents) +
       n(profile.deduction_balance_cents);
 
-  // fee_upfront: só precisa ter saldo para a DEDUÇÃO (não para o stake)
-  // Se REAL estiver zerado mas DEMO cobrir (crédito de teste), usa DEMO.
+  // Novo fluxo: bloqueia 100% da stake/responsabilidade no Saldo Apostador.
   let walletType = balanceType;
-  if (feeCents > available && walletType === "REAL") {
-    const demoAvail = n(profile.demo_balance_cents);
-    if (demoAvail >= feeCents) {
-      walletType = "DEMO";
-      available = demoAvail;
-      console.warn(
-        "[createProtection] REAL sem saldo para dedução — usando DEMO automaticamente"
-      );
-    }
-  }
-  if (feeCents > available) {
+  available = n(profile.balance_cents);
+  walletType = "REAL";
+  if (amountCents > available) {
     const err = new Error(
-      `Saldo insuficiente para a dedução de ${(feeCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} (1,5% fica com você; o restante do lucro da odd é cobrado agora). Saldo ${walletType}: ${(available / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`
+      `Saldo Apostador insuficiente para bloquear ${(amountCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`
     );
     err.status = 400;
     throw err;
   }
 
   const balanceBefore = available;
-  // NÃO trava o stake em locked_balance — só debita a dedução
   const patch = {
     updated_at: new Date().toISOString(),
   };
   let balanceAfter = 0;
 
-  if (walletType === "DEMO") {
-    patch.demo_balance_cents = n(profile.demo_balance_cents) - feeCents;
-    balanceAfter = patch.demo_balance_cents;
-  } else if (walletType === "INVESTOR") {
-    patch.investor_balance_cents =
-      n(profile.investor_balance_cents) - feeCents;
-    balanceAfter = patch.investor_balance_cents;
-  } else {
-    // Consome banca real + reusable primeiro; depois Saldo Reembolso
-    let left = feeCents;
-    const bal = n(profile.balance_cents) + n(profile.reusable_balance_cents);
-    const ded = n(profile.deduction_balance_cents);
-    patch.reusable_balance_cents = 0;
-    if (bal >= left) {
-      patch.balance_cents = bal - left;
-      patch.deduction_balance_cents = ded;
-      left = 0;
-    } else {
-      left -= bal;
-      patch.balance_cents = 0;
-      patch.deduction_balance_cents = Math.max(0, ded - left);
-      left = 0;
-    }
-    balanceAfter =
-      n(patch.balance_cents) + n(patch.deduction_balance_cents);
-  }
+  patch.balance_cents = n(profile.balance_cents) - amountCents;
+  patch.locked_balance_cents = n(profile.locked_balance_cents) + amountCents;
+  balanceAfter = patch.balance_cents;
 
   const patchedProfile = await sb(
     `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`,
@@ -2186,24 +2172,14 @@ async function createProtection(body, userToken) {
   const patchedRow = Array.isArray(patchedProfile)
     ? patchedProfile[0]
     : patchedProfile;
-  if (feeCents > 0 && patchedRow) {
+  if (patchedRow) {
     const okDebit =
-      walletType === "DEMO"
-        ? n(patchedRow.demo_balance_cents) ===
-          n(profile.demo_balance_cents) - feeCents
-        : walletType === "INVESTOR"
-          ? n(patchedRow.investor_balance_cents) ===
-            n(profile.investor_balance_cents) - feeCents
-          : n(patchedRow.balance_cents) +
-              n(patchedRow.deduction_balance_cents) +
-              n(patchedRow.reusable_balance_cents) ===
-            n(profile.balance_cents) +
-              n(profile.reusable_balance_cents) +
-              n(profile.deduction_balance_cents) -
-              feeCents;
+      n(patchedRow.balance_cents) === n(profile.balance_cents) - amountCents &&
+      n(patchedRow.locked_balance_cents) ===
+        n(profile.locked_balance_cents) + amountCents;
     if (!okDebit) {
       const err = new Error(
-        `Falha ao debitar saldo ${walletType} (dedução ${feeCents} não aplicada no perfil).`
+        "Falha ao bloquear stake/responsabilidade no Saldo Apostador."
       );
       err.status = 500;
       throw err;
@@ -2221,10 +2197,11 @@ async function createProtection(body, userToken) {
     away_team: match.away_team || null,
     league: match.league || match.competition || null,
     starts_at: match.starts_at || null,
-    source: "v2_create_protection_fee_upfront",
-    billing_model: "fee_upfront_v1",
-    fee_upfront: true,
-    fee_charged_cents: feeCents,
+    source: "v2_create_protection_locked_margin",
+    billing_model: "locked_margin_v2",
+    locked_margin: true,
+    margin_cents: marginCents,
+    fee_charged_cents: 0,
     stake_cents: amountCents,
     user_profit_cents: c.userProfitCents,
     gross_profit_cents: c.grossProfitCents,
@@ -2254,7 +2231,7 @@ async function createProtection(body, userToken) {
           status: "active",
           amount_cents: c.coverageCents,
           user_profit_cents: c.userProfitCents,
-          platform_deduction_cents: feeCents,
+          platform_deduction_cents: marginCents,
           balance_before_cents: balanceBefore,
           balance_after_cents: balanceAfter,
           metadata: meta,
@@ -2274,9 +2251,9 @@ async function createProtection(body, userToken) {
           amount_cents: c.responsibilityCents,
           responsibility_cents: c.responsibilityCents,
           user_profit_cents: c.userProfitCents,
-          platform_deduction_cents: feeCents,
-          platform_profit_cents: feeCents,
-          locked_deduction_cents: 0,
+          platform_deduction_cents: marginCents,
+          platform_profit_cents: marginCents,
+          locked_deduction_cents: marginCents,
           exchange_fee_cents: 0,
           exchange_profit_net_cents: c.grossProfitCents,
           balance_before_cents: balanceBefore,
@@ -2328,8 +2305,8 @@ async function createProtection(body, userToken) {
     token: SERVICE_KEY,
     body: {
       user_id: userId,
-      type: "protection_fee",
-      amount_cents: -feeCents,
+      type: "protection_lock",
+      amount_cents: -amountCents,
       balance_before_cents: balanceBefore,
       balance_after_cents: balanceAfter,
       ref: protectionId,
@@ -2338,9 +2315,9 @@ async function createProtection(body, userToken) {
         match_id: matchId,
         market_type: marketType,
         balance_type: walletType,
-        billing_model: "fee_upfront_v1",
+        billing_model: "locked_margin_v2",
         stake_cents: amountCents,
-        fee_cents: feeCents,
+        margin_cents: marginCents,
         user_profit_cents: c.userProfitCents,
       },
     },
@@ -2353,9 +2330,10 @@ async function createProtection(body, userToken) {
     protectionId,
     marketType,
     amountCents,
-    feeChargedCents: feeCents,
+    feeChargedCents: 0,
+    marginCents,
     userProfitCents: c.userProfitCents,
-    billingModel: "fee_upfront_v1",
+    billingModel: "locked_margin_v2",
     balanceType: walletType,
     balanceAfterCents: balanceAfter,
     sandboxWorker: IS_SANDBOX_WORKER,

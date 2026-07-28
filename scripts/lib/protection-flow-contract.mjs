@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * CONTRATO TRAVADO — Fluxo de Proteção ArbiShield (fee_upfront_v1)
+ * CONTRATO TRAVADO — Fluxo de Proteção ArbiShield (locked_margin_v2)
  * ============================================================================
  * NÃO ALTERAR sem solicitação explícita do dono do produto.
  * Qualquer mudança aqui ou nos callers (prelive/shim/create-protection/UI)
@@ -8,13 +8,13 @@
  * de crédito no settle; os testes em protection-flow-contract.test.mjs
  * travam o comportamento no CI.
  *
- * Versão: protection-flow-contract-v3 (2026-07-28)
- *   + Empate Anula / void → devolve só a dedução (fee_upfront)
+ * Versão: protection-flow-contract-v4 (2026-07-28)
+ *   + stake/responsabilidade bloqueada; margem cobrada só no Exchange
  * ============================================================================
  */
 
 export const PROTECTION_FLOW_CONTRACT_VERSION =
-  "protection-flow-contract-v3";
+  "protection-flow-contract-v4";
 
 /** Marcador exigido pelos testes / hotfixes — não renomear. */
 export const PROTECTION_FLOW_LOCK =
@@ -65,8 +65,19 @@ export function isFeeUpfrontProtection(row) {
   );
 }
 
+/** Novo fluxo: a stake/responsabilidade inteira foi debitada e bloqueada. */
+export function isLockedMarginProtection(row) {
+  const meta =
+    row && row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  return (
+    meta.billing_model === "locked_margin_v2" ||
+    meta.locked_margin === true ||
+    String(meta.source || "").includes("locked_margin")
+  );
+}
+
 /**
- * Dedução ArbiShield cobrada na ativação (fee_upfront) ou margem legada.
+ * Margem retida pela Exchange no novo fluxo, dedução fee_upfront ou margem legada.
  */
 export function settlementDeductionCents(row) {
   const meta =
@@ -76,11 +87,13 @@ export function settlementDeductionCents(row) {
       ? row.platform_deduction_cents
       : row?.platform_profit_cents != null
         ? row.platform_profit_cents
+        : meta.margin_cents != null
+          ? meta.margin_cents
         : meta.fee_charged_cents != null
           ? meta.fee_charged_cents
           : row?.locked_deduction_cents;
   let fee = Math.max(0, n(raw));
-  if (!(fee > 0) && isFeeUpfrontProtection(row)) {
+  if (!(fee > 0) && (isFeeUpfrontProtection(row) || isLockedMarginProtection(row))) {
     const stake = n(
       row?.responsibility_cents || row?.amount_cents || meta.stake_cents
     );
@@ -91,8 +104,9 @@ export function settlementDeductionCents(row) {
     if (mt === "LAY" && odd > 1.01) odd = odd / (odd - 1);
     if (stake > 0 && odd > 1.01) {
       const profit = Math.max(0, Math.round(stake * odd) - stake);
-      const userProfit = Math.round(stake * 0.015);
-      fee = Math.max(0, profit - userProfit);
+      fee = isLockedMarginProtection(row)
+        ? Math.round(stake * 0.015) + Math.round(profit * 0.045)
+        : Math.max(0, profit - Math.round(stake * 0.015));
     }
   }
   return fee;
@@ -101,7 +115,12 @@ export function settlementDeductionCents(row) {
 /**
  * Regras de crédito no settle (TRAVADAS):
  *
- * fee_upfront_v1:
+ * locked_margin_v2:
+ *   - ArbiShield → 100% da stake/responsabilidade para Saldo Reembolso
+ *   - Exchange   → stake − margem para Saldo Apostador; margem é retida
+ *   - Empate Anula / void → 100% da stake para Saldo Apostador
+ *
+ * fee_upfront_v1 (compatibilidade):
  *   - ArbiShield → somente stake/responsabilidade
  *   - Exchange   → 0 (dedução permanece na plataforma)
  *   - Empate Anula / void → só a dedução (aposta anulada)
@@ -119,6 +138,11 @@ export function settlementCreditParts(row, outcome) {
   const o = normalizeSettleOutcome(outcome);
   const wonArbi = o === "arbishield";
   const isVoid = o === "void";
+  if (isLockedMarginProtection(row)) {
+    if (isVoid || wonArbi) return { stake: amount, fee: 0, total: amount };
+    const keep = Math.min(fee, amount);
+    return { stake: Math.max(0, amount - keep), fee: keep, total: Math.max(0, amount - keep) };
+  }
   if (isFeeUpfrontProtection(row)) {
     if (isVoid) return { stake: 0, fee, total: fee };
     if (!wonArbi) return { stake: 0, fee: 0, total: 0 };
@@ -135,10 +159,20 @@ export function settlementCreditCents(row, outcome) {
 }
 
 /**
- * Bucket de crédito após settle ArbiShield / Empate Anula:
- * Sempre `deduction_balance_cents` (UI: **Saldo Reembolso** — usável + sacável).
+ * Compatibilidade: bucket padrão do fluxo anterior.
  */
 export function creditBucketForSettlement(_balanceType) {
+  return "deduction_balance_cents";
+}
+
+/** Bucket explícito do novo fluxo. */
+export function settlementCreditBucket(row, outcome) {
+  if (
+    isLockedMarginProtection(row) &&
+    normalizeSettleOutcome(outcome) !== "arbishield"
+  ) {
+    return "balance_cents";
+  }
   return "deduction_balance_cents";
 }
 
@@ -151,7 +185,7 @@ export function settlementStatusForOutcome(outcome) {
 }
 
 /**
- * fee_upfront sobre odd BACK efetiva.
+ * Margem registrada sobre odd BACK efetiva.
  * amountCents = cobertura (LAY=responsabilidade · BACK=stake).
  */
 export function calcFeeUpfront(amountCents, odd) {
@@ -161,10 +195,8 @@ export function calcFeeUpfront(amountCents, odd) {
   const grossReturnCents = Math.round(coverage * o);
   const grossProfitCents = Math.max(0, grossReturnCents - coverage);
   const userProfitCents = Math.round(coverage * 0.015);
-  const arbiShieldDeductionCents = Math.max(
-    0,
-    grossProfitCents - userProfitCents
-  );
+  const grossProfitMarginCents = Math.round(grossProfitCents * 0.045);
+  const marginCents = userProfitCents + grossProfitMarginCents;
   return {
     stakeCents: coverage,
     responsibilityCents: coverage,
@@ -174,8 +206,12 @@ export function calcFeeUpfront(amountCents, odd) {
     grossReturnCents,
     grossProfitCents,
     userProfitCents,
-    arbiShieldDeductionCents,
-    billing_model: "fee_upfront_v1",
+    grossProfitMarginCents,
+    marginCents,
+    // Nome preservado para callers legados; neste modelo a margem não é cobrada
+    // na criação.
+    arbiShieldDeductionCents: marginCents,
+    billing_model: "locked_margin_v2",
   };
 }
 

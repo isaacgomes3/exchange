@@ -3,7 +3,7 @@
  *
  * TRAVADO — DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST
  * Fonte da verdade das regras: scripts/lib/protection-flow-contract.mjs
- * (protection-flow-contract-v1). Não alterar fee_upfront / LAY=resp / BACK=stake
+ * (locked_margin_v2). Não alterar LAY=resp / BACK=stake
  * sem solicitação explícita do produto.
  */
 
@@ -28,6 +28,7 @@ export type CreateProtectionResult = {
   amountCents: number;
   balanceAfterCents: number;
   feeChargedCents?: number;
+  marginCents?: number;
   billingModel?: string;
 };
 
@@ -44,7 +45,7 @@ export function layToBackOdd(layOdd: number) {
 }
 
 /**
- * fee_upfront_v1 sobre odd BACK efetiva; não trava o capital da entrada.
+ * Margem do novo fluxo sobre odd BACK efetiva; não é cobrada na entrada.
  * `amountCents` = cobertura informada pelo cliente:
  *   BACK → stake
  *   LAY  → responsabilidade (já convertida via odd back equiv. em calcLay)
@@ -56,7 +57,8 @@ export function calcFeeUpfront(amountCents: number, odd: number) {
   const grossReturnCents = Math.round(coverage * o);
   const grossProfitCents = Math.max(0, grossReturnCents - coverage);
   const userProfitCents = Math.round(coverage * 0.015);
-  const arbiShieldDeductionCents = Math.max(0, grossProfitCents - userProfitCents);
+  const grossProfitMarginCents = Math.round(grossProfitCents * 0.045);
+  const marginCents = userProfitCents + grossProfitMarginCents;
   return {
     stakeCents: coverage,
     responsibilityCents: coverage,
@@ -66,11 +68,14 @@ export function calcFeeUpfront(amountCents: number, odd: number) {
     grossReturnCents,
     grossProfitCents,
     userProfitCents,
-    arbiShieldDeductionCents,
+    grossProfitMarginCents,
+    marginCents,
+    // Compatibilidade com callers existentes: neste fluxo não é cobrança upfront.
+    arbiShieldDeductionCents: marginCents,
     exchangeFeeCents: 0,
     lockedDeductionCents: 0,
     exchangeProfitNetCents: grossProfitCents,
-    billing_model: "fee_upfront_v1" as const,
+    billing_model: "locked_margin_v2" as const,
   };
 }
 
@@ -124,12 +129,8 @@ function availableBalance(
 ): number {
   if (balanceType === "DEMO") return num(profile.demo_balance_cents);
   if (balanceType === "INVESTOR") return num(profile.investor_balance_cents);
-  // Banca real + legado reusable + Saldo Reembolso (retornos ArbiShield)
-  return (
-    num(profile.balance_cents) +
-    num(profile.reusable_balance_cents) +
-    num(profile.deduction_balance_cents)
-  );
+  // Novo fluxo usa exclusivamente o Saldo Apostador.
+  return num(profile.balance_cents);
 }
 
 export async function createProtection(
@@ -138,7 +139,8 @@ export async function createProtection(
 ): Promise<CreateProtectionResult> {
   const amountCents = Math.floor(Number(input.amountCents));
   const odd = Number(input.odd);
-  const balanceType: BalanceType = input.balanceType || "REAL";
+  // O novo fluxo sempre usa o Saldo Apostador, independentemente do hint legado.
+  const balanceType: BalanceType = "REAL";
 
   if (!input.userId) throw Object.assign(new Error("Não autorizado"), { status: 401 });
   if (!input.matchId) throw Object.assign(new Error("matchId obrigatório"), { status: 400 });
@@ -250,13 +252,13 @@ export async function createProtection(
   }
 
   const c = marketType === "BACK" ? calcBack(amountCents, odd) : calcLay(amountCents, odd);
-  const feeCents = Math.max(0, num(c.arbiShieldDeductionCents));
+  const marginCents = Math.max(0, num(c.marginCents));
 
   const available = availableBalance(profile, balanceType);
-  if (feeCents > available) {
+  if (amountCents > available) {
     throw Object.assign(
       new Error(
-        `Saldo insuficiente para a dedução de ${(feeCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
+        `Saldo Apostador insuficiente para bloquear ${(amountCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
       ),
       { status: 400 }
     );
@@ -266,34 +268,11 @@ export async function createProtection(
   let patch: Record<string, number> = {};
   let balanceAfter = 0;
 
-  if (balanceType === "REAL") {
-    let left = feeCents;
-    const bal =
-      num(profile.balance_cents) + num(profile.reusable_balance_cents);
-    const ded = num(profile.deduction_balance_cents);
-    if (bal >= left) {
-      patch = {
-        balance_cents: bal - left,
-        reusable_balance_cents: 0,
-        deduction_balance_cents: ded,
-      };
-    } else {
-      left -= bal;
-      patch = {
-        balance_cents: 0,
-        reusable_balance_cents: 0,
-        deduction_balance_cents: Math.max(0, ded - left),
-      };
-    }
-    balanceAfter =
-      num(patch.balance_cents) + num(patch.deduction_balance_cents);
-  } else {
-    const field = pickBalanceField(balanceType);
-    const cur = num(profile[field]);
-    patch = { [field]: cur - feeCents };
-    balanceAfter = cur - feeCents;
-  }
-  // fee_upfront: NÃO incrementa locked_balance com o stake
+  patch = {
+    balance_cents: num(profile.balance_cents) - amountCents,
+    locked_balance_cents: num(profile.locked_balance_cents) + amountCents,
+  };
+  balanceAfter = num(patch.balance_cents);
 
   const { error: debitErr } = await admin
     .from("profiles")
@@ -308,10 +287,11 @@ export async function createProtection(
     market_name: market?.name || null,
     market_type: marketType,
     market_odd: market?.odd ?? odd,
-    source: "v2_create_protection_fee_upfront",
-    billing_model: "fee_upfront_v1",
-    fee_upfront: true,
-    fee_charged_cents: feeCents,
+    source: "v2_create_protection_locked_margin",
+    billing_model: "locked_margin_v2",
+    locked_margin: true,
+    margin_cents: marginCents,
+    fee_charged_cents: 0,
     // LAY = responsabilidade · BACK = stake
     input_mode: marketType === "LAY" ? "responsabilidade" : "stake",
     stake_cents: marketType === "BACK" ? amountCents : num(c.stakeCents),
@@ -331,7 +311,7 @@ export async function createProtection(
         status: "active",
         amount_cents: c.coverageCents,
         user_profit_cents: c.userProfitCents,
-        platform_deduction_cents: feeCents,
+        platform_deduction_cents: marginCents,
         balance_before_cents: balanceBefore,
         balance_after_cents: balanceAfter,
         metadata: meta,
@@ -353,9 +333,9 @@ export async function createProtection(
         amount_cents: c.responsibilityCents,
         responsibility_cents: c.responsibilityCents,
         user_profit_cents: c.userProfitCents,
-        platform_deduction_cents: feeCents,
-        platform_profit_cents: feeCents,
-        locked_deduction_cents: 0,
+        platform_deduction_cents: marginCents,
+        platform_profit_cents: marginCents,
+        locked_deduction_cents: marginCents,
         exchange_fee_cents: 0,
         exchange_profit_net_cents: c.grossProfitCents,
         balance_before_cents: balanceBefore,
@@ -377,6 +357,7 @@ export async function createProtection(
       .update({
         balance_cents: profile.balance_cents,
         reusable_balance_cents: profile.reusable_balance_cents,
+        deduction_balance_cents: profile.deduction_balance_cents,
         demo_balance_cents: profile.demo_balance_cents,
         investor_balance_cents: profile.investor_balance_cents,
         locked_balance_cents: profile.locked_balance_cents,
@@ -409,8 +390,8 @@ export async function createProtection(
 
   await admin.from("wallet_transactions").insert({
     user_id: input.userId,
-    type: "protection_fee",
-    amount_cents: -feeCents,
+    type: "protection_lock",
+    amount_cents: -amountCents,
     balance_before_cents: balanceBefore,
     balance_after_cents: balanceAfter,
     ref: protectionId,
@@ -419,9 +400,9 @@ export async function createProtection(
       match_id: input.matchId,
       market_type: marketType,
       balance_type: balanceType,
-      billing_model: "fee_upfront_v1",
+      billing_model: "locked_margin_v2",
       stake_cents: amountCents,
-      fee_cents: feeCents,
+      margin_cents: marginCents,
     },
   });
 
@@ -430,8 +411,9 @@ export async function createProtection(
     protectionId,
     marketType,
     amountCents,
-    feeChargedCents: feeCents,
-    billingModel: "fee_upfront_v1",
+    feeChargedCents: 0,
+    marginCents,
+    billingModel: "locked_margin_v2",
     balanceAfterCents: balanceAfter,
   };
 }
