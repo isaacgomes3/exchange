@@ -267,7 +267,7 @@
           je = "Reembolso";
           pe = Ne;
           Ae = true;
-          Qe = "Reembolso · destravou 100% (Congelado → Apostador)";
+          Qe = "Reembolso · Destrava (Congelado → Apostador) e Devolve 100% do stake";
         } else if (isExch) {
           je = "Venceu Exchange";
           var fee = Math.max(0, Ye);

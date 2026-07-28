@@ -3,8 +3,8 @@
 #
 # Fluxo (um PATCH: Congelado → Apostador — sem crédito em dobro):
 #   Proteger         → Apostador −R · Congelado +R
-#   Reembolso        → destrava 100% do stake (API outcome=arbishield)
-#   Venceu Exchange  → destrava stake − taxa (API outcome=exchange)
+#   Reembolso        → Destrava (Congelado → Apostador) e Devolve 100% (API: arbishield)
+#   Venceu Exchange  → Destrava stake − taxa (API: exchange)
 #
 # Na VPS (root):
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-do-zero-47c1/scripts/vps-hotfix-protecao-do-zero.sh")
@@ -117,9 +117,12 @@ grep -qi 'sem reembolso ao usuário' "$WEB/admin-jogos.html" \
   && die "admin-jogos ainda diz sem reembolso (Exchange)"
 grep -q 'REEMBOLSO' "$WEB/admin-jogos.html" || die "admin-jogos sem botão REEMBOLSO"
 grep -qi 'VENCEU EXCHANGE' "$WEB/admin-jogos.html" || die "admin-jogos sem botão VENCEU EXCHANGE"
-# anti-regressão: “destrava · devolve” sugere crédito em dobro
-if grep -Eiq 'Destrava.*devolve|devolve 100% do stake|devolve stake menos' "$WEB/admin-jogos.html"; then
-  die "admin-jogos ainda usa 'destrava · devolve' (ambíguo)"
+grep -q 'Destrava (Congelado → Apostador) e Devolve 100% do stake' "$WEB/admin-jogos.html" \
+  || die "admin-jogos sem texto oficial do Reembolso"
+# anti-regressão: Venceu Exchange não usa “devolve” ambíguo de stake integral
+if grep -Eiq 'VENCEU EXCHANGE|Venceu Exchange' "$WEB/admin-jogos.html" \
+  && grep -Eiq 'devolve stake menos|Destrava · devolve stake' "$WEB/admin-jogos.html"; then
+  die "Venceu Exchange ainda usa 'destrava · devolve' ambíguo"
 fi
 # bust cache leve
 touch "$WEB/.fluxo-protecao-v1" 2>/dev/null || true

@@ -583,8 +583,8 @@
         <div id="settleOutcomeBox" style="display:grid;gap:10px;margin-top:8px">
           <button type="button" class="btn btn-ghost" id="btnOutcomeArbi" data-outcome="arbishield" style="justify-content:flex-start;text-align:left;padding:14px 16px;border-color:rgba(201,242,35,0.45)">
             <span style="display:block;font-size:11px;letter-spacing:0.08em">REEMBOLSO</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Destrava 100% do stake (Congelado → Apostador)</span>
-            <span id="settleRefundHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Destrava: —</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Destrava (Congelado → Apostador) e Devolve 100% do stake</span>
+            <span id="settleRefundHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Destrava + devolve 100%: —</span>
           </button>
           <button type="button" class="btn btn-ghost" id="btnOutcomeExch" data-outcome="exchange" style="justify-content:flex-start;text-align:left;padding:14px 16px">
             <span style="display:block;font-size:11px;letter-spacing:0.08em">VENCEU EXCHANGE</span>
@@ -2262,7 +2262,7 @@
           money(stake);
         if ($("settleRefundHint")) {
           $("settleRefundHint").textContent =
-            "Destrava 100%: " + money(refund);
+            "Destrava (Congelado → Apostador) e Devolve 100%: " + money(refund);
         }
         if ($("settleDeductHint")) {
           $("settleDeductHint").textContent =
@@ -2386,7 +2386,7 @@
               " proteção(ões) · " +
               (outcome === "exchange"
                 ? "Venceu Exchange · destravado " + money(data.refundedCents || 0)
-                : "Reembolso · destravado " + money(data.refundedCents || 0) + " (100%)")
+                : "Reembolso · destravou e devolveu " + money(data.refundedCents || 0) + " (100%)")
           );
           $("settleModal").classList.remove("show");
           platformLoaded = false;

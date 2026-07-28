@@ -3,8 +3,8 @@
  *
  * Spec (uma operação de carteira por liquidação — NÃO destrava + devolve em dobro):
  *   Proteger         → Apostador −R · Congelado +R · protection_lock
- *   Reembolso        → Congelado −R · Apostador +R (100%)   [API: arbishield]
- *   Venceu Exchange  → Congelado −R · Apostador +(R−taxa)   [API: exchange]
+ *   Reembolso        → Destrava (Congelado → Apostador) e Devolve 100% do stake [API: arbishield]
+ *   Venceu Exchange  → Destrava stake − taxa (Congelado → Apostador)           [API: exchange]
  *                      taxa = 4,5% no lucro + 1,5% do stake
  *
  * “Destravar” = mover Congelado → Apostador no mesmo PATCH (não são 2 créditos).
