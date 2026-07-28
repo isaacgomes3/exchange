@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
-# Proteger: só jogos com liquidez restante na grade (legado Je).
-# Mantém logos + odd readonly no mesmo arquivo (anti-regressão).
+# ⚠️ OBSOLETO — NÃO USE NA VPS.
+# Este hotfix ESCONDE jogos sem liquidez e conflitava com o pedido do produto.
+# Use o consolidado:
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-saldo-protecao-47c1/scripts/vps-hotfix-consolidado-proteger-settle.sh")
 #
-# Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-proteger-so-com-liquidez.sh")
+# Proteger: só jogos com liquidez restante na grade (legado Je) — DEPRECATED.
 set -euo pipefail
+
+echo "AVISO: vps-hotfix-proteger-so-com-liquidez.sh está OBSOLETO." >&2
+echo "Use: vps-hotfix-consolidado-proteger-settle.sh" >&2
+if [[ "${FORCE_OLD_LIQ_HOTFIX:-}" != "1" ]]; then
+  echo "Abortando. Para forçar o antigo: FORCE_OLD_LIQ_HOTFIX=1" >&2
+  exit 1
+fi
 
 REF="${ARBISHIELD_REF:-5d2843cc3f49c86222e2159c89134da067ec41c1}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
