@@ -1071,13 +1071,13 @@ async function createProtection(body, userToken) {
     market =
       markets.find(
         (m) => String(m.market_type || "").toUpperCase() === marketType
-      ) ||
-      markets[0] ||
-      null;
+      ) || null;
   }
 
   // back-market-id-v1: BACK exige market_id NOT NULL — garante id e persiste se faltava
-  if (market && !market.id) {
+  // Não use um mercado de outro tipo como fallback: isso vincularia uma BACK
+  // ao market_id de uma LAY.
+  if (marketType === "BACK" && market && !market.id) {
     market.id = randomUUID();
     const idx = markets.findIndex(
       (m) =>

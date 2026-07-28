@@ -159,13 +159,13 @@ export async function createProtection(
     market =
       markets.find(
         (m) => String(m.market_type || "").toUpperCase() === marketType
-      ) ||
-      markets[0] ||
-      null;
+      ) || null;
   }
 
-  // BACK exige market_id NOT NULL — gera id e persiste no match se faltava
-  if (market && !market.id) {
+  // BACK exige market_id NOT NULL — gera id e persiste no match se faltava.
+  // Não use um mercado de outro tipo como fallback: isso vincularia uma BACK
+  // ao market_id de uma LAY.
+  if (marketType === "BACK" && market && !market.id) {
     market = { ...market, id: crypto.randomUUID() };
     const idx = markets.findIndex(
       (m) =>
