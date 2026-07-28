@@ -368,14 +368,14 @@
           return { label: "", kind: "", refundCents: null };
         }
         var amount = nCents(row.responsibility_cents || row.amount_cents);
-        var fee = deductionCentsOf(row);
         var won = outcome === "arbishield";
         var refund = 0;
         if (isFeeUpfront(row)) {
-          refund = won ? amount + fee : 0;
+          refund = won ? amount : 0;
         } else if (won) {
           refund = amount;
         } else {
+          var fee = deductionCentsOf(row);
           refund = Math.max(0, amount - Math.min(fee, amount));
         }
         return {

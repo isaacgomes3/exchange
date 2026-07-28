@@ -27,7 +27,7 @@ const root = resolve(__dirname, "..");
 
 describe("contrato travado — metadados", () => {
   it("mantém versão e lock", () => {
-    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v2");
+    assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v3");
     assert.equal(
       PROTECTION_FLOW_LOCK,
       "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST"
@@ -37,7 +37,7 @@ describe("contrato travado — metadados", () => {
   it("AGENTS.md cita o lock do fluxo", () => {
     const agents = readFileSync(resolve(root, "AGENTS.md"), "utf8");
     assert.match(agents, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
-    assert.match(agents, /protection-flow-contract-v2/);
+    assert.match(agents, /protection-flow-contract-v3/);
     assert.match(agents, /Saldo Reembolso/);
     assert.match(agents, /Empate Anula/);
   });
@@ -128,9 +128,9 @@ describe("settle — fee_upfront", () => {
     assert.equal(settlementDeductionCents(row), 3763);
   });
 
-  it("ArbiShield devolve stake + dedução", () => {
+  it("ArbiShield devolve somente a stake", () => {
     const p = settlementCreditParts(row, "arbishield");
-    assert.deepEqual(p, { stake: 100_000, fee: 3763, total: 103_763 });
+    assert.deepEqual(p, { stake: 100_000, fee: 0, total: 100_000 });
   });
 
   it("Exchange não devolve nada", () => {

@@ -98,7 +98,7 @@ try {
     if (isFeeUpfrontProtection(row)) {
       if (isVoid) return { stake: 0, fee, total: fee };
       if (!wonArbi) return { stake: 0, fee: 0, total: 0 };
-      return { stake: amount, fee, total: amount + fee };
+      return { stake: amount, fee: 0, total: amount };
     }
     if (isVoid || wonArbi) return { stake: amount, fee: 0, total: amount };
     const net = Math.max(0, amount - Math.min(fee, amount));
@@ -5829,7 +5829,7 @@ async function creditWalletForSettlement(row, outcome, now) {
           note: isVoid
             ? "Empate Anula: devolve só a dedução (Saldo Reembolso)"
             : wonArbi
-              ? "ArbiShield: stake + dedução creditados (Saldo Reembolso)"
+              ? "ArbiShield: somente stake/responsabilidade creditada (Saldo Reembolso)"
               : undefined,
         },
       },

@@ -8,13 +8,13 @@
  * de crédito no settle; os testes em protection-flow-contract.test.mjs
  * travam o comportamento no CI.
  *
- * Versão: protection-flow-contract-v2 (2026-07-25)
+ * Versão: protection-flow-contract-v3 (2026-07-28)
  *   + Empate Anula / void → devolve só a dedução (fee_upfront)
  * ============================================================================
  */
 
 export const PROTECTION_FLOW_CONTRACT_VERSION =
-  "protection-flow-contract-v2";
+  "protection-flow-contract-v3";
 
 /** Marcador exigido pelos testes / hotfixes — não renomear. */
 export const PROTECTION_FLOW_LOCK =
@@ -102,7 +102,7 @@ export function settlementDeductionCents(row) {
  * Regras de crédito no settle (TRAVADAS):
  *
  * fee_upfront_v1:
- *   - ArbiShield → stake/responsabilidade + dedução (total)
+ *   - ArbiShield → somente stake/responsabilidade
  *   - Exchange   → 0 (dedução permanece na plataforma)
  *   - Empate Anula / void → só a dedução (aposta anulada)
  *
@@ -122,7 +122,7 @@ export function settlementCreditParts(row, outcome) {
   if (isFeeUpfrontProtection(row)) {
     if (isVoid) return { stake: 0, fee, total: fee };
     if (!wonArbi) return { stake: 0, fee: 0, total: 0 };
-    return { stake: amount, fee, total: amount + fee };
+    return { stake: amount, fee: 0, total: amount };
   }
   if (isVoid || wonArbi) return { stake: amount, fee: 0, total: amount };
   const keep = Math.min(fee, amount);

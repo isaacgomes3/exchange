@@ -633,7 +633,7 @@
         <div id="settleOutcomeBox" style="display:grid;gap:10px;margin-top:8px">
           <button type="button" class="btn btn-ghost" id="btnOutcomeArbi" data-outcome="arbishield" style="justify-content:flex-start;text-align:left;padding:14px 16px;border-color:rgba(201,242,35,0.45)">
             <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU ARBISHIELD</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção válida · devolve stake/responsabilidade + dedução (Saldo Reembolso)</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção válida · devolve somente a stake/responsabilidade (Saldo Reembolso)</span>
             <span id="settleRefundHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">A creditar: —</span>
           </button>
           <button type="button" class="btn btn-ghost" id="btnOutcomeExch" data-outcome="exchange" style="justify-content:flex-start;text-align:left;padding:14px 16px">
@@ -3485,10 +3485,9 @@
         if ($("settleRefundHint")) {
           $("settleRefundHint").textContent =
             "A creditar no Saldo Reembolso: " +
-            money(refund + margin) +
-            "  ·  stake " +
             money(refund) +
-            (margin > 0 ? " + dedução " + money(margin) : "");
+            "  ·  somente stake/responsabilidade" +
+            (margin > 0 ? " · dedução retida " + money(margin) : "");
         }
         if ($("settleDeductHint")) {
           $("settleDeductHint").textContent =

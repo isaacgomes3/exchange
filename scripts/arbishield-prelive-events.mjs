@@ -1501,7 +1501,7 @@ async function creditWalletForSettlement(row, outcome, now) {
       nCents(p.locked_balance_cents) - amount
     );
   }
-  // ArbiShield: stake + dedução → bucket do contrato (REAL=Saldo Reembolso).
+  // ArbiShield: somente stake/responsabilidade → Saldo Reembolso.
   const bucket = creditBucketForSettlement(balanceType);
   if (bucket === "demo_balance_cents") {
     patch.demo_balance_cents = nCents(p.demo_balance_cents) + credit;
@@ -1573,7 +1573,7 @@ async function creditWalletForSettlement(row, outcome, now) {
           note: isVoid
             ? "Empate Anula: devolve só a dedução (Saldo Reembolso)"
             : wonArbi
-              ? "ArbiShield: stake + dedução creditados (Saldo Reembolso / bucket origem)"
+              ? "ArbiShield: somente stake/responsabilidade creditada (Saldo Reembolso)"
               : undefined,
         },
       },
