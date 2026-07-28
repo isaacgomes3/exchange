@@ -2,7 +2,7 @@
 # Hotfix: busca de times + logos + formulário full-page no Lançar Evento Manual
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/vps-hotfix-times-busca-logo.sh?v=11")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/vps-hotfix-times-busca-logo.sh?v=12")
 set -euo pipefail
 
 REPO="isaacgomes3/exchange"
@@ -23,6 +23,17 @@ verify_html() {
 
 need curl
 mkdir -p "$WEB" "$SCRIPTS_DIR"
+
+log "Limpar artefatos de layout antigo (drawer / guard / vps)"
+rm -f \
+  "$WEB_ROOT/admin-jogos-vps.html" \
+  "$WEB_ROOT/assets/admin-jogos-vps.html" \
+  "$WEB_ROOT/assets/admin-jogos-guard.js" \
+  "$WEB_ROOT/assets/admin-jogos-force-vps.js" \
+  "$WEB/admin-jogos-vps.html" \
+  "$WEB/assets/admin-jogos-guard.js" \
+  "$WEB/assets/admin-jogos-force-vps.js" \
+  2>/dev/null || true
 
 log "Resolvendo commit mais recente da branch $BRANCH"
 COMMIT_SHA="${ARBISHIELD_COMMIT:-}"
