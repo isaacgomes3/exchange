@@ -862,6 +862,115 @@
       var teamSearchTimers = { home: null, away: null };
       var teamSearchSeq = { home: 0, away: 0 };
 
+      function mapTsdbTeamsLocal(rows, q) {
+        return (Array.isArray(rows) ? rows : [])
+          .filter(function (t) {
+            return String(t.strSport || "").toLowerCase() === "soccer";
+          })
+          .map(function (t) {
+            var logo = String(t.strBadge || t.strLogo || "").trim() || "";
+            return {
+              name: String(t.strTeam || "").trim(),
+              country: String(t.strCountry || "").trim() || null,
+              league: String(t.strLeague || "").trim() || null,
+              logo: logo,
+              logoPng: logo,
+              logoSvg: null,
+            };
+          })
+          .filter(function (t) {
+            return t.name && t.logo;
+          });
+      }
+
+      function rankTeamMatchLocal(team, q) {
+        var name = String(team.name || "").toLowerCase();
+        var ql = String(q || "").toLowerCase();
+        var score = 100;
+        if (name === ql) score = 0;
+        else if (name.indexOf(ql) === 0) score = 10;
+        else if (name.indexOf(ql) >= 0) score = 20;
+        var league = String(team.league || "").toLowerCase();
+        if (/women|femin|a-liga|wsl/.test(league) || /\bQ\b/.test(team.name || "")) {
+          score += 40;
+        }
+        return score;
+      }
+
+      async function fetchTeamsForPicker(query) {
+        var q = String(query || "").trim();
+        if (q.length < 2) return [];
+        if (window.ArbiV2 && typeof ArbiV2.searchFootballTeams === "function") {
+          return ArbiV2.searchFootballTeams(q);
+        }
+
+        async function fromApi(term) {
+          try {
+            var res = await fetch(
+              "/api/arbishield/football-teams?q=" + encodeURIComponent(term),
+              { cache: "no-store" }
+            );
+            var ct = String(res.headers.get("content-type") || "");
+            if (res.ok && ct.indexOf("json") >= 0) {
+              var data = await res.json();
+              if (data && data.ok !== false && Array.isArray(data.teams) && data.teams.length) {
+                return data.teams;
+              }
+            }
+          } catch (e) {}
+          return [];
+        }
+
+        async function fromTsdb(term) {
+          try {
+            var res = await fetch(
+              "https://www.thesportsdb.com/api/v1/json/123/searchteams.php?t=" +
+                encodeURIComponent(term),
+              { cache: "no-store" }
+            );
+            if (!res.ok) return [];
+            var raw = await res.json();
+            return mapTsdbTeamsLocal(raw && raw.teams, term);
+          } catch (e2) {
+            return [];
+          }
+        }
+
+        var variants = [q];
+        if (q.indexOf(" ") < 0) {
+          variants.push(q + " BK");
+          variants.push(q + " FC");
+          variants.push(q + " United");
+        }
+
+        var seen = {};
+        var all = [];
+        for (var i = 0; i < variants.length; i++) {
+          var term = variants[i];
+          var batch = await fromApi(term);
+          if (!batch.length) batch = await fromTsdb(term);
+          for (var j = 0; j < batch.length; j++) {
+            var t = batch[j];
+            var key = String(t.name || "").toLowerCase();
+            if (!key || seen[key]) continue;
+            seen[key] = 1;
+            all.push(t);
+          }
+        }
+
+        all.sort(function (a, b) {
+          return rankTeamMatchLocal(a, q) - rankTeamMatchLocal(b, q);
+        });
+        return all.slice(0, 20);
+      }
+
+      function isInvalidLogoValue(value) {
+        var v = String(value || "").trim();
+        if (!v) return false;
+        if (/^not[_-]?found$/i.test(v)) return true;
+        return !/^https?:\/\//i.test(v);
+      }
+
       function selectFootballTeam(side, team) {
         var nameEl = $(side === "home" ? "manHome" : "manAway");
         var logoEl = $(side === "home" ? "manHomeLogo" : "manAwayLogo");
@@ -887,15 +996,7 @@
           '<div class="team-suggest-loading">Buscando times…</div>'
         );
         try {
-          var teams = [];
-          if (window.ArbiV2 && typeof ArbiV2.searchFootballTeams === "function") {
-            teams = await ArbiV2.searchFootballTeams(q);
-          } else {
-            var data = await apiGet(
-              "/api/arbishield/football-teams?q=" + encodeURIComponent(q)
-            );
-            teams = Array.isArray(data.teams) ? data.teams : [];
-          }
+          var teams = await fetchTeamsForPicker(q);
           if (seq !== teamSearchSeq[side]) return;
           if (!teams.length) {
             showTeamSuggest(
@@ -951,6 +1052,10 @@
         var logoEl = $(side === "home" ? "manHomeLogo" : "manAwayLogo");
         if (!nameEl) return;
         nameEl.addEventListener("input", function () {
+          if (logoEl && isInvalidLogoValue(logoEl.value)) {
+            logoEl.value = "";
+            setTeamLogoPreview(side, "");
+          }
           clearTimeout(teamSearchTimers[side]);
           teamSearchTimers[side] = setTimeout(function () {
             searchFootballTeams(side, nameEl.value);
@@ -1785,18 +1890,29 @@
       }
 
       async function fillMissingManualLogos() {
-        if (!window.ArbiV2 || typeof ArbiV2.resolveFootballTeamLogo !== "function") return;
+        async function resolve(name) {
+          if (window.ArbiV2 && typeof ArbiV2.resolveFootballTeamLogo === "function") {
+            return ArbiV2.resolveFootballTeamLogo(name);
+          }
+          var teams = await fetchTeamsForPicker(name);
+          if (!teams.length) return "";
+          var exact = teams.find(function (t) {
+            return String(t.name || "").toLowerCase() === name.toLowerCase();
+          });
+          return (exact && exact.logo) || (teams[0] && teams[0].logo) || "";
+        }
+
         var homeName = $("manHome").value.trim();
         var awayName = $("manAway").value.trim();
-        if (!$("manHomeLogo").value.trim() && homeName) {
-          var homeLogo = await ArbiV2.resolveFootballTeamLogo(homeName);
+        if ((!$("manHomeLogo").value.trim() || isInvalidLogoValue($("manHomeLogo").value)) && homeName) {
+          var homeLogo = await resolve(homeName);
           if (homeLogo) {
             $("manHomeLogo").value = homeLogo;
             setTeamLogoPreview("home", homeLogo);
           }
         }
-        if (!$("manAwayLogo").value.trim() && awayName) {
-          var awayLogo = await ArbiV2.resolveFootballTeamLogo(awayName);
+        if ((!$("manAwayLogo").value.trim() || isInvalidLogoValue($("manAwayLogo").value)) && awayName) {
+          var awayLogo = await resolve(awayName);
           if (awayLogo) {
             $("manAwayLogo").value = awayLogo;
             setTeamLogoPreview("away", awayLogo);
