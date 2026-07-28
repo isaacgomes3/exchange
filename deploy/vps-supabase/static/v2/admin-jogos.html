@@ -2134,7 +2134,7 @@
           var openByMatch = {};
           try {
             var openProt = await restAuth(
-              "protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,responsibility_cents,platform_deduction_cents,locked_deduction_cents&limit=2000"
+              "protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,responsibility_cents,platform_deduction_cents,locked_deduction_cents,odd,metadata&limit=2000"
             );
             (openProt || []).forEach(function (p) {
               if (!p.match_id) return;
@@ -2144,6 +2144,7 @@
                   cents: 0,
                   refund: 0,
                   margin: 0,
+                  exchangeDeduction: 0,
                 };
               }
               var amt = Number(p.responsibility_cents || p.amount_cents || 0);
@@ -2157,11 +2158,22 @@
               // ArbiShield credita stake + margem (Saldo Dedução)
               openByMatch[p.match_id].refund += amt;
               openByMatch[p.match_id].margin += Math.max(0, margin);
+              var gross = Number(
+                p.metadata && p.metadata.calculations && p.metadata.calculations.grossProfitCents || 0
+              );
+              if (!(gross > 0) && Number(p.odd) > 1.01) {
+                var effectiveOdd = Number(p.odd);
+                if (p.metadata && String(p.metadata.market_type || "").toUpperCase() === "LAY") {
+                  effectiveOdd = effectiveOdd / (effectiveOdd - 1);
+                }
+                gross = Math.max(0, Math.round(amt * effectiveOdd) - amt);
+              }
+              openByMatch[p.match_id].exchangeDeduction += Math.max(0, gross - margin);
             });
           } catch (e1) {}
           try {
             var openBack = await restAuth(
-              "back_protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,platform_deduction_cents,locked_deduction_cents&limit=1000"
+              "back_protections?status=in.(active,pending,review_odd)&select=match_id,amount_cents,platform_deduction_cents,locked_deduction_cents,odd,metadata&limit=1000"
             );
             (openBack || []).forEach(function (p) {
               if (!p.match_id) return;
@@ -2171,6 +2183,7 @@
                   cents: 0,
                   refund: 0,
                   margin: 0,
+                  exchangeDeduction: 0,
                 };
               }
               var amt = Number(p.amount_cents || 0);
@@ -2183,6 +2196,13 @@
               openByMatch[p.match_id].cents += amt;
               openByMatch[p.match_id].refund += amt;
               openByMatch[p.match_id].margin += Math.max(0, margin);
+              var backGross = Number(
+                p.metadata && p.metadata.calculations && p.metadata.calculations.grossProfitCents || 0
+              );
+              if (!(backGross > 0) && Number(p.odd) > 1.01) {
+                backGross = Math.max(0, Math.round(amt * Number(p.odd)) - amt);
+              }
+              openByMatch[p.match_id].exchangeDeduction += Math.max(0, backGross - margin);
             });
           } catch (e2) {}
 
@@ -2195,6 +2215,7 @@
               m._openStakeCents = op.cents;
               m._openRefundCents = op.refund;
               m._openMarginCents = op.margin;
+              m._openExchangeDeductionCents = op.exchangeDeduction;
               if (!(Number(m.used_protection_cents) > 0)) {
                 m.used_protection_cents = op.cents;
               }
@@ -2217,6 +2238,7 @@
               m._openStakeCents = op ? op.cents : 0;
               m._openRefundCents = op ? op.refund : 0;
               m._openMarginCents = op ? op.margin : 0;
+              m._openExchangeDeductionCents = op ? op.exchangeDeduction : 0;
               if (!(Number(m.used_protection_cents) > 0) && op) {
                 m.used_protection_cents = op.cents;
               }
@@ -3473,6 +3495,8 @@
         var stake = Number(m._openStakeCents || m.used_protection_cents || 0);
         var refund = Number(m._openRefundCents || stake);
         var margin = Number(m._openMarginCents || 0);
+        var exchangeDeduction = Number(m._openExchangeDeductionCents || 0);
+        var exchangeReturn = Math.max(0, stake - exchangeDeduction);
         var openN = Number(m._openProtections || 0);
         $("settleSummary").textContent =
           (m.home_team || "?") +
@@ -3487,17 +3511,17 @@
             "A creditar no Saldo Reembolso: " +
             money(refund) +
             "  ·  somente stake/responsabilidade" +
-            (margin > 0 ? " · dedução retida " + money(margin) : "");
+            (margin > 0 ? " · margem registrada " + money(margin) : "");
         }
         if ($("settleDeductHint")) {
           $("settleDeductHint").textContent =
-            margin > 0
-              ? "Dedução / margem ArbiShield retida: " + money(margin)
-              : "Dedução / margem ArbiShield: — (sem platform_deduction nesta proteção)";
+            exchangeDeduction > 0
+              ? "Dedução Exchange: " + money(exchangeDeduction) + " · retorno ao Apostador: " + money(exchangeReturn)
+              : "Dedução Exchange: — (sem lucro bruto/margem nesta proteção)";
         }
         if ($("settleStakeKeepHint")) {
           $("settleStakeKeepHint").textContent =
-            "No fee_upfront a dedução já foi cobrada na entrada; ao bater Exchange ela permanece na plataforma.";
+            "No Exchange, dedução = lucro bruto − margem registrada.";
         }
         if ($("settleVoidHint")) {
           $("settleVoidHint").textContent =
