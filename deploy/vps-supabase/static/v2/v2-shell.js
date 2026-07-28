@@ -642,6 +642,27 @@
             setTxt("v2BalAfiliado", afiliado);
             setTxt("v2BalCongelado", congelado);
             setTxt("v2BalProvedor", provedor);
+            // A liquidação pode terminar enquanto o shell está carregando.
+            // Reconsulta o perfil para não manter o chip com o saldo anterior.
+            setTimeout(async function () {
+              try {
+                var fresh = await appSupa
+                  .from("profiles")
+                  .select(
+                    "balance_cents,reusable_balance_cents,deduction_balance_cents,demo_balance_cents"
+                  )
+                  .eq("id", viewUserId)
+                  .maybeSingle();
+                var fp = fresh.data || {};
+                setTxt(
+                  "v2BalApostador",
+                  Number(fp.balance_cents || 0) +
+                    Number(fp.reusable_balance_cents || 0) +
+                    Number(fp.deduction_balance_cents || 0) +
+                    Number(fp.demo_balance_cents || 0)
+                );
+              } catch (refreshBalanceErr) {}
+            }, 1200);
             var displayName =
               p.full_name ||
               (imp && imp.name) ||
