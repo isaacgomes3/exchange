@@ -33,8 +33,8 @@ Se um pedido tangenciar esses arquivos por outro motivo (hotfix de JS, Encerrado
    A margem é apenas registrada: 1,5% da stake/responsabilidade + 4,5% do
    lucro bruto.
 2. **LAY** = responsabilidade; **BACK** = stake. Nunca lançar LAY+BACK no mesmo evento de teste.
-3. **Bateu ArbiShield:** move 100% da stake/responsabilidade automaticamente em
-   `deduction_balance_cents` (UI: **Saldo Reembolso** — usável + sacável).
+3. **Bateu ArbiShield:** destrava e devolve 100% da stake/responsabilidade ao
+   `balance_cents` (**Saldo Apostador**).
 4. **Bateu Exchange:** retém a margem e devolve o restante ao `balance_cents`.
 5. **Empate Anula / void:** devolve 100% ao `balance_cents`. Não é vitória Arbi nem Exchange.
 6. **Cancelar proteção:** devolve 100% ao `balance_cents` e libera o lock.

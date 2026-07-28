@@ -131,7 +131,7 @@ describe("settle — locked_margin_v2", () => {
     assert.equal(settlementDeductionCents(row), 6000);
   });
 
-  it("ArbiShield move 100% para Saldo Reembolso", () => {
+  it("ArbiShield devolve 100% ao Saldo Apostador", () => {
     const p = settlementCreditParts(row, "arbishield");
     assert.deepEqual(p, { stake: 100_000, fee: 0, total: 100_000 });
   });
@@ -163,7 +163,7 @@ describe("settle — locked_margin_v2", () => {
     assert.equal(settlementStatusForOutcome("arbishield"), "lost_exchange");
     assert.equal(settlementStatusForOutcome("exchange"), "won_exchange");
     assert.equal(settlementStatusForOutcome("empate_anula"), "void");
-    assert.equal(settlementCreditBucket(row, "arbishield"), "deduction_balance_cents");
+    assert.equal(settlementCreditBucket(row, "arbishield"), "balance_cents");
     assert.equal(settlementCreditBucket(row, "exchange"), "balance_cents");
     assert.equal(settlementCreditBucket(row, "void"), "balance_cents");
     assert.equal(creditBucketForSettlement("REAL"), "deduction_balance_cents");

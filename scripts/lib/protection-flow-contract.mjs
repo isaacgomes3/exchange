@@ -116,7 +116,7 @@ export function settlementDeductionCents(row) {
  * Regras de crédito no settle (TRAVADAS):
  *
  * locked_margin_v2:
- *   - ArbiShield → 100% da stake/responsabilidade para Saldo Reembolso
+ *   - ArbiShield → 100% da stake/responsabilidade para Saldo Apostador
  *   - Exchange   → stake − margem para Saldo Apostador; margem é retida
  *   - Empate Anula / void → 100% da stake para Saldo Apostador
  *
@@ -167,12 +167,7 @@ export function creditBucketForSettlement(_balanceType) {
 
 /** Bucket explícito do novo fluxo. */
 export function settlementCreditBucket(row, outcome) {
-  if (
-    isLockedMarginProtection(row) &&
-    normalizeSettleOutcome(outcome) !== "arbishield"
-  ) {
-    return "balance_cents";
-  }
+  if (isLockedMarginProtection(row)) return "balance_cents";
   return "deduction_balance_cents";
 }
 

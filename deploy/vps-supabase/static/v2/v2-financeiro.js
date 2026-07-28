@@ -261,7 +261,7 @@
           je = "ArbiShield";
           pe = Ne;
           Ae = true;
-          Qe = "Coberto pela ArbiShield • stake + dedução no Saldo Reembolso";
+          Qe = "Coberto pela ArbiShield • stake devolvida ao Saldo Apostador";
         } else if (Se === "exchange") {
           je = "Exchange";
           if (Ye > 0) {
