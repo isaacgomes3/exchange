@@ -55,7 +55,7 @@
         : "";
     } catch (e) {}
 
-    // Sem stake equivalente / Odd LAY → back equiv. no preview (pedido UI).
+    // Preview sem campos de stake equivalente / odd back (pedido UI).
 
     // preserva saldo disponível se já estiver no preview
     var availHtml = "";

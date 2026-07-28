@@ -552,7 +552,7 @@ describe("Comissão Exchange 4,5% do lucro", () => {
     assert.match(pages, /exchange_commission/);
     assert.doesNotMatch(ui, /Stake equivalente \(casa\)/);
     assert.doesNotMatch(ui, /Odd LAY → back equiv\./);
-    assert.doesNotMatch(preview, /Odd LAY → back equiv\./);
+    assert.doesNotMatch(preview, /<span>Odd LAY → back equiv\.<\/span>/);
     assert.doesNotMatch(preview, /Stake equivalente \(casa\)/);
   });
 

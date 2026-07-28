@@ -57,7 +57,7 @@ log "1) app-proteger.html"
 install "deploy/vps-supabase/static/v2/app-proteger.html" "$STATIC/app-proteger.html"
 
 log "2) proteger-preview-fix.js"
-install "deploy/vps-supabase/static/v2/proteger-preview-fix.js" "$STATIC/proteger-preview-fix.js" "Sem stake equivalente"
+install "deploy/vps-supabase/static/v2/proteger-preview-fix.js" "$STATIC/proteger-preview-fix.js" "sem campos de stake equivalente"
 
 echo
 echo "OK — campos removidos do preview Proteger."
