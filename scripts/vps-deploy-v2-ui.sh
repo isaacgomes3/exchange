@@ -45,7 +45,6 @@ admin.html
 app.html
 app-academia.html
 app-academia-video.html
-admin-jogos.html
 admin-desafios.html
 admin-desafio-sugestoes.html
 admin-monitoring-protections.html
@@ -100,5 +99,6 @@ EOF
 
 echo
 echo "OK — UI v2 atualizada (afiliados + provedor + financeiro + depósito + academia)"
+echo "  Admin Jogos NÃO incluído — use vps-hotfix-lancar-evento-manual.sh"
 echo "  Abra https://arbishield.app/app-afiliados.html (Ctrl+Shift+R)"
 echo "  Admin: https://arbishield.app/admin.html"

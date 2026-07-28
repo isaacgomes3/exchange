@@ -53,9 +53,8 @@ if command -v git >/dev/null 2>&1; then
   fi
 fi
 
-log "Páginas VPS (só rotas que travavam no SPA estático)"
+log "Páginas VPS (desafios/login — jogos usa admin-jogos.html canônico em /v2)"
 for pair in \
-  "deploy/vps-supabase/static/admin-jogos-vps.html:$WEB/admin-jogos-vps.html" \
   "deploy/vps-supabase/static/admin-desafios-vps.html:$WEB/admin-desafios-vps.html" \
   "deploy/vps-supabase/static/admin-login-vps.html:$WEB/admin-login-vps.html" \
   "deploy/vps-supabase/static/auth-vps.html:$WEB/auth-vps.html" \
@@ -66,9 +65,18 @@ for pair in \
   chmod 0644 "$dst"
 done
 mkdir -p "$WEB/assets"
-for asset in app-boot-fix.js app-stability.js admin-jogos-guard.js desafio-sugestoes-inject.js admin-modal-fix.js auth-boot-fix.js; do
+for asset in app-boot-fix.js app-stability.js desafio-sugestoes-inject.js admin-modal-fix.js auth-boot-fix.js; do
   download "deploy/vps-supabase/static/$asset" "$WEB/assets/$asset" || true
 done
+
+log "Gestão de Jogos (canônico manualLaunchPanel)"
+JOGOS_HELPER="$(mktemp)"
+curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/${BRANCH}/scripts/arbishield-fetch-admin-jogos.sh" -o "$JOGOS_HELPER" 2>/dev/null || \
+  curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/arbishield-fetch-admin-jogos.sh" -o "$JOGOS_HELPER"
+# shellcheck source=/dev/null
+source "$JOGOS_HELPER"
+arbishield_deploy_admin_jogos_html "$WEB" || warn "admin-jogos canônico não publicado"
+rm -f "$JOGOS_HELPER"
 
 log "SPA usuario (index.html + /app)"
 if [[ -f "$WEB/index.html.bak-stabilize" && ! -f "$WEB/index.html" ]]; then

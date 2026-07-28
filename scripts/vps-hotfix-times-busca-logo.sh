@@ -49,7 +49,6 @@ fetch "deploy/vps-supabase/static/v2/admin-jogos.html" "$WEB/admin-jogos.html"
 chmod 0644 "$WEB/admin-jogos.html"
 verify_html "$WEB/admin-jogos.html"
 cp -f "$WEB/admin-jogos.html" "$WEB_ROOT/admin-jogos.html" 2>/dev/null || true
-cp -f "$WEB/admin-jogos.html" "$WEB_ROOT/admin-jogos-vps.html" 2>/dev/null || true
 BUILD=$(grep -o 'manualLaunchPanel-v[0-9]*' "$WEB/admin-jogos.html" | head -1 || echo "manualLaunchPanel")
 log "  ok $WEB/admin-jogos.html ($(wc -c < "$WEB/admin-jogos.html") bytes, $BUILD)"
 

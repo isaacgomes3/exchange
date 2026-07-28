@@ -18,22 +18,13 @@ need curl
 need systemctl
 mkdir -p "$WEB_ROOT" "$WEB_V2" "$SCRIPTS_DIR"
 
-log "1/3 — UI admin-jogos + financeiro (v2 + raiz + VPS)"
-curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-jogos.html" -o "$WEB_V2/admin-jogos.html"
-chmod 0644 "$WEB_V2/admin-jogos.html"
-echo "  ok $WEB_V2/admin-jogos.html"
-
-# nginx-arbishield.app.conf: /admin/matches → /admin-jogos.html (raiz do site)
-curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-jogos.html" -o "$WEB_ROOT/admin-jogos.html"
-chmod 0644 "$WEB_ROOT/admin-jogos.html"
-echo "  ok $WEB_ROOT/admin-jogos.html"
-
-curl -fsSL "$RAW/deploy/vps-supabase/static/admin-jogos-vps.html" -o "$WEB_ROOT/admin-jogos-vps.html"
-chmod 0644 "$WEB_ROOT/admin-jogos-vps.html"
-echo "  ok $WEB_ROOT/admin-jogos-vps.html"
-if [[ -d "$WEB_ROOT/assets" ]]; then
-  cp -f "$WEB_ROOT/admin-jogos-vps.html" "$WEB_ROOT/assets/admin-jogos-vps.html" 2>/dev/null || true
-fi
+log "1/3 — UI admin-jogos (canônico manualLaunchPanel) + financeiro"
+JOGOS_HELPER="$(mktemp)"
+curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/arbishield-fetch-admin-jogos.sh" -o "$JOGOS_HELPER"
+# shellcheck source=/dev/null
+source "$JOGOS_HELPER"
+arbishield_deploy_admin_jogos_html "$WEB_ROOT" || die "falha ao publicar admin-jogos.html canônico"
+rm -f "$JOGOS_HELPER"
 
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/app-carteira.html" -o "$WEB_V2/app-carteira.html"
 chmod 0644 "$WEB_V2/app-carteira.html"

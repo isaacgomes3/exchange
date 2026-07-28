@@ -28,16 +28,19 @@ download "deploy/vps-supabase/static/app-boot-fix.js" "$WEB/assets/app-boot-fix.
 download "deploy/vps-supabase/static/app-stability.js" "$WEB/assets/app-stability.js"
 download "deploy/vps-supabase/static/admin-modal-fix.js" "$WEB/assets/admin-modal-fix.js"
 download "deploy/vps-supabase/static/desafio-sugestoes-inject.js" "$WEB/assets/desafio-sugestoes-inject.js"
-download "deploy/vps-supabase/static/admin-jogos-guard.js" "$WEB/assets/admin-jogos-guard.js" || true
 chmod 0644 \
   "$WEB/assets/app-boot-fix.js" \
   "$WEB/assets/app-stability.js" \
   "$WEB/assets/admin-modal-fix.js" \
   "$WEB/assets/desafio-sugestoes-inject.js"
 
-log "2/4 — página Gestão de Jogos (BetBra → mercados → lançar)"
-download "deploy/vps-supabase/static/admin-jogos-vps.html" "$WEB/admin-jogos-vps.html"
-chmod 0644 "$WEB/admin-jogos-vps.html"
+log "2/4 — Gestão de Jogos (canônico manualLaunchPanel)"
+JOGOS_HELPER="$(mktemp)"
+curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/arbishield-fetch-admin-jogos.sh" -o "$JOGOS_HELPER"
+# shellcheck source=/dev/null
+source "$JOGOS_HELPER"
+arbishield_deploy_admin_jogos_html "$WEB" || die "falha ao publicar admin-jogos.html canônico"
+rm -f "$JOGOS_HELPER"
 
 log "3/4 — shim serverFn (salvar desafio no SPA)"
 download "scripts/arbishield-serverfn-shim.mjs" "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs"

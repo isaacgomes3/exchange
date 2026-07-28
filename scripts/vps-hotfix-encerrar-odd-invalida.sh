@@ -21,12 +21,14 @@ need() { command -v "$1" >/dev/null || die "$1 não encontrado"; }
 need curl
 mkdir -p "$WEB" "$SCRIPTS_DIR"
 
-log "UI Admin Jogos"
-curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-jogos.html" -o "$WEB/admin-jogos.html"
-chmod 0644 "$WEB/admin-jogos.html"
-cp -f "$WEB/admin-jogos.html" "$WEB_ROOT/admin-jogos.html" 2>/dev/null || true
-grep -q 'vps-hotfix-encerrar-odd-invalida\|looksLikeSettle\|mode: "settle"' "$WEB/admin-jogos.html" || \
-  grep -q 'mode: "settle"' "$WEB/admin-jogos.html" || die "HTML sem settle"
+log "UI Admin Jogos (canônico — manualLaunchPanel full-page)"
+JOGOS_HELPER="$(mktemp)"
+curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/arbishield-fetch-admin-jogos.sh" -o "$JOGOS_HELPER"
+# shellcheck source=/dev/null
+source "$JOGOS_HELPER"
+arbishield_deploy_admin_jogos_html "$WEB_ROOT" || die "falha ao publicar admin-jogos.html canônico"
+rm -f "$JOGOS_HELPER"
+grep -q 'mode: "settle"' "$WEB/admin-jogos.html" || die "HTML canônico sem mode settle"
 
 log "Prelive :3098 (settleMatchFromBody)"
 curl -fsSL "$RAW/scripts/arbishield-prelive-events.mjs" -o "$SCRIPTS_DIR/arbishield-prelive-events.mjs"

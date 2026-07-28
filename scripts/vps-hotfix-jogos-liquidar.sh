@@ -18,8 +18,15 @@ need() { command -v "$1" >/dev/null || die "$1 não encontrado"; }
 need curl
 mkdir -p "$WEB" "$SHIM_DIR"
 
-log "UI Admin Jogos"
-for f in admin-jogos.html v2.css v2-shell.js; do
+log "UI Admin Jogos (canônico — não sobrescrever com branch backup)"
+JOGOS_HELPER="$(mktemp)"
+curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/arbishield-fetch-admin-jogos.sh" -o "$JOGOS_HELPER"
+# shellcheck source=/dev/null
+source "$JOGOS_HELPER"
+arbishield_deploy_admin_jogos_html "$WEB_ROOT" || die "falha ao publicar admin-jogos.html canônico"
+rm -f "$JOGOS_HELPER"
+
+for f in v2.css v2-shell.js; do
   curl -fsSL "$RAW/deploy/vps-supabase/static/v2/$f" -o "$WEB/$f"
   chmod 0644 "$WEB/$f"
   cp -f "$WEB/$f" "$WEB_ROOT/$f" 2>/dev/null || true

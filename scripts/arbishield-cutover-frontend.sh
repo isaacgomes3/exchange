@@ -78,7 +78,6 @@ if [[ -d "$STATIC_DIR" ]]; then
   cp -f "$STATIC_DIR/desafio-sugestoes-inject.js" "$DEST/assets/desafio-sugestoes-inject.js"
   cp -f "$STATIC_DIR/app-boot-fix.js" "$DEST/assets/app-boot-fix.js"
   cp -f "$STATIC_DIR/app-stability.js" "$DEST/assets/app-stability.js"
-  cp -f "$STATIC_DIR/admin-jogos-guard.js" "$DEST/assets/admin-jogos-guard.js"
   cp -f "$STATIC_DIR/admin-modal-fix.js" "$DEST/assets/admin-modal-fix.js"
   cp -f "$STATIC_DIR/auth-boot-fix.js" "$DEST/assets/auth-boot-fix.js"
   # stub do chunk ausente (navegação client-side)
