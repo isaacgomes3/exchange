@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Academia — ArbiShield</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js"></script>
+  <script src="/v2-shell.js" defer></script>
+</head>
+<body data-shell="app" data-active="academia">
+  <div id="acRoot" class="ac-root">
+    <div class="ac-loading">Carregando Academia…</div>
+  </div>
+  <script>
+    (async function () {
+      var FALLBACK = [{id:"intro-arbishield",title:"Bem-vindo à ArbiShield",description:"Uma visão completa de como a ArbiShield protege seu capital e transforma a forma como você opera.",youtubeId:"dQw4w9WgXcQ",duration:"08:12",category:"Primeiros Passos",level:"Iniciante",featured:true},{id:"primeiro-deposito",title:"Realizando seu primeiro depósito",description:"Passo a passo seguro para depositar via PIX ou cripto.",youtubeId:"dQw4w9WgXcQ",duration:"05:40",category:"Primeiros Passos",level:"Iniciante"},{id:"primeira-protecao",title:"Sua primeira proteção",description:"Da escolha do mercado à confirmação. Sem mistério.",youtubeId:"dQw4w9WgXcQ",duration:"11:02",category:"Primeiros Passos",level:"Iniciante"},{id:"primeiro-reembolso",title:"Primeiro reembolso na prática",description:"Entenda como o reembolso é calculado e creditado.",youtubeId:"dQw4w9WgXcQ",duration:"07:18",category:"Primeiros Passos",level:"Iniciante"},{id:"protecao-lay",title:"Proteção LAY — o coração da estratégia",description:"Como o LAY blinda sua banca em mercados de alta liquidez.",youtubeId:"dQw4w9WgXcQ",duration:"14:55",category:"Proteções",level:"Intermediário"},{id:"protecao-back",title:"Proteção BACK — quando usar",description:"Cenários, vantagens e armadilhas comuns do BACK.",youtubeId:"dQw4w9WgXcQ",duration:"10:21",category:"Proteções",level:"Intermediário"},{id:"mercados-liquidez",title:"Lendo liquidez como um profissional",description:"Identifique mercados sólidos antes de qualquer entrada.",youtubeId:"dQw4w9WgXcQ",duration:"13:07",category:"Proteções",level:"Avançado"},{id:"estrategias-protecoes",title:"Estratégias avançadas de proteção",description:"Combinações, timing e gestão de risco em alto nível.",youtubeId:"dQw4w9WgXcQ",duration:"18:33",category:"Proteções",level:"Avançado"},{id:"provedor-como-funciona",title:"Provedor de Liquidez — como funciona",description:"O motor silencioso da ArbiShield explicado em detalhe.",youtubeId:"dQw4w9WgXcQ",duration:"09:44",category:"Provedor",level:"Iniciante"},{id:"provedor-distribuicoes",title:"Distribuições semanais",description:"Cronograma, cálculos e como acompanhar pagamentos.",youtubeId:"dQw4w9WgXcQ",duration:"06:55",category:"Provedor",level:"Intermediário"},{id:"provedor-rentabilidade",title:"Rentabilidade real do Provedor",description:"Métricas que importam e como ler seu painel.",youtubeId:"dQw4w9WgXcQ",duration:"12:10",category:"Provedor",level:"Intermediário"},{id:"provedor-saques",title:"Saques do Provedor",description:"Janelas, limites e processo completo.",youtubeId:"dQw4w9WgXcQ",duration:"05:02",category:"Provedor",level:"Iniciante"},{id:"afiliados-cpa",title:"CPA — comissão por aquisição",description:"Como o CPA é apurado e pago.",youtubeId:"dQw4w9WgXcQ",duration:"07:28",category:"Afiliados",level:"Iniciante"},{id:"afiliados-revshare",title:"Revenue Share na prática",description:"Modelo recorrente que paga por desempenho real da rede.",youtubeId:"dQw4w9WgXcQ",duration:"09:15",category:"Afiliados",level:"Intermediário"},{id:"afiliados-funil",title:"Funil de afiliados que converte",description:"Estruture um funil profissional de indicação.",youtubeId:"dQw4w9WgXcQ",duration:"15:40",category:"Afiliados",level:"Avançado"},{id:"suporte-erros-comuns",title:"Resolvendo erros comuns",description:"Os incidentes mais frequentes e como destravá-los sozinho.",youtubeId:"dQw4w9WgXcQ",duration:"06:48",category:"Suporte",level:"Iniciante"},{id:"suporte-faq",title:"Dúvidas frequentes",description:"As perguntas que todo membro faz no primeiro mês.",youtubeId:"dQw4w9WgXcQ",duration:"08:02",category:"Suporte",level:"Iniciante"},{id:"update-novidades",title:"Novidades da plataforma",description:"O que mudou recentemente e por quê.",youtubeId:"dQw4w9WgXcQ",duration:"04:30",category:"Atualizações",level:"Iniciante"},{id:"update-regras",title:"Mudanças de regras",description:"Atualizações importantes que afetam sua operação.",youtubeId:"dQw4w9WgXcQ",duration:"05:12",category:"Atualizações",level:"Intermediário"}];
+      var FILTERS = [
+        { key: "all", label: "Todos" },
+        { key: "Iniciante", label: "Iniciante" },
+        { key: "Intermediário", label: "Intermediário" },
+        { key: "Avançado", label: "Avançado" },
+        { key: "Proteções", label: "Proteções" },
+        { key: "Provedor", label: "Provedor" },
+        { key: "Afiliados", label: "Afiliados" },
+        { key: "Suporte", label: "Suporte" },
+        { key: "Atualizações", label: "Atualizações" },
+        { key: "Primeiros Passos", label: "Primeiros Passos" },
+      ];
+      var CAT_ORDER = ["Primeiros Passos", "Proteções", "Provedor", "Afiliados", "Suporte", "Atualizações"];
+      var PROGRESS_KEY = "arbishield_academia_progress_v1";
+
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+
+      var root = document.getElementById("acRoot");
+      var state = { q: "", filter: "all", videos: [], enabled: true };
+
+      function esc(s) {
+        return String(s || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/"/g, "&quot;");
+      }
+      function thumb(v) {
+        if (v.thumbnail) return v.thumbnail;
+        if (v.youtubeId) return "https://i.ytimg.com/vi/" + v.youtubeId + "/hqdefault.jpg";
+        return "/brand/dashboard-preview.jpg";
+      }
+      function watchUrl(v) {
+        return "/app-academia-video.html?v=" + encodeURIComponent(v.id);
+      }
+      function readProgress() {
+        try { return JSON.parse(localStorage.getItem(PROGRESS_KEY) || "{}"); } catch (e) { return {}; }
+      }
+      function mapRow(t) {
+        return {
+          id: t.slug || t.id,
+          title: t.title,
+          description: t.description || "",
+          youtubeId: t.youtube_id || t.youtubeId,
+          videoUrl: t.video_url || t.videoUrl || null,
+          duration: t.duration || "00:00",
+          category: t.category || "Primeiros Passos",
+          level: t.level || "Iniciante",
+          thumbnail: t.thumbnail || undefined,
+          featured: !!t.featured,
+        };
+      }
+
+      try {
+        var en = await supa.from("platform_settings").select("value").eq("key", "academia_enabled").maybeSingle();
+        var val = en.data && en.data.value;
+        if (typeof val === "boolean") state.enabled = val;
+        else if (typeof val === "string") state.enabled = val === "true";
+      } catch (e) {}
+
+      var profileAdmin = false;
+      try {
+        var pr = await supa.from("profiles").select("is_super_admin").eq("id", user.id).maybeSingle();
+        profileAdmin = !!(pr.data && pr.data.is_super_admin);
+      } catch (e2) {}
+
+      if (!state.enabled && !profileAdmin) {
+        root.innerHTML =
+          '<div class="ac-soon">' +
+          '<div class="ac-soon-ico">🎓</div>' +
+          '<p class="ac-eyebrow">Academia ArbiShield</p>' +
+          "<h1>Em breve</h1>" +
+          "<p>Estamos preparando o catálogo de aulas. Volte em breve.</p>" +
+          '<a class="btn btn-primary" href="/app.html">Voltar à visão geral</a></div>';
+        return;
+      }
+
+      try {
+        var res = await supa
+          .from("academia_videos")
+          .select("*")
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true })
+          .order("created_at", { ascending: false });
+        if (res.error) throw res.error;
+        state.videos = (res.data || []).map(mapRow);
+      } catch (ex) {
+        state.videos = [];
+      }
+      if (!state.videos.length) state.videos = FALLBACK.map(function (x) { return Object.assign({}, x); });
+
+      function filtered() {
+        var q = state.q.trim().toLowerCase();
+        var f = state.filter;
+        return state.videos.filter(function (v) {
+          if (q && (v.title + " " + v.description + " " + v.category + " " + v.level).toLowerCase().indexOf(q) < 0) return false;
+          if (f === "all") return true;
+          if (["Iniciante", "Intermediário", "Avançado"].indexOf(f) >= 0) return v.level === f;
+          return v.category === f;
+        });
+      }
+
+      function groups(list) {
+        var present = {};
+        list.forEach(function (v) { present[v.category] = true; });
+        var order = CAT_ORDER.filter(function (c) { return present[c]; });
+        Object.keys(present).forEach(function (c) {
+          if (order.indexOf(c) < 0) order.push(c);
+        });
+        return order.map(function (c) {
+          return { category: c, videos: list.filter(function (v) { return v.category === c; }) };
+        }).filter(function (g) { return g.videos.length; });
+      }
+
+      function statsHtml() {
+        var prog = readProgress();
+        var done = 0;
+        var mins = 0;
+        Object.keys(prog).forEach(function (id) {
+          var p = Number(prog[id].percent || 0);
+          if (p >= 95) done += 1;
+          var v = state.videos.find(function (x) { return x.id === id; });
+          if (!v) return;
+          var parts = String(v.duration || "0:0").split(":").map(Number);
+          var m = (parts[0] || 0) + (parts[1] || 0) / 60;
+          mins += m * p / 100;
+        });
+        return (
+          '<div class="ac-stat"><span>Concluídos</span><strong>' + done + '</strong></div>' +
+          '<div class="ac-stat"><span>Tempo</span><strong>' + Math.round(mins) + 'm</strong></div>' +
+          '<div class="ac-stat hi"><span>Catálogo</span><strong>' + state.videos.length + '</strong></div>'
+        );
+      }
+
+      function cardHtml(v) {
+        return (
+          '<a class="ac-card" href="' + watchUrl(v) + '">' +
+          '<div class="ac-thumb">' +
+          '<img src="' + esc(thumb(v)) + '" alt="" loading="lazy" width="640" height="360" />' +
+          '<span class="ac-dur">' + esc(v.duration) + '</span>' +
+          '<span class="ac-play" aria-hidden="true">▶</span>' +
+          "</div>" +
+          '<div class="ac-card-body">' +
+          '<div class="ac-tags"><span>' + esc(v.category) + '</span><span class="lvl">' + esc(v.level) + '</span></div>' +
+          "<h3>" + esc(v.title) + "</h3>" +
+          "</div></a>"
+        );
+      }
+
+      function rowHtml(title, videos) {
+        if (!videos.length) return "";
+        return (
+          '<section class="ac-row">' +
+          "<h2>" + esc(title) + "</h2>" +
+          '<div class="ac-row-scroll">' + videos.map(cardHtml).join("") + "</div>" +
+          "</section>"
+        );
+      }
+
+      function filterButtonsHtml() {
+        var filters = FILTERS.slice();
+        var extraCats = {};
+        state.videos.forEach(function (v) {
+          if (!FILTERS.some(function (f) { return f.key === v.category; })) extraCats[v.category] = true;
+        });
+        Object.keys(extraCats).forEach(function (c) { filters.push({ key: c, label: c }); });
+        return filters.map(function (f) {
+          return (
+            '<button type="button" data-f="' +
+            esc(f.key) +
+            '" class="' +
+            (state.filter === f.key ? "active" : "") +
+            '">' +
+            esc(f.label) +
+            "</button>"
+          );
+        }).join("");
+      }
+
+      function bodyHtml() {
+        var list = filtered();
+        var searching = !!(state.q.trim() || state.filter !== "all");
+        if (searching) {
+          if (!list.length) return '<div class="ac-empty">Nenhum vídeo encontrado.</div>';
+          return rowHtml("Resultados (" + list.length + ")", list);
+        }
+        return groups(state.videos)
+          .map(function (g) {
+            return rowHtml(g.category, g.videos);
+          })
+          .join("");
+      }
+
+      function paintShell() {
+        var featured = state.videos.find(function (v) { return v.featured; }) || state.videos[0];
+        root.innerHTML =
+          (!state.enabled && profileAdmin
+            ? '<div class="ac-admin-banner">Preview admin · Academia ainda não liberada para todos</div>'
+            : "") +
+          '<section class="ac-hero">' +
+          '<img class="ac-hero-bg" src="' + esc(thumb(featured)) + '" alt="" decoding="async" />' +
+          '<div class="ac-hero-shade"></div>' +
+          '<div class="ac-hero-copy">' +
+          '<span class="ac-pill"><i></i> Destaque da semana</span>' +
+          "<h1>" + esc(featured.title) + "</h1>" +
+          "<p>" + esc(featured.description) + "</p>" +
+          '<div class="ac-meta"><em>' + esc(featured.category) + "</em><span>•</span><span>" +
+          esc(featured.level) + "</span><span>•</span><span>" + esc(featured.duration) + "</span></div>" +
+          '<div class="ac-hero-ctas">' +
+          '<a class="ac-btn-solid" href="' + watchUrl(featured) + '"><span class="play">▶</span> Assistir Agora</a>' +
+          '<a class="ac-btn-ghost" href="#explorar"><span aria-hidden="true">▦</span> Explorar</a>' +
+          "</div></div></section>" +
+          '<div id="explorar" class="ac-explore">' +
+          '<div class="ac-toolbar">' +
+          '<label class="ac-search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>' +
+          '<input id="acQ" type="search" placeholder="Buscar: proteção, reembolso, afiliado, provedor…" /></label>' +
+          '<div class="ac-stats" id="acStats">' + statsHtml() + "</div></div>" +
+          '<div class="ac-filters" id="acFilters">' + filterButtonsHtml() + "</div></div>" +
+          '<div class="ac-body" id="acBody">' + bodyHtml() + "</div>";
+
+        document.getElementById("acQ").addEventListener("input", function (e) {
+          state.q = e.target.value || "";
+          document.getElementById("acBody").innerHTML = bodyHtml();
+          document.getElementById("acStats").innerHTML = statsHtml();
+        });
+        document.getElementById("acFilters").addEventListener("click", function (e) {
+          var btn = e.target.closest("[data-f]");
+          if (!btn) return;
+          state.filter = btn.getAttribute("data-f");
+          document.getElementById("acFilters").innerHTML = filterButtonsHtml();
+          document.getElementById("acBody").innerHTML = bodyHtml();
+        });
+      }
+
+      paintShell();
+    })();
+  </script>
+</body>
+</html>
