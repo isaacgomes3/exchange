@@ -37,6 +37,8 @@ publish "scripts/arbishield-prelive-events.mjs" \
   "${SHIM_DIR}/arbishield-prelive-events.mjs"
 publish "scripts/arbishield-serverfn-shim.mjs" \
   "${SHIM_DIR}/arbishield-serverfn-shim.mjs"
+publish "scripts/vps-repair-settled-reembolso.mjs" \
+  "${SCRIPTS_DIR}/vps-repair-settled-reembolso.mjs"
 
 mkdir -p "${SCRIPTS_DIR}/lib"
 cp -f "${SHIM_DIR}/lib/protection-flow-contract.mjs" \
@@ -45,6 +47,7 @@ cp -f "${SHIM_DIR}/arbishield-prelive-events.mjs" \
   "${SCRIPTS_DIR}/arbishield-prelive-events.mjs"
 cp -f "${SHIM_DIR}/arbishield-serverfn-shim.mjs" \
   "${SCRIPTS_DIR}/arbishield-serverfn-shim.mjs"
+chmod 0755 "${SCRIPTS_DIR}/vps-repair-settled-reembolso.mjs"
 
 for unit in arbishield-prelive-events.service arbishield-serverfn-shim.service; do
   if systemctl cat "$unit" >/dev/null 2>&1; then
@@ -66,5 +69,7 @@ systemctl restart arbishield-prelive-events.service
 systemctl restart arbishield-serverfn-shim.service
 
 echo "OK — worker publicado."
-echo "Agora reenvie no Admin a liquidação ArbiShield dos jogos já encerrados."
-echo "O reparo só credita linhas que ainda não possuem protection_settlement."
+echo "Para jogos já encerrados, simule:"
+echo "  EMAIL=carloskku4@gmail.com node ${SCRIPTS_DIR}/vps-repair-settled-reembolso.mjs"
+echo "Após conferir, aplique:"
+echo "  APPLY=1 EMAIL=carloskku4@gmail.com node ${SCRIPTS_DIR}/vps-repair-settled-reembolso.mjs"
