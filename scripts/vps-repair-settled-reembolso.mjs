@@ -79,7 +79,7 @@ async function main() {
   const rows = [];
   for (const table of ["protections", "back_protections"]) {
     const result = await api(
-      `/rest/v1/${table}?select=*&user_id=eq.${encodeURIComponent(userId)}&status=in.(lost_exchange,lost_platform)&order=settled_at.asc&limit=1000`
+      `/rest/v1/${table}?select=*&user_id=eq.${encodeURIComponent(userId)}&status=eq.lost_exchange&order=settled_at.asc&limit=1000`
     );
     rows.push(...(Array.isArray(result) ? result : []).map((row) => ({ ...row, table })));
   }
