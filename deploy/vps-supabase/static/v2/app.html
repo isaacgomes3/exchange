@@ -220,6 +220,36 @@
             detail: { apostador: apostador },
           })
         );
+        // Uma liquidação ou ajuste pode ter terminado enquanto a página abria.
+        // Reconsulta o perfil para não manter cards com a resposta anterior.
+        setTimeout(async function () {
+          try {
+            var freshRes = await supa
+              .from("profiles")
+              .select(
+                "balance_cents,reusable_balance_cents,deduction_balance_cents,demo_balance_cents,investor_balance_cents,demo_balance_provider_cents"
+              )
+              .eq("id", user.id)
+              .maybeSingle();
+            var fresh = freshRes.data || {};
+            var freshApostador =
+              Number(fresh.balance_cents || 0) +
+              Number(fresh.reusable_balance_cents || 0) +
+              Number(fresh.deduction_balance_cents || 0) +
+              Number(fresh.demo_balance_cents || 0);
+            var freshProvedor =
+              Number(fresh.investor_balance_cents || 0) +
+              Number(fresh.demo_balance_provider_cents || 0);
+            set("kBalApostador", money(freshApostador));
+            set("kBalProvedor", money(freshProvedor));
+            set("evoToday", money(freshApostador + freshProvedor));
+            window.dispatchEvent(
+              new CustomEvent("arbishield:balance-updated", {
+                detail: { apostador: freshApostador },
+              })
+            );
+          } catch (freshBalanceErr) {}
+        }, 1200);
 
         var missing = [];
         if (!p.full_name) missing.push("Nome completo");
