@@ -19,6 +19,7 @@
     saque: "Saque",
     afiliado: "Afiliado",
     provedor: "Provedor",
+    transferencia: "Transferência",
   };
   var AFF_OK = { approved: 1, available: 1, pending_payout: 1 };
   var WD_OPEN = { pending: 1, approved: 1, paid: 1, processing: 1 };
@@ -52,6 +53,9 @@
     walletTx: [],
     affBalance: 0,
     realBalance: 0,
+    deductionBalance: 0,
+    transferableReal: 0,
+    apostadorHeader: 0,
     providerBalance: 0,
     locked: 0,
     activeCount: 0,
@@ -634,6 +638,53 @@
       });
     });
 
+    // Transferências internas (ex.: Saldo Reembolso → Carteira Desafio)
+    var bucketLbl = {
+      deduction_balance_cents: "Saldo Reembolso",
+      balance_cents: "Saldo Real",
+      reusable_balance_cents: "Saldo Reutilizável",
+      desafio_balance_cents: "Carteira Desafio",
+      demo_balance_cents: "Demo",
+      investor_balance_cents: "Investidor",
+    };
+    function metaTx(row) {
+      var m = row && row.metadata;
+      if (!m) return {};
+      if (typeof m === "string") {
+        try {
+          return JSON.parse(m) || {};
+        } catch (e) {
+          return {};
+        }
+      }
+      return typeof m === "object" && m ? m : {};
+    }
+    (state.walletTx || []).forEach(function (se) {
+      var t = String(se.type || "").toLowerCase();
+      if (t !== "internal_transfer") return;
+      var m = metaTx(se);
+      var from = m.from_bucket || m.from || "";
+      var to = m.to_bucket || m.to || "";
+      var label =
+        (m.label && String(m.label).trim()) ||
+        (from || to
+          ? "Transferência " +
+            (bucketLbl[from] || from || "?") +
+            " → " +
+            (bucketLbl[to] || to || "?")
+          : "Transferência interna");
+      G.push({
+        id: "xfer-" + se.id,
+        ts: se.created_at,
+        group: "transferencia",
+        action: "Transferência interna",
+        status: "Concluída",
+        valueCents: Number(se.amount_cents || 0),
+        credit: undefined,
+        origin: label,
+      });
+    });
+
     G.sort(function (a, b) {
       return new Date(b.ts).getTime() - new Date(a.ts).getTime();
     });
@@ -693,8 +744,15 @@
 
   function computeMetrics() {
     var p = state.profile || {};
+    // Saldo Real (carteira) = balance (+ legado reusable consolidado) — sem demo
     var real =
       Number(p.balance_cents || 0) + Number(p.reusable_balance_cents || 0);
+    var deduction = Number(p.deduction_balance_cents || 0);
+    // Transferência Banca→Desafio: só saldo real livre (nunca reusable/locked/dedução).
+    var transferableReal = Number(p.balance_cents || 0);
+    // Chip do header "Apostador" = mesma fórmula do shell (inclui demo + saldo dedução)
+    var apostadorHeader =
+      real + deduction + Number(p.demo_balance_cents || 0);
     var provider =
       Number(p.investor_balance_cents || 0) +
       Number(p.demo_balance_provider_cents || 0);
@@ -709,6 +767,9 @@
     if (!locked) locked = activeLocked;
     var aff = affAvailable(state.commissions, state.withdrawals);
     state.realBalance = real;
+    state.deductionBalance = deduction;
+    state.transferableReal = transferableReal;
+    state.apostadorHeader = apostadorHeader;
     state.providerBalance = provider;
     state.affBalance = aff;
     state.locked = locked;
@@ -751,7 +812,7 @@
         return a + Number(r.amount_cents || 0);
       }, 0);
 
-    var total = real + provider + aff + locked;
+    var total = real + deduction + provider + aff + locked;
     state.metrics = {
       total: total,
       balance: real,
@@ -766,25 +827,53 @@
 
   function renderBalances() {
     setText("finBalReal", money(state.realBalance));
+    setText("finBalDeduction", money(state.deductionBalance || 0));
     setText("finBalProv", money(state.providerBalance));
     setText("finBalAff", money(state.affBalance));
     setText(
       "finBalTotal",
-      money(state.realBalance + state.providerBalance + state.affBalance + state.locked)
+      money(
+        state.realBalance +
+          (state.deductionBalance || 0) +
+          state.providerBalance +
+          state.affBalance +
+          state.locked
+      )
     );
+    var btnDed = document.getElementById("btnSaqueDeduction");
+    if (btnDed) {
+      btnDed.disabled = !(state.deductionBalance > 0);
+    }
+    var btnXferDed = document.getElementById("btnTransferDeductionDesafio");
+    if (btnXferDed) {
+      btnXferDed.disabled = !(state.deductionBalance > 0);
+    }
     setText("finProtCount", String(state.activeCount));
-    setText("finProtLocked", money(state.locked));
+    setText(
+      "finProtLocked",
+      state.activeCount === 1 ? "1 em aberto" : "em aberto"
+    );
     setText("metTotal", money(state.metrics.total));
     setText("metMonthVar", "▲ +" + state.metrics.monthVar + "% este mês");
-    setText("metBlocked", money(state.metrics.blocked));
-    setText("metActiveSub", state.activeCount + " proteções ativas");
+    setText("metBlocked", String(state.activeCount));
+    setText(
+      "metActiveSub",
+      state.activeCount === 1
+        ? "1 proteção em aberto"
+        : state.activeCount + " proteções em aberto"
+    );
     setText("metProfit", money(state.metrics.profit));
     setText("metRefunded", money(state.metrics.refunded));
     setText("metPL", money(state.metrics.profit));
     setText("metFee", "1,50%");
     setText("metYield", state.metrics.yield + "%");
+    // Não sobrescrever o chip com "Saldo Real" (sem demo) — alinha ao shell
     var hdr = document.getElementById("v2BalApostador");
-    if (hdr) hdr.textContent = money(state.realBalance);
+    if (hdr) hdr.textContent = money(state.apostadorHeader);
+    var hdrProv = document.getElementById("v2BalProvedor");
+    if (hdrProv) hdrProv.textContent = money(state.providerBalance);
+    var hdrDesafio = document.getElementById("v2BalDesafio");
+    if (hdrDesafio) hdrDesafio.textContent = money(state.desafio || 0);
   }
 
   function valueCell(row) {
@@ -962,12 +1051,19 @@
     if (balUl) {
       balUl.innerHTML = [
         ["Saldo Real (não sacável)", money(state.realBalance)],
+        ["Saldo Reembolso (usável/sacável)", money(state.deductionBalance || 0)],
         ["Saldo Provedor", money(state.providerBalance)],
         ["Saldo Afiliado disponível", money(state.affBalance)],
         ["Capital em proteções", money(state.locked)],
         [
           "Total consolidado",
-          money(state.realBalance + state.providerBalance + state.affBalance + state.locked),
+          money(
+            state.realBalance +
+              (state.deductionBalance || 0) +
+              state.providerBalance +
+              state.affBalance +
+              state.locked
+          ),
         ],
       ]
         .map(function (r) {
@@ -1027,6 +1123,11 @@
   function renderDonut() {
     var parts = [
       { name: "Disponível", value: state.metrics.balance, color: "#C6FF00" },
+      {
+        name: "Reembolso",
+        value: state.deductionBalance || 0,
+        color: "#84cc16",
+      },
       { name: "Bloqueado", value: state.metrics.blocked, color: "#3b82f6" },
       { name: "Lucro Real", value: Math.max(0, state.metrics.profit), color: "#22c55e" },
       { name: "Reembolsos", value: state.metrics.refunded, color: "#a855f7" },
@@ -1193,42 +1294,99 @@
     });
   }
 
+  var TRANSFER_DESAFIO_BLOCKED =
+    "Transferência Banca → Desafio está bloqueada. Use Saldo Reembolso → Desafio, ou deposite via PIX no Desafio.";
+
+  var transferMode = "reembolso"; // reembolso | real(blocked)
+
   function openTransfer() {
+    alert(TRANSFER_DESAFIO_BLOCKED);
+    closeTransfer();
+  }
+
+  function openTransferReembolsoDesafio() {
+    var avail = Number(state.deductionBalance || 0);
+    if (!(avail > 0)) {
+      alert("Saldo Reembolso zerado.");
+      return;
+    }
+    transferMode = "reembolso";
     var modal = document.getElementById("finTransferModal");
-    var banca = state.realBalance;
-    var max = Math.floor(banca / 2);
-    setText("finTransferAvail", money(banca));
-    setText("finTransferMax", money(max));
-    document.getElementById("finTransferAmount").value = "";
+    if (!modal) return;
+    var title = document.getElementById("finTransferTitle");
+    var note = document.getElementById("finTransferNote");
+    var availEl = document.getElementById("finTransferAvail");
+    var maxEl = document.getElementById("finTransferMax");
+    var amountEl = document.getElementById("finTransferAmount");
     var err = document.getElementById("finTransferErr");
-    err.hidden = true;
-    err.textContent = "";
+    if (title) title.textContent = "Reembolso → Desafio";
+    if (note) {
+      note.textContent =
+        "Mova seu Saldo Reembolso para o saldo do Desafio ArbiShield. A transferência é imediata.";
+    }
+    if (availEl) availEl.textContent = money(avail);
+    if (maxEl) maxEl.textContent = money(avail);
+    if (amountEl) {
+      amountEl.value = (avail / 100).toFixed(2).replace(".", ",");
+    }
+    if (err) {
+      err.hidden = true;
+      err.textContent = "";
+    }
     modal.setAttribute("aria-hidden", "false");
     modal.classList.add("open");
   }
+
   function closeTransfer() {
     var modal = document.getElementById("finTransferModal");
+    if (!modal) return;
     modal.setAttribute("aria-hidden", "true");
     modal.classList.remove("open");
   }
 
+  function parseBrlToCents(raw) {
+    var normalized = String(raw || "")
+      .trim()
+      .replace(/\s/g, "")
+      .replace(/\./g, "")
+      .replace(",", ".");
+    var n = parseFloat(normalized);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return Math.round(n * 100);
+  }
+
   async function submitTransfer() {
     var err = document.getElementById("finTransferErr");
-    var raw = document.getElementById("finTransferAmount").value || "";
-    var normalized = raw.replace(/\./g, "").replace(",", ".");
-    var reais = parseFloat(normalized);
-    var cents = Math.round((reais || 0) * 100);
-    if (!cents || cents <= 0) {
-      err.textContent = "Informe um valor válido.";
-      err.hidden = false;
+    function showErr(msg) {
+      if (err) {
+        err.textContent = msg;
+        err.hidden = false;
+      } else {
+        alert(msg);
+      }
+    }
+    if (transferMode !== "reembolso") {
+      showErr(TRANSFER_DESAFIO_BLOCKED);
       return;
     }
-    var btn = document.getElementById("finTransferSubmit");
-    btn.disabled = true;
+    var avail = Number(state.deductionBalance || 0);
+    var amountEl = document.getElementById("finTransferAmount");
+    var cents = parseBrlToCents(amountEl && amountEl.value);
+    if (!(cents > 0)) {
+      showErr("Valor inválido.");
+      return;
+    }
+    if (cents > avail) {
+      showErr("Valor acima do Saldo Reembolso disponível.");
+      return;
+    }
+    var submitBtn = document.getElementById("finTransferSubmit");
+    if (submitBtn) submitBtn.disabled = true;
     try {
       var supa = ArbiV2.client();
       var sess = await supa.auth.getSession();
-      var token = sess && sess.data && sess.data.session && sess.data.session.access_token;
+      var token =
+        sess && sess.data && sess.data.session && sess.data.session.access_token;
       if (!token) throw new Error("Sessão expirada");
       var res = await fetch("/api/arbishield/transfer-desafio", {
         method: "POST",
@@ -1236,23 +1394,152 @@
           "Content-Type": "application/json",
           Authorization: "Bearer " + token,
         },
-        body: JSON.stringify({ amountCents: cents }),
+        body: JSON.stringify({
+          source: "reembolso",
+          amountCents: cents,
+        }),
       });
-      var data = await res.json().catch(function () {
-        return {};
-      });
-      if (!res.ok) throw new Error(data.error || "Falha na transferência");
+      var rawText = await res.text();
+      var data = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch (_) {
+        data = {};
+      }
+      if (!res.ok || !data.ok) {
+        throw new Error(
+          (data && (data.error || data.message)) ||
+            "Falha na transferência (HTTP " + res.status + ")"
+        );
+      }
       closeTransfer();
+      alert(
+        "Transferido " + money(cents) + " do Saldo Reembolso para o Desafio."
+      );
       location.reload();
     } catch (ex) {
-      err.textContent = ex.message || "Erro";
-      err.hidden = false;
+      showErr(ex.message || "Erro ao transferir");
     } finally {
-      btn.disabled = false;
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  }
+
+  async function requestDeductionWithdraw() {
+    var avail = Number(state.deductionBalance || 0);
+    if (!(avail > 0)) {
+      alert("Saldo Reembolso zerado.");
+      return;
+    }
+    var pix =
+      (state.profile && (state.profile.pix_key || state.profile.pixKey)) || "";
+    if (!pix) {
+      alert("Cadastre sua chave Pix no Perfil antes de sacar o Saldo Reembolso.");
+      return;
+    }
+    var def = (avail / 100).toFixed(2).replace(".", ",");
+    var raw = window.prompt(
+      "Valor do saque do Saldo Reembolso (disponível R$ " + def + "):",
+      def
+    );
+    if (raw == null) return;
+    var normalized = String(raw).replace(/\./g, "").replace(",", ".");
+    var cents = Math.round((parseFloat(normalized) || 0) * 100);
+    if (!(cents > 0)) {
+      alert("Valor inválido.");
+      return;
+    }
+    if (cents > avail) {
+      alert("Valor acima do Saldo Reembolso disponível.");
+      return;
+    }
+    try {
+      var supa = ArbiV2.client();
+      var sess = await supa.auth.getSession();
+      var token =
+        sess && sess.data && sess.data.session && sess.data.session.access_token;
+      if (!token) throw new Error("Sessão expirada");
+
+      var rpc = await supa.rpc("request_saldo_reembolso_withdrawal", {
+        p_amount_cents: cents,
+        p_pix_key: pix,
+      });
+      if (!rpc.error) {
+        alert("Saque do Saldo Reembolso solicitado. Aguarde a análise.");
+        location.reload();
+        return;
+      }
+      var rpcMsg = String(
+        (rpc.error && (rpc.error.message || rpc.error.details || rpc.error.hint)) ||
+          ""
+      );
+      var rpcMissing = /Could not find the function|PGRST202|404|does not exist/i.test(
+        rpcMsg
+      );
+      if (!rpcMissing && rpcMsg) {
+        throw new Error(rpcMsg);
+      }
+
+      async function postWithdraw(url, payload) {
+        var r = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify(payload),
+        });
+        var rawText = await r.text();
+        var parsed = {};
+        try {
+          parsed = rawText ? JSON.parse(rawText) : {};
+        } catch (_) {
+          parsed = {};
+        }
+        return { res: r, data: parsed, raw: rawText };
+      }
+      var payload = {
+        amountCents: cents,
+        pix_key: pix,
+        wallet: "reembolso",
+        saldo_reembolso: true,
+        kind: "saldo_reembolso",
+      };
+      var attempt = await postWithdraw(
+        "/api/arbishield/affiliate-withdraw",
+        payload
+      );
+      if (
+        !attempt.res.ok &&
+        (attempt.data.error === "not_found" || attempt.res.status === 404)
+      ) {
+        attempt = await postWithdraw(
+          "/api/arbishield/deduction-withdraw",
+          payload
+        );
+      }
+      if (!attempt.res.ok) {
+        var errCode = String(attempt.data.error || attempt.data.message || "");
+        var msg = errCode;
+        if (!msg || errCode === "not_found" || /afiliado|15 e 30/i.test(errCode)) {
+          msg =
+            "Saque de Saldo Reembolso indisponível no momento. Aplique a migration request_saldo_reembolso_withdrawal ou atualize o shim na VPS.";
+        }
+        throw new Error(msg);
+      }
+      alert("Saque do Saldo Reembolso solicitado. Aguarde a análise.");
+      location.reload();
+    } catch (ex) {
+      alert(ex.message || "Erro ao solicitar saque");
     }
   }
 
   function bindUi() {
+    var btnDed = document.getElementById("btnSaqueDeduction");
+    if (btnDed) btnDed.addEventListener("click", requestDeductionWithdraw);
+    var btnXferDed = document.getElementById("btnTransferDeductionDesafio");
+    if (btnXferDed) {
+      btnXferDed.addEventListener("click", openTransferReembolsoDesafio);
+    }
     document.getElementById("finPeriod").addEventListener("change", function (e) {
       state.period = e.target.value;
       state.page = 1;
@@ -1338,10 +1625,19 @@
     var profileRes = await supa
       .from("profiles")
       .select(
-        "balance_cents,reusable_balance_cents,locked_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents"
+        "balance_cents,reusable_balance_cents,deduction_balance_cents,demo_balance_cents,locked_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,pix_key"
       )
       .eq("id", userId)
       .maybeSingle();
+    if (profileRes.error) {
+      profileRes = await supa
+        .from("profiles")
+        .select(
+          "balance_cents,reusable_balance_cents,demo_balance_cents,locked_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,pix_key"
+        )
+        .eq("id", userId)
+        .maybeSingle();
+    }
     if (profileRes.error) throw profileRes.error;
     state.profile = profileRes.data || {};
 
@@ -1450,11 +1746,21 @@
     state.walletTx = await safeQuery(
       supa,
       "unified_wallet_transactions",
-      "id,type,amount_cents,created_at",
+      "id,type,amount_cents,created_at,metadata",
       function (q) {
         return q.eq("user_id", userId).order("created_at", { ascending: false }).limit(500);
       }
     );
+    if (!state.walletTx.length) {
+      state.walletTx = await safeQuery(
+        supa,
+        "wallet_transactions",
+        "id,type,amount_cents,created_at,metadata",
+        function (q) {
+          return q.eq("user_id", userId).order("created_at", { ascending: false }).limit(500);
+        }
+      );
+    }
     if (!state.walletTx.length) {
       state.walletTx = await safeQuery(
         supa,

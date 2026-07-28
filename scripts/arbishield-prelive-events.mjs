@@ -1083,24 +1083,53 @@ async function settleMatchFromBody(body, token) {
     if (row.user_id && amount > 0) {
       try {
         const prof = await sb(
-          `/rest/v1/profiles?select=balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+          `/rest/v1/profiles?select=balance_cents,locked_balance_cents,deduction_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
           { token: SERVICE_KEY }
         );
         const p = Array.isArray(prof) ? prof[0] : null;
         if (p) {
           const locked = Math.max(0, nCents(p.locked_balance_cents) - amount);
-          const balance = wonArbi
-            ? nCents(p.balance_cents) + amount
-            : nCents(p.balance_cents);
-          await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
-            method: "PATCH",
-            token: SERVICE_KEY,
-            body: {
-              balance_cents: balance,
-              locked_balance_cents: locked,
-              updated_at: now,
-            },
-          });
+          // Bateu ArbiShield → Saldo Reembolso (deduction_balance_cents)
+          // Bateu Exchange → só libera locked; stake fica na plataforma
+          const deduction = wonArbi
+            ? nCents(p.deduction_balance_cents) + amount
+            : nCents(p.deduction_balance_cents);
+          const patch = {
+            locked_balance_cents: locked,
+            updated_at: now,
+          };
+          if (wonArbi) {
+            patch.deduction_balance_cents = deduction;
+          }
+          try {
+            await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+              method: "PATCH",
+              token: SERVICE_KEY,
+              body: patch,
+            });
+          } catch {
+            // fallback se coluna deduction_balance_cents não existir
+            if (wonArbi) {
+              await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+                method: "PATCH",
+                token: SERVICE_KEY,
+                body: {
+                  balance_cents: nCents(p.balance_cents) + amount,
+                  locked_balance_cents: locked,
+                  updated_at: now,
+                },
+              });
+            } else {
+              await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+                method: "PATCH",
+                token: SERVICE_KEY,
+                body: {
+                  locked_balance_cents: locked,
+                  updated_at: now,
+                },
+              });
+            }
+          }
           if (wonArbi) refundedCents += amount;
         }
       } catch {

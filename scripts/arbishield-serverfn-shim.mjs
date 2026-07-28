@@ -993,6 +993,18 @@ async function ensureAffiliateReferralCode(token) {
 }
 
 async function requestAffiliateWithdrawal(token, body) {
+  // Saldo Reembolso reutiliza esta rota (já liberada no nginx) quando
+  // wallet/kind indica reembolso — evita 404/not_found da rota nova.
+  const wallet = String(body?.wallet || body?.kind || body?.origin || "").toLowerCase();
+  if (
+    wallet === "reembolso" ||
+    wallet === "saldo_reembolso" ||
+    wallet === "deduction" ||
+    body?.saldo_reembolso === true
+  ) {
+    return requestDeductionWithdrawal(token, body);
+  }
+
   const userId = requireUserId(token);
   const amountCents = Math.round(
     Number(body?.amountCents ?? body?.amount_cents ?? 0)
@@ -1073,53 +1085,116 @@ async function requestAffiliateWithdrawal(token, body) {
   return { ok: true, withdrawal: row, amountCents };
 }
 
-async function transferRealToDesafio(token, body) {
+/** Saque do Saldo Reembolso (retornos ArbiShield: stake + dedução). */
+async function requestDeductionWithdrawal(token, body) {
   const userId = requireUserId(token);
-  const amountCents = Math.round(Number(body?.amountCents ?? body?.amount_cents ?? 0));
+  const amountCents = Math.round(
+    Number(body?.amountCents ?? body?.amount_cents ?? 0)
+  );
+  const pixKey = String(body?.pix_key ?? body?.pixKey ?? "").trim();
   if (!Number.isFinite(amountCents) || amountCents <= 0) {
     throw new Error("Valor inválido");
   }
+  if (!pixKey) throw new Error("Informe a chave Pix");
+
+  const open = await sb(
+    `/rest/v1/withdrawals?select=id,status,metadata&user_id=eq.${userId}&status=in.(pending,approved,processing)&order=created_at.desc&limit=20`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  const hasOpen = (Array.isArray(open) ? open : []).some((w) => {
+    const meta = w?.metadata || {};
+    const origin = String(meta.origin || meta.request_type || meta.type || "").toUpperCase();
+    return (
+      origin === "DEDUCTION_WITHDRAWAL" ||
+      origin === "SALDO_DEDUCAO_WITHDRAWAL" ||
+      origin === "REFUND_BALANCE_WITHDRAWAL" ||
+      origin === "SALDO_REEMBOLSO_WITHDRAWAL"
+    );
+  });
+  if (hasOpen) {
+    throw new Error("Você já possui um saque de Saldo Reembolso em análise.");
+  }
+
   const rows = await sb(
-    `/rest/v1/profiles?select=balance_cents,reusable_balance_cents,desafio_balance_cents&id=eq.${userId}&limit=1`,
+    `/rest/v1/profiles?select=deduction_balance_cents,pix_key&id=eq.${encodeURIComponent(userId)}&limit=1`,
     { token: SERVICE_KEY }
   );
   const p = Array.isArray(rows) ? rows[0] : null;
   if (!p) throw new Error("Perfil não encontrado");
-  const balance = n(p.balance_cents);
-  const reusable = n(p.reusable_balance_cents);
-  const desafio = n(p.desafio_balance_cents);
-  const banca = balance + reusable;
-  const maxTransfer = Math.floor(banca / 2);
-  if (amountCents > maxTransfer) {
+  const available = n(p.deduction_balance_cents);
+  if (amountCents > available) {
     throw new Error(
-      `Valor acima do limite de 50% do saldo da banca (máx. ${(maxTransfer / 100).toFixed(2)})`
+      `Saldo Reembolso insuficiente (disponível ${(available / 100).toFixed(2)})`
     );
   }
-  if (amountCents > banca) throw new Error("Saldo insuficiente");
 
-  let nextBalance = balance;
-  let nextReusable = reusable;
-  let left = amountCents;
-  if (nextBalance >= left) {
-    nextBalance -= left;
-    left = 0;
-  } else {
-    left -= nextBalance;
-    nextBalance = 0;
-    nextReusable = Math.max(0, nextReusable - left);
-    left = 0;
-  }
-
-  await sb(`/rest/v1/profiles?id=eq.${userId}`, {
+  const afterCents = available - amountCents;
+  await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
     method: "PATCH",
     token: SERVICE_KEY,
     body: {
-      balance_cents: nextBalance,
-      reusable_balance_cents: nextReusable,
-      desafio_balance_cents: desafio + amountCents,
+      deduction_balance_cents: afterCents,
       updated_at: new Date().toISOString(),
     },
   });
+
+  const meta = {
+    origin: "SALDO_REEMBOLSO_WITHDRAWAL",
+    bucket: "deduction_balance_cents",
+    label: "Saldo Reembolso",
+    note: "Saque Saldo Reembolso (stake + dedução ArbiShield)",
+  };
+  const attempts = [
+    {
+      user_id: userId,
+      amount_cents: amountCents,
+      pix_key: pixKey,
+      status: "pending",
+      metadata: meta,
+    },
+    {
+      user_id: userId,
+      amount_cents: amountCents,
+      status: "pending",
+      metadata: { ...meta, pix_key: pixKey },
+    },
+  ];
+
+  let row = null;
+  let lastErr = null;
+  for (const attemptBody of attempts) {
+    try {
+      const created = await sb("/rest/v1/withdrawals", {
+        method: "POST",
+        token: SERVICE_KEY,
+        body: attemptBody,
+      });
+      row = Array.isArray(created) ? created[0] : created;
+      if (row) break;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+
+  if (!row) {
+    try {
+      await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          deduction_balance_cents: available,
+          updated_at: new Date().toISOString(),
+        },
+      });
+    } catch {
+      /* */
+    }
+    throw new Error(
+      lastErr instanceof Error
+        ? `Falha ao registrar saque: ${lastErr.message}`
+        : "Falha ao registrar saque do Saldo Reembolso"
+    );
+  }
 
   try {
     await sb("/rest/v1/wallet_transactions", {
@@ -1127,22 +1202,156 @@ async function transferRealToDesafio(token, body) {
       token: SERVICE_KEY,
       body: {
         user_id: userId,
-        type: "transfer_to_desafio",
+        type: "withdrawal_request",
         amount_cents: -amountCents,
-        balance_after_cents: nextBalance + nextReusable,
-        meta: { destino: "desafio", amount_cents: amountCents },
+        ref: row?.id || null,
+        metadata: {
+          origin: "SALDO_REEMBOLSO_WITHDRAWAL",
+          bucket: "deduction_balance_cents",
+          label: "Saldo Reembolso",
+        },
       },
     });
   } catch {
-    /* extrato opcional */
+    /* */
+  }
+
+  return { ok: true, withdrawal: row, amountCents, availableAfter: afterCents };
+}
+
+async function transferRealToDesafio(_token, _body) {
+  // Bloqueado: sem transferência Banca → Desafio.
+  // Use Saldo Reembolso → Desafio (transferDeductionToDesafio) ou PIX no Desafio.
+  void _token;
+  void _body;
+  const err = new Error(
+    "Transferência interna para a banca do Desafio está bloqueada. Use Saldo Reembolso → Desafio, ou deposite via PIX no saldo do Desafio."
+  );
+  err.status = 403;
+  throw err;
+}
+
+/**
+ * Transferência interna: Saldo Reembolso → Desafio (100% do disponível, sem teto 50%).
+ * Marker: transfer-reembolso-desafio-atomic-v1
+ */
+async function transferDeductionToDesafio(token, body) {
+  const userId = requireUserId(token);
+  const amountCents = Math.round(
+    Number(body?.amountCents ?? body?.amount_cents ?? 0)
+  );
+  if (!Number.isFinite(amountCents) || amountCents <= 0) {
+    const err = new Error("Valor inválido");
+    err.status = 400;
+    throw err;
+  }
+
+  const rows = await sb(
+    `/rest/v1/profiles?select=deduction_balance_cents,desafio_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const p = Array.isArray(rows) ? rows[0] : null;
+  if (!p) {
+    const err = new Error("Perfil não encontrado");
+    err.status = 404;
+    throw err;
+  }
+  const dedBefore = n(p.deduction_balance_cents);
+  const desBefore = n(p.desafio_balance_cents);
+  if (amountCents > dedBefore) {
+    const err = new Error(
+      `Saldo Reembolso insuficiente (disponível ${(dedBefore / 100).toFixed(2)})`
+    );
+    err.status = 400;
+    throw err;
+  }
+
+  const dedAfter = dedBefore - amountCents;
+  const desAfter = desBefore + amountCents;
+  const now = new Date().toISOString();
+
+  let patched = null;
+  try {
+    patched = await sb(
+      `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&deduction_balance_cents=eq.${dedBefore}`,
+      {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          deduction_balance_cents: dedAfter,
+          desafio_balance_cents: desAfter,
+          updated_at: now,
+        },
+      }
+    );
+  } catch (e) {
+    const err = new Error(
+      e instanceof Error ? e.message : "Falha ao debitar Saldo Reembolso"
+    );
+    err.status = 500;
+    throw err;
+  }
+  const row = Array.isArray(patched) ? patched[0] : patched;
+  if (!row || n(row.deduction_balance_cents) !== dedAfter) {
+    const err = new Error(
+      "Saldo Reembolso mudou durante a transferência — tente de novo"
+    );
+    err.status = 409;
+    throw err;
+  }
+
+  const verify = await sb(
+    `/rest/v1/profiles?select=deduction_balance_cents,desafio_balance_cents&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const v = Array.isArray(verify) ? verify[0] : null;
+  if (
+    !v ||
+    n(v.deduction_balance_cents) !== dedAfter ||
+    n(v.desafio_balance_cents) !== desAfter
+  ) {
+    const err = new Error("Falha ao confirmar transferência Reembolso → Desafio");
+    err.status = 500;
+    throw err;
+  }
+
+  try {
+    await sb("/rest/v1/wallet_transactions", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        user_id: userId,
+        type: "internal_transfer",
+        amount_cents: amountCents,
+        balance_before_cents: dedBefore,
+        balance_after_cents: dedAfter,
+        metadata: {
+          from_bucket: "deduction_balance_cents",
+          to_bucket: "desafio_balance_cents",
+          label: "Saldo Reembolso → Desafio",
+          source: "transfer_reembolso_desafio_v1",
+          fix: "transfer-reembolso-desafio-atomic-v1",
+          desafio_before_cents: desBefore,
+          desafio_after_cents: desAfter,
+          deduction_before_cents: dedBefore,
+          deduction_after_cents: dedAfter,
+        },
+      },
+    });
+  } catch (e) {
+    console.warn(
+      "[transferDeductionToDesafio] wallet_transactions:",
+      e instanceof Error ? e.message : e
+    );
   }
 
   return {
     ok: true,
     amountCents,
-    balance_cents: nextBalance,
-    reusable_balance_cents: nextReusable,
-    desafio_balance_cents: desafio + amountCents,
+    deductionBefore: dedBefore,
+    deductionAfter: dedAfter,
+    desafioBefore: desBefore,
+    desafioAfter: desAfter,
   };
 }
 
@@ -1886,26 +2095,38 @@ async function applyProtectionSettlement(row, table, outcome) {
   if (row.user_id && amount > 0) {
     try {
       const prof = await sb(
-        `/rest/v1/profiles?select=balance_cents,locked_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
+        `/rest/v1/profiles?select=balance_cents,locked_balance_cents,deduction_balance_cents&id=eq.${encodeURIComponent(row.user_id)}&limit=1`,
         { token: SERVICE_KEY }
       );
       const p = Array.isArray(prof) ? prof[0] : null;
       if (p) {
         const locked = Math.max(0, n(p.locked_balance_cents) - amount);
-        // arbishield: devolve só stake/responsabilidade (sem lucro);
+        // arbishield: devolve stake/responsabilidade no Saldo Reembolso;
         // exchange: stake fica na plataforma
-        const balance = wonArbi
-          ? n(p.balance_cents) + amount
-          : n(p.balance_cents);
-        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
-          method: "PATCH",
-          token: SERVICE_KEY,
-          body: {
-            balance_cents: balance,
-            locked_balance_cents: locked,
-            updated_at: now,
-          },
-        });
+        const patch = {
+          locked_balance_cents: locked,
+          updated_at: now,
+        };
+        if (wonArbi) {
+          patch.deduction_balance_cents = n(p.deduction_balance_cents) + amount;
+        }
+        try {
+          await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+            method: "PATCH",
+            token: SERVICE_KEY,
+            body: patch,
+          });
+        } catch {
+          await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+            method: "PATCH",
+            token: SERVICE_KEY,
+            body: {
+              balance_cents: wonArbi ? n(p.balance_cents) + amount : n(p.balance_cents),
+              locked_balance_cents: locked,
+              updated_at: now,
+            },
+          });
+        }
       }
     } catch {
       /* saldo best-effort */
@@ -2883,10 +3104,31 @@ const server = createServer(async (req, res) => {
       } catch {
         body = {};
       }
-      const data = await transferRealToDesafio(token, body.data || body);
-      return sendJson(res, 200, data);
+      const payload = body.data || body;
+      const source = String(
+        payload.source || payload.from || payload.bucket || ""
+      )
+        .toLowerCase()
+        .trim();
+      // Só libera Reembolso → Desafio. Banca Real → Desafio permanece bloqueada.
+      if (
+        source === "reembolso" ||
+        source === "deduction" ||
+        source === "deduction_balance" ||
+        source === "saldo_reembolso"
+      ) {
+        const data = await transferDeductionToDesafio(token, payload);
+        return sendJson(res, 200, data);
+      }
+      return sendJson(res, 403, {
+        ok: false,
+        error:
+          "Transferência Banca → Desafio está bloqueada. Use Saldo Reembolso → Desafio, ou deposite via PIX no Desafio.",
+        blocked: true,
+      });
     } catch (err) {
-      return sendJson(res, 400, {
+      return sendJson(res, err.status || 400, {
+        ok: false,
         error: err instanceof Error ? err.message : String(err),
       });
     }
@@ -2915,6 +3157,25 @@ const server = createServer(async (req, res) => {
         body = {};
       }
       const data = await requestAffiliateWithdrawal(token, body.data || body);
+      return sendJson(res, 200, data);
+    } catch (err) {
+      return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/deduction-withdraw" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      const data = await requestDeductionWithdrawal(token, body.data || body);
       return sendJson(res, 200, data);
     } catch (err) {
       return sendJson(res, 400, {

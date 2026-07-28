@@ -4,14 +4,16 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
+  <meta name="arbishield-build" content="saldo-reembolso-v15" />
   <title>Centro Financeiro — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css" />
+  <link rel="stylesheet" href="/v2.css?v=saldo-reembolso-15" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js"></script>
-  <script src="/v2-shell.js" defer></script>
-  <script src="/v2-financeiro.js" defer></script>
+  <script src="/v2.js?v=saldo-reembolso-15"></script>
+  <script src="/v2-shell.js?v=saldo-reembolso-15" defer></script>
+  <script src="/v2-financeiro.js?v=saldo-reembolso-15" defer></script>
+  <!-- carteira-saldo-reembolso-v15 -->
 </head>
 <body data-shell="app" data-active="carteira">
   <div class="fin-page">
@@ -48,6 +50,18 @@
         </div>
         <div class="v" id="finBalReal">—</div>
         <p class="h">Não sacável · banca de operações</p>
+      </article>
+      <article class="fin-bal accent">
+        <div class="fin-bal-top">
+          <span class="l">Saldo Reembolso</span>
+          <span class="fin-bal-ico" aria-hidden="true">↺</span>
+        </div>
+        <div class="v lime" id="finBalDeduction">—</div>
+        <p class="h">Usável e sacável · stake + dedução (ArbiShield)</p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
+          <button type="button" class="fin-btn sm" id="btnSaqueDeduction">Solicitar saque</button>
+          <button type="button" class="fin-btn sm ghost" id="btnTransferDeductionDesafio">Transferir p/ Desafio</button>
+        </div>
       </article>
       <article class="fin-bal">
         <div class="fin-bal-top">
@@ -310,15 +324,15 @@
       <header class="fin-modal-head">
         <div>
           <p class="fin-kicker">Transferência interna</p>
-          <h2 id="finTransferTitle">Banca → Desafio</h2>
+          <h2 id="finTransferTitle">Reembolso → Desafio</h2>
         </div>
         <button type="button" class="fin-modal-x" data-fin-close="1" aria-label="Fechar">×</button>
       </header>
       <div class="fin-modal-body">
-        <p class="fin-note">Mova até 50% do saldo da banca (real + reutilizável) para o saldo do Desafio ArbiShield.</p>
+        <p class="fin-note" id="finTransferNote">Mova seu Saldo Reembolso para o saldo do Desafio ArbiShield. A transferência é imediata.</p>
         <div class="fin-transfer-meta">
-          <div><span class="l">Disponível na banca</span><strong id="finTransferAvail">—</strong></div>
-          <div><span class="l">Máximo (50%)</span><strong id="finTransferMax">—</strong></div>
+          <div><span class="l" id="finTransferAvailLabel">Disponível (Reembolso)</span><strong id="finTransferAvail">—</strong></div>
+          <div><span class="l" id="finTransferMaxLabel">Máximo</span><strong id="finTransferMax">—</strong></div>
         </div>
         <label class="fin-field">
           <span>Valor (R$)</span>
