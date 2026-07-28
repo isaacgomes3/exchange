@@ -1438,6 +1438,17 @@
                     m.id +
                     '" style="margin-top:8px">Publicar</button>'
                   : "";
+              var openN = Number(m._openProtections || 0);
+              var canUnqueue =
+                !!m.is_published &&
+                (bucket === "open" || bucket === "live") &&
+                !(openN > 0) &&
+                !(Number(m.used_protection_cents || 0) > 0);
+              var unqueueBtn = canUnqueue
+                ? '<button class="btn btn-ghost btn-sm" type="button" data-unqueue="' +
+                  m.id +
+                  '" style="margin-top:8px;margin-left:6px;color:#fbbf24;border-color:rgba(251,191,36,0.4)">Tirar da fila</button>'
+                : "";
               var settleBtn =
                 matchNeedsSettle(m) || bucket === "live" || bucket === "settle"
                   ? '<button class="btn btn-primary btn-sm" type="button" data-settle="' +
@@ -1445,7 +1456,6 @@
                     '" style="margin-top:8px">Encerrar partida</button>'
                   : "";
               var used = Number(m.used_protection_cents || 0);
-              var openN = Number(m._openProtections || 0);
               var homeLogo = m.home_logo
                 ? '<img src="' +
                   escHtml(m.home_logo) +
@@ -1479,6 +1489,7 @@
                 (openN > 0 ? " · " + openN + " proteção(ões) aberta(s)" : "") +
                 "</div>" +
                 publishBtn +
+                unqueueBtn +
                 settleBtn +
                 "</div>" +
                 '<div class="time">' +
@@ -1494,6 +1505,11 @@
         $("platformContent").querySelectorAll("button[data-publish]").forEach(function (btn) {
           btn.addEventListener("click", function () {
             publishMatch(btn.getAttribute("data-publish"), btn);
+          });
+        });
+        $("platformContent").querySelectorAll("button[data-unqueue]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            unqueueMatch(btn.getAttribute("data-unqueue"), btn);
           });
         });
         $("platformContent").querySelectorAll("button[data-settle]").forEach(function (btn) {
@@ -1530,6 +1546,64 @@
           if (btn) {
             btn.disabled = false;
             btn.textContent = "Publicar";
+          }
+        }
+      }
+
+      async function unqueueMatch(matchId, btn) {
+        if (!auth) {
+          alert("Faça login admin para tirar da fila.");
+          return;
+        }
+        var row = platformMatches.find(function (m) {
+          return String(m.id) === String(matchId);
+        });
+        if (!row) {
+          alert("Jogo não encontrado.");
+          return;
+        }
+        if (Number(row._openProtections || 0) > 0 || Number(row.used_protection_cents || 0) > 0) {
+          alert(
+            "Há proteção neste jogo. Use Encerrar partida (ou cancele as proteções) antes de tirar da fila."
+          );
+          return;
+        }
+        if (
+          !window.confirm(
+            "Tirar \"" +
+              (row.home_team || "?") +
+              " vs " +
+              (row.away_team || "?") +
+              "\" da fila?\nO cliente deixa de ver o jogo em Proteger. Vai para Rascunho."
+          )
+        ) {
+          return;
+        }
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "Removendo…";
+        }
+        try {
+          await rest("matches?id=eq." + encodeURIComponent(matchId), auth.token, {
+            method: "PATCH",
+            body: {
+              is_published: false,
+              updated_at: new Date().toISOString(),
+            },
+          });
+          row.is_published = false;
+          alert("Removido da fila. Agora está em Rascunho.");
+          platformFilter = "draft";
+          document.querySelectorAll("#platformFilters .chip").forEach(function (c) {
+            c.classList.toggle("is-on", c.getAttribute("data-pf") === "draft");
+          });
+          renderPlatformList();
+          renderStats();
+        } catch (err) {
+          alert(err.message || "Falha ao tirar da fila");
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Tirar da fila";
           }
         }
       }
