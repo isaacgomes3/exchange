@@ -79,7 +79,7 @@
         "<div><span>Saldo disponível</span><b>" + m[1] + "</b></div>";
     }
 
-    // Não inclui Stake equivalente / Odd LAY → back equiv.
+    // Não inclui as duas linhas de stake/odd equivalentes do LAY.
     preview.innerHTML =
       "<div><span>Tipo</span><b>" +
       mt +
