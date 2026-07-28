@@ -453,15 +453,6 @@
       <input class="search" id="search" type="search" placeholder="Buscar time ou liga…" />
     </div>
 
-    <div id="settleHint" class="auth-banner show" style="margin-bottom:14px;border-color:rgba(201,242,35,0.35);background:rgba(201,242,35,0.08)">
-      <strong style="color:var(--lime)">Lançar jogo:</strong>
-      use <strong>Lançar manual</strong> para cadastrar partida na plataforma.
-      Isso <em>não</em> é Desafio (Desafios ficam em Gestão de Desafios).
-      <span style="display:block;margin-top:6px">
-        <strong>Encerrar:</strong> aba Encerrar / Eventos ArbiShield → filtro A liquidar → Encerrar partida.
-      </span>
-    </div>
-
     <section class="panel platform-list" id="platformPanel">
       <div class="panel-head">
         <h2>Eventos cadastrados na plataforma</h2>
@@ -1762,8 +1753,6 @@
         });
         $("prelivePanel").hidden = next !== "prelive";
         $("platformPanel").hidden = next !== "platform";
-        var hint = $("settleHint");
-        if (hint) hint.style.display = "block";
         if (next === "platform") renderPlatformList();
         else if (!selectedEvent) renderPreliveList();
       }
