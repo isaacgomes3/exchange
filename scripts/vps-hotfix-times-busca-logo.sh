@@ -2,7 +2,7 @@
 # Hotfix: busca de times + logos no Lançar Evento Manual (mesma API do desafio)
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/vps-hotfix-times-busca-logo.sh?v=4")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/vps-hotfix-times-busca-logo.sh?v=5")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/manual-evento-escudo-times-bb44}"
@@ -28,9 +28,11 @@ log "UI Admin Jogos (busca de times + logos, fallback TheSportsDB)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/admin-jogos.html" -o "$WEB/admin-jogos.html"
 chmod 0644 "$WEB/admin-jogos.html"
 cp -f "$WEB/admin-jogos.html" "$WEB_ROOT/admin-jogos.html" 2>/dev/null || true
+cp -f "$WEB/admin-jogos.html" "$WEB_ROOT/admin-jogos-vps.html" 2>/dev/null || true
 
 grep -q 'positionTeamSuggest' "$WEB/admin-jogos.html" || die "HTML sem positionTeamSuggest"
 grep -q 'fetchTeamsForPicker' "$WEB/admin-jogos.html" || die "HTML sem fetchTeamsForPicker"
+grep -q 'Lançar manual' "$WEB/admin-jogos.html" || die "HTML sem Lançar manual"
 
 log "UI Proteger (exibe logos)"
 curl -fsSL "$RAW/deploy/vps-supabase/static/v2/app-proteger.html" -o "$WEB/app-proteger.html"
@@ -95,6 +97,6 @@ fi
 echo
 echo "OK — busca de times com logo (fallback TheSportsDB se API offline)"
 echo "  https://arbishield.app/admin-jogos.html  (Ctrl+F5)"
-echo "  Lançar evento manual → digite o time → escolha na lista (logo auto)"
+echo "  Lançar manual → digite o time → escolha na lista (logo auto)"
 echo "  Teste API: curl -s 'https://arbishield.app/api/arbishield/football-teams?q=Flamengo' | head"
 echo "  (Se API retornar not_found, o frontend ainda busca via TheSportsDB)"
