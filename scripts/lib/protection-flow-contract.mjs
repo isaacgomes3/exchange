@@ -116,7 +116,7 @@ export function settlementDeductionCents(row) {
  * Regras de crédito no settle (TRAVADAS):
  *
  * locked_margin_v2:
- *   - ArbiShield → 100% da stake/responsabilidade para Saldo Apostador
+ *   - ArbiShield → destrava 100% ao Saldo Apostador e paga 100% no Saldo Reembolso
  *   - Exchange   → stake − margem para Saldo Apostador; margem é retida
  *   - Empate Anula / void → 100% da stake para Saldo Apostador
  *

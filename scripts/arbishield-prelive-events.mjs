@@ -1508,7 +1508,12 @@ async function creditWalletForSettlement(row, outcome, now) {
   let bucket = lockedMargin
     ? settlementCreditBucket(row, outcome)
     : creditBucketForSettlement(balanceType);
-  if (bucket === "balance_cents") {
+  if (lockedMargin && wonArbi) {
+    // Destrava a stake original e paga uma nova stake no Saldo Reembolso.
+    patch.balance_cents = nCents(p.balance_cents) + credit;
+    patch.deduction_balance_cents = nCents(p.deduction_balance_cents) + credit;
+    bucket = "balance_cents+deduction_balance_cents";
+  } else if (bucket === "balance_cents") {
     patch.balance_cents = nCents(p.balance_cents) + credit;
   } else if (bucket === "demo_balance_cents") {
     patch.demo_balance_cents = nCents(p.demo_balance_cents) + credit;
@@ -1589,7 +1594,7 @@ async function creditWalletForSettlement(row, outcome, now) {
           margin_retained_cents: lockedMargin && !wonArbi && !isVoid ? parts.fee : 0,
           note: lockedMargin
             ? wonArbi
-              ? "ArbiShield: 100% da stake/responsabilidade para Saldo Reembolso"
+              ? "ArbiShield: stake destravada ao Apostador + stake paga no Saldo Reembolso"
               : isVoid
                 ? "Empate Anula: 100% devolvido ao Saldo Apostador"
                 : "Exchange: margem retida e restante devolvido ao Saldo Apostador"
