@@ -7,7 +7,7 @@
   <title>Gestão de Proteções — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="protocolo-auditoria-v2" />
+  <meta name="arbishield-build" content="protocolo-auditoria-v3" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
@@ -433,8 +433,8 @@
         }
         return {
           label: won
-            ? "Liquidação · Bateu ArbiShield"
-            : "Liquidação · Bateu Exchange",
+            ? "Reembolso correto"
+            : "Ganhou na exchange",
           kind: won ? "won" : "lost",
           refundCents: refund,
         };

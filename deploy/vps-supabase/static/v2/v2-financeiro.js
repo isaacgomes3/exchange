@@ -232,14 +232,14 @@
       );
       var at = ce.get(fe);
       if (se.refunded_at && Pe.has(fe)) return;
-      var ze = "Proteção Ativa";
+      var ze = "Travamento de proteção";
       var je = statusLabel(se.status);
       var pe = Ne;
       var Ae = false;
       var Ue = se.created_at;
       var Qe = "Capital alocado";
       if (se.refunded_at) {
-        ze = "Proteção Reembolsada";
+        ze = "Reembolso correto";
         je = "Reembolsado";
         pe = Ne;
         Ae = true;
@@ -253,43 +253,48 @@
         Ue = se.settled_at || se.updated_at || se.created_at;
         Qe = "Capital devolvido (jogo cancelado)";
       } else if (se.settled_at) {
-        ze = "Proteção Encerrada";
         Ue = se.settled_at;
         if (Se === "arbishield") {
-          je = "Liquidação · Bateu ArbiShield";
+          ze = "Reembolso correto";
+          je = "Encerrada";
           pe = Ne;
           Ae = true;
-          Qe = "Liquidação · Bateu ArbiShield · capital devolvido";
+          Qe = "Reembolso correto · capital devolvido";
         } else if (Se === "exchange") {
-          je = "Liquidação · Bateu Exchange";
+          ze = "Ganhou na exchange";
+          je = "Encerrada";
           if (Ye > 0) {
             pe = Ye;
             Ae = false;
-            Qe = "Liquidação · Bateu Exchange · dedução da taxa (devolvido " + money(Ne - Ye) + ")";
+            Qe = "Ganhou na exchange · dedução da taxa (devolvido " + money(Ne - Ye) + ")";
           } else {
             pe = Ne;
             Ae = true;
-            Qe = "Liquidação · Bateu Exchange · capital devolvido";
+            Qe = "Ganhou na exchange · capital devolvido";
           }
         } else if (Se === "won" || Se === "win" || Se === "user_won") {
-          je = "Liquidação · Bateu ArbiShield";
+          ze = "Reembolso correto";
+          je = "Encerrada";
           pe = Je > 0 ? Je : Ne;
           Ae = true;
           Qe = Je > 0 ? "Lucro real creditado" : "Capital devolvido";
         } else if (re === "won_platform" || re === "lost_exchange") {
-          je = "Liquidação · Bateu ArbiShield";
+          ze = "Reembolso correto";
+          je = "Encerrada";
           pe = Ne;
           Ae = true;
-          Qe = "Liquidação · Bateu ArbiShield · capital devolvido";
+          Qe = "Reembolso correto · capital devolvido";
         } else if (re === "won_exchange" || re === "lost_platform") {
-          je = "Liquidação · Bateu Exchange";
+          ze = "Ganhou na exchange";
+          je = "Encerrada";
           pe = Ye > 0 ? Ye : Ne;
           Ae = !(Ye > 0);
           Qe =
             Ye > 0
-              ? "Liquidação · Bateu Exchange · dedução da taxa"
-              : "Liquidação · Bateu Exchange";
+              ? "Ganhou na exchange · dedução da taxa"
+              : "Ganhou na exchange";
         } else {
+          ze = "Proteção Encerrada";
           je = statusLabel(se.settled_outcome || se.status);
           pe = Ne;
           Ae = true;

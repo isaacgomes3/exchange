@@ -2,7 +2,7 @@
 # Hotfix: busca de times + logos + formulário full-page no Lançar Evento Manual
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/vps-hotfix-times-busca-logo.sh?v=13")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/manual-evento-escudo-times-bb44/scripts/vps-hotfix-times-busca-logo.sh?v=14")
 set -euo pipefail
 
 REPO="isaacgomes3/exchange"
@@ -69,18 +69,23 @@ chmod 0644 "$WEB/v2.js"
 cp -f "$WEB/v2.js" "$WEB_ROOT/v2.js" 2>/dev/null || true
 grep -q 'searchFootballTeams' "$WEB/v2.js" || die "v2.js sem searchFootballTeams"
 
-log "3/5 — UI Proteger + Minhas Proteções (protocolo de auditoria)"
+log "3/5 — UI Proteger + Minhas Proteções + Extrato (protocolo de auditoria)"
 fetch "deploy/vps-supabase/static/v2/app-proteger.html" "$WEB/app-proteger.html"
 chmod 0644 "$WEB/app-proteger.html"
 fetch "deploy/vps-supabase/static/v2/app-protecoes.html" "$WEB/app-protecoes.html"
 chmod 0644 "$WEB/app-protecoes.html"
 cp -f "$WEB/app-protecoes.html" "$WEB_ROOT/app-protecoes.html" 2>/dev/null || true
+fetch "deploy/vps-supabase/static/v2/v2-financeiro.js" "$WEB/v2-financeiro.js"
+chmod 0644 "$WEB/v2-financeiro.js"
+cp -f "$WEB/v2-financeiro.js" "$WEB_ROOT/v2-financeiro.js" 2>/dev/null || true
 fetch "deploy/vps-supabase/static/v2/v2.css" "$WEB/v2.css"
 chmod 0644 "$WEB/v2.css"
 grep -q 'home_logo' "$WEB/app-proteger.html" || die "proteger sem home_logo"
 grep -q 'term-team-logo' "$WEB/v2.css" || die "v2.css sem term-team-logo"
 grep -q 'Protocolo de auditoria' "$WEB/app-protecoes.html" || die "protecoes sem Protocolo de auditoria"
-grep -q 'Dedução ArbiShield' "$WEB/app-protecoes.html" || die "protecoes sem bloco financeiro"
+grep -q 'Reembolso correto' "$WEB/app-protecoes.html" || die "protecoes sem label Reembolso correto"
+grep -q 'Ganhou na exchange' "$WEB/app-protecoes.html" || die "protecoes sem label Ganhou na exchange"
+grep -q 'Reembolso correto' "$WEB/v2-financeiro.js" || die "financeiro sem label Reembolso correto"
 
 log "4/5 — Prelive API (endpoint /football-teams)"
 fetch "scripts/arbishield-prelive-events.mjs" "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
