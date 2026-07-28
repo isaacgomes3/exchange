@@ -96,7 +96,7 @@
       </div>
       <div class="field">
         <label for="odd">Odd</label>
-        <input id="odd" type="number" min="1.01" step="0.01" readonly tabindex="-1" aria-readonly="true" title="Odd definida pelo mercado — não editável" class="term-odd-locked" />
+        <input id="odd" type="number" min="1.01" step="0.01" readonly disabled tabindex="-1" aria-readonly="true" aria-disabled="true" title="Odd definida pelo mercado — não editável" class="term-odd-locked" />
       </div>
       <div class="field">
         <label for="balanceType">Saldo</label>
@@ -261,19 +261,21 @@
         return [{ id: null, name: "Mercado principal", odd: odd, market_type: "LAY", liquidity: m.max_protection_cents, used_liquidity: m.used_protection_cents }];
       }
       function isLive(m) {
-        // Legado Ne: kickoff <= now < kickoff + 2h30 e não encerrado
+        // Considera tanto o status informado pelo operador quanto a janela pós-kickoff.
         if (!m || !m.starts_at) return false;
         var now = Date.now();
         var start = new Date(m.starts_at).getTime();
         if (!Number.isFinite(start)) return false;
-        var status = m.status_v2 || m.status || "open";
+        var status = String(m.status_v2 || m.status || "open").toLowerCase();
         if (
-          status === "FINISHED" ||
           ["closed", "cancelled", "finished", "settled", "finalizado", "void"].indexOf(
-            String(status).toLowerCase()
+            status
           ) >= 0
         ) {
           return false;
+        }
+        if (["live", "ao vivo", "ao_vivo", "in_play", "in-play", "started"].indexOf(status) >= 0) {
+          return true;
         }
         return now >= start && now < start + LIVE_WINDOW_MS;
       }
@@ -333,6 +335,7 @@
           esc(market.name || "Mercado");
         document.getElementById("odd").value = Number(market.odd || 0).toFixed(2);
         document.getElementById("odd").readOnly = true;
+        document.getElementById("odd").disabled = true;
         document.getElementById("amount").value = "";
         document.getElementById("balanceType").value = "REAL";
         updatePreview();
@@ -516,7 +519,8 @@
               return String(mk.market_type || "").toUpperCase() === "BACK";
             });
             var left = liqLeft(m);
-            var canProtect = hasProtectLiquidity(m);
+            var live = isLive(m);
+            var canProtect = hasProtectLiquidity(m) && !live;
             var max = Math.max(Number(m.max_protection_cents || 0), 1);
             var pct = Math.min(100, Math.round((left / max) * 100));
             var primary =
@@ -524,7 +528,7 @@
                 return String(mk.market_type || "LAY").toUpperCase() === (state.side === "back" ? "BACK" : "LAY");
               }) || mks[0];
             var whenHtml;
-            if (isLive(m)) {
+            if (live) {
               whenHtml = '<span class="term-live">AO VIVO</span>';
             } else if (!m.starts_at) {
               whenHtml = "—";
@@ -542,12 +546,14 @@
               primary && primary.name && String(primary.name).trim()
                 ? String(primary.name).trim()
                 : "—";
-            var actionBtn = canProtect
-              ? '<button type="button" class="term-protect-btn" data-protect="1">Proteger</button>'
-              : '<button type="button" class="term-protect-btn" disabled title="Liquidez esgotada">Sem liquidez</button>';
+            var actionBtn = live
+              ? ""
+              : canProtect
+                ? '<button type="button" class="term-protect-btn" data-protect="1">Proteger</button>'
+                : '<button type="button" class="term-protect-btn" disabled title="Liquidez esgotada">Sem liquidez</button>';
             return (
               '<article class="term-row' +
-              (canProtect ? "" : " is-exhausted") +
+              (live ? " is-live" : canProtect ? "" : " is-exhausted") +
               '" data-id="' +
               esc(m.id) +
               '">' +
@@ -598,6 +604,10 @@
               return x.id === card.getAttribute("data-id");
             });
             if (!match) return;
+            if (isLive(match)) {
+              showErr("Este jogo está ao vivo e não aceita novas proteções.");
+              return;
+            }
             if (!hasProtectLiquidity(match)) {
               showErr("Este jogo ficou sem liquidez e não aceita novas proteções.");
               return;
