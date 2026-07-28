@@ -35,9 +35,19 @@ if [[ -f /opt/arbishield/scripts/arbishield-prelive-events.mjs ]]; then
 fi
 dl "scripts/arbishield-prelive-events.mjs" "$PRELIVE_DST"
 chmod 0755 "$PRELIVE_DST"
-cp -f "$PRELIVE_DST" "$SCRIPTS_DIR/arbishield-prelive-events.mjs" 2>/dev/null || true
-cp -f "$PRELIVE_DST" /opt/arbishield/scripts/arbishield-prelive-events.mjs 2>/dev/null || true
-cp -f "$PRELIVE_DST" "$SHIM_DIR/arbishield-prelive-events.mjs" 2>/dev/null || true
+
+# Evita falhar quando origem e destino já são o mesmo inode.
+copy_if_distinct() {
+  local dst="$1"
+  if [[ -e "$dst" && "$PRELIVE_DST" -ef "$dst" ]]; then
+    return 0
+  fi
+  cp -f "$PRELIVE_DST" "$dst"
+}
+
+copy_if_distinct "$SCRIPTS_DIR/arbishield-prelive-events.mjs"
+copy_if_distinct /opt/arbishield/scripts/arbishield-prelive-events.mjs
+copy_if_distinct "$SHIM_DIR/arbishield-prelive-events.mjs"
 
 # Copia para o path real do ExecStart do systemd, se diferente
 for u in arbishield-prelive-events.service arbishield-prelive.service; do
