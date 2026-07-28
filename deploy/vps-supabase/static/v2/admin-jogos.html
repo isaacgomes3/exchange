@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta name="arbishield-vps-page" content="jogos" />
-  <meta name="arbishield-build" content="manualLaunchPanel-v10" />
+  <meta name="arbishield-build" content="manualLaunchPanel-v11" />
   <title>Gestão de Jogos — ArbiShield v2</title>
   <link rel="stylesheet" href="/v2.css" />
   <script src="/v2-shell.js" defer></script>
@@ -299,6 +299,7 @@
     }
     body.jogos-manual-open #app { display: none !important; }
     body.jogos-manual-open .manual-launch-panel { display: block; }
+    body.jogos-manual-open { overflow-y: auto; }
     .manual-launch-panel .page-back {
       margin: 0 0 16px;
       font-size: 11px;
@@ -1931,14 +1932,12 @@
         $("app").hidden = true;
         $("manualLaunchPanel").hidden = false;
         document.body.classList.add("jogos-manual-open");
-        document.body.style.overflow = "hidden";
       }
 
       function closeManualDrawer() {
         $("manualLaunchPanel").hidden = true;
         $("app").hidden = false;
         document.body.classList.remove("jogos-manual-open");
-        document.body.style.overflow = "";
       }
 
       async function fillMissingManualLogos() {
