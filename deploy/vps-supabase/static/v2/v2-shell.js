@@ -130,11 +130,7 @@
   ];
 
   var APP_SECTIONS = [
-    {
-      title: "Aprenda",
-      color: "#9ca36a",
-      items: [p("academia", "Academia", "/app-academia.html", { badge: "Novo", glow: true })],
-    },
+    // Academia oculta no menu do usuário (aba Aprenda) — marker: ocultar-academia-v1
     {
       title: "Operações",
       color: "#9ca36a",
