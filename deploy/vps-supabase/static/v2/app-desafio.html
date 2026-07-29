@@ -6,9 +6,9 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-lancar-imediato-v1" />
-  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-em-andamento-v5 desafio-lancar-imediato-v1" />
-  <link rel="stylesheet" href="/v2.css?v=desafio-lancar-imediato-1" />
+  <meta name="arbishield-build" content="desafio-lancar-imediato-v3" />
+  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-em-andamento-v5 desafio-lancar-imediato-v3" />
+  <link rel="stylesheet" href="/v2.css?v=desafio-lancar-imediato-3" />
   <style>
     /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
     .dz-sb-market {
@@ -1615,8 +1615,8 @@
       function unlockAtMs(startsAtMs, releaseMinutesBefore) {
         var rel = Number(releaseMinutesBefore);
         if (!Number.isFinite(rel)) rel = 0;
-        // -1 = lançar imediato (disponível agora, sem esperar horário)
-        if (rel < 0) return 0;
+        // -1 ou >=100000 = publicar de imediato (disponível agora)
+        if (rel < 0 || rel >= 100000) return 0;
         if (startsAtMs == null || !Number.isFinite(startsAtMs)) return 0;
         return startsAtMs - rel * 6e4;
       }

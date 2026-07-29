@@ -3157,15 +3157,15 @@ async function updateDesafioStepMeta(token, body) {
     if (!Number.isFinite(rel)) {
       throw new Error("release_minutes_before inválido");
     }
-    // -1 = lançar imediato; demais valores usuais 0/15/30/60/120
-    const allowed = new Set([-1, 0, 15, 30, 60, 120]);
+    // -1 = lançar imediato; 999999 = fallback se o schema rejeitar negativo
+    const allowed = new Set([-1, 0, 15, 30, 60, 120, 999999]);
     if (!allowed.has(rel)) {
       throw new Error(
-        "release_minutes_before deve ser -1 (imediato), 0, 15, 30, 60 ou 120"
+        "release_minutes_before deve ser -1 (imediato), 0, 15, 30, 60, 120 ou 999999"
       );
     }
     patch.release_minutes_before = rel;
-    if (rel === -1) {
+    if (rel === -1 || rel >= 100000) {
       const st = String(step.status || "").toLowerCase();
       if (st !== "done" && st !== "settled" && st !== "closed") {
         patch.status = "current";

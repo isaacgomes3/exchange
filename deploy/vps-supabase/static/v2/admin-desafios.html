@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Gestão de Desafios — ArbiShield v2</title>
-  <meta name="arbishield-build" content="desafio-publicar-imediato-v2" />
+  <meta name="arbishield-build" content="desafio-publicar-imediato-v3" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
@@ -683,6 +683,15 @@
       };
     }
 
+    /** Sentinel: liberar agora (cliente não espera horário). */
+    const RELEASE_IMMEDIATE = -1;
+    const RELEASE_IMMEDIATE_FALLBACK = 999999;
+
+    function isReleaseImmediate(v) {
+      const n = Number(v);
+      return Number.isFinite(n) && (n < 0 || n >= 100000);
+    }
+
     let draft = emptyDraft();
 
     function stepIsClosed(e) {
@@ -1227,7 +1236,7 @@
             <div class="field">
               <label>Liberar entrada quantos minutos antes</label>
               <select data-f="release_minutes_before">
-                <option value="-1" ${Number(s.release_minutes_before) === -1 ? "selected" : ""}>Publicar de imediato (disponível agora)</option>
+                <option value="-1" ${isReleaseImmediate(s.release_minutes_before) ? "selected" : ""}>Publicar de imediato (disponível agora)</option>
                 <option value="0" ${Number(s.release_minutes_before) === 0 ? "selected" : ""}>No horário do jogo</option>
                 <option value="15" ${Number(s.release_minutes_before) === 15 ? "selected" : ""}>15 minutos antes</option>
                 <option value="30" ${Number(s.release_minutes_before) === 30 ? "selected" : ""}>30 minutos antes</option>
@@ -1299,8 +1308,8 @@
       $("fBalance").value = draft.initial_balance_reais || "";
       $("fActive").checked = Boolean(draft.is_active);
       if ($("fImmediate")) {
-        const anyImmediate = (draft.steps || []).some(
-          (s) => Number(s.release_minutes_before) === -1
+        const anyImmediate = (draft.steps || []).some((s) =>
+          isReleaseImmediate(s.release_minutes_before)
         );
         $("fImmediate").checked = Boolean(draft.publish_immediate || anyImmediate);
       }
@@ -1312,7 +1321,7 @@
       if ($("fActive")) $("fActive").checked = true;
       draft.steps = (draft.steps || []).map((s) => ({
         ...s,
-        release_minutes_before: -1,
+        release_minutes_before: RELEASE_IMMEDIATE,
         status: s.status === "done" ? s.status : "current",
       }));
     }
@@ -1747,7 +1756,7 @@
                     <div style="align-self:flex-end;display:flex;gap:8px;flex-wrap:wrap">
                       ${
                         !done
-                          ? Number(s.release_minutes_before) === -1
+                          ? isReleaseImmediate(s.release_minutes_before)
                             ? `<button class="btn btn-immediate" type="button" disabled title="Etapa já liberada de imediato">Já imediato</button>`
                             : `<button class="btn btn-immediate" type="button" data-launch-immediate="${esc(s.id)}">Publicar de imediato</button>`
                           : ""
@@ -1819,7 +1828,7 @@
                 !isDesafioClosed(d) &&
                 !d.deleted_at
                   ? (d.desafio_steps || []).some(
-                      (s) => !stepIsClosed(s) && Number(s.release_minutes_before) !== -1
+                      (s) => !stepIsClosed(s) && !isReleaseImmediate(s.release_minutes_before)
                     )
                     ? `<button class="btn btn-immediate" type="button" data-launch-immediate-desafio="${esc(d.id)}">Publicar de imediato</button>`
                     : `<button class="btn btn-immediate" type="button" disabled title="Todas as etapas já estão liberadas de imediato">Já imediato</button>`
@@ -1967,6 +1976,51 @@
         });
       });
 
+      async function patchStepImmediateViaSupabase(stepId) {
+        if (!window.ArbiV2 || typeof ArbiV2.client !== "function") {
+          throw new Error("Cliente Supabase indisponível");
+        }
+        const client = ArbiV2.client();
+        const attempts = [
+          {
+            release_minutes_before: RELEASE_IMMEDIATE,
+            status: "current",
+            is_published: true,
+          },
+          {
+            release_minutes_before: RELEASE_IMMEDIATE,
+            status: "current",
+          },
+          {
+            release_minutes_before: RELEASE_IMMEDIATE_FALLBACK,
+            status: "current",
+            is_published: true,
+          },
+          {
+            release_minutes_before: RELEASE_IMMEDIATE_FALLBACK,
+            status: "current",
+          },
+          { release_minutes_before: RELEASE_IMMEDIATE },
+          { release_minutes_before: RELEASE_IMMEDIATE_FALLBACK },
+        ];
+        let lastErr = null;
+        for (const patch of attempts) {
+          const up = await client
+            .from("desafio_steps")
+            .update(patch)
+            .eq("id", stepId)
+            .select("id,release_minutes_before,status,is_published")
+            .maybeSingle();
+          if (!up.error) {
+            return { ok: true, step: up.data, patch };
+          }
+          lastErr = up.error;
+        }
+        throw new Error(
+          (lastErr && lastErr.message) || "Falha ao gravar liberação imediata"
+        );
+      }
+
       async function launchStepImmediate(stepId, btn, opts) {
         if (!stepId) return;
         const options = opts || {};
@@ -1988,46 +2042,74 @@
           if (!headers.Authorization) {
             throw new Error("Sessão expirada — faça login novamente no admin.");
           }
-          const payload = {
-            stepId,
-            releaseMinutesBefore: -1,
-            launchImmediate: true,
-          };
-          let res = await fetch("/api/arbishield/desafio-step-update", {
-            method: "POST",
-            headers,
-            body: JSON.stringify(payload),
-          });
-          let data = await res.json().catch(() => ({}));
-          if (res.status === 404 || res.status === 405 || res.status === 502) {
-            const up = await ArbiV2.client()
-              .from("desafio_steps")
-              .update({
-                release_minutes_before: -1,
-                status: "current",
-                is_published: true,
-              })
-              .eq("id", stepId)
-              .select("id,release_minutes_before,status,is_published")
-              .maybeSingle();
-            if (up.error) throw new Error(up.error.message || "Falha ao publicar de imediato");
-            data = { ok: true, step: up.data };
-            res = { ok: true, status: 200 };
+
+          let saved = null;
+          let apiErr = null;
+
+          // 1) Tenta API nova (shim com launchImmediate)
+          try {
+            const res = await fetch("/api/arbishield/desafio-step-update", {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                stepId,
+                releaseMinutesBefore: RELEASE_IMMEDIATE,
+                launchImmediate: true,
+              }),
+            });
+            const data = await res.json().catch(() => ({}));
+            const errMsg = String((data && data.error) || "");
+            const apiOk = res.ok && data.ok !== false;
+            const oldShimReject =
+              /nada para atualizar|placar|link/i.test(errMsg) &&
+              !/lançar|imediato|release/i.test(errMsg);
+            if (apiOk && !oldShimReject) {
+              saved = { ok: true, step: data.step, via: "api" };
+            } else {
+              apiErr = errMsg || "API recusou liberação imediata";
+            }
+          } catch (e) {
+            apiErr = (e && e.message) || "Falha na API";
           }
-          if (!res.ok || data.ok === false) {
-            throw new Error((data && data.error) || "Falha ao publicar de imediato");
+
+          // 2) Sempre tenta gravar direto se a API falhou / shim antigo
+          if (!saved) {
+            try {
+              const up = await patchStepImmediateViaSupabase(stepId);
+              saved = { ok: true, step: up.step, via: "supabase", patch: up.patch };
+            } catch (e) {
+              throw new Error(
+                (e && e.message) ||
+                  apiErr ||
+                  "Falha ao publicar de imediato"
+              );
+            }
           }
+
+          const rel =
+            saved.step && saved.step.release_minutes_before != null
+              ? Number(saved.step.release_minutes_before)
+              : RELEASE_IMMEDIATE;
+
           if (Array.isArray(window.__desafioRows)) {
             for (const d of window.__desafioRows) {
               for (const s of d.desafio_steps || []) {
                 if (String(s.id) !== String(stepId)) continue;
-                s.release_minutes_before = -1;
+                s.release_minutes_before = Number.isFinite(rel)
+                  ? rel
+                  : RELEASE_IMMEDIATE;
                 if (s.status !== "done") s.status = "current";
                 s.is_published = true;
               }
             }
           }
           if (!options.skipReload) await load();
+          if (!options.silent) {
+            // feedback só no clique unitário
+            if (!options.skipConfirm) {
+              alert("Etapa publicada de imediato. O cliente já pode entrar.");
+            }
+          }
         } catch (err) {
           if (btn) {
             btn.disabled = false;
@@ -2055,7 +2137,7 @@
             (d) => String(d.id) === String(desafioId)
           );
           const steps = ((row && row.desafio_steps) || []).filter(
-            (s) => !stepIsClosed(s) && Number(s.release_minutes_before) !== -1
+            (s) => !stepIsClosed(s) && !isReleaseImmediate(s.release_minutes_before)
           );
           if (!steps.length) {
             alert("Todas as etapas abertas já estão publicadas de imediato.");
@@ -2074,13 +2156,47 @@
           const prevText = btn.textContent;
           btn.textContent = "Publicando…";
           try {
+            const headers = await authHeaders();
+            if (!headers.Authorization) {
+              throw new Error("Sessão expirada — faça login novamente no admin.");
+            }
+            // Garante desafio ativo/publicado
+            if (row && !row.is_active) {
+              try {
+                await fetch("/api/arbishield/desafios", {
+                  method: "POST",
+                  headers,
+                  body: JSON.stringify({
+                    id: desafioId,
+                    is_active: true,
+                    status: "active",
+                    publish_only: true,
+                  }),
+                });
+              } catch (_) {
+                try {
+                  await ArbiV2.client()
+                    .from("desafios")
+                    .update({
+                      is_active: true,
+                      status: "active",
+                      published_at: new Date().toISOString(),
+                    })
+                    .eq("id", desafioId);
+                } catch (_) {}
+              }
+            }
             for (const s of steps) {
               await launchStepImmediate(s.id, null, {
                 skipConfirm: true,
                 skipReload: true,
+                silent: true,
               });
             }
             await load();
+            alert(
+              "Publicado de imediato. O cliente já pode entrar sem esperar o horário."
+            );
           } catch (err) {
             alert(err.message || "Erro ao publicar de imediato");
             btn.disabled = false;
@@ -2626,10 +2742,9 @@
           draft.publish_immediate = false;
           draft.steps = (draft.steps || []).map((s) => ({
             ...s,
-            release_minutes_before:
-              Number(s.release_minutes_before) === -1
-                ? 60
-                : s.release_minutes_before,
+            release_minutes_before: isReleaseImmediate(s.release_minutes_before)
+              ? 60
+              : s.release_minutes_before,
           }));
         }
         renderStepsEditor();
