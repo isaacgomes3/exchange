@@ -6,9 +6,10 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-lancar-imediato-v3" />
-  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-em-andamento-v5 desafio-lancar-imediato-v3" />
-  <link rel="stylesheet" href="/v2.css?v=desafio-lancar-imediato-3" />
+  <meta name="arbishield-build" content="desafio-hist-odd-v4" />
+  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-em-andamento-v5 desafio-lancar-imediato-v3 desafio-hist-odd-v4" />
+  <!-- desafio-hist-odd-v4: histórico mostra odd, valor e ganho da entrada -->
+  <link rel="stylesheet" href="/v2.css?v=desafio-hist-odd-4" />
   <style>
     /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
     .dz-sb-market {
@@ -378,7 +379,7 @@
     }
     .dz-hist-entries li {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto auto;
+      grid-template-columns: minmax(0, 1.4fr) auto auto auto auto;
       gap: 8px;
       align-items: center;
       font-size: 11px;
@@ -394,7 +395,25 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .dz-hist-entries .amt { color: rgba(255, 220, 180, 0.85); font-weight: 700; }
+    .dz-hist-entries .odd {
+      color: #ff9a3c;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .dz-hist-entries .amt {
+      color: rgba(255, 220, 180, 0.85);
+      font-weight: 700;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    .dz-hist-entries .gain {
+      font-weight: 800;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      color: rgba(255, 255, 255, 0.45);
+    }
+    .dz-hist-entries .gain.is-profit { color: #c6ff00; }
     .dz-hist-entries .res {
       font-weight: 900;
       text-transform: uppercase;
@@ -915,10 +934,20 @@
                   : e.result === "lost"
                     ? "lost"
                     : "pending";
-              var profitBit =
-                e.result === "won" && Number(e.profitCents) > 0
-                  ? " · +" + money(e.profitCents)
-                  : "";
+              var oddN = Number(e.odd);
+              var oddHtml =
+                Number.isFinite(oddN) && oddN > 1
+                  ? '<span class="odd">Odd ' + esc(fmtOdd(oddN)) + "</span>"
+                  : '<span class="odd">Odd —</span>';
+              var gainN = Number(e.profitCents) || 0;
+              var gainHtml =
+                e.result === "won" && gainN > 0
+                  ? '<span class="gain is-profit">+' +
+                    esc(money(gainN)) +
+                    "</span>"
+                  : e.result === "lost"
+                    ? '<span class="gain">R$&nbsp;0,00</span>'
+                    : '<span class="gain">—</span>';
               return (
                 "<li>" +
                 '<span class="match">' +
@@ -927,10 +956,11 @@
                     (e.matchLabel || "Entrada")
                 ) +
                 "</span>" +
+                oddHtml +
                 '<span class="amt">' +
                 esc(money(e.amountCents || 0)) +
-                esc(profitBit) +
                 "</span>" +
+                gainHtml +
                 '<span class="res ' +
                 resCls +
                 '">' +
@@ -1059,6 +1089,10 @@
                 [step.home_team, step.away_team].filter(Boolean).join(" × ")
               : null;
             var rawStepIndex = step ? Number(step.step_index) || 0 : 0;
+            var oddRaw = step
+              ? Number(step.arbi_odd != null ? step.arbi_odd : step.home_odd)
+              : NaN;
+            var odd = Number.isFinite(oddRaw) && oddRaw > 1 ? oddRaw : null;
             return {
               id: p.id,
               stepId: p.step_id || null,
@@ -1066,6 +1100,7 @@
               matchLabel: matchLabel,
               result: res,
               amountCents: amt,
+              odd: odd,
               profitCents: res === "won" ? pr : 0,
               createdAt: p.created_at || null,
               startsAt: step ? step.starts_at || null : null,
@@ -1167,7 +1202,7 @@
           var sr = await supa
             .from("desafio_steps")
             .select(
-              "id,desafio_id,step_index,home_team,away_team,match_label,starts_at,status"
+              "id,desafio_id,step_index,home_team,away_team,match_label,arbi_odd,home_odd,casa_odd,away_odd,starts_at,status"
             )
             .in("id", stepIds.slice(0, 200));
           if (!sr.error) steps = sr.data || [];

@@ -85,6 +85,8 @@ publish_html "deploy/vps-supabase/static/v2/admin-desafios.html" "btnSaveImmedia
 log "3/5 UI app-desafio (cliente)"
 publish_html "deploy/vps-supabase/static/v2/app-desafio.html" "unlockAtMs"
 publish_html "deploy/vps-supabase/static/v2/app-desafio.html" "rel >= 100000"
+publish_html "deploy/vps-supabase/static/v2/app-desafio.html" "desafio-hist-odd-v4"
+publish_html "deploy/vps-supabase/static/v2/app-desafio.html" 'class="odd"'
 
 log "4/5 UI admin-jogos"
 publish_html "deploy/vps-supabase/static/v2/admin-jogos.html" "Lançar imediato"
