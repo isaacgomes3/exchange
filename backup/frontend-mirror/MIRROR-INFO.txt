@@ -1,0 +1,2 @@
+STAMP=2026-07-20T15:31:05Z
+ORIGIN=https://arbishield.app
