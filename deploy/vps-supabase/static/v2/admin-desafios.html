@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Gestão de Desafios — ArbiShield v2</title>
-  <meta name="arbishield-build" content="desafio-publicar-imediato-v3" />
+  <meta name="arbishield-build" content="desafio-publicar-imediato-v4" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
@@ -221,7 +221,9 @@
     }
     .step-edit input[type="number"],
     .step-edit input[type="url"],
-    .step-edit input[type="text"] {
+    .step-edit input[type="text"],
+    .step-edit input[type="datetime-local"],
+    .step-edit select {
       border: 1px solid var(--border); border-radius: 8px;
       background: #050505; color: var(--text);
       padding: 8px 10px; font-size: 13px; font-weight: 700;
@@ -229,6 +231,12 @@
     .step-edit input[type="number"] { width: 56px; text-align: center; }
     .step-edit input[type="url"],
     .step-edit input.link { flex: 1; min-width: 180px; }
+    .step-edit input[type="datetime-local"],
+    .step-edit select { min-width: 180px; max-width: 100%; }
+    .step-edit .avail-hint {
+      margin: 0; font-size: 11px; color: var(--muted); line-height: 1.35;
+    }
+    .step-edit .avail-hint b { color: var(--lime); font-weight: 800; }
     .step-edit .sep { color: var(--muted); font-weight: 900; }
     .step-box .link-open,
     .step-edit .link-open {
@@ -595,7 +603,7 @@
     </div>
     <div class="toggle-row">
       <div>
-        <strong>Publicar de imediato</strong>
+        <strong>Lançar de imediato</strong>
         <span>Cliente pode entrar agora, sem esperar o horário do jogo</span>
       </div>
       <input id="fImmediate" type="checkbox" />
@@ -609,7 +617,7 @@
 
     <div class="drawer-footer">
       <button class="btn btn-ghost" type="button" id="btnCancelDraft">Cancelar</button>
-      <button class="btn btn-primary" type="button" id="btnSaveImmediate">Publicar de imediato</button>
+      <button class="btn btn-primary" type="button" id="btnSaveImmediate">Lançar de imediato</button>
       <button class="btn btn-ghost" type="button" id="btnSaveDraft">Salvar e Liberar</button>
     </div>
   </section>
@@ -690,6 +698,55 @@
     function isReleaseImmediate(v) {
       const n = Number(v);
       return Number.isFinite(n) && (n < 0 || n >= 100000);
+    }
+
+    function unlockAtMsAdmin(startsAtIso, releaseMinutesBefore) {
+      const rel = Number(releaseMinutesBefore);
+      if (!Number.isFinite(rel)) return null;
+      if (rel < 0 || rel >= 100000) return 0;
+      if (!startsAtIso) return null;
+      const start = new Date(startsAtIso).getTime();
+      if (!Number.isFinite(start)) return null;
+      return start - rel * 6e4;
+    }
+
+    function formatUnlockLabel(startsAtIso, releaseMinutesBefore) {
+      if (isReleaseImmediate(releaseMinutesBefore)) {
+        return "Agora (lançar de imediato)";
+      }
+      const ms = unlockAtMsAdmin(startsAtIso, releaseMinutesBefore);
+      if (ms == null) return "Horário a definir";
+      if (ms <= 0) return "Agora (lançar de imediato)";
+      const d = new Date(ms);
+      if (Number.isNaN(d.getTime())) return "Horário a definir";
+      const now = Date.now();
+      if (ms <= now) return "Já disponível para o cliente";
+      return d.toLocaleString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+
+    function releaseSelectHtml(selected) {
+      const cur = Number(selected);
+      const imm = isReleaseImmediate(cur);
+      const opts = [
+        [-1, "Lançar de imediato (disponível agora)"],
+        [0, "No horário do jogo"],
+        [15, "15 minutos antes"],
+        [30, "30 minutos antes"],
+        [60, "60 minutos antes"],
+        [120, "120 minutos antes"],
+      ];
+      return opts
+        .map(([val, label]) => {
+          const on =
+            val === -1 ? imm : Number.isFinite(cur) && cur === val && !imm;
+          return `<option value="${val}"${on ? " selected" : ""}>${label}</option>`;
+        })
+        .join("");
     }
 
     let draft = emptyDraft();
@@ -1236,14 +1293,14 @@
             <div class="field">
               <label>Liberar entrada quantos minutos antes</label>
               <select data-f="release_minutes_before">
-                <option value="-1" ${isReleaseImmediate(s.release_minutes_before) ? "selected" : ""}>Publicar de imediato (disponível agora)</option>
+                <option value="-1" ${isReleaseImmediate(s.release_minutes_before) ? "selected" : ""}>Lançar de imediato (disponível agora)</option>
                 <option value="0" ${Number(s.release_minutes_before) === 0 ? "selected" : ""}>No horário do jogo</option>
                 <option value="15" ${Number(s.release_minutes_before) === 15 ? "selected" : ""}>15 minutos antes</option>
                 <option value="30" ${Number(s.release_minutes_before) === 30 ? "selected" : ""}>30 minutos antes</option>
                 <option value="60" ${Number(s.release_minutes_before) === 60 ? "selected" : ""}>60 minutos antes</option>
                 <option value="120" ${Number(s.release_minutes_before) === 120 ? "selected" : ""}>120 minutos antes</option>
               </select>
-              <p class="hint" style="margin:6px 0 0">Publicar de imediato: o cliente vê e pode entrar assim que o desafio for publicado.</p>
+              <p class="hint" style="margin:6px 0 0">Lançar de imediato: o cliente vê e pode entrar assim que o desafio for publicado.</p>
             </div>
           </div>
         </div>`
@@ -1583,7 +1640,7 @@
         btn.disabled = false;
         if (otherBtn) otherBtn.disabled = false;
         btn.textContent =
-          prevLabel || (immediate ? "Publicar de imediato" : "Salvar e Liberar");
+          prevLabel || (immediate ? "Lançar de imediato" : "Salvar e Liberar");
         return;
       }
       btn.textContent = immediate ? "Publicando…" : "Salvando…";
@@ -1606,7 +1663,7 @@
           "Desafio criado" +
             (data.desafio && data.desafio.number != null ? " #" + data.desafio.number : "") +
             (immediate || draft.publish_immediate
-              ? " e publicado de imediato!"
+              ? " e lançado de imediato!"
               : "!")
         );
       } catch (err) {
@@ -1614,7 +1671,7 @@
       } finally {
         btn.disabled = false;
         if (otherBtn) otherBtn.disabled = false;
-        btn.textContent = immediate ? "Publicar de imediato" : "Salvar e Liberar";
+        btn.textContent = immediate ? "Lançar de imediato" : "Salvar e Liberar";
       }
     }
 
@@ -1753,17 +1810,39 @@
                         }
                       </div>
                     </div>
-                    <div style="align-self:flex-end;display:flex;gap:8px;flex-wrap:wrap">
-                      ${
-                        !done
-                          ? isReleaseImmediate(s.release_minutes_before)
-                            ? `<button class="btn btn-immediate" type="button" disabled title="Etapa já liberada de imediato">Já imediato</button>`
-                            : `<button class="btn btn-immediate" type="button" data-launch-immediate="${esc(s.id)}">Publicar de imediato</button>`
-                          : ""
-                      }
+                    <div style="align-self:flex-end">
                       <button class="btn btn-primary" type="button" data-save-step-meta="${esc(s.id)}">Salvar placar / link</button>
                     </div>
                   </div>
+                  ${
+                    !done
+                      ? `<div class="row" style="margin-top:4px">
+                    <div>
+                      <label>Horário do jogo</label>
+                      <input type="datetime-local" data-step-starts value="${esc(toLocalInput(s.starts_at))}" />
+                    </div>
+                    <div style="flex:1;min-width:220px">
+                      <label>Disponível em (cliente)</label>
+                      <select data-step-release>
+                        ${releaseSelectHtml(s.release_minutes_before)}
+                      </select>
+                      <p class="avail-hint" data-avail-hint>
+                        Cliente vê: <b>${esc(
+                          formatUnlockLabel(s.starts_at, s.release_minutes_before)
+                        )}</b>
+                      </p>
+                    </div>
+                    <div style="align-self:flex-end;display:flex;gap:8px;flex-wrap:wrap">
+                      ${
+                        isReleaseImmediate(s.release_minutes_before)
+                          ? `<button class="btn btn-immediate" type="button" disabled>Já imediato</button>`
+                          : `<button class="btn btn-immediate" type="button" data-launch-immediate="${esc(s.id)}">Lançar de imediato</button>`
+                      }
+                      <button class="btn btn-lime-outline" type="button" data-save-step-avail="${esc(s.id)}">Salvar disponibilidade</button>
+                    </div>
+                  </div>`
+                      : ""
+                  }
                 </div>
                 <div class="card-actions" style="margin-top:8px;justify-content:flex-start">
                   <button class="btn btn-lime-outline" type="button" data-parts="${esc(s.id)}" data-step-label="Etapa ${s.step_index} · ${esc(label)}">Ver entradas (cliente / valor)</button>
@@ -1830,7 +1909,7 @@
                   ? (d.desafio_steps || []).some(
                       (s) => !stepIsClosed(s) && !isReleaseImmediate(s.release_minutes_before)
                     )
-                    ? `<button class="btn btn-immediate" type="button" data-launch-immediate-desafio="${esc(d.id)}">Publicar de imediato</button>`
+                    ? `<button class="btn btn-immediate" type="button" data-launch-immediate-desafio="${esc(d.id)}">Lançar de imediato</button>`
                     : `<button class="btn btn-immediate" type="button" disabled title="Todas as etapas já estão liberadas de imediato">Já imediato</button>`
                   : ""
               }
@@ -1976,6 +2055,147 @@
         });
       });
 
+      function bindAvailPreview(box) {
+        if (!box) return;
+        const startsEl = box.querySelector("[data-step-starts]");
+        const relEl = box.querySelector("[data-step-release]");
+        const hintEl = box.querySelector("[data-avail-hint]");
+        if (!startsEl || !relEl || !hintEl) return;
+        const sync = () => {
+          const startsIso = fromLocalInput(startsEl.value);
+          const rel = Number(relEl.value);
+          hintEl.innerHTML =
+            "Cliente vê: <b>" +
+            esc(formatUnlockLabel(startsIso, rel)) +
+            "</b>";
+        };
+        startsEl.addEventListener("change", sync);
+        startsEl.addEventListener("input", sync);
+        relEl.addEventListener("change", sync);
+        sync();
+      }
+
+      $("list").querySelectorAll("[data-step-edit]").forEach(bindAvailPreview);
+
+      async function patchStepAvailabilityViaSupabase(stepId, patch) {
+        if (!window.ArbiV2 || typeof ArbiV2.client !== "function") {
+          throw new Error("Cliente Supabase indisponível");
+        }
+        const client = ArbiV2.client();
+        const attempts = [
+          { ...patch, is_published: true },
+          patch,
+          (() => {
+            const { is_published: _i, status: _s, ...rest } = patch;
+            return rest;
+          })(),
+          { release_minutes_before: patch.release_minutes_before },
+        ];
+        let lastErr = null;
+        for (const body of attempts) {
+          const up = await client
+            .from("desafio_steps")
+            .update(body)
+            .eq("id", stepId)
+            .select(
+              "id,starts_at,release_minutes_before,status,is_published"
+            )
+            .maybeSingle();
+          if (!up.error) return { ok: true, step: up.data };
+          lastErr = up.error;
+        }
+        throw new Error(
+          (lastErr && lastErr.message) || "Falha ao salvar disponibilidade"
+        );
+      }
+
+      $("list").querySelectorAll("[data-save-step-avail]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const stepId = btn.getAttribute("data-save-step-avail");
+          if (!stepId) return;
+          const box =
+            btn.closest("[data-step-edit]") ||
+            $("list").querySelector(`[data-step-edit="${stepId}"]`);
+          if (!box) return;
+          const startsEl = box.querySelector("[data-step-starts]");
+          const relEl = box.querySelector("[data-step-release]");
+          const startsAt = fromLocalInput(startsEl && startsEl.value);
+          let rel = Number(relEl && relEl.value);
+          if (!Number.isFinite(rel)) rel = 0;
+          if (isReleaseImmediate(rel)) rel = RELEASE_IMMEDIATE;
+          btn.disabled = true;
+          const prevText = btn.textContent;
+          btn.textContent = "Salvando…";
+          try {
+            const headers = await authHeaders();
+            if (!headers.Authorization) {
+              throw new Error("Sessão expirada — faça login novamente no admin.");
+            }
+            const patch = {
+              starts_at: startsAt,
+              release_minutes_before: rel,
+            };
+            if (isReleaseImmediate(rel)) {
+              patch.status = "current";
+              patch.is_published = true;
+            }
+
+            let saved = null;
+            try {
+              const res = await fetch("/api/arbishield/desafio-step-update", {
+                method: "POST",
+                headers,
+                body: JSON.stringify({
+                  stepId,
+                  startsAt,
+                  releaseMinutesBefore: rel,
+                  launchImmediate: isReleaseImmediate(rel),
+                }),
+              });
+              const data = await res.json().catch(() => ({}));
+              const errMsg = String((data && data.error) || "");
+              const apiOk = res.ok && data.ok !== false;
+              const oldShimReject = /nada para atualizar|placar|link/i.test(errMsg);
+              if (apiOk && !oldShimReject) {
+                saved = data.step || patch;
+              }
+            } catch (_) {}
+
+            if (!saved) {
+              const up = await patchStepAvailabilityViaSupabase(stepId, patch);
+              saved = up.step || patch;
+            }
+
+            if (Array.isArray(window.__desafioRows)) {
+              for (const d of window.__desafioRows) {
+                for (const s of d.desafio_steps || []) {
+                  if (String(s.id) !== String(stepId)) continue;
+                  s.starts_at = startsAt;
+                  s.release_minutes_before =
+                    saved.release_minutes_before != null
+                      ? saved.release_minutes_before
+                      : rel;
+                  if (isReleaseImmediate(s.release_minutes_before) && s.status !== "done") {
+                    s.status = "current";
+                  }
+                }
+              }
+            }
+            await load();
+            alert(
+              isReleaseImmediate(rel)
+                ? "Disponibilidade salva: lançar de imediato. Cliente já pode entrar."
+                : "Disponibilidade salva. Cliente vê: " +
+                    formatUnlockLabel(startsAt, rel)
+            );
+          } catch (err) {
+            alert(err.message || "Erro ao salvar disponibilidade");
+            btn.disabled = false;
+            btn.textContent = prevText;
+          }
+        });
+      });
+
       async function patchStepImmediateViaSupabase(stepId) {
         if (!window.ArbiV2 || typeof ArbiV2.client !== "function") {
           throw new Error("Cliente Supabase indisponível");
@@ -2027,7 +2247,7 @@
         if (
           !options.skipConfirm &&
           !confirm(
-            "Publicar de imediato: liberar esta etapa agora para os clientes (sem esperar o horário)?"
+            "Lançar de imediato: liberar esta etapa agora para os clientes (sem esperar o horário)?"
           )
         ) {
           return;
@@ -2113,7 +2333,7 @@
         } catch (err) {
           if (btn) {
             btn.disabled = false;
-            btn.textContent = prevText || "Publicar de imediato";
+            btn.textContent = prevText || "Lançar de imediato";
           }
           throw err;
         }
@@ -2124,7 +2344,7 @@
           try {
             await launchStepImmediate(btn.getAttribute("data-launch-immediate"), btn);
           } catch (err) {
-            alert(err.message || "Erro ao publicar de imediato");
+            alert(err.message || "Erro ao lançar de imediato");
           }
         });
       });
@@ -2140,12 +2360,12 @@
             (s) => !stepIsClosed(s) && !isReleaseImmediate(s.release_minutes_before)
           );
           if (!steps.length) {
-            alert("Todas as etapas abertas já estão publicadas de imediato.");
+            alert("Todas as etapas abertas já estão em lançar de imediato.");
             return;
           }
           if (
             !confirm(
-              "Publicar de imediato: liberar " +
+              "Lançar de imediato: liberar " +
                 steps.length +
                 " etapa(s) agora para os clientes?"
             )
@@ -2195,10 +2415,10 @@
             }
             await load();
             alert(
-              "Publicado de imediato. O cliente já pode entrar sem esperar o horário."
+              "Lançado de imediato. O cliente já pode entrar sem esperar o horário."
             );
           } catch (err) {
-            alert(err.message || "Erro ao publicar de imediato");
+            alert(err.message || "Erro ao lançar de imediato");
             btn.disabled = false;
             btn.textContent = prevText;
           }

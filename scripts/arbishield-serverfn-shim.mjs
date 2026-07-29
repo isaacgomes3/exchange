@@ -3073,7 +3073,7 @@ async function updateDesafioStepMeta(token, body) {
   if (!stepId) throw new Error("stepId obrigatório");
 
   const stepRows = await sb(
-    `/rest/v1/desafio_steps?select=id,final_score_home,final_score_away,external_bet_link,home_team,away_team,match_label,step_index,release_minutes_before,status,is_published&id=eq.${encodeURIComponent(stepId)}&limit=1`,
+    `/rest/v1/desafio_steps?select=id,final_score_home,final_score_away,external_bet_link,home_team,away_team,match_label,step_index,release_minutes_before,status,is_published,starts_at&id=eq.${encodeURIComponent(stepId)}&limit=1`,
     { token: SERVICE_KEY }
   );
   const step = Array.isArray(stepRows) ? stepRows[0] : null;
@@ -3083,6 +3083,7 @@ async function updateDesafioStepMeta(token, body) {
   let touchedScore = false;
   let touchedLink = false;
   let touchedRelease = false;
+  let touchedStarts = false;
 
   const scoreStr = body?.finalScore ?? body?.final_score ?? body?.score;
   if (scoreStr != null && String(scoreStr).trim() !== "") {
@@ -3140,6 +3141,21 @@ async function updateDesafioStepMeta(token, body) {
     touchedLink = true;
   }
 
+  if (
+    body?.startsAt !== undefined ||
+    body?.starts_at !== undefined
+  ) {
+    const raw = body?.startsAt ?? body?.starts_at;
+    if (raw === null || raw === "") {
+      patch.starts_at = null;
+    } else {
+      const d = new Date(raw);
+      if (Number.isNaN(d.getTime())) throw new Error("Horário do jogo inválido");
+      patch.starts_at = d.toISOString();
+    }
+    touchedStarts = true;
+  }
+
   const launchImmediate =
     body?.launchImmediate === true ||
     body?.launch_immediate === true ||
@@ -3175,8 +3191,10 @@ async function updateDesafioStepMeta(token, body) {
     touchedRelease = true;
   }
 
-  if (!touchedScore && !touchedLink && !touchedRelease) {
-    throw new Error("Nada para atualizar (informe placar, link e/ou lançar imediato)");
+  if (!touchedScore && !touchedLink && !touchedRelease && !touchedStarts) {
+    throw new Error(
+      "Nada para atualizar (informe placar, link, horário e/ou lançar de imediato)"
+    );
   }
 
   let updated;
@@ -3212,6 +3230,7 @@ async function updateDesafioStepMeta(token, body) {
     updatedScore: touchedScore,
     updatedLink: touchedLink,
     updatedRelease: touchedRelease,
+    updatedStarts: touchedStarts,
   };
 }
 

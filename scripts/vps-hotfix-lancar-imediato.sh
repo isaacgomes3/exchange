@@ -13,7 +13,7 @@ WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
 SHIM_DIR="${ARBISHIELD_SHIM_DIR:-/opt/arbishield}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-$SHIM_DIR/scripts}"
-MARKER="desafio-publicar-imediato-v3"
+MARKER="desafio-publicar-imediato-v4"
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
@@ -77,8 +77,9 @@ rm -f "$tmp_shim"
 
 log "2/5 UI admin-desafios"
 publish_html "deploy/vps-supabase/static/v2/admin-desafios.html" "$MARKER"
-publish_html "deploy/vps-supabase/static/v2/admin-desafios.html" "Publicar de imediato"
-publish_html "deploy/vps-supabase/static/v2/admin-desafios.html" "patchStepImmediateViaSupabase"
+publish_html "deploy/vps-supabase/static/v2/admin-desafios.html" "Lançar de imediato"
+publish_html "deploy/vps-supabase/static/v2/admin-desafios.html" "data-save-step-avail"
+publish_html "deploy/vps-supabase/static/v2/admin-desafios.html" "data-step-release"
 publish_html "deploy/vps-supabase/static/v2/admin-desafios.html" "btnSaveImmediate"
 
 log "3/5 UI app-desafio (cliente)"
