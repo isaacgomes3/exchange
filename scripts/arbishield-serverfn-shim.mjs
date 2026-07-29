@@ -3849,26 +3849,13 @@ async function cancelDesafioParticipation(token, body) {
   }
 
   stepId = row.step_id || stepId;
-  let step = null;
-  try {
-    const stepRows = await sb(
-      `/rest/v1/desafio_steps?select=id,status,starts_at,desafio_id,used_liquidity_cents&id=eq.${encodeURIComponent(stepId)}&limit=1`,
-      { token: SERVICE_KEY }
-    );
-    step = Array.isArray(stepRows) ? stepRows[0] : null;
-  } catch (e) {
-    // VPS antiga: coluna used_liquidity_cents pode não existir
-    const msg = String(e && e.message ? e.message : e);
-    if (/used_liquidity_cents/i.test(msg)) {
-      const stepRows = await sb(
-        `/rest/v1/desafio_steps?select=id,status,starts_at,desafio_id&id=eq.${encodeURIComponent(stepId)}&limit=1`,
-        { token: SERVICE_KEY }
-      );
-      step = Array.isArray(stepRows) ? stepRows[0] : null;
-    } else {
-      throw e;
-    }
-  }
+  // NÃO selecionar used_liquidity_cents — coluna ausente em várias VPS (PGRST204).
+  // marker: desafio-cancel-sem-used-liquidity-v2
+  const stepRows = await sb(
+    `/rest/v1/desafio_steps?select=id,status,starts_at,desafio_id&id=eq.${encodeURIComponent(stepId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const step = Array.isArray(stepRows) ? stepRows[0] : null;
   if (!step) throw new Error("Etapa não encontrada");
 
   const stepStatus = String(step.status || "").toLowerCase();
@@ -3926,24 +3913,7 @@ async function cancelDesafioParticipation(token, body) {
     );
   }
 
-  // Liquidez do step é opcional (coluna pode não existir na VPS)
-  // marker: desafio-cancel-sem-used-liquidity-v1
-  try {
-    if (Object.prototype.hasOwnProperty.call(step, "used_liquidity_cents")) {
-      const used = Math.max(0, n(step.used_liquidity_cents) - amount);
-      await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`, {
-        method: "PATCH",
-        token: SERVICE_KEY,
-        body: {
-          used_liquidity_cents: used,
-          updated_at: new Date().toISOString(),
-        },
-      });
-    }
-  } catch {
-    /* schema sem used_liquidity_cents — ignora */
-  }
-
+  // Sem PATCH de used_liquidity_cents (schema antigo quebra o cancel).
   try {
     await sb("/rest/v1/wallet_transactions", {
       method: "POST",
@@ -3959,6 +3929,7 @@ async function cancelDesafioParticipation(token, body) {
           cancelled_by: callerId,
           admin: !!isAdmin,
           via: cancelledVia,
+          fix: "desafio-cancel-sem-used-liquidity-v2",
         },
       },
     });

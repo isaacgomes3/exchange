@@ -69,11 +69,14 @@ log "2/3 UI — v2.css (botao cancel)"
 install_named "v2.css" "dz-v2-cta.cancel"
 grep -q 'dz-v2-cta.cancel' "$WEB/v2.css" || die "css sem .dz-v2-cta.cancel"
 
-log "3/3 shim — cancel sem depender de used_liquidity_cents"
+log "3/3 shim — cancel SEM used_liquidity_cents (v2)"
 tmp_shim="$(mktemp)"
 download_repo_file "scripts/arbishield-serverfn-shim.mjs" "$tmp_shim"
-grep -q 'desafio-cancel-sem-used-liquidity-v1' "$tmp_shim" \
-  || die "shim sem marker desafio-cancel-sem-used-liquidity-v1"
+grep -q 'desafio-cancel-sem-used-liquidity-v2' "$tmp_shim" \
+  || die "shim sem marker desafio-cancel-sem-used-liquidity-v2"
+# Garante que o SELECT de cancel nao pede mais a coluna
+! grep -q 'select=id,status,starts_at,desafio_id,used_liquidity_cents' "$tmp_shim" \
+  || die "shim ainda seleciona used_liquidity_cents no cancel"
 for dest in \
   "$SHIM_DIR/arbishield-serverfn-shim.mjs" \
   "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs" \
@@ -94,7 +97,19 @@ for u in arbishield-serverfn-shim.service; do
 done
 rm -f "$tmp_shim"
 systemctl restart arbishield-serverfn-shim.service 2>/dev/null || \
-  echo "AVISO: nao reiniciou arbishield-serverfn-shim (reinicie manualmente)"
+  systemctl restart arbishield-shim.service 2>/dev/null || \
+  echo "AVISO: nao reiniciou shim (reinicie manualmente)"
+sleep 1
+# Confirma marker no arquivo em execucao
+if systemctl show -p ExecStart --value arbishield-serverfn-shim.service 2>/dev/null | grep -qoE '/[^ ]+arbishield-serverfn-shim\.mjs'; then
+  EXEC_FILE="$(systemctl show -p ExecStart --value arbishield-serverfn-shim.service | grep -oE '/[^ ]+arbishield-serverfn-shim\.mjs' | head -1)"
+  if [[ -n "$EXEC_FILE" ]]; then
+    grep -q 'desafio-cancel-sem-used-liquidity-v2' "$EXEC_FILE" \
+      || die "shim em execucao ainda sem v2: $EXEC_FILE"
+    echo "  confere OK $EXEC_FILE"
+  fi
+fi
 
 log "OK — Ctrl+Shift+R em Desafio e tente Cancelar entrada de novo."
 echo "  https://arbishield.app/app-desafio.html"
+echo "  marker shim: desafio-cancel-sem-used-liquidity-v2"
