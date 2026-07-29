@@ -13,7 +13,7 @@ WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
 SHIM_DIR="${ARBISHIELD_SHIM_DIR:-/opt/arbishield}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-$SHIM_DIR/scripts}"
-MARKER="desafio-lancar-imediato-v1"
+MARKER="desafio-publicar-imediato-v2"
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
@@ -77,7 +77,9 @@ rm -f "$tmp_shim"
 
 log "2/5 UI admin-desafios"
 publish_html "deploy/vps-supabase/static/v2/admin-desafios.html" "$MARKER"
+publish_html "deploy/vps-supabase/static/v2/admin-desafios.html" "Publicar de imediato"
 publish_html "deploy/vps-supabase/static/v2/admin-desafios.html" "data-launch-immediate"
+publish_html "deploy/vps-supabase/static/v2/admin-desafios.html" "btnSaveImmediate"
 
 log "3/5 UI app-desafio (cliente)"
 publish_html "deploy/vps-supabase/static/v2/app-desafio.html" "unlockAtMs"
@@ -101,5 +103,5 @@ done < <(systemctl list-units --type=service --all 2>/dev/null | awk '/serverfn/
 
 log "OK — Ctrl+Shift+R em /admin-desafios.html e /admin-jogos.html"
 echo "Marker: $MARKER"
-echo "Desafios: opção no cadastro + botão Lançar imediato na gestão."
-echo "Jogos: Lançar imediato no cadastro, edição e lista."
+echo "Desafios: botão amarelo 'Publicar de imediato' na gestão + cadastro."
+echo "Jogos: Lançar/Publicar de imediato no cadastro, edição e lista."
