@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Gestão de Banners — ArbiShield v2</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js"></script>
+  <script src="/v2-shell.js" defer></script>
+  <style>
+    .bn-head {
+      display: flex; flex-wrap: wrap; gap: 14px;
+      align-items: flex-start; justify-content: space-between;
+      margin-bottom: 18px;
+    }
+    .bn-table {
+      border: 1px solid var(--border-soft, #1f1f1f);
+      border-radius: 20px;
+      overflow: hidden;
+      background: #0a0a0a;
+    }
+    .bn-table table { width: 100%; border-collapse: collapse; }
+    .bn-table th {
+      text-align: left; padding: 16px 14px;
+      font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+      color: #8a8a8f; background: rgba(255,255,255,0.03);
+    }
+    .bn-table td {
+      padding: 14px; border-top: 1px solid rgba(255,255,255,0.05);
+      vertical-align: middle;
+    }
+    .bn-thumb {
+      width: 112px; height: 64px; border-radius: 12px; overflow: hidden;
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+      flex-shrink: 0;
+    }
+    .bn-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .bn-meta { display: flex; gap: 14px; align-items: center; }
+    .bn-meta .t { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
+    .bn-meta .s { font-size: 10px; color: #8a8a8f; font-weight: 700; text-transform: uppercase; margin-top: 4px; }
+    .bn-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 9px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 5px 10px; border-radius: 999px; border: 1px solid;
+    }
+    .bn-badge.on { color: var(--lime, #c9f223); background: rgba(201,242,35,0.1); border-color: rgba(201,242,35,0.25); }
+    .bn-badge.off { color: #f87171; background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.25); }
+    .bn-variant {
+      font-size: 9px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 5px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.1); color: #a1a1aa;
+    }
+    .bn-actions { display: flex; justify-content: flex-end; gap: 6px; }
+    .bn-icon {
+      width: 36px; height: 36px; border-radius: 12px; border: 0;
+      background: transparent; color: #8a8a8f; cursor: pointer;
+    }
+    .bn-icon:hover { background: rgba(255,255,255,0.05); color: #fff; }
+    .bn-icon.danger:hover { background: rgba(239,68,68,0.12); color: #f87171; }
+    .bn-empty { text-align: center; padding: 48px 20px; color: #8a8a8f; font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+    .drawer-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+      display: none; z-index: 40; justify-content: flex-end;
+    }
+    .drawer-backdrop.show { display: flex; }
+    .drawer {
+      width: min(560px, 100%); height: 100%; background: #0a0a0a;
+      border-left: 1px solid rgba(255,255,255,0.1);
+      padding: 22px; overflow-y: auto;
+    }
+    .drawer h2 {
+      margin: 0; font-size: 1.5rem; font-weight: 900; font-style: italic;
+      text-transform: uppercase; letter-spacing: -0.03em;
+    }
+    .drawer h2 span { color: var(--lime, #c9f223); }
+    .drawer .hint { color: #8a8a8f; font-size: 10px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; margin: 6px 0 18px; }
+    .field { display: grid; gap: 6px; margin-bottom: 14px; }
+    .field label { font-size: 10px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: #8a8a8f; }
+    .field input, .field textarea, .field select {
+      width: 100%; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.04); color: #fff; padding: 12px 14px;
+      font: inherit;
+    }
+    .field textarea { min-height: 96px; resize: vertical; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } }
+    .upload-box {
+      border: 2px dashed rgba(255,255,255,0.12); border-radius: 14px;
+      min-height: 140px; display: grid; place-items: center; cursor: pointer;
+      color: #8a8a8f; font-size: 10px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+      background: rgba(255,255,255,0.03);
+    }
+    .upload-box:hover { border-color: rgba(201,242,35,0.4); color: var(--lime, #c9f223); }
+    .upload-preview { position: relative; border-radius: 14px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); }
+    .upload-preview img { width: 100%; height: 160px; object-fit: cover; display: block; }
+    .upload-preview button {
+      position: absolute; top: 8px; right: 8px; width: 34px; height: 34px; border: 0;
+      border-radius: 999px; background: rgba(239,68,68,0.9); color: #fff; cursor: pointer;
+    }
+    .active-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 14px; border-radius: 16px; background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.06); margin-bottom: 18px;
+    }
+    .switch {
+      width: 46px; height: 26px; border-radius: 999px; border: 0; cursor: pointer;
+      background: #3f3f46; position: relative;
+    }
+    .switch.on { background: var(--lime, #c9f223); }
+    .switch::after {
+      content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px;
+      border-radius: 50%; background: #fff; transition: transform .15s ease;
+    }
+    .switch.on::after { transform: translateX(20px); background: #000; }
+    .drawer-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+    .preview-modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+      display: none; align-items: center; justify-content: center; z-index: 50; padding: 20px;
+    }
+    .preview-modal.show { display: flex; }
+    .preview-card {
+      width: min(860px, 100%); background: #0a0a0a; border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 28px; padding: 22px;
+    }
+    .preview-stage {
+      position: relative; min-height: 300px; border-radius: 22px; overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.08); background: #020808;
+    }
+    .preview-stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.25; }
+    .preview-stage .shade {
+      position: absolute; inset: 0;
+      background: linear-gradient(90deg, rgba(201,242,35,0.18), transparent 45%),
+                  linear-gradient(180deg, transparent, rgba(2,8,8,0.92));
+    }
+    .preview-stage .content {
+      position: relative; z-index: 2; padding: 28px; display: grid; gap: 18px; max-width: 40rem;
+    }
+    .preview-stage .badge { color: var(--lime, #c9f223); font-size: 12px; font-weight: 900; letter-spacing: 0.28em; text-transform: uppercase; }
+    .preview-stage h3 {
+      margin: 0; font-size: clamp(1.6rem, 4vw, 2.6rem); font-weight: 900; font-style: italic;
+      text-transform: uppercase; letter-spacing: -0.04em; line-height: 0.95;
+    }
+    .preview-stage h3 span { color: var(--lime, #c9f223); font-style: normal; }
+    .preview-stage p { margin: 0; color: #a1a1aa; font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+  </style>
+</head>
+<body data-shell="admin" data-active="banners">
+  <div class="page-head bn-head">
+    <div>
+      <h1>Gestão de <span>Banners</span></h1>
+      <p class="sub">Configure as campanhas e destaques do carrossel principal</p>
+    </div>
+    <button class="btn btn-primary" type="button" id="btnNew">+ Novo banner</button>
+  </div>
+  <div id="err" class="err"></div>
+  <div id="listHost" class="bn-table"><div class="bn-empty">Carregando…</div></div>
+
+  <div class="drawer-backdrop" id="drawer">
+    <div class="drawer">
+      <h2 id="drawerTitle">Novo <span>Banner</span></h2>
+      <p class="hint">Preencha os campos abaixo para configurar o banner</p>
+      <form id="bannerForm">
+        <div class="grid2">
+          <div class="field">
+            <label for="title">Título principal</label>
+            <input id="title" name="title" required />
+          </div>
+          <div class="field">
+            <label for="subtitle">Subtítulo (destaque)</label>
+            <input id="subtitle" name="subtitle" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="description">Descrição</label>
+          <textarea id="description" name="description"></textarea>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label for="cta_label">Texto do botão</label>
+            <input id="cta_label" name="cta_label" />
+          </div>
+          <div class="field">
+            <label for="cta_url">Link do botão (URL)</label>
+            <input id="cta_url" name="cta_url" />
+          </div>
+        </div>
+        <div class="field">
+          <label>Imagem de fundo</label>
+          <div id="imageBox"></div>
+          <input id="image_url" name="image_url" required placeholder="Ou cole uma URL: https://…" style="margin-top:10px" />
+          <input id="fileInput" type="file" accept="image/*" hidden />
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label for="badge">Etiqueta (badge)</label>
+            <input id="badge" name="badge" />
+          </div>
+          <div class="field">
+            <label for="variant">Variante</label>
+            <select id="variant" name="variant">
+              <option value="custom">Personalizado</option>
+              <option value="affiliate">Afiliado / Promoção</option>
+              <option value="match">Partida / Jogo</option>
+              <option value="desafio">Desafio ArbiShield</option>
+            </select>
+          </div>
+        </div>
+        <div class="active-row">
+          <div>
+            <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em">Status ativo</div>
+            <div style="font-size:10px;color:#8a8a8f;font-weight:700;text-transform:uppercase;margin-top:4px">O banner será exibido no carrossel</div>
+          </div>
+          <button type="button" class="switch on" id="activeSwitch" aria-pressed="true"></button>
+        </div>
+        <div class="drawer-actions">
+          <button type="button" class="btn btn-ghost" id="btnCancel">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btnSave">Salvar banner</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="preview-modal" id="previewModal">
+    <div class="preview-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <h3 style="margin:0;font-style:italic;text-transform:uppercase;letter-spacing:-.03em">Preview do <span style="color:var(--lime)">carrossel</span></h3>
+        <button class="btn btn-ghost" type="button" id="btnClosePreview">Fechar</button>
+      </div>
+      <div class="preview-stage" id="previewStage"></div>
+    </div>
+  </div>
+
+  <script>
+    (async function () {
+      var VARIANT_LABEL = {
+        custom: "Personalizado",
+        affiliate: "Afiliado",
+        match: "Partida",
+        desafio: "Desafio",
+      };
+      var emptyForm = {
+        id: null,
+        title: "",
+        subtitle: "",
+        description: "",
+        cta_label: "RESGATAR AGORA",
+        cta_url: "#",
+        image_url: "",
+        badge: "OFERTA",
+        variant: "custom",
+        active: true,
+      };
+      var state = {
+        rows: [],
+        form: Object.assign({}, emptyForm),
+        uploading: false,
+        saving: false,
+      };
+
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+      var isAdmin = await ArbiV2.requireAdmin(supa, user);
+      if (!isAdmin) {
+        showErr("Sem permissão admin para gerir banners.");
+        return;
+      }
+
+      function $(id) { return document.getElementById(id); }
+      function showErr(msg) {
+        var el = $("err");
+        el.textContent = msg || "";
+        el.classList.toggle("show", !!msg);
+      }
+
+      function renderImageBox() {
+        var host = $("imageBox");
+        if (state.form.image_url) {
+          host.innerHTML =
+            '<div class="upload-preview"><img src="' +
+            state.form.image_url.replace(/"/g, "&quot;") +
+            '" alt="Banner" /><button type="button" id="btnClearImg">×</button></div>';
+          $("btnClearImg").onclick = function () {
+            state.form.image_url = "";
+            $("image_url").value = "";
+            renderImageBox();
+          };
+          return;
+        }
+        host.innerHTML =
+          '<div class="upload-box" id="btnPickImg">' +
+          (state.uploading ? "Enviando…" : "Clique para enviar imagem") +
+          "</div>";
+        $("btnPickImg").onclick = function () { $("fileInput").click(); };
+      }
+
+      function fillForm() {
+        var f = state.form;
+        $("drawerTitle").innerHTML = (f.id ? "Editar" : "Novo") + ' <span>Banner</span>';
+        $("title").value = f.title || "";
+        $("subtitle").value = f.subtitle || "";
+        $("description").value = f.description || "";
+        $("cta_label").value = f.cta_label || "";
+        $("cta_url").value = f.cta_url || "";
+        $("image_url").value = f.image_url || "";
+        $("badge").value = f.badge || "";
+        $("variant").value = f.variant || "custom";
+        $("activeSwitch").classList.toggle("on", !!f.active);
+        $("activeSwitch").setAttribute("aria-pressed", f.active ? "true" : "false");
+        renderImageBox();
+      }
+
+      function openDrawer(row) {
+        state.form = Object.assign({}, emptyForm, row || {});
+        fillForm();
+        $("drawer").classList.add("show");
+      }
+
+      function closeDrawer() {
+        $("drawer").classList.remove("show");
+      }
+
+      function openPreview(row) {
+        $("previewStage").innerHTML =
+          '<img src="' + (row.image_url || "").replace(/"/g, "&quot;") + '" alt="" />' +
+          '<div class="shade"></div>' +
+          '<div class="content">' +
+          '<div class="badge">' + (row.badge || "OFERTA") + "</div>" +
+          "<h3>" + (row.title || "") + " <br><span>" + (row.subtitle || "") + "</span></h3>" +
+          "<p>" + (row.description || "") + "</p>" +
+          '<a class="btn btn-primary" href="' + (row.cta_url || "#") + '">' +
+          (row.cta_label || "RESGATAR AGORA") +
+          "</a></div>";
+        $("previewModal").classList.add("show");
+      }
+
+      function renderList() {
+        var host = $("listHost");
+        if (!state.rows.length) {
+          host.innerHTML = '<div class="bn-empty">Nenhum banner cadastrado.</div>';
+          return;
+        }
+        host.innerHTML =
+          "<table><thead><tr>" +
+          "<th>Status</th><th>Banner</th><th>Tipo</th><th style='text-align:right'>Ações</th>" +
+          "</tr></thead><tbody>" +
+          state.rows
+            .map(function (r) {
+              return (
+                "<tr>" +
+                '<td><span class="bn-badge ' + (r.active ? "on" : "off") + '">' +
+                (r.active ? "Ativo" : "Inativo") +
+                "</span></td>" +
+                '<td><div class="bn-meta"><div class="bn-thumb">' +
+                (r.image_url
+                  ? '<img src="' + String(r.image_url).replace(/"/g, "&quot;") + '" alt="" />'
+                  : "") +
+                '</div><div><div class="t">' +
+                (r.title || "—") +
+                '</div><div class="s">' +
+                (r.subtitle || "Sem subtítulo") +
+                "</div></div></div></td>" +
+                '<td><span class="bn-variant">' +
+                (VARIANT_LABEL[r.variant] || r.variant || "custom") +
+                "</span></td>" +
+                '<td><div class="bn-actions">' +
+                '<button class="bn-icon" type="button" data-preview="' + r.id + '" title="Preview">◉</button>' +
+                '<button class="bn-icon" type="button" data-edit="' + r.id + '" title="Editar">✎</button>' +
+                '<button class="bn-icon danger" type="button" data-del="' + r.id + '" title="Excluir">🗑</button>' +
+                "</div></td></tr>"
+              );
+            })
+            .join("") +
+          "</tbody></table>";
+
+        host.querySelectorAll("[data-preview]").forEach(function (btn) {
+          btn.onclick = function () {
+            var row = state.rows.find(function (x) { return x.id === btn.getAttribute("data-preview"); });
+            if (row) openPreview(row);
+          };
+        });
+        host.querySelectorAll("[data-edit]").forEach(function (btn) {
+          btn.onclick = function () {
+            var row = state.rows.find(function (x) { return x.id === btn.getAttribute("data-edit"); });
+            if (row) openDrawer(row);
+          };
+        });
+        host.querySelectorAll("[data-del]").forEach(function (btn) {
+          btn.onclick = async function () {
+            if (!confirm("Tem certeza que deseja excluir este banner?")) return;
+            var id = btn.getAttribute("data-del");
+            var res = await supa.from("banners").delete().eq("id", id);
+            if (res.error) {
+              showErr(res.error.message);
+              return;
+            }
+            await load();
+          };
+        });
+      }
+
+      async function load() {
+        showErr("");
+        var res = await supa
+          .from("banners")
+          .select("*")
+          .order("sort_order", { ascending: true })
+          .order("created_at", { ascending: false });
+        if (res.error) {
+          $("listHost").innerHTML =
+            '<div class="bn-empty">Sem dados nesta tabela<br><span style="font-weight:600;letter-spacing:0;text-transform:none;color:#a1a1aa">' +
+            (res.error.message || "") +
+            "</span><br><br>Rode o deploy de banners na VPS para criar a tabela.</div>";
+          showErr(res.error.message);
+          return;
+        }
+        state.rows = res.data || [];
+        renderList();
+      }
+
+      async function uploadFile(file) {
+        if (!file) return;
+        if (!file.type.startsWith("image/")) {
+          showErr("Selecione um arquivo de imagem.");
+          return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+          showErr("Imagem maior que 5MB.");
+          return;
+        }
+        state.uploading = true;
+        renderImageBox();
+        try {
+          var ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+          var path = "hero/" + Date.now() + "-" + Math.random().toString(36).slice(2) + "." + ext;
+          var up = await supa.storage.from("banners").upload(path, file, {
+            cacheControl: "3600",
+            upsert: false,
+          });
+          if (up.error) throw up.error;
+          var pub = supa.storage.from("banners").getPublicUrl(path);
+          state.form.image_url = pub.data.publicUrl;
+          $("image_url").value = state.form.image_url;
+          showErr("");
+        } catch (ex) {
+          showErr("Falha no upload: " + (ex.message || "erro desconhecido"));
+        } finally {
+          state.uploading = false;
+          renderImageBox();
+        }
+      }
+
+      $("btnNew").onclick = function () { openDrawer(null); };
+      $("btnCancel").onclick = closeDrawer;
+      $("drawer").addEventListener("click", function (e) {
+        if (e.target === $("drawer")) closeDrawer();
+      });
+      $("btnClosePreview").onclick = function () {
+        $("previewModal").classList.remove("show");
+      };
+      $("previewModal").addEventListener("click", function (e) {
+        if (e.target === $("previewModal")) $("previewModal").classList.remove("show");
+      });
+      $("activeSwitch").onclick = function () {
+        state.form.active = !state.form.active;
+        fillForm();
+      };
+      $("image_url").addEventListener("input", function (e) {
+        state.form.image_url = e.target.value.trim();
+        renderImageBox();
+      });
+      $("fileInput").addEventListener("change", function (e) {
+        uploadFile(e.target.files && e.target.files[0]);
+        e.target.value = "";
+      });
+
+      $("bannerForm").addEventListener("submit", async function (e) {
+        e.preventDefault();
+        if (state.saving) return;
+        var payload = {
+          title: $("title").value.trim(),
+          subtitle: $("subtitle").value.trim() || null,
+          description: $("description").value.trim() || null,
+          cta_label: $("cta_label").value.trim() || null,
+          cta_url: $("cta_url").value.trim() || null,
+          image_url: $("image_url").value.trim(),
+          badge: $("badge").value.trim() || null,
+          variant: $("variant").value || "custom",
+          active: !!state.form.active,
+          updated_at: new Date().toISOString(),
+        };
+        if (!payload.title) {
+          showErr("Título obrigatório");
+          return;
+        }
+        if (!payload.image_url) {
+          showErr("Imagem do banner obrigatória");
+          return;
+        }
+        state.saving = true;
+        $("btnSave").disabled = true;
+        $("btnSave").textContent = "Salvando…";
+        try {
+          var res;
+          if (state.form.id) {
+            res = await supa.from("banners").update(payload).eq("id", state.form.id).select("*").single();
+          } else {
+            payload.sort_order = state.rows.length;
+            payload.created_at = new Date().toISOString();
+            res = await supa.from("banners").insert(payload).select("*").single();
+          }
+          if (res.error) throw res.error;
+          closeDrawer();
+          await load();
+        } catch (ex) {
+          showErr(ex.message || "Erro ao salvar banner");
+        } finally {
+          state.saving = false;
+          $("btnSave").disabled = false;
+          $("btnSave").textContent = "Salvar banner";
+        }
+      });
+
+      await load();
+    })();
+  </script>
+</body>
+</html>
