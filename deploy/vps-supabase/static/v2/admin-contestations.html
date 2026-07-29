@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Contestações de Apostas — ArbiShield</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js"></script>
+  <script src="/v2-shell.js" defer></script>
+  <style>
+    .c-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+    @media (max-width: 800px) { .c-kpis { grid-template-columns: 1fr; } }
+    .c-kpi { border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 14px; background: rgba(4,26,20,0.85); }
+    .c-kpi span { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+    .c-kpi strong { font-size: 22px; }
+    .c-table { width: 100%; border-collapse: collapse; }
+    .c-table th, .c-table td { text-align: left; padding: 12px 10px; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 13px; vertical-align: top; }
+    .c-table th { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; }
+    .c-wrap { border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; overflow: auto; background: rgba(4,26,20,0.75); }
+    .tag { display: inline-flex; padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; border: 1px solid rgba(255,255,255,0.12); }
+    .tag.odd { color: #fbbf24; border-color: rgba(251,191,36,0.4); }
+    .tag.cancel { color: #f87171; border-color: rgba(248,113,113,0.4); }
+    .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .actions .btn { height: 34px; padding: 0 10px; font-size: 11px; }
+    .proof-link { color: #c9f223; font-weight: 700; text-decoration: none; }
+    .empty { padding: 28px; text-align: center; color: var(--muted); }
+    .muted { color: var(--muted); font-size: 11px; margin-top: 4px; }
+    .drawer-back {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 90;
+      display: none; align-items: stretch; justify-content: flex-end;
+    }
+    .drawer-back.show { display: flex; }
+    .drawer {
+      width: min(420px, 100%); background: #041a14; border-left: 1px solid rgba(201,242,35,0.2);
+      padding: 18px; overflow: auto;
+    }
+    .drawer img { width: 100%; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); margin-top: 10px; }
+  </style>
+</head>
+<body data-shell="admin" data-active="contestations">
+  <div class="page-head">
+    <div>
+      <h1>Contestações de <span>Apostas</span></h1>
+      <p class="sub">Apenas Ajuste de Odd — cancelamentos são automáticos pelo cliente</p>
+    </div>
+    <button type="button" class="btn btn-ghost" id="btnRefresh">Atualizar</button>
+  </div>
+  <div id="err" class="err"></div>
+  <div id="ok" class="ok-msg" style="display:none"></div>
+
+  <div class="c-kpis">
+    <div class="c-kpi"><span>Pendentes</span><strong id="kpiPending">0</strong></div>
+    <div class="c-kpi"><span>Ajustes de Odd</span><strong id="kpiOdd">0</strong></div>
+    <div class="c-kpi"><span>Cancelamentos</span><strong id="kpiCancel">0</strong></div>
+  </div>
+
+  <div class="c-wrap">
+    <table class="c-table">
+      <thead>
+        <tr>
+          <th>Cliente</th>
+          <th>Confronto</th>
+          <th>Tipo</th>
+          <th>Valor</th>
+          <th>Observação</th>
+          <th>Data</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"><tr><td colspan="7" class="empty">Carregando…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="drawer-back" id="drawer" aria-hidden="true">
+    <div class="drawer">
+      <h2 style="margin:0 0 8px;font-size:15px;text-transform:uppercase;letter-spacing:.08em">Evidência</h2>
+      <p id="drawerMeta" class="sub" style="color:var(--muted);font-size:12px"></p>
+      <img id="drawerImg" alt="Print do comprovante" />
+      <div style="margin-top:12px">
+        <button type="button" class="btn btn-ghost" id="drawerClose">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (async function () {
+      var money = ArbiV2.money;
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+      var isAdmin = await ArbiV2.requireAdmin(supa, user);
+      if (!isAdmin) {
+        location.replace("/app.html");
+        return;
+      }
+
+      var rows = [];
+      var errEl = document.getElementById("err");
+      var okEl = document.getElementById("ok");
+      var tbody = document.getElementById("tbody");
+      var drawer = document.getElementById("drawer");
+
+      var FN = {
+        list: "59c0d818802363264163ee9444e24b1e3264bcd8aec301585bdc70fcac943eed",
+        approve: "9915d3faeedf7212cb506bdd07689806611c78427c4cba1c2fdbd880cb5d8232",
+        reject: "94342764ce144c96ccc6f2f642dee8f04c0f51a24a39b4ae8ff5a7b37a9cbcac",
+      };
+
+      function showErr(msg) {
+        errEl.textContent = msg || "";
+        errEl.classList.toggle("show", !!msg);
+      }
+      function showOk(msg) {
+        okEl.textContent = msg || "";
+        okEl.style.display = msg ? "block" : "none";
+        if (msg) setTimeout(function () { okEl.style.display = "none"; }, 3500);
+      }
+
+      async function token() {
+        var s = await supa.auth.getSession();
+        return s.data.session && s.data.session.access_token;
+      }
+
+      function getContestMeta(r) {
+        var isBack = String(r.market_category || "").toUpperCase() === "BACK";
+        if (isBack) {
+          var calc = r.calculations || (r.metadata && r.metadata.calculations) || {};
+          return (calc && calc.contestation) || (r.metadata && r.metadata.contestation) || {};
+        }
+        return (r.metadata && r.metadata.contestation) || {};
+      }
+
+      function normalizeRow(r, category) {
+        var meta = getContestMeta(Object.assign({}, r, { market_category: category }));
+        var type = meta.type === "cancellation" ? "cancellation" : "odd_adjustment";
+        return Object.assign({}, r, {
+          market_category: category,
+          status: r.status || "review_odd",
+          contestation: {
+            type: type,
+            requested_odd: meta.requested_odd != null ? meta.requested_odd : null,
+            original_odd: meta.original_odd != null ? meta.original_odd : Number(r.odd),
+            proof_url: meta.proof_url || meta.bet_proof_url || null,
+            reason: meta.reason || null,
+            requested_at: meta.requested_at || r.updated_at || r.created_at,
+          },
+        });
+      }
+
+      /** Espelha o fallback do SPA legado (ae): protections status=review_odd */
+      async function loadFromSupabase() {
+        var layRes = await supa
+          .from("protections")
+          .select("*")
+          .eq("status", "review_odd")
+          .order("created_at", { ascending: false })
+          .limit(300);
+        if (layRes.error) throw layRes.error;
+
+        var backRes = await supa
+          .from("back_protections")
+          .select("*")
+          .eq("status", "review_odd")
+          .order("created_at", { ascending: false })
+          .limit(300);
+        // back pode falhar por RLS/tabela — não derruba a lista LAY
+        var backRows = backRes.error ? [] : backRes.data || [];
+
+        var list = []
+          .concat((layRes.data || []).map(function (r) { return normalizeRow(r, "LAY"); }))
+          .concat(backRows.map(function (r) { return normalizeRow(r, "BACK"); }))
+          .filter(function (r) {
+            // Cancelamento não entra no painel — só Ajuste de Odd
+            return contestType(r) !== "cancellation" &&
+              String((r.contestation && r.contestation.type) || "odd_adjustment") !== "cancellation";
+          })
+          .sort(function (a, b) {
+            return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+          });
+
+        var userIds = Array.from(new Set(list.map(function (r) { return r.user_id; }).filter(Boolean)));
+        var matchIds = Array.from(new Set(list.map(function (r) { return r.match_id; }).filter(Boolean)));
+
+        var profileMap = {};
+        var matchMap = {};
+        if (userIds.length) {
+          var pr = await supa.from("profiles").select("id,full_name").in("id", userIds);
+          if (!pr.error) (pr.data || []).forEach(function (p) { profileMap[p.id] = p; });
+        }
+        if (matchIds.length) {
+          var mr = await supa
+            .from("matches")
+            .select("id,home_team,away_team,league,starts_at")
+            .in("id", matchIds);
+          if (!mr.error) (mr.data || []).forEach(function (m) { matchMap[m.id] = m; });
+        }
+
+        return list.map(function (r) {
+          return Object.assign({}, r, {
+            profiles: profileMap[r.user_id] || { full_name: "Usuário" },
+            matches: matchMap[r.match_id] || null,
+          });
+        });
+      }
+
+      function isBackendAntigo(data) {
+        var err = String((data && data.error) || (data && data.raw) || "");
+        return /matchId/i.test(err) || /Valor inválido/i.test(err);
+      }
+
+      async function loadFromApi() {
+        var t = await token();
+        if (!t) return { rows: null, error: "Sessão expirada" };
+        async function tryFetch(url, init) {
+          var res = await fetch(url, init);
+          var text = await res.text();
+          var data = {};
+          try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 160) }; }
+          return { res: res, data: data };
+        }
+        // 1) prelive :3098 via /api/arbishield/protections (já proxyado no nginx)
+        var out = await tryFetch("/api/arbishield/protections", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + t,
+          },
+          body: JSON.stringify({ action: "contest_list" }),
+        });
+        if (out.res.ok && Array.isArray(out.data)) return { rows: out.data, error: null };
+        if (isBackendAntigo(out.data)) {
+          return {
+            rows: null,
+            error:
+              "Backend antigo (prelive :3098 ignora contest_list → matchId). Rode o hotfix v7 na VPS e reinicie arbishield-prelive-events.",
+          };
+        }
+
+        out = await tryFetch("/api/arbishield/contestations", {
+          headers: { Authorization: "Bearer " + t },
+        });
+        if (out.res.ok && Array.isArray(out.data)) return { rows: out.data, error: null };
+
+        out = await tryFetch("/_serverFn/" + FN.list, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-arbishield-plain": "1",
+            Authorization: "Bearer " + t,
+          },
+          body: "{}",
+        });
+        if (out.res.ok && Array.isArray(out.data)) return { rows: out.data, error: null };
+
+        var apiErr =
+          (out.data && out.data.error) ||
+          "API de contestações indisponível (HTTP " + (out.res && out.res.status) + ")";
+        return { rows: null, error: apiErr };
+      }
+
+      async function callAction(kind, payload) {
+        var t = await token();
+        // 1) prelive :3098
+        var action = kind === "approve" ? "contest_approve" : "contest_reject";
+        var res = await fetch("/api/arbishield/protections", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + t,
+          },
+          body: JSON.stringify(Object.assign({ action: action }, payload)),
+        });
+        var text = await res.text();
+        var data = {};
+        try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text.slice(0, 160) }; }
+        if (res.ok && data.ok) return data;
+
+        var path =
+          kind === "approve"
+            ? "/api/arbishield/contestations/approve"
+            : "/api/arbishield/contestations/reject";
+        var fnId = kind === "approve" ? FN.approve : FN.reject;
+        var resB = await fetch(path, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + t,
+          },
+          body: JSON.stringify(payload),
+        });
+        var textB = await resB.text();
+        var dataB = {};
+        try { dataB = textB ? JSON.parse(textB) : {}; } catch (e2) { dataB = {}; }
+        if (resB.ok && dataB.ok) return dataB;
+
+        var res2 = await fetch("/_serverFn/" + fnId, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-arbishield-plain": "1",
+            Authorization: "Bearer " + t,
+          },
+          body: JSON.stringify({ data: payload }),
+        });
+        var text2 = await res2.text();
+        var data2 = {};
+        try { data2 = text2 ? JSON.parse(text2) : {}; } catch (e3) { data2 = {}; }
+        if (res2.ok && (data2.ok === true || data2.rejected === true)) return data2;
+        throw new Error(
+          data.error || dataB.error || data2.error || ("Falha ao " + kind + ". Rode hotfix v7.")
+        );
+      }
+
+      function contestType(r) {
+        var t = (r.contestation && r.contestation.type) || "odd_adjustment";
+        return t === "cancellation" ? "cancellation" : "odd_adjustment";
+      }
+      function matchName(r) {
+        var m = r.matches;
+        if (m && m.home_team && m.away_team) return m.home_team + " × " + m.away_team;
+        return "Partida";
+      }
+      function clientName(r) {
+        return (r.profiles && r.profiles.full_name) || "Usuário";
+      }
+      function requestedAt(r) {
+        var d = (r.contestation && r.contestation.requested_at) || r.updated_at || r.created_at;
+        try { return new Date(d).toLocaleString("pt-BR"); } catch (e) { return "—"; }
+      }
+      function proofUrl(r) {
+        return (r.contestation && r.contestation.proof_url) || null;
+      }
+      function observation(r) {
+        var type = contestType(r);
+        if (type === "cancellation") {
+          return String((r.contestation && r.contestation.reason) || "Pedido de cancelamento");
+        }
+        var odd = Number((r.contestation && r.contestation.requested_odd) || r.odd || 0);
+        var orig = Number((r.contestation && r.contestation.original_odd) || r.odd || 0);
+        return "Odd " + orig.toFixed(2) + " → " + odd.toFixed(2);
+      }
+
+      function render() {
+        var pending = rows.length;
+        var oddN = rows.filter(function (r) { return contestType(r) === "odd_adjustment"; }).length;
+        document.getElementById("kpiPending").textContent = String(pending);
+        document.getElementById("kpiOdd").textContent = String(oddN);
+        document.getElementById("kpiCancel").textContent = String(pending - oddN);
+
+        if (!rows.length) {
+          tbody.innerHTML =
+            '<tr><td colspan="7" class="empty">Sem dados disponíveis para exibir<br><span class="muted">Nenhuma proteção em status «Em Contestação (Pendente)».<br>Se o cliente viu erro ao enviar, a contestação <b>não foi gravada</b> — precisa contestar de novo após o hotfix v7.<br>Se o aviso vermelho acima falar em backend antigo / matchId, rode o hotfix na VPS.</span></td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = rows.map(function (r, idx) {
+          var type = contestType(r);
+          var amount = r.responsibility_cents || r.amount_cents || 0;
+          var proof = proofUrl(r);
+          var typeLabel = type === "cancellation" ? "Cancelamento" : "Ajuste de Odd";
+          return (
+            "<tr>" +
+              "<td>" + clientName(r) + "</td>" +
+              "<td>" + matchName(r) + '<div class="muted">' + (r.market_category || "LAY") + "</div></td>" +
+              "<td><span class=\"tag " + (type === "cancellation" ? "cancel" : "odd") + "\">" + typeLabel + "</span></td>" +
+              "<td>" + money(amount) + "</td>" +
+              "<td>" + observation(r) +
+                (proof ? '<div style="margin-top:6px"><a class="proof-link" href="#" data-proof="' + idx + '">Ver print</a></div>' : "") +
+              "</td>" +
+              "<td>" + requestedAt(r) + "</td>" +
+              '<td><div class="actions">' +
+                '<button type="button" class="btn btn-primary" data-approve="' + idx + '">Aprovar</button>' +
+                '<button type="button" class="btn btn-ghost" data-reject="' + idx + '">Rejeitar</button>' +
+              "</div></td>" +
+            "</tr>"
+          );
+        }).join("");
+
+        tbody.querySelectorAll("[data-proof]").forEach(function (a) {
+          a.addEventListener("click", function (e) {
+            e.preventDefault();
+            var r = rows[Number(a.getAttribute("data-proof"))];
+            var url = proofUrl(r);
+            if (!url) return;
+            document.getElementById("drawerMeta").textContent = clientName(r) + " · " + matchName(r);
+            document.getElementById("drawerImg").src = url;
+            drawer.classList.add("show");
+          });
+        });
+        tbody.querySelectorAll("[data-approve]").forEach(function (b) {
+          b.addEventListener("click", function () { approve(Number(b.getAttribute("data-approve"))); });
+        });
+        tbody.querySelectorAll("[data-reject]").forEach(function (b) {
+          b.addEventListener("click", function () { reject(Number(b.getAttribute("data-reject"))); });
+        });
+      }
+
+      async function load() {
+        showErr("");
+        // Prefere API com service role (vê todas as contestações mesmo com RLS)
+        var api = { rows: null, error: null };
+        try { api = await loadFromApi(); } catch (e) {
+          api = { rows: null, error: (e && e.message) || String(e) };
+        }
+        if (Array.isArray(api.rows)) {
+          rows = api.rows
+            .map(function (r) {
+              return normalizeRow(r, r.market_category || "LAY");
+            })
+            .filter(function (r) {
+              return String((r.contestation && r.contestation.type) || "odd_adjustment") !== "cancellation";
+            });
+          render();
+          return;
+        }
+        // Fallback Supabase: RLS costuma esconder proteções de outros users → lista vazia enganosa
+        try {
+          rows = await loadFromSupabase();
+        } catch (e2) {
+          rows = [];
+          showErr((api.error || "") + " · Fallback: " + ((e2 && e2.message) || e2));
+          render();
+          return;
+        }
+        if (!rows.length && api.error) {
+          showErr(
+            api.error +
+              " Sem contestações visíveis no fallback (RLS). Se o cliente já contestou, o backend antigo impediu a listagem admin."
+          );
+        }
+        render();
+      }
+
+      async function approve(idx) {
+        var r = rows[idx];
+        if (!r) return;
+        var type = contestType(r);
+        var odd = Number((r.contestation && r.contestation.requested_odd) || r.odd || 0);
+        var msg =
+          type === "cancellation"
+            ? "Aprovar cancelamento e estornar integralmente o saldo comprometido?"
+            : ("Aprovar odd " + odd.toFixed(2) + " e recalcular liquidez/taxas?");
+        if (!window.confirm(msg)) return;
+        try {
+          await callAction("approve", {
+            protectionId: r.id,
+            category: r.market_category || "LAY",
+            approvedOdd: odd,
+          });
+          showOk(type === "cancellation" ? "Cancelamento aprovado e saldo estornado." : "Odd aprovada e recalculada.");
+          await load();
+        } catch (ex) {
+          showErr(ex.message || String(ex));
+        }
+      }
+
+      async function reject(idx) {
+        var r = rows[idx];
+        if (!r) return;
+        var reason = window.prompt("Motivo da rejeição (opcional):", "Odd validada como correta pelo sistema.");
+        if (reason === null) return;
+        try {
+          await callAction("reject", {
+            protectionId: r.id,
+            category: r.market_category || "LAY",
+            reason: reason,
+          });
+          showOk("Contestação rejeitada. Valores originais mantidos.");
+          await load();
+        } catch (ex) {
+          showErr(ex.message || String(ex));
+        }
+      }
+
+      document.getElementById("btnRefresh").addEventListener("click", function () {
+        load().catch(function (e) { showErr(e.message); });
+      });
+      document.getElementById("drawerClose").addEventListener("click", function () {
+        drawer.classList.remove("show");
+      });
+      drawer.addEventListener("click", function (e) {
+        if (e.target === drawer) drawer.classList.remove("show");
+      });
+
+      try {
+        await load();
+        setInterval(function () { load().catch(function () {}); }, 20000);
+      } catch (ex) {
+        showErr(ex.message || String(ex));
+        tbody.innerHTML = '<tr><td colspan="7" class="empty">Falha ao carregar contestações.</td></tr>';
+      }
+    })();
+  </script>
+</body>
+</html>
