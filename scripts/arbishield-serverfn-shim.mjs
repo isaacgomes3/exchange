@@ -3759,11 +3759,11 @@ async function registerDesafioEntry(token, body) {
   const row = Array.isArray(created) ? created[0] : created;
 
   try {
+    // Nao grava used_liquidity_cents — coluna ausente em varias VPS.
     await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`, {
       method: "PATCH",
       token: SERVICE_KEY,
       body: {
-        used_liquidity_cents: n(step.used_liquidity_cents) + amountCents,
         // Guarda stake sugerido da casa para o painel (último cálculo)
         casa_stake_cents: casaStakeCents || step.casa_stake_cents,
         updated_at: new Date().toISOString(),
