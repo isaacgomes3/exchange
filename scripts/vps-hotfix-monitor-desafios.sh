@@ -5,7 +5,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/<SHA>/scripts/vps-hotfix-monitor-desafios.sh")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-bf6bb7a62624f6c656e6a4235c0ff8e183766cdc}"
+REF="${ARBISHIELD_REF:-cursor/monitor-desafios-paginacao-4756}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
@@ -28,6 +28,8 @@ cp -f "$WEB/admin-monitoring-desafios.html" "$WEB_ROOT/admin-monitoring-desafios
 grep -q 'Monitor de Desafios' "$WEB/admin-monitoring-desafios.html" || die "página sem título"
 grep -q 'desafio_participations' "$WEB/admin-monitoring-desafios.html" || die "página sem query participations"
 grep -q 'Etapa' "$WEB/admin-monitoring-desafios.html" || die "página sem coluna Etapa"
+grep -q 'mdzPrev' "$WEB/admin-monitoring-desafios.html" || die "página sem paginação"
+grep -q 'desafio-monitor-paginacao-v1' "$WEB/admin-monitoring-desafios.html" || die "página sem build paginação"
 
 log "2/3 UI — v2-shell.js (item no menu Operação)"
 dl "deploy/vps-supabase/static/v2/v2-shell.js" "$WEB/v2-shell.js"

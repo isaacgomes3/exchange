@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Monitor de Desafios — ArbiShield</title>
-  <meta name="arbishield-build" content="desafio-monitor-mercado-settle-v2" />
+  <meta name="arbishield-build" content="desafio-monitor-paginacao-v1" />
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=monitor-desafios-mercado-v1" />
+  <link rel="stylesheet" href="/v2.css?v=monitor-desafios-paginacao-v1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=monitor-desafios-mercado-v1"></script>
-  <script src="/v2-shell.js?v=monitor-desafios-mercado-v1" defer></script>
+  <script src="/v2.js?v=monitor-desafios-paginacao-v1"></script>
+  <script src="/v2-shell.js?v=monitor-desafios-paginacao-v1" defer></script>
   <style>
     .mdz-wrap { display: grid; gap: 16px; padding-bottom: 48px; }
     .mdz-head h1 { margin: 0; font-size: clamp(1.4rem, 3vw, 1.9rem); font-weight: 900; letter-spacing: -0.03em; text-transform: uppercase; }
@@ -89,6 +89,17 @@
     .mdz-badge.active { color: #c6ff00; border-color: rgba(198,255,0,0.35); background: rgba(198,255,0,0.08); }
     .mdz-badge.done { color: #60a5fa; border-color: rgba(96,165,250,0.35); background: rgba(96,165,250,0.08); }
     .mdz-empty { text-align: center; color: #8b949e; padding: 36px 12px; font-size: 13px; }
+    .mdz-pager {
+      display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+      border-radius: 16px; border: 1px solid rgba(198,255,0,0.12); background: #071413; padding: 12px 14px;
+    }
+    .mdz-pager select {
+      border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);
+      background: #010b0a; color: #fff; padding: 8px 10px; font-size: 12px;
+    }
+    .mdz-pager-btns { display: flex; align-items: center; gap: 8px; }
+    .mdz-page-info { font-size: 11px; color: #8b949e; min-width: 64px; text-align: center; font-weight: 700; }
+    .mdz-pager .mdz-btn:disabled { opacity: 0.4; cursor: not-allowed; }
     @media (max-width: 900px) {
       .mdz-kpis { grid-template-columns: 1fr 1fr; }
     }
@@ -114,6 +125,8 @@
     tab: "andamento",
     q: "",
     rows: [],
+    page: 1,
+    pageSize: 20,
     err: "",
   };
 
@@ -348,11 +361,18 @@
   function render() {
     var root = document.getElementById("mdzRoot");
     var rows = filtered();
+    var pages = Math.max(1, Math.ceil(rows.length / state.pageSize));
+    if (state.page > pages) state.page = pages;
+    if (state.page < 1) state.page = 1;
+    var page = state.page;
+    var slice = rows.slice((page - 1) * state.pageSize, page * state.pageSize);
     var andamento = tabCount("andamento");
     var capital = 0;
     (state.rows || []).forEach(function (r) {
       if (r.inProgress) capital += r.stepAmount || 0;
     });
+    var from = rows.length ? (page - 1) * state.pageSize + 1 : 0;
+    var to = Math.min(page * state.pageSize, rows.length);
 
     var tabsHtml = TABS.map(function (t) {
       return (
@@ -376,7 +396,7 @@
         '<div class="mdz-table-wrap"><table class="mdz"><thead><tr>' +
         "<th>Cliente</th><th>Etapa</th><th>Jogo / mercado</th><th>Valores</th><th>Status etapa</th>" +
         "</tr></thead><tbody>" +
-        rows
+        slice
           .map(function (r) {
             var badge = resultLabel(r.stepResult);
             var marketLine = "";
@@ -460,7 +480,43 @@
             );
           })
           .join("") +
-        "</tbody></table></div>";
+        "</tbody></table></div>" +
+        '<div class="mdz-pager">' +
+        "<label><select id=\"mdzPageSize\">" +
+        [10, 20, 50, 100]
+          .map(function (n) {
+            return (
+              '<option value="' +
+              n +
+              '"' +
+              (state.pageSize === n ? " selected" : "") +
+              ">" +
+              n +
+              " / página</option>"
+            );
+          })
+          .join("") +
+        "</select></label>" +
+        '<div class="mdz-pager-btns">' +
+        '<span class="mdz-page-info" id="mdzRangeInfo">' +
+        from +
+        "–" +
+        to +
+        " de " +
+        rows.length +
+        "</span>" +
+        '<button type="button" class="mdz-btn ghost" id="mdzPrev"' +
+        (page <= 1 ? " disabled" : "") +
+        ">Anterior</button>" +
+        '<span class="mdz-page-info" id="mdzPageInfo">' +
+        page +
+        " / " +
+        pages +
+        "</span>" +
+        '<button type="button" class="mdz-btn ghost" id="mdzNext"' +
+        (page >= pages ? " disabled" : "") +
+        ">Próxima</button>" +
+        "</div></div>";
     }
 
     root.innerHTML =
@@ -493,6 +549,7 @@
     root.querySelectorAll("[data-tab]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         state.tab = btn.getAttribute("data-tab");
+        state.page = 1;
         render();
       });
     });
@@ -500,11 +557,34 @@
     if (qEl) {
       qEl.addEventListener("input", function () {
         state.q = qEl.value || "";
+        state.page = 1;
         render();
       });
     }
     var ref = document.getElementById("mdzRefresh");
     if (ref) ref.addEventListener("click", function () { load(true); });
+    var prev = document.getElementById("mdzPrev");
+    if (prev) {
+      prev.addEventListener("click", function () {
+        state.page = Math.max(1, state.page - 1);
+        render();
+      });
+    }
+    var next = document.getElementById("mdzNext");
+    if (next) {
+      next.addEventListener("click", function () {
+        state.page += 1;
+        render();
+      });
+    }
+    var sizeEl = document.getElementById("mdzPageSize");
+    if (sizeEl) {
+      sizeEl.addEventListener("change", function () {
+        state.pageSize = Number(sizeEl.value) || 20;
+        state.page = 1;
+        render();
+      });
+    }
     root.querySelectorAll("[data-settle]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         settleStep(
@@ -586,24 +666,50 @@
           "desafios(title,number,status,is_active,target_profit_pct,total_steps,deleted_at)," +
           "desafio_steps(id,step_index,match_label,status,home_team,away_team,league_name,starts_at,result)",
       ];
-      var res = null;
+      var selectSql = null;
       var lastErr = null;
       for (var si = 0; si < selects.length; si++) {
-        res = await supa
+        var probe = await supa
           .from("desafio_participations")
           .select(selects[si])
           .eq("side", "arbishield")
           .order("created_at", { ascending: false })
-          .limit(2000);
-        if (!res.error) break;
-        lastErr = res.error;
-        // Só faz fallback se for coluna inexistente
-        var msg = String((res.error && res.error.message) || "");
+          .range(0, 0);
+        if (!probe.error) {
+          selectSql = selects[si];
+          break;
+        }
+        lastErr = probe.error;
+        var msg = String((probe.error && probe.error.message) || "");
         if (!/does not exist|column/i.test(msg)) break;
-        res = null;
       }
-      if (!res || res.error) throw lastErr || (res && res.error) || new Error("Falha ao carregar");
-      state.rows = buildRows(res.data || []);
+      if (!selectSql) throw lastErr || new Error("Falha ao carregar");
+
+      // Carrega todas as páginas (PostgREST/Supabase corta por range).
+      var pageSize = 1000;
+      var allParts = [];
+      var from = 0;
+      while (true) {
+        var to = from + pageSize - 1;
+        var res = await supa
+          .from("desafio_participations")
+          .select(selectSql)
+          .eq("side", "arbishield")
+          .order("created_at", { ascending: false })
+          .range(from, to);
+        if (res.error) throw res.error;
+        var chunk = res.data || [];
+        allParts = allParts.concat(chunk);
+        if (chunk.length < pageSize) break;
+        from += pageSize;
+        if (from > 50000) break;
+      }
+      state.rows = buildRows(allParts);
+      if (!manual) {
+        // Mantém a página atual no auto-refresh; só corrige se ficar inválida.
+        var totalPages = Math.max(1, Math.ceil(filtered().length / state.pageSize));
+        if (state.page > totalPages) state.page = totalPages;
+      }
       render();
       if (manual) showErr("");
     } catch (ex) {

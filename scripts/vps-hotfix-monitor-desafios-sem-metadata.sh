@@ -4,16 +4,16 @@
 # no Monitor de Desafios.
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/desafio-finalizar-monitor-6a41/scripts/vps-hotfix-monitor-desafios-sem-metadata.sh?$(date +%s)")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/monitor-desafios-paginacao-4756/scripts/vps-hotfix-monitor-desafios-sem-metadata.sh?$(date +%s)")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/desafio-finalizar-monitor-6a41}"
+REF="${ARBISHIELD_REF:-cursor/monitor-desafios-paginacao-4756}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
-MARKER="desafio-monitor-mercado-settle-v2"
+MARKER="desafio-monitor-paginacao-v1"
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
@@ -43,6 +43,7 @@ download_repo_file "deploy/vps-supabase/static/v2/admin-monitoring-desafios.html
 grep -q "$MARKER" "$tmp" || die "download sem marker $MARKER"
 grep -q 'market_name_arbishield' "$tmp" || die "download sem market_name_arbishield"
 grep -q 'data-settle' "$tmp" || die "download sem botões settle"
+grep -q 'mdzPrev' "$tmp" || die "download sem paginação"
 if grep -qE 'desafio_steps\([^)]*metadata' "$tmp"; then
   die "download ainda seleciona metadata — abortando"
 fi
