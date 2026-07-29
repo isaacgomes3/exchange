@@ -561,6 +561,7 @@
         pendingCount: 0,
         stageStates: [],
         pendingStepIds: {},
+        pendingAmountsByStep: {},
         pendingDesafioIds: {},
         cycleParts: [],
       };
@@ -677,8 +678,8 @@
           if (filters) filters.hidden = !unlocked;
           var sectionLabel = document.getElementById("dzDisponiveisLabel");
           if (sectionLabel) sectionLabel.hidden = !unlocked;
-          var andamento = document.getElementById("dzAndamento");
-          if (andamento && !unlocked) andamento.hidden = true;
+          // Andamento com entrada pendente continua visível mesmo com saldo 0
+          // (paintAndamentoSection decide; não esconder aqui).
           if (items.length) render();
         } catch (ex) {
           if (balEl) balEl.textContent = "—";
@@ -743,6 +744,7 @@
           pendingCount: 0,
           stageStates: [],
           pendingStepIds: {},
+          pendingAmountsByStep: {},
           pendingDesafioIds: {},
           cycleParts: [],
         };
@@ -764,6 +766,7 @@
           var pending = 0;
           var firstPendingIdx = -1;
           var pendingStepIds = {};
+          var pendingAmountsByStep = {};
           var pendingDesafioIds = {};
           var stageStates = [];
           cycle.forEach(function (p, idx) {
@@ -778,7 +781,11 @@
               pending += 1;
               stageStates[idx] = firstPendingIdx < 0 ? "current" : "waiting";
               if (firstPendingIdx < 0) firstPendingIdx = idx;
-              if (p.step_id) pendingStepIds[String(p.step_id)] = true;
+              if (p.step_id) {
+                pendingStepIds[String(p.step_id)] = true;
+                var amt = Number(p.amount_cents) || 0;
+                if (amt > 0) pendingAmountsByStep[String(p.step_id)] = amt;
+              }
               if (p.desafio_id) pendingDesafioIds[String(p.desafio_id)] = true;
             }
           });
@@ -795,6 +802,7 @@
             pendingCount: pending,
             stageStates: stageStates,
             pendingStepIds: pendingStepIds,
+            pendingAmountsByStep: pendingAmountsByStep,
             pendingDesafioIds: pendingDesafioIds,
             cycleParts: cycle,
           };
@@ -1713,7 +1721,9 @@
             : null;
         var waitMs = unlockMs != null ? unlockMs - now : null;
         var waiting = phase === "soon" && waitMs != null && waitMs > 0;
+        var alreadyEntered = !!item.alreadyEntered;
         var canPlay =
+          !alreadyEntered &&
           !waiting &&
           phase !== "done" &&
           phase !== "live" &&
@@ -1743,7 +1753,17 @@
 
         var arbiCta;
         var casaCta;
-        if (waiting) {
+        if (alreadyEntered) {
+          arbiCta =
+            '<button type="button" class="dz-v2-cta arbi is-disabled" disabled>Entrada em andamento</button>';
+          casaCta = item.externalBetLink
+            ? '<a class="dz-v2-cta casa" href="' +
+              esc(item.externalBetLink) +
+              '" target="_blank" rel="noopener">Abrir ' +
+              esc(item.casaBrand) +
+              "</a>"
+            : '<button type="button" class="dz-v2-cta casa is-disabled" disabled>Sem link da casa</button>';
+        } else if (waiting) {
           arbiCta =
             '<button type="button" class="dz-v2-cta arbi wait" disabled><span>Disponível em</span>' +
             '<span class="dz-v2-cta-time" data-countdown="' +
@@ -1828,16 +1848,21 @@
           esc(fmtOdd(item.arbiOdd)) +
           "</strong></div>" +
 
-          '<div class="dz-sb-field"><span class="l">Entrar com</span>' +
+          '<div class="dz-sb-field"><span class="l">' +
+          (alreadyEntered ? "Valor da entrada" : "Entrar com") +
+          "</span>" +
           '<div class="dz-sb-input-row">' +
           '<input class="dz-sb-input" data-stake-input inputmode="decimal" ' +
           (canPlay ? "" : "disabled ") +
           'value="' +
           esc(centsToInput(defaultStake)) +
           '" />' +
-          '<button type="button" class="dz-sb-max" data-stake-max ' +
-          (canPlay ? "" : "disabled ") +
-          ">MAX</button></div></div>" +
+          (alreadyEntered
+            ? ""
+            : '<button type="button" class="dz-sb-max" data-stake-max ' +
+              (canPlay ? "" : "disabled ") +
+              ">MAX</button>") +
+          "</div></div>" +
           '<div class="dz-sb-field"><span class="l">Você recebe</span><strong class="dz-sb-recebe arbi" data-recebe-arbi>' +
           money(sides.recebeArbiCents) +
           "</strong></div>" +
@@ -2023,9 +2048,8 @@
         var note = document.getElementById("dzAndamentoNote");
         if (!box || !listHost) return;
 
-        // Só o desafio em que o cliente tem entrada pendente (sem stepper — jornada tem o mapa).
+        // Entrada pendente fica visível mesmo com saldo Desafio zerado.
         var show =
-          desafioBalCents > 0 &&
           clientCircuit.pendingCount > 0 &&
           andamentoItems.length > 0;
         box.hidden = !show;
@@ -2053,8 +2077,14 @@
             (dzId ? "?desafioId=" + encodeURIComponent(dzId) : "") +
             '">Ver jornada →</a>';
         }
+        var amounts = (clientCircuit && clientCircuit.pendingAmountsByStep) || {};
         listHost.innerHTML = andamentoItems
-          .map(function (it) { return cardHtml(it, now); })
+          .map(function (it) {
+            var view = Object.assign({}, it, { alreadyEntered: true });
+            var amt = amounts[String(it.stepId || "")];
+            if (amt > 0) view.entradaCents = amt;
+            return cardHtml(view, now);
+          })
           .join("");
         bindCardHost(listHost);
       }
@@ -2066,8 +2096,9 @@
         paintAndamentoSection(split.andamento, now);
 
         if (!(desafioBalCents > 0)) {
-          host.innerHTML =
-            '<div class="ops-empty"><h2>Acesso aos desafios bloqueado</h2><p>Deposite no saldo do Desafio para ver e entrar nos jogos disponíveis.</p></div>';
+          host.innerHTML = split.andamento.length
+            ? '<div class="ops-empty"><h2>Novos desafios bloqueados</h2><p>Seu desafio em andamento está acima. Deposite no saldo do Desafio para ver e entrar em novos jogos.</p></div>'
+            : '<div class="ops-empty"><h2>Acesso aos desafios bloqueado</h2><p>Deposite no saldo do Desafio para ver e entrar nos jogos disponíveis.</p></div>';
           return;
         }
         var visible = applyFilter(split.disponiveis);
