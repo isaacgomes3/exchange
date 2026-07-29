@@ -6,10 +6,10 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-entrada-vazia-v1" />
-  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-em-andamento-v5 desafio-lancar-imediato-v3 desafio-hist-odd-v4 desafio-entrada-vazia-v1" />
-  <!-- desafio-entrada-vazia-v1: campo Entrar com inicia vazio (editável) -->
-  <link rel="stylesheet" href="/v2.css?v=desafio-entrada-vazia-1" />
+  <meta name="arbishield-build" content="desafio-cancelar-entrada-v1" />
+  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-em-andamento-v5 desafio-lancar-imediato-v3 desafio-hist-odd-v4 desafio-entrada-vazia-v1 desafio-cancelar-entrada-v1" />
+  <!-- desafio-cancelar-entrada-v1: cancelar entrada pendente antes do kickoff -->
+  <link rel="stylesheet" href="/v2.css?v=desafio-cancelar-entrada-1" />
   <style>
     /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
     .dz-sb-market {
@@ -764,6 +764,7 @@
           stageStates: [],
           pendingStepIds: {},
           pendingAmountsByStep: {},
+          pendingParticipationByStep: {},
           pendingDesafioIds: {},
           cycleParts: [],
         };
@@ -786,6 +787,7 @@
           var firstPendingIdx = -1;
           var pendingStepIds = {};
           var pendingAmountsByStep = {};
+          var pendingParticipationByStep = {};
           var pendingDesafioIds = {};
           var stageStates = [];
           cycle.forEach(function (p, idx) {
@@ -804,6 +806,7 @@
                 pendingStepIds[String(p.step_id)] = true;
                 var amt = Number(p.amount_cents) || 0;
                 if (amt > 0) pendingAmountsByStep[String(p.step_id)] = amt;
+                if (p.id) pendingParticipationByStep[String(p.step_id)] = p.id;
               }
               if (p.desafio_id) pendingDesafioIds[String(p.desafio_id)] = true;
             }
@@ -822,6 +825,7 @@
             stageStates: stageStates,
             pendingStepIds: pendingStepIds,
             pendingAmountsByStep: pendingAmountsByStep,
+            pendingParticipationByStep: pendingParticipationByStep,
             pendingDesafioIds: pendingDesafioIds,
             cycleParts: cycle,
           };
@@ -1806,8 +1810,25 @@
         var arbiCta;
         var casaCta;
         if (alreadyEntered) {
-          arbiCta =
-            '<button type="button" class="dz-v2-cta arbi is-disabled" disabled>Entrada em andamento</button>';
+          var canCancelEntry =
+            phase !== "live" &&
+            phase !== "done" &&
+            (item.startsAtMs == null || now < item.startsAtMs);
+          var participationId = String(item.participationId || "").trim();
+          if (canCancelEntry && (participationId || item.stepId)) {
+            arbiCta =
+              '<button type="button" class="dz-v2-cta arbi is-disabled" disabled>Entrada em andamento</button>' +
+              '<button type="button" class="dz-v2-cta cancel" data-cancel-entrada="1" data-participation-id="' +
+              esc(participationId) +
+              '" data-step-id="' +
+              esc(item.stepId || "") +
+              '" data-amount="' +
+              esc(String(item.entradaCents || 0)) +
+              '">Cancelar entrada</button>';
+          } else {
+            arbiCta =
+              '<button type="button" class="dz-v2-cta arbi is-disabled" disabled>Entrada em andamento</button>';
+          }
           casaCta = item.externalBetLink
             ? '<a class="dz-v2-cta casa" href="' +
               esc(item.externalBetLink) +
@@ -2093,6 +2114,68 @@
             }
           });
         });
+        host.querySelectorAll("[data-cancel-entrada]").forEach(function (btn) {
+          btn.addEventListener("click", async function () {
+            var participationId = String(
+              btn.getAttribute("data-participation-id") || ""
+            ).trim();
+            var stepId = String(btn.getAttribute("data-step-id") || "").trim();
+            var amountCents = Number(btn.getAttribute("data-amount") || 0) || 0;
+            if (!participationId && !stepId) {
+              alert("Entrada não encontrada.");
+              return;
+            }
+            if (
+              !confirm(
+                "Cancelar esta entrada" +
+                  (amountCents > 0 ? " de " + money(amountCents) : "") +
+                  "?\n\nO valor volta para o saldo Desafio. Só é possível antes do jogo começar."
+              )
+            ) {
+              return;
+            }
+            btn.disabled = true;
+            var prev = btn.textContent;
+            btn.textContent = "Cancelando…";
+            try {
+              var session = await ArbiV2.client().auth.getSession();
+              var token =
+                session.data.session && session.data.session.access_token;
+              var body = participationId
+                ? { participationId: participationId }
+                : { stepId: stepId };
+              var res = await fetch("/api/arbishield/desafio-cancel", {
+                method: "POST",
+                headers: {
+                  Authorization: "Bearer " + token,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify(body),
+              });
+              var data = await res.json().catch(function () {
+                return {};
+              });
+              if (!res.ok) {
+                throw new Error(
+                  (data && (data.error || data.message)) ||
+                    "Falha ao cancelar entrada"
+                );
+              }
+              alert(
+                data.alreadyCancelled
+                  ? "Entrada já estava cancelada."
+                  : "Entrada cancelada. Valor devolvido ao saldo Desafio."
+              );
+              await refreshAccessBar();
+              await loadClientCircuit();
+              render();
+            } catch (ex) {
+              alert((ex && ex.message) || "Erro ao cancelar");
+              btn.disabled = false;
+              btn.textContent = prev || "Cancelar entrada";
+            }
+          });
+        });
       }
 
       function paintAndamentoSection(andamentoItems, now) {
@@ -2131,11 +2214,15 @@
             '">Ver jornada →</a>';
         }
         var amounts = (clientCircuit && clientCircuit.pendingAmountsByStep) || {};
+        var partsByStep =
+          (clientCircuit && clientCircuit.pendingParticipationByStep) || {};
         listHost.innerHTML = andamentoItems
           .map(function (it) {
             var view = Object.assign({}, it, { alreadyEntered: true });
             var amt = amounts[String(it.stepId || "")];
             if (amt > 0) view.entradaCents = amt;
+            var pid = partsByStep[String(it.stepId || "")];
+            if (pid) view.participationId = pid;
             return cardHtml(view, now);
           })
           .join("");
