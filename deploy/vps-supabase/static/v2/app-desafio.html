@@ -6,10 +6,10 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-hist-odd-v4" />
-  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-em-andamento-v5 desafio-lancar-imediato-v3 desafio-hist-odd-v4" />
-  <!-- desafio-hist-odd-v4: histórico mostra odd, valor e ganho da entrada -->
-  <link rel="stylesheet" href="/v2.css?v=desafio-hist-odd-4" />
+  <meta name="arbishield-build" content="desafio-entrada-vazia-v1" />
+  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-em-andamento-v5 desafio-lancar-imediato-v3 desafio-hist-odd-v4 desafio-entrada-vazia-v1" />
+  <!-- desafio-entrada-vazia-v1: campo Entrar com inicia vazio (editável) -->
+  <link rel="stylesheet" href="/v2.css?v=desafio-entrada-vazia-1" />
   <style>
     /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
     .dz-sb-market {
@@ -1776,8 +1776,13 @@
           phase !== "live" &&
           !!item.isActiveDesafio;
 
-        var defaultStake = item.entradaCents || MIN_ACCESS_CENTS;
+        var defaultStake = alreadyEntered
+          ? item.entradaCents || 0
+          : 0;
         var sides = calcSides(item, defaultStake);
+        var stakeInputValue = alreadyEntered
+          ? centsToInput(defaultStake)
+          : "";
 
         var liq = phase !== "live" && phase !== "done" ? liquidityShown(item, now) : null;
         var liqHtml = "";
@@ -1899,10 +1904,10 @@
           (alreadyEntered ? "Valor da entrada" : "Entrar com") +
           "</span>" +
           '<div class="dz-sb-input-row">' +
-          '<input class="dz-sb-input" data-stake-input inputmode="decimal" ' +
+          '<input class="dz-sb-input" data-stake-input inputmode="decimal" placeholder="0,00" ' +
           (canPlay ? "" : "disabled ") +
           'value="' +
-          esc(centsToInput(defaultStake)) +
+          esc(stakeInputValue) +
           '" />' +
           (alreadyEntered
             ? ""
@@ -1966,7 +1971,8 @@
         if (!item) return null;
         var input = card.querySelector("[data-stake-input]");
         var stake = reaisToCents(input && input.value);
-        if (!(stake > 0)) stake = item.entradaCents || MIN_ACCESS_CENTS;
+        // Sem fallback para initial_balance: campo vazio = preview zerado
+        if (!(stake > 0)) stake = 0;
         var sides = calcSides(item, stake);
         var elCasa = card.querySelector("[data-casa-stake]");
         var elArbi = card.querySelector("[data-recebe-arbi]");
