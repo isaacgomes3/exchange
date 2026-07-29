@@ -22,7 +22,7 @@ NAME="${NAME:-PEDRO IURI TEIXEIRA DOS SANTOS}"
 ID_PREFIX="${ID_PREFIX:-24037bdf}"
 REEMBOLSO_CENTS="${REEMBOLSO_CENTS:-45000}"
 REAL_CENTS="${REAL_CENTS:-155000}"
-REASON="${REASON:-admin: transferir R$450 reembolso + R$1550 jogador → Desafio (Pedro Iuri)}"
+REASON="${REASON:-admin: transferir R\$450 reembolso + R\$1550 jogador → Desafio (Pedro Iuri)}"
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
