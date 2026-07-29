@@ -6,9 +6,9 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-em-andamento-v5" />
-  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-em-andamento-v5" />
-  <link rel="stylesheet" href="/v2.css?v=desafio-em-andamento-5" />
+  <meta name="arbishield-build" content="desafio-lancar-imediato-v1" />
+  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-em-andamento-v5 desafio-lancar-imediato-v1" />
+  <link rel="stylesheet" href="/v2.css?v=desafio-lancar-imediato-1" />
   <style>
     /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
     .dz-sb-market {
@@ -1612,13 +1612,22 @@
         );
       }
 
+      function unlockAtMs(startsAtMs, releaseMinutesBefore) {
+        var rel = Number(releaseMinutesBefore);
+        if (!Number.isFinite(rel)) rel = 0;
+        // -1 = lançar imediato (disponível agora, sem esperar horário)
+        if (rel < 0) return 0;
+        if (startsAtMs == null || !Number.isFinite(startsAtMs)) return 0;
+        return startsAtMs - rel * 6e4;
+      }
+
       function phaseOf(item, now) {
         if (item.isFinished || (item.liveInfo && item.liveInfo.finished)) {
           return "done";
         }
         var start = item.startsAtMs;
         if (start == null) return "ativo";
-        var unlock = start - (item.releaseMinutesBefore || 0) * 6e4;
+        var unlock = unlockAtMs(start, item.releaseMinutesBefore);
         if (item.liveInfo && item.liveInfo.live) return "live";
         if (now >= start) return "live";
         if (now < unlock) return "soon";
@@ -1643,7 +1652,7 @@
         // SPA: liquidez “some” após liberação; aproximação simples
         var start = item.startsAtMs;
         var unlock =
-          start != null ? start - (item.releaseMinutesBefore || 0) * 6e4 : null;
+          start != null ? unlockAtMs(start, item.releaseMinutesBefore) : null;
         if (unlock != null && now >= unlock && start != null && now < start) {
           var span = Math.max(1, start - unlock);
           var ratio = Math.max(0, Math.min(1, (start - now) / span));
@@ -1686,7 +1695,10 @@
           marketCasa: marketCasa,
           startsAt: startsAt,
           startsAtMs: startsAtMs,
-          releaseMinutesBefore: Number(step.release_minutes_before) || 0,
+          releaseMinutesBefore: (function () {
+            var n = Number(step.release_minutes_before);
+            return Number.isFinite(n) ? n : 0;
+          })(),
           entradaCents: entrada,
           stepId: step.id,
           lucroMaxPct: pct,
@@ -1717,8 +1729,8 @@
         var phase = phaseOf(item, now);
         var unlockMs =
           item.startsAtMs != null
-            ? item.startsAtMs - (item.releaseMinutesBefore || 0) * 6e4
-            : null;
+            ? unlockAtMs(item.startsAtMs, item.releaseMinutesBefore)
+            : 0;
         var waitMs = unlockMs != null ? unlockMs - now : null;
         var waiting = phase === "soon" && waitMs != null && waitMs > 0;
         var alreadyEntered = !!item.alreadyEntered;

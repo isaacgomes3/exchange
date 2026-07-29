@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Gestão de Desafios — ArbiShield v2</title>
-  <meta name="arbishield-build" content="desafio-editar-placar-link-v1" />
+  <meta name="arbishield-build" content="desafio-lancar-imediato-v1" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
@@ -840,7 +840,12 @@
           liquidity_cents: g("liquidity_cents"),
           display_liquidity_cents: g("display_liquidity_cents"),
           starts_at: g("starts_at"),
-          release_minutes_before: Number(g("release_minutes_before") || 60),
+          release_minutes_before: (() => {
+            const raw = g("release_minutes_before");
+            if (raw === "" || raw == null) return 60;
+            const n = Number(raw);
+            return Number.isFinite(n) ? n : 60;
+          })(),
         };
       });
     }
@@ -1200,12 +1205,14 @@
             <div class="field">
               <label>Liberar entrada quantos minutos antes</label>
               <select data-f="release_minutes_before">
+                <option value="-1" ${Number(s.release_minutes_before) === -1 ? "selected" : ""}>Lançar imediato (disponível agora)</option>
                 <option value="0" ${Number(s.release_minutes_before) === 0 ? "selected" : ""}>No horário do jogo</option>
                 <option value="15" ${Number(s.release_minutes_before) === 15 ? "selected" : ""}>15 minutos antes</option>
                 <option value="30" ${Number(s.release_minutes_before) === 30 ? "selected" : ""}>30 minutos antes</option>
                 <option value="60" ${Number(s.release_minutes_before) === 60 ? "selected" : ""}>60 minutos antes</option>
                 <option value="120" ${Number(s.release_minutes_before) === 120 ? "selected" : ""}>120 minutos antes</option>
               </select>
+              <p class="hint" style="margin:6px 0 0">Lançar imediato: o cliente vê e pode entrar assim que o desafio for publicado.</p>
             </div>
           </div>
         </div>`
@@ -1445,7 +1452,10 @@
               reaisToCents(a.liquidity_cents) ||
               200000,
             starts_at: fromLocalInput(a.starts_at),
-            release_minutes_before: Number(a.release_minutes_before) || 0,
+            release_minutes_before: (() => {
+              const n = Number(a.release_minutes_before);
+              return Number.isFinite(n) ? n : 0;
+            })(),
             status: a.status || "pending",
             is_published: Boolean(draft.is_active),
           };
@@ -1674,8 +1684,15 @@
                         }
                       </div>
                     </div>
-                    <div style="align-self:flex-end">
+                    <div style="align-self:flex-end;display:flex;gap:8px;flex-wrap:wrap">
                       <button class="btn btn-primary" type="button" data-save-step-meta="${esc(s.id)}">Salvar placar / link</button>
+                      ${
+                        !done && Number(s.release_minutes_before) !== -1
+                          ? `<button class="btn btn-lime-outline" type="button" data-launch-immediate="${esc(s.id)}">Lançar imediato</button>`
+                          : !done
+                            ? `<span class="tag-arbi" style="align-self:center">Liberado imediato</span>`
+                            : ""
+                      }
                     </div>
                   </div>
                 </div>
@@ -1751,6 +1768,16 @@
                 d.is_active || isDesafioClosed(d)
                   ? ""
                   : `<button class="btn btn-primary" type="button" data-publish="${esc(d.id)}">Publicar</button>`
+              }
+              ${
+                !isDesafioCancelled(d) &&
+                !isDesafioClosed(d) &&
+                !d.deleted_at &&
+                (d.desafio_steps || []).some(
+                  (s) => !stepIsClosed(s) && Number(s.release_minutes_before) !== -1
+                )
+                  ? `<button class="btn btn-lime-outline" type="button" data-launch-immediate-desafio="${esc(d.id)}">Lançar imediato</button>`
+                  : ""
               }
               <button class="btn btn-ghost" type="button" data-clone="${esc(d.id)}">Usar como base</button>
             </div>
@@ -1873,6 +1900,128 @@
             await load();
           } catch (err) {
             alert(err.message || "Erro ao salvar placar/link");
+            btn.disabled = false;
+            btn.textContent = prevText;
+          }
+        });
+      });
+
+      async function launchStepImmediate(stepId, btn, opts) {
+        if (!stepId) return;
+        const options = opts || {};
+        if (
+          !options.skipConfirm &&
+          !confirm(
+            "Lançar imediato: liberar esta etapa agora para os clientes (sem esperar o horário)?"
+          )
+        ) {
+          return;
+        }
+        const prevText = btn ? btn.textContent : "";
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "Liberando…";
+        }
+        try {
+          const headers = await authHeaders();
+          if (!headers.Authorization) {
+            throw new Error("Sessão expirada — faça login novamente no admin.");
+          }
+          const payload = {
+            stepId,
+            releaseMinutesBefore: -1,
+            launchImmediate: true,
+          };
+          let res = await fetch("/api/arbishield/desafio-step-update", {
+            method: "POST",
+            headers,
+            body: JSON.stringify(payload),
+          });
+          let data = await res.json().catch(() => ({}));
+          if (res.status === 404 || res.status === 405 || res.status === 502) {
+            const up = await ArbiV2.client()
+              .from("desafio_steps")
+              .update({
+                release_minutes_before: -1,
+                status: "current",
+                is_published: true,
+              })
+              .eq("id", stepId)
+              .select("id,release_minutes_before,status,is_published")
+              .maybeSingle();
+            if (up.error) throw new Error(up.error.message || "Falha ao lançar imediato");
+            data = { ok: true, step: up.data };
+            res = { ok: true, status: 200 };
+          }
+          if (!res.ok || data.ok === false) {
+            throw new Error((data && data.error) || "Falha ao lançar imediato");
+          }
+          if (Array.isArray(window.__desafioRows)) {
+            for (const d of window.__desafioRows) {
+              for (const s of d.desafio_steps || []) {
+                if (String(s.id) !== String(stepId)) continue;
+                s.release_minutes_before = -1;
+                if (s.status !== "done") s.status = "current";
+                s.is_published = true;
+              }
+            }
+          }
+          if (!options.skipReload) await load();
+        } catch (err) {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = prevText || "Lançar imediato";
+          }
+          throw err;
+        }
+      }
+
+      $("list").querySelectorAll("[data-launch-immediate]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          try {
+            await launchStepImmediate(btn.getAttribute("data-launch-immediate"), btn);
+          } catch (err) {
+            alert(err.message || "Erro ao lançar imediato");
+          }
+        });
+      });
+
+      $("list").querySelectorAll("[data-launch-immediate-desafio]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const desafioId = btn.getAttribute("data-launch-immediate-desafio");
+          if (!desafioId) return;
+          const row = (window.__desafioRows || []).find(
+            (d) => String(d.id) === String(desafioId)
+          );
+          const steps = ((row && row.desafio_steps) || []).filter(
+            (s) => !stepIsClosed(s) && Number(s.release_minutes_before) !== -1
+          );
+          if (!steps.length) {
+            alert("Todas as etapas abertas já estão em lançar imediato.");
+            return;
+          }
+          if (
+            !confirm(
+              "Lançar imediato: liberar " +
+                steps.length +
+                " etapa(s) agora para os clientes?"
+            )
+          ) {
+            return;
+          }
+          btn.disabled = true;
+          const prevText = btn.textContent;
+          btn.textContent = "Liberando…";
+          try {
+            for (const s of steps) {
+              await launchStepImmediate(s.id, null, {
+                skipConfirm: true,
+                skipReload: true,
+              });
+            }
+            await load();
+          } catch (err) {
+            alert(err.message || "Erro ao lançar imediato");
             btn.disabled = false;
             btn.textContent = prevText;
           }

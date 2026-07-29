@@ -3073,7 +3073,7 @@ async function updateDesafioStepMeta(token, body) {
   if (!stepId) throw new Error("stepId obrigatório");
 
   const stepRows = await sb(
-    `/rest/v1/desafio_steps?select=id,final_score_home,final_score_away,external_bet_link,home_team,away_team,match_label,step_index&id=eq.${encodeURIComponent(stepId)}&limit=1`,
+    `/rest/v1/desafio_steps?select=id,final_score_home,final_score_away,external_bet_link,home_team,away_team,match_label,step_index,release_minutes_before,status,is_published&id=eq.${encodeURIComponent(stepId)}&limit=1`,
     { token: SERVICE_KEY }
   );
   const step = Array.isArray(stepRows) ? stepRows[0] : null;
@@ -3082,6 +3082,7 @@ async function updateDesafioStepMeta(token, body) {
   const patch = { updated_at: new Date().toISOString() };
   let touchedScore = false;
   let touchedLink = false;
+  let touchedRelease = false;
 
   const scoreStr = body?.finalScore ?? body?.final_score ?? body?.score;
   if (scoreStr != null && String(scoreStr).trim() !== "") {
@@ -3139,8 +3140,43 @@ async function updateDesafioStepMeta(token, body) {
     touchedLink = true;
   }
 
-  if (!touchedScore && !touchedLink) {
-    throw new Error("Nada para atualizar (informe placar e/ou link)");
+  const launchImmediate =
+    body?.launchImmediate === true ||
+    body?.launch_immediate === true ||
+    body?.immediate === true;
+  const hasRelease =
+    launchImmediate ||
+    body?.releaseMinutesBefore !== undefined ||
+    body?.release_minutes_before !== undefined;
+  if (hasRelease) {
+    let rel = launchImmediate
+      ? -1
+      : Number(
+          body?.releaseMinutesBefore ?? body?.release_minutes_before
+        );
+    if (!Number.isFinite(rel)) {
+      throw new Error("release_minutes_before inválido");
+    }
+    // -1 = lançar imediato; demais valores usuais 0/15/30/60/120
+    const allowed = new Set([-1, 0, 15, 30, 60, 120]);
+    if (!allowed.has(rel)) {
+      throw new Error(
+        "release_minutes_before deve ser -1 (imediato), 0, 15, 30, 60 ou 120"
+      );
+    }
+    patch.release_minutes_before = rel;
+    if (rel === -1) {
+      const st = String(step.status || "").toLowerCase();
+      if (st !== "done" && st !== "settled" && st !== "closed") {
+        patch.status = "current";
+      }
+      patch.is_published = true;
+    }
+    touchedRelease = true;
+  }
+
+  if (!touchedScore && !touchedLink && !touchedRelease) {
+    throw new Error("Nada para atualizar (informe placar, link e/ou lançar imediato)");
   }
 
   let updated;
@@ -3150,12 +3186,20 @@ async function updateDesafioStepMeta(token, body) {
       { method: "PATCH", token: SERVICE_KEY, body: patch }
     );
   } catch (err) {
-    // Schema antigo sem updated_at
-    const { updated_at: _u, ...slim } = patch;
-    updated = await sb(
-      `/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`,
-      { method: "PATCH", token: SERVICE_KEY, body: slim }
-    );
+    // Schema antigo sem updated_at / is_published
+    const { updated_at: _u, is_published: _p, ...slim } = patch;
+    try {
+      updated = await sb(
+        `/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`,
+        { method: "PATCH", token: SERVICE_KEY, body: slim }
+      );
+    } catch (err2) {
+      const { status: _s, ...slimmer } = slim;
+      updated = await sb(
+        `/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`,
+        { method: "PATCH", token: SERVICE_KEY, body: slimmer }
+      );
+    }
   }
   const row = Array.isArray(updated) ? updated[0] : updated;
   return {
@@ -3167,6 +3211,7 @@ async function updateDesafioStepMeta(token, body) {
     },
     updatedScore: touchedScore,
     updatedLink: touchedLink,
+    updatedRelease: touchedRelease,
   };
 }
 

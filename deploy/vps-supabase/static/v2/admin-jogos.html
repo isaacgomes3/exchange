@@ -683,6 +683,17 @@
         <label for="editStarts">Data e horário</label>
         <input id="editStarts" type="datetime-local" />
       </div>
+      <div class="field">
+        <label for="editReleaseMinutes">Quando liberar entrada para o cliente</label>
+        <select id="editReleaseMinutes">
+          <option value="0">Lançar imediato (na hora do lançamento)</option>
+          <option value="15">15 minutos antes do jogo</option>
+          <option value="30">30 minutos antes do jogo</option>
+          <option value="60">60 minutos antes do jogo</option>
+          <option value="120">120 minutos antes do jogo</option>
+        </select>
+        <p class="hint" style="margin:6px 0 0">Lançar imediato deixa o evento disponível agora na fila do cliente.</p>
+      </div>
       <div class="grid">
         <div class="field"><label for="editHomeLogo">Logo casa (URL)</label><input id="editHomeLogo" placeholder="https://…" autocomplete="off" /></div>
         <div class="field"><label for="editAwayLogo">Logo fora (URL)</label><input id="editAwayLogo" placeholder="https://…" autocomplete="off" /></div>
@@ -827,14 +838,14 @@
       <div class="field">
         <label for="manReleaseMinutes">Quando liberar entrada para o cliente</label>
         <select id="manReleaseMinutes">
-          <option value="0" selected>Na hora do lançamento (assim que o admin publicar)</option>
+          <option value="0" selected>Lançar imediato (na hora do lançamento)</option>
           <option value="15">15 minutos antes do jogo</option>
           <option value="30">30 minutos antes do jogo</option>
           <option value="60">60 minutos antes do jogo</option>
           <option value="120">120 minutos antes do jogo</option>
         </select>
         <p class="hint" style="margin:6px 0 0">
-          Padrão: liberado na hora que você lançar o evento.
+          Lançar imediato: liberado na hora que você publicar o evento.
           As outras opções esperam até (início do jogo − minutos).
         </p>
       </div>
@@ -2080,6 +2091,12 @@
                     m.id +
                     '" style="margin-top:8px">Publicar</button>'
                   : "";
+              var launchNowBtn =
+                bucket !== "done"
+                  ? '<button class="btn btn-ghost btn-sm" type="button" data-launch-immediate="' +
+                    m.id +
+                    '" style="margin-top:8px;margin-left:6px">Lançar imediato</button>'
+                  : "";
               var settleBtn =
                 matchNeedsSettle(m) || bucket === "live" || bucket === "settle"
                   ? '<button class="btn btn-primary btn-sm" type="button" data-settle="' +
@@ -2173,6 +2190,7 @@
                 launchedByHtml +
                 closedByHtml +
                 publishBtn +
+                launchNowBtn +
                 settleBtn +
                 editBtn +
                 "</div>" +
@@ -2192,6 +2210,11 @@
             publishMatch(btn.getAttribute("data-publish"), btn);
           });
         });
+        $("platformContent").querySelectorAll("button[data-launch-immediate]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            launchMatchImmediate(btn.getAttribute("data-launch-immediate"), btn);
+          });
+        });
         $("platformContent").querySelectorAll("button[data-settle]").forEach(function (btn) {
           btn.addEventListener("click", function () {
             openSettleModal(btn.getAttribute("data-settle"));
@@ -2202,6 +2225,68 @@
             openEditMatchModal(btn.getAttribute("data-edit"));
           });
         });
+      }
+
+      async function launchMatchImmediate(matchId, btn) {
+        if (
+          !confirm(
+            "Lançar imediato: publicar e liberar este evento agora para os clientes?"
+          )
+        ) {
+          return;
+        }
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "Liberando…";
+        }
+        try {
+          var a = await ensureAuth(true);
+          if (!a) {
+            alert("Sessão expirada. Faça login admin de novo.");
+            return;
+          }
+          var row = platformMatches.find(function (m) {
+            return String(m.id) === String(matchId);
+          });
+          if (!row) throw new Error("Jogo não encontrado");
+          var meta = parseMatchMeta(row.metadata);
+          var nextMeta = Object.assign({}, meta, {
+            release_minutes_before: 0,
+            hide_from_site: false,
+            hidden: false,
+          });
+          if (!(row.created_by || meta.created_by || meta.created_by_name)) {
+            nextMeta.created_by = a.user.id;
+            nextMeta.created_by_name = String(a.user.id).slice(0, 8);
+          }
+          var body = {
+            is_published: true,
+            updated_at: new Date().toISOString(),
+            updated_by: a.user.id,
+            metadata: nextMeta,
+          };
+          if (!(row.created_by || meta.created_by)) {
+            body.created_by = a.user.id;
+          }
+          await restAuth("matches?id=eq." + encodeURIComponent(matchId), {
+            method: "PATCH",
+            body: body,
+          });
+          row.is_published = true;
+          row.metadata = nextMeta;
+          if (body.created_by) row.created_by = body.created_by;
+          alert("Evento lançado imediatamente na fila do cliente.");
+          platformLoaded = false;
+          await loadPlatformMatches({ force: true });
+          renderPlatformList();
+          renderStats();
+        } catch (err) {
+          alert(err.message || "Erro ao lançar imediato");
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Lançar imediato";
+          }
+        }
       }
 
       async function publishMatch(matchId, btn) {
@@ -2221,6 +2306,11 @@
             is_published: true,
             updated_at: new Date().toISOString(),
             updated_by: a.user.id,
+            metadata: Object.assign({}, meta, {
+              release_minutes_before: 0,
+              hide_from_site: false,
+              hidden: false,
+            }),
           };
           // Se o evento ainda não tem autor, grava quem publicou como "Lançado por"
           if (!(row && (row.created_by || meta.created_by || meta.created_by_name))) {
@@ -2247,7 +2337,7 @@
               }
             }
             body.created_by = a.user.id;
-            body.metadata = Object.assign({}, meta, {
+            body.metadata = Object.assign({}, body.metadata, {
               created_by: a.user.id,
               created_by_name: String(pubName || "").trim() || String(a.user.id).slice(0, 8),
             });
@@ -2258,11 +2348,12 @@
           });
           if (row) {
             row.is_published = true;
+            row.metadata = body.metadata || row.metadata;
             if (body.created_by) {
               row.created_by = body.created_by;
-              row.metadata = body.metadata;
               row._createdById = body.created_by;
-              row._createdByName = body.metadata.created_by_name;
+              row._createdByName =
+                (body.metadata && body.metadata.created_by_name) || row._createdByName;
             }
           }
           alert("Publicado! O jogo já aparece em Proteger Aposta para o cliente.");
@@ -2641,6 +2732,9 @@
         $("editSport").value = sportVal;
         if ($("editSport").value !== sportVal) $("editSport").value = "outro";
         $("editStarts").value = toDatetimeLocalValue(m.starts_at);
+        var relMin = Number(meta.release_minutes_before);
+        if (![0, 15, 30, 60, 120].includes(relMin)) relMin = 0;
+        if ($("editReleaseMinutes")) $("editReleaseMinutes").value = String(relMin);
         $("editHomeLogo").value = m.home_logo || "";
         $("editAwayLogo").value = m.away_logo || "";
         $("editBetLink").value =
@@ -2759,6 +2853,12 @@
         var hide = !!($("editHide") && $("editHide").checked);
         var prevMeta = parseMatchMeta(m.metadata);
         var betLink = String($("editBetLink").value || "").trim();
+        var releaseMinutes = Number(
+          ($("editReleaseMinutes") && $("editReleaseMinutes").value) || 0
+        );
+        if (![0, 15, 30, 60, 120].includes(releaseMinutes)) releaseMinutes = 0;
+        // Publicado na fila → liberar imediatamente para o cliente
+        if (published && !hide) releaseMinutes = 0;
         var nextMeta = Object.assign({}, prevMeta, {
           hide_from_site: hide,
           hidden: hide,
@@ -2767,6 +2867,7 @@
           external_bet_name: betLink
             ? prevMeta.external_bet_name || "BetBra"
             : prevMeta.external_bet_name || null,
+          release_minutes_before: releaseMinutes,
         });
         // Nunca apagar autor do lançamento ao editar
         if (m.created_by || prevMeta.created_by) {
