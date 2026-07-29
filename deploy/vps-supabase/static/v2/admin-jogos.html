@@ -2886,6 +2886,22 @@
           nextMeta.external_bet_link = null;
           nextMeta.betbra_link = null;
         }
+        // Espelha o link em cada mercado para a área do usuário (grade + drawer)
+        if (Array.isArray(applied.markets) && applied.markets.length) {
+          applied.markets = applied.markets.map(function (mk) {
+            var next = Object.assign({}, mk);
+            if (betLink) {
+              next.external_bet_link = betLink;
+              next.betbra_link = betLink;
+              next.external_bet_name =
+                next.external_bet_name || nextMeta.external_bet_name || "BetBra";
+            } else {
+              next.external_bet_link = null;
+              next.betbra_link = null;
+            }
+            return next;
+          });
+        }
         var body = {
           home_team: home,
           away_team: away,
@@ -3673,12 +3689,15 @@
             },
           ];
         }
+        var betLink =
+          ($("manExternalBetLink") && $("manExternalBetLink").value.trim()) ||
+          null;
         var markets = manualMarkets.map(function (m) {
           var odd = Number(String(m.odd).replace(",", "."));
           var liqBrl = parseMoneyToNumber(m.liquidity_brl);
           var dispBrl = parseMoneyToNumber(m.display_brl);
           var side = String(m.market_type || inferMarketType(m.name) || "LAY").toUpperCase();
-          return {
+          var row = {
             name: m.name || "LAY HOME",
             market_type: side === "BACK" ? "BACK" : "LAY",
             external_id: m.external_id || null,
@@ -3686,6 +3705,12 @@
             liquidity_brl: liqBrl != null ? liqBrl : 2000,
             display_liquidity: dispBrl != null ? Math.round(dispBrl * 100) : null,
           };
+          if (betLink) {
+            row.external_bet_link = betLink;
+            row.betbra_link = betLink;
+            row.external_bet_name = "BetBra";
+          }
+          return row;
         });
         var published = manualIsPublished();
         var btn = $("btnSaveManual");
@@ -3698,9 +3723,6 @@
           if (![0, 15, 30, 60, 120].includes(releaseMinutes)) releaseMinutes = 0;
           // Se publicou na fila, libera na hora do lançamento (cliente vê agora)
           if (published) releaseMinutes = 0;
-          var betLink =
-            ($("manExternalBetLink") && $("manExternalBetLink").value.trim()) ||
-            null;
           var result = await apiPost("/api/arbishield/matches", {
             mode: "manual",
             home_team: home,

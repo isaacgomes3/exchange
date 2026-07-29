@@ -604,7 +604,7 @@
         if (matchIds.length) {
           var mres = await supa
             .from("matches")
-            .select("id,home_team,away_team,league,starts_at,markets")
+            .select("id,home_team,away_team,league,starts_at,markets,metadata")
             .in("id", matchIds);
           if (!mres.error) {
             (mres.data || []).forEach(function (m) {
@@ -731,6 +731,40 @@
           ? new Date(it.created_at).toLocaleString("pt-BR")
           : "—";
         var meta = metaOf(it);
+        var matchMeta =
+          it.matches && it.matches.metadata && typeof it.matches.metadata === "object"
+            ? it.matches.metadata
+            : {};
+        var marketLink = "";
+        var markets = Array.isArray(it.matches && it.matches.markets)
+          ? it.matches.markets
+          : [];
+        var mid = meta.market_id || meta.marketId || null;
+        var mk =
+          (mid &&
+            markets.find(function (x) {
+              return String(x.id) === String(mid);
+            })) ||
+          markets[0] ||
+          null;
+        if (mk) {
+          marketLink = String(
+            mk.external_bet_link || mk.betbra_link || mk.betbraLink || ""
+          ).trim();
+        }
+        if (!marketLink) {
+          marketLink = String(
+            matchMeta.external_bet_link ||
+              matchMeta.betbra_link ||
+              meta.external_bet_link ||
+              ""
+          ).trim();
+        }
+        var houseName = String(
+          (mk && (mk.external_bet_name || mk.betbra_name)) ||
+            matchMeta.external_bet_name ||
+            "BetBra"
+        ).trim();
         detailEl.innerHTML =
           "<h2>Protocolo de auditoria</h2>" +
           '<p class="sub">' + matchName(it) + "</p>" +
@@ -754,6 +788,13 @@
               ? "Sim (protection_fee)"
               : "Não encontrada") +
             "</strong></div>" +
+            (marketLink
+              ? "<div><span>Link do mercado</span><strong><a href=\"" +
+                esc(marketLink) +
+                '" target="_blank" rel="noopener noreferrer" style="color:var(--lime)">' +
+                esc(houseName) +
+                " ↗</a></strong></div>"
+              : "") +
           "</div>" +
           '<div class="prot-actions" style="display:flex;flex-direction:column;gap:10px">' +
             '<button type="button" class="btn btn-primary" id="btnContest"' +
@@ -762,6 +803,13 @@
             '<button type="button" class="btn btn-ghost" id="btnCancelProt"' +
             (gate.ok ? "" : " disabled") +
             ">Cancelar proteção</button>" +
+            (marketLink
+              ? '<a class="btn btn-ghost" href="' +
+                esc(marketLink) +
+                '" target="_blank" rel="noopener noreferrer" style="text-align:center;text-decoration:none">Abrir mercado · ' +
+                esc(houseName) +
+                " ↗</a>"
+              : "") +
             (isMirror
               ? '<button type="button" class="btn btn-ghost" id="btnHideErr" style="border-color:rgba(248,113,113,0.45);color:#fecaca">Ocultar da lista (erro de lançamento)</button>' +
                 '<p class="sub" style="margin:0">Espelho: oculta só na UI do cliente. Não estorna saldo. Use se a entrada não foi dele.</p>'

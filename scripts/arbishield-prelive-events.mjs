@@ -742,7 +742,21 @@ async function createManualMatch(body, token) {
       display = null;
     }
     const side = String(m.market_type || m.marketType || "LAY").toUpperCase();
-    return {
+    const marketLink =
+      m.external_bet_link ||
+      m.externalBetLink ||
+      m.betbra_link ||
+      m.betbraLink ||
+      body.external_bet_link ||
+      body.externalBetLink ||
+      null;
+    const marketName =
+      m.external_bet_name ||
+      m.externalBetName ||
+      body.external_bet_name ||
+      body.externalBetName ||
+      (marketLink ? "BetBra" : null);
+    const rowMarket = {
       id: m.id || randomUUID(),
       name: String(m.name || `Mercado ${idx + 1}`).trim(),
       odd,
@@ -752,6 +766,12 @@ async function createManualMatch(body, token) {
       market_type: side === "BACK" ? "BACK" : "LAY",
       external_id: m.external_id != null ? String(m.external_id) : null,
     };
+    if (marketLink) {
+      rowMarket.external_bet_link = String(marketLink);
+      rowMarket.betbra_link = String(marketLink);
+      if (marketName) rowMarket.external_bet_name = String(marketName);
+    }
+    return rowMarket;
   });
 
   const maxProtection = markets.reduce((sum, m) => sum + Number(m.liquidity || 0), 0);
@@ -795,6 +815,7 @@ async function createManualMatch(body, token) {
     updated_by: adminId,
     metadata: {
       external_bet_link: body.external_bet_link || body.externalBetLink || null,
+      betbra_link: body.external_bet_link || body.externalBetLink || body.betbra_link || body.betbraLink || null,
       external_bet_name: body.external_bet_name || body.externalBetName || null,
       external_bet_logo: body.external_bet_logo || body.externalBetLogo || null,
       betting_house_id: body.betting_house_id || body.bettingHouseId || null,

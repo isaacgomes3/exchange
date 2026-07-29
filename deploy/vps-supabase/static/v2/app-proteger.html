@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <meta name="arbishield-build" content="proteger-sem-radar-v1" />
-  <meta name="arbishield-features" content="proteger-sem-radar-v1 proteger-espelho-readonly-v13" />
+  <meta name="arbishield-build" content="proteger-link-mercado-v1" />
+  <meta name="arbishield-features" content="proteger-sem-radar-v1 proteger-espelho-readonly-v13 proteger-link-mercado-v1" />
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=proteger-sem-radar-1" />
+  <link rel="stylesheet" href="/v2.css?v=proteger-link-mercado-1" />
   <style>
     .term-score {
       display: inline-flex;
@@ -34,10 +34,50 @@
       color: rgba(255, 255, 255, 0.7);
       letter-spacing: 0.04em;
     }
+    .term-col-action {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 8px;
+    }
+    .term-house-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 34px;
+      padding: 0 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(96, 165, 250, 0.45);
+      background: rgba(30, 58, 110, 0.85);
+      color: #dbeafe;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .term-house-link:hover {
+      border-color: rgba(147, 197, 253, 0.75);
+      color: #fff;
+    }
+    .term-house-link .ext {
+      font-size: 11px;
+      opacity: 0.85;
+    }
+    #drawerBetLink:not([hidden]) {
+      margin-top: 10px !important;
+    }
+    #drawerBetLink a.term-house-link {
+      width: 100%;
+      min-height: 40px;
+      font-size: 11px;
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=proteger-sem-radar-1"></script>
-  <script src="/v2-shell.js?v=proteger-sem-radar-1" defer></script>
+  <script src="/v2.js?v=proteger-link-mercado-1"></script>
+  <script src="/v2-shell.js?v=proteger-link-mercado-1" defer></script>
 </head>
 <body data-shell="app" data-active="proteger">
   <div class="page-head term-head">
@@ -469,18 +509,66 @@
       }
 
       function marketBetLink(match, market) {
-        var fromMarket =
-          (market &&
-            (market.external_bet_link ||
-              market.betbra_link ||
-              market.betbraLink)) ||
-          "";
-        if (fromMarket) return String(fromMarket);
         var meta =
           match && match.metadata && typeof match.metadata === "object"
             ? match.metadata
             : {};
-        return String(meta.external_bet_link || meta.betbra_link || "");
+        // Metadata do admin (Link do mercado) tem prioridade sobre o mercado
+        var fromMeta = String(
+          meta.external_bet_link ||
+            meta.betbra_link ||
+            meta.external_link ||
+            ""
+        ).trim();
+        if (fromMeta) return fromMeta;
+        var fromMarket =
+          (market &&
+            (market.external_bet_link ||
+              market.betbra_link ||
+              market.betbraLink ||
+              market.external_link ||
+              market.url)) ||
+          "";
+        return String(fromMarket || "").trim();
+      }
+
+      function houseNameOf(match, market, link) {
+        var meta =
+          match && match.metadata && typeof match.metadata === "object"
+            ? match.metadata
+            : {};
+        var named = String(
+          (market && (market.external_bet_name || market.betbra_name)) ||
+            meta.external_bet_name ||
+            meta.betbra_name ||
+            ""
+        ).trim();
+        if (named) return named;
+        var href = String(link || "").toLowerCase();
+        if (!href) return "";
+        if (href.indexOf("betbra") >= 0) return "BetBra";
+        if (href.indexOf("bet365") >= 0) return "Bet365";
+        if (href.indexOf("betano") >= 0) return "Betano";
+        try {
+          var host = new URL(link).hostname.replace(/^www\./, "").split(".")[0];
+          if (host) return host.charAt(0).toUpperCase() + host.slice(1);
+        } catch (_e) {}
+        return "Casa";
+      }
+
+      function houseLinkHtml(match, market) {
+        var betLink = marketBetLink(match, market);
+        if (!betLink) return "";
+        var name = houseNameOf(match, market, betLink) || "BetBra";
+        return (
+          '<a class="term-house-link" href="' +
+          esc(betLink) +
+          '" target="_blank" rel="noopener noreferrer" data-house-link="1" title="Abrir mercado na ' +
+          esc(name) +
+          '">' +
+          esc(name) +
+          '<span class="ext" aria-hidden="true">↗</span></a>'
+        );
       }
 
       function openDrawer(match, market) {
@@ -504,11 +592,14 @@
         var betLink = marketBetLink(match, market);
         if (linkEl) {
           if (betLink) {
+            var name = houseNameOf(match, market, betLink) || "BetBra";
             linkEl.hidden = false;
             linkEl.innerHTML =
-              '<a href="' +
+              '<a class="term-house-link" href="' +
               esc(betLink) +
-              '" target="_blank" rel="noopener noreferrer" style="color:var(--lime);font-weight:700">Abrir mercado na BetBra ↗</a>';
+              '" target="_blank" rel="noopener noreferrer">Abrir mercado · ' +
+              esc(name) +
+              ' <span class="ext" aria-hidden="true">↗</span></a>';
           } else {
             linkEl.hidden = true;
             linkEl.innerHTML = "";
@@ -811,6 +902,7 @@
             var actionBtn = canProtect
               ? '<button type="button" class="term-protect-btn" data-protect="1">Proteger</button>'
               : '<button type="button" class="term-protect-btn" disabled title="Liquidez esgotada">Sem liquidez</button>';
+            var houseBtn = houseLinkHtml(m, primary);
             var vsOrScore = liveScore
               ? '<span class="term-score" title="Placar ao vivo">' +
                 esc(liveScore) +
@@ -857,6 +949,7 @@
               pct +
               '%"></i></div></div>' +
               '<div class="term-col-action">' +
+              houseBtn +
               actionBtn +
               "</div>" +
               "</article>"
