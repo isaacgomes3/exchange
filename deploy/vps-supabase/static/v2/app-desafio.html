@@ -1,0 +1,2641 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Desafio · ArbiShield</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <meta name="arbishield-build" content="desafio-cancelar-entrada-v1" />
+  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-em-andamento-v5 desafio-lancar-imediato-v3 desafio-hist-odd-v4 desafio-entrada-vazia-v1 desafio-cancelar-entrada-v1" />
+  <!-- desafio-cancelar-entrada-v1: cancelar entrada pendente antes do kickoff -->
+  <link rel="stylesheet" href="/v2.css?v=desafio-cancelar-entrada-1" />
+  <style>
+    /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
+    .dz-sb-market {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: 10px !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    .dz-sb-market-txt {
+      flex: 1 1 auto !important;
+      min-width: 0 !important;
+      order: 1 !important;
+    }
+    .dz-mkt-flag {
+      flex: 0 0 auto !important;
+      order: 2 !important;
+      margin-left: auto !important;
+      width: 22px !important;
+      height: 22px !important;
+      border-radius: 50% !important;
+      display: inline-grid !important;
+      place-items: center !important;
+      font-size: 11px !important;
+      font-weight: 900 !important;
+      line-height: 1 !important;
+      letter-spacing: 0 !important;
+      text-transform: none !important;
+      border: 1.5px solid rgba(255, 255, 255, 0.28) !important;
+      background: transparent !important;
+      color: transparent !important;
+      box-sizing: border-box !important;
+    }
+    .dz-mkt-flag.is-pending {
+      border-color: rgba(255, 255, 255, 0.28) !important;
+      background: rgba(255, 255, 255, 0.04) !important;
+      color: transparent !important;
+    }
+    .dz-mkt-flag.is-win {
+      color: #08140a !important;
+      background: #c9f223 !important;
+      border-color: rgba(201, 242, 35, 0.85) !important;
+      box-shadow: 0 0 0 1px rgba(201, 242, 35, 0.25) !important;
+    }
+    .dz-mkt-flag.is-lose {
+      color: #fff !important;
+      background: #dc2626 !important;
+      border-color: rgba(248, 113, 113, 0.65) !important;
+      box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.25) !important;
+    }
+    .dz-v2-score {
+      font-size: clamp(1.8rem, 4vw, 2.6rem);
+      font-weight: 900;
+      font-style: italic;
+      letter-spacing: 0.06em;
+      color: #c9f223;
+      line-height: 1;
+      text-shadow: 0 0 24px rgba(201, 242, 35, 0.25);
+    }
+    .dz-v2-score.is-live {
+      color: #fff;
+    }
+    .dz-v2-elapsed {
+      margin-top: 2px;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #ff6b6b;
+    }
+    .dz-v2-elapsed .dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #ff3b3b;
+      margin-right: 6px;
+      box-shadow: 0 0 0 0 rgba(255, 59, 59, 0.55);
+      animation: dzPulse 1.4s ease-out infinite;
+    }
+    @keyframes dzPulse {
+      0% { box-shadow: 0 0 0 0 rgba(255, 59, 59, 0.55); }
+      70% { box-shadow: 0 0 0 8px rgba(255, 59, 59, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(255, 59, 59, 0); }
+    }
+    .dz-v2-when {
+      font-size: 15px !important;
+      letter-spacing: 0.08em !important;
+      opacity: 0.95;
+    }
+    .dz-alert-toggle {
+      appearance: none;
+      border: 1px solid rgba(201, 242, 35, 0.35);
+      background: rgba(201, 242, 35, 0.08);
+      color: #e8ff8a;
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      margin-left: auto;
+    }
+    .dz-alert-toggle.is-off {
+      border-color: rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.04);
+      color: rgba(255, 255, 255, 0.55);
+    }
+    .dz-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .dz-live-toasts {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 120;
+      width: min(420px, calc(100vw - 24px));
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    }
+    .dz-live-toast {
+      pointer-events: auto;
+      border-radius: 16px;
+      padding: 14px 16px 14px 14px;
+      border: 1px solid rgba(201, 242, 35, 0.45);
+      background:
+        radial-gradient(420px 120px at 0% 0%, rgba(201, 242, 35, 0.22), transparent 55%),
+        linear-gradient(180deg, #171a12 0%, #0c0e0a 100%);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+      display: grid;
+      grid-template-columns: 48px 1fr auto;
+      gap: 12px;
+      align-items: center;
+      animation: dzToastIn 0.38s cubic-bezier(0.2, 0.9, 0.2, 1) both;
+    }
+    .dz-live-toast.is-ft {
+      border-color: rgba(255, 180, 80, 0.5);
+      background:
+        radial-gradient(420px 120px at 0% 0%, rgba(255, 160, 60, 0.2), transparent 55%),
+        linear-gradient(180deg, #1a140e 0%, #0c0a08 100%);
+    }
+    .dz-live-toast.is-out {
+      animation: dzToastOut 0.28s ease-in forwards;
+    }
+    .dz-live-toast-ico {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      background: rgba(201, 242, 35, 0.16);
+      color: #c9f223;
+    }
+    .dz-live-toast.is-ft .dz-live-toast-ico {
+      background: rgba(255, 160, 60, 0.16);
+      color: #ffb45c;
+    }
+    .dz-live-toast strong {
+      display: block;
+      font-size: 15px;
+      font-weight: 900;
+      letter-spacing: -0.01em;
+    }
+    .dz-live-toast p {
+      margin: 3px 0 0;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.72);
+      line-height: 1.35;
+    }
+    .dz-live-toast-score {
+      font-size: 1.35rem;
+      font-weight: 900;
+      font-style: italic;
+      color: #fff;
+      letter-spacing: 0.04em;
+    }
+    @keyframes dzToastIn {
+      from { opacity: 0; transform: translateY(-14px) scale(0.96); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes dzToastOut {
+      to { opacity: 0; transform: translateY(-10px) scale(0.96); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .dz-live-toast, .dz-v2-elapsed .dot { animation: none !important; }
+    }
+
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js?v=desafio-sem-radar-1"></script>
+  <script src="/desafio-ciclo-math.js?v=desafio-sem-radar-1"></script>
+  <script src="/v2-shell.js?v=desafio-sem-radar-1" defer></script>
+  <style>
+    .dz-access-history {
+      appearance: none;
+      border: 1px solid rgba(255, 180, 100, 0.55);
+      cursor: pointer;
+      border-radius: 10px;
+      padding: 11px 16px;
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #ffd4a8;
+      background: rgba(255, 106, 0, 0.08);
+    }
+    .dz-access-history:hover {
+      filter: brightness(1.08);
+      border-color: rgba(255, 180, 100, 0.85);
+      background: rgba(255, 106, 0, 0.14);
+    }
+    @media (max-width: 720px) {
+      .dz-access-history { width: 100%; }
+    }
+    .dz-hist-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      background: rgba(0, 0, 0, 0.72);
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+    .dz-hist-backdrop.show { display: flex; }
+    .dz-hist-modal {
+      width: min(640px, 100%);
+      max-height: min(88vh, 820px);
+      overflow: auto;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 106, 0, 0.35);
+      background:
+        radial-gradient(500px 180px at 90% 0%, rgba(255, 106, 0, 0.16), transparent 60%),
+        linear-gradient(180deg, #14110e 0%, #0a0908 100%);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+      padding: 18px 18px 14px;
+    }
+    .dz-hist-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .dz-hist-head h3 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+    }
+    .dz-hist-head h3 span { color: #ff9a3c; }
+    .dz-hist-head p {
+      margin: 6px 0 0;
+      color: rgba(255, 220, 180, 0.72);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .dz-hist-close {
+      appearance: none;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.04);
+      color: #fff;
+      border-radius: 10px;
+      width: 36px;
+      height: 36px;
+      font-size: 18px;
+      cursor: pointer;
+      flex: 0 0 auto;
+    }
+    .dz-hist-totals {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .dz-hist-tot {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: rgba(0, 0, 0, 0.25);
+    }
+    .dz-hist-tot .k {
+      display: block;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(255, 220, 180, 0.55);
+      margin-bottom: 4px;
+    }
+    .dz-hist-tot .v {
+      font-size: 15px;
+      font-weight: 900;
+      color: #fff;
+    }
+    .dz-hist-tot .v.is-profit { color: #c6ff00; }
+    .dz-hist-list { display: grid; gap: 10px; }
+    .dz-hist-card {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 12px 14px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .dz-hist-card.is-live {
+      border-color: rgba(198, 255, 0, 0.35);
+      box-shadow: inset 0 0 0 1px rgba(198, 255, 0, 0.08);
+    }
+    .dz-hist-card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .dz-hist-card-top strong {
+      font-size: 14px;
+      font-weight: 900;
+    }
+    .dz-hist-badge {
+      flex: 0 0 auto;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: #fff;
+    }
+    .dz-hist-badge.live {
+      border-color: rgba(198, 255, 0, 0.55);
+      color: #c6ff00;
+      background: rgba(198, 255, 0, 0.08);
+    }
+    .dz-hist-badge.ok {
+      border-color: rgba(255, 154, 60, 0.55);
+      color: #ffb347;
+      background: rgba(255, 106, 0, 0.1);
+    }
+    .dz-hist-badge.done {
+      border-color: rgba(255, 255, 255, 0.2);
+      color: rgba(255, 255, 255, 0.75);
+    }
+    .dz-hist-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      margin-bottom: 8px;
+      font-size: 11px;
+      color: rgba(255, 220, 180, 0.7);
+    }
+    .dz-hist-metrics b { color: #fff; font-weight: 800; }
+    .dz-hist-metrics b.profit { color: #c6ff00; }
+    .dz-hist-entries {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 6px;
+    }
+    .dz-hist-entries li {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) auto auto auto auto;
+      gap: 8px;
+      align-items: center;
+      font-size: 11px;
+      padding: 7px 8px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.28);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .dz-hist-entries .match {
+      color: rgba(255, 255, 255, 0.88);
+      font-weight: 700;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .dz-hist-entries .odd {
+      color: #ff9a3c;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .dz-hist-entries .amt {
+      color: rgba(255, 220, 180, 0.85);
+      font-weight: 700;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    .dz-hist-entries .gain {
+      font-weight: 800;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      color: rgba(255, 255, 255, 0.45);
+    }
+    .dz-hist-entries .gain.is-profit { color: #c6ff00; }
+    .dz-hist-entries .res {
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 10px;
+    }
+    .dz-hist-entries .res.won { color: #c6ff00; }
+    .dz-hist-entries .res.lost { color: #ffb347; }
+    .dz-hist-entries .res.pending { color: #8ab4ff; }
+    .dz-hist-card-actions { margin-top: 10px; }
+    .dz-hist-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 800;
+      color: #ffb347;
+      text-decoration: none;
+    }
+    .dz-hist-link:hover { text-decoration: underline; }
+    .dz-hist-empty {
+      text-align: center;
+      padding: 28px 12px;
+      color: rgba(255, 220, 180, 0.65);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    @media (max-width: 560px) {
+      .dz-hist-totals,
+      .dz-hist-metrics { grid-template-columns: 1fr; }
+      .dz-hist-entries li { grid-template-columns: 1fr; gap: 4px; }
+    }
+
+    /* Desafio em andamento — só o card com entrada do cliente */
+    .dz-andamento {
+      margin: 0 0 18px;
+      padding: 16px 14px 18px;
+      border-radius: 18px;
+      border: 1px solid rgba(198, 255, 0, 0.18);
+      background:
+        radial-gradient(700px 180px at 50% 0%, rgba(198, 255, 0, 0.08), transparent 60%),
+        linear-gradient(180deg, #0a1410 0%, #050505 100%);
+    }
+    .dz-andamento[hidden] { display: none !important; }
+    .dz-andamento .section-label { margin: 0 0 12px; }
+    .dz-andamento-note {
+      margin: 0 0 12px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #8b9690;
+      line-height: 1.4;
+    }
+    .dz-andamento-note a {
+      color: #c6ff00;
+      font-weight: 800;
+      text-decoration: none;
+    }
+    .dz-andamento-note a:hover { text-decoration: underline; }
+    #listAndamento.app-desafio-grid { margin: 0; }
+  </style>
+</head>
+<body data-shell="app" data-active="desafio">
+  <div class="page-head">
+    <div>
+      <h1>Desafio <span>ArbiShield</span></h1>
+      <p class="sub">Ciclo de até 5 entradas · lucro alvo 5% na casa externa</p>
+    </div>
+    <div class="actions"></div>
+  </div>
+  <div id="err" class="err"></div>
+
+  <!-- Banner do Desafio (mesmo fluxo do SPA DesafioScreen · variant=desafio) -->
+  <div id="desafioBanner" class="dz-banner" aria-live="polite">
+    <div class="dz-banner-placeholder">Banner do Desafio · aguardando publicação</div>
+  </div>
+
+  <section class="dz-access" id="dzAccess" aria-label="Acesso e saldo do Desafio">
+    <div class="dz-access-inner">
+      <div class="dz-access-ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="5" y="11" width="14" height="10" rx="2"></rect>
+          <path d="M8 11V8a4 4 0 0 1 8 0v3"></path>
+        </svg>
+      </div>
+      <div class="dz-access-copy">
+        <div class="dz-access-title" id="dzAccessTitle">Acesso aos desafios</div>
+        <div class="dz-access-bal">Saldo disponível <strong id="dzAccessBal">—</strong></div>
+        <div class="dz-access-hint" id="dzAccessHint">
+          Deposite via PIX para creditar a carteira exclusiva do Desafio e liberar as entradas.
+        </div>
+      </div>
+      <div class="dz-access-actions">
+        <button type="button" class="dz-access-history" id="btnDesafioHistorico">
+          Histórico
+        </button>
+        <button type="button" class="dz-access-deposit" data-open-deposit="1" data-deposit-dest="desafio" data-deposit-network="PIX">
+          Depositar
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <div class="dz-hist-backdrop" id="dzHistModal" aria-hidden="true">
+    <div class="dz-hist-modal" role="dialog" aria-labelledby="dzHistTitle">
+      <div class="dz-hist-head">
+        <div>
+          <h3 id="dzHistTitle">Histórico de <span>desafios</span></h3>
+          <p>Ciclos em andamento e já realizados · valores apostados e lucros.</p>
+        </div>
+        <button type="button" class="dz-hist-close" id="btnDzHistClose" aria-label="Fechar">×</button>
+      </div>
+      <div id="dzHistBody"><div class="dz-hist-empty">Carregando…</div></div>
+    </div>
+  </div>
+
+  <!-- Só o card do desafio em que o cliente entrou (jornada completa fica em /app-desafio-jornada.html) -->
+  <section class="dz-andamento" id="dzAndamento" hidden aria-label="Desafio em andamento">
+    <div class="section-label"><span class="dot" style="background:#c6ff00"></span>Desafio em andamento</div>
+    <p class="dz-andamento-note" id="dzAndamentoNote" hidden></p>
+    <div id="listAndamento" class="app-desafio-grid"></div>
+  </section>
+
+  <div class="dz-filters" id="filters" role="tablist">
+    <button type="button" class="dz-filter is-on" data-f="Todos">Todos</button>
+    <button type="button" class="dz-filter" data-f="Futebol">Futebol</button>
+    <button type="button" class="dz-filter" data-f="Hoje">Hoje</button>
+    <button type="button" class="dz-filter" data-f="Amanhã">Amanhã</button>
+    <button type="button" class="dz-filter" data-f="Alta">Alta</button>
+    <button type="button" class="dz-alert-toggle" id="btnDzLiveAlerts" aria-pressed="true" title="Alertas de gol e fim de jogo">
+      Alertas ON
+    </button>
+  </div>
+
+  <div class="section-label" id="dzDisponiveisLabel"><span class="dot" style="background:#c6ff00"></span>Desafios disponíveis</div>
+  <div id="list" class="app-desafio-grid"><div class="ops-empty">Carregando…</div></div>
+  <div class="dz-live-toasts" id="dzLiveToasts" aria-live="assertive" aria-atomic="true"></div>
+
+  <script>
+    (async function () {
+      var money = ArbiV2.money;
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+      var viewUserId = ArbiV2.getEffectiveUserId
+        ? ArbiV2.getEffectiveUserId(user)
+        : user.id;
+
+      var filter = "Todos";
+      var items = [];
+      var tickTimer = null;
+      var desafioBalCents = 0;
+      var MIN_ACCESS_CENTS = 20000; // R$ 200 — entrada típica do ciclo
+      var Ciclo = window.ArbiDesafioCiclo || null;
+      var liveWatch = Object.create(null); // stepId -> {home,away,finished,homeTeam,awayTeam}
+      var liveAlertsEnabled = localStorage.getItem("dz_live_alerts") !== "0";
+      var liveAudioCtx = null;
+      /** Circuito do cliente (etapas) — independente do step_index do evento */
+      var clientCircuit = {
+        active: false,
+        currentStage: 1,
+        totalStages: 5,
+        wonCount: 0,
+        lostCount: 0,
+        pendingCount: 0,
+        stageStates: [],
+        pendingStepIds: {},
+        pendingAmountsByStep: {},
+        pendingDesafioIds: {},
+        cycleParts: [],
+      };
+
+      function casaBrandFromLink(url) {
+        var u = String(url || "").toLowerCase();
+        if (u.indexOf("bolsadeaposta") >= 0) return "Bolsa de Aposta";
+        if (u.indexOf("betbra") >= 0) return "Betbra";
+        if (u.indexOf("fulltbet") >= 0) return "FulltBet";
+        if (u.indexOf("bet365") >= 0) return "Bet365";
+        if (u.indexOf("betano") >= 0) return "Betano";
+        return "Casa externa";
+      }
+
+      /** Extrai eventId Soft2Bet/BetBra do link da casa. */
+      function extractBetbraEventId(url) {
+        var s = String(url || "").trim();
+        if (!s) return "";
+        var m = s.match(/[?&#](?:eventId|event_id|eventID|event)=([0-9]{6,})/i);
+        if (m) return m[1];
+        m = s.match(/\/(?:event|evento|e)\/([0-9]{6,})(?:\/|$|\?|#)/i);
+        if (m) return m[1];
+        m = s.match(/(?:^|[^\d])([0-9]{12,})(?:[^\d]|$)/);
+        return m ? m[1] : "";
+      }
+
+      function fmtOdd(v) {
+        var n = Number(v);
+        if (!(n > 1)) return "—";
+        return n.toFixed(3).replace(".", ",");
+      }
+
+      function reaisToCents(raw) {
+        var s = String(raw || "").trim().replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+        var n = parseFloat(s);
+        if (!Number.isFinite(n) || n <= 0) return 0;
+        return Math.round(n * 100);
+      }
+
+      function centsToInput(cents) {
+        var n = Math.max(0, Number(cents) || 0) / 100;
+        return n.toFixed(2).replace(".", ",");
+      }
+
+      /** % de lucro alvo do lançamento (target_profit_pct) — não o ROI das odds. */
+      function fmtTargetProfitPct(item) {
+        var pct = Number(item && item.lucroMaxPct);
+        if (!Number.isFinite(pct) || pct <= 0) pct = 5;
+        var body = Number.isInteger(pct)
+          ? String(pct)
+          : pct.toFixed(1).replace(".", ",");
+        return "+" + body + "%";
+      }
+
+      function retornoEstimadoHtml(item) {
+        return 'Retorno estimado <strong>' + esc(fmtTargetProfitPct(item)) + '</strong>';
+      }
+
+      function calcSides(item, stakeCents) {
+        var Sz = Math.max(0, Math.round(Number(stakeCents) || 0));
+        var arbiOdd = Number(item.arbiOdd);
+        var casaOdd = Number(item.casaOdd);
+        var arbiFee = Number(item.arbiCommissionPct) || 0;
+        var casaFee = Number(item.casaCommissionPct) || 0;
+        var Sc = 0;
+        var recebeArbi = 0;
+        if (Ciclo && Ciclo.calcCasaStakeFromZebra) {
+          Sc = Ciclo.calcCasaStakeFromZebra(Sz, arbiOdd, casaOdd, arbiFee, casaFee);
+          recebeArbi = Ciclo.calcZebraPayoutCents
+            ? Ciclo.calcZebraPayoutCents(Sz, arbiOdd, arbiFee)
+            : Math.round(Sz * arbiOdd);
+        } else {
+          if (arbiOdd > 1 && casaOdd > 1 && Sz > 0) {
+            Sc = Math.round((Sz * arbiOdd) / casaOdd);
+          }
+          recebeArbi = arbiOdd > 1 ? Math.round(Sz * arbiOdd) : 0;
+        }
+        var recebeCasa = casaOdd > 1 ? Math.round(Sc * casaOdd) : 0;
+        return {
+          stakeCents: Sz,
+          casaStakeCents: Sc,
+          recebeArbiCents: recebeArbi,
+          recebeCasaCents: recebeCasa,
+        };
+      }
+
+      async function refreshAccessBar() {
+        var titleEl = document.getElementById("dzAccessTitle");
+        var balEl = document.getElementById("dzAccessBal");
+        var hintEl = document.getElementById("dzAccessHint");
+        var box = document.getElementById("dzAccess");
+        try {
+          var prof = await supa
+            .from("profiles")
+            .select("desafio_balance_cents")
+            .eq("id", viewUserId)
+            .maybeSingle();
+          var cents = Number(prof.data && prof.data.desafio_balance_cents) || 0;
+          desafioBalCents = cents;
+          if (balEl) balEl.textContent = money(cents);
+          var unlocked = cents > 0;
+          if (titleEl) {
+            titleEl.textContent = unlocked
+              ? "Acesso aos desafios liberado"
+              : "Acesso aos desafios";
+          }
+          if (hintEl) {
+            hintEl.textContent = unlocked
+              ? "Saldo exclusivo do Desafio. Use nas entradas do ciclo — separado do saldo do apostador."
+              : "Deposite via PIX no saldo do Desafio para liberar o acesso aos eventos disponíveis.";
+          }
+          if (box) box.classList.toggle("is-unlocked", unlocked);
+          var filters = document.getElementById("filters");
+          if (filters) filters.hidden = !unlocked;
+          var sectionLabel = document.getElementById("dzDisponiveisLabel");
+          if (sectionLabel) sectionLabel.hidden = !unlocked;
+          // Andamento com entrada pendente continua visível mesmo com saldo 0
+          // (paintAndamentoSection decide; não esconder aqui).
+          if (items.length) render();
+        } catch (ex) {
+          if (balEl) balEl.textContent = "—";
+          console.warn("[desafio] saldo", ex);
+        }
+      }
+
+      function normCircuitResult(r) {
+        r = String(r || "").toLowerCase().trim();
+        if (!r) return "pending";
+        // won/won_platform = vitória na zebra. "win" = vocabulário do STEP (Bateu Casa) → perda.
+        if (r === "won" || r === "won_platform") return "won";
+        if (
+          r === "win" ||
+          r === "lose" ||
+          r === "lost" ||
+          r === "won_exchange" ||
+          r === "won_external" ||
+          r === "casa" ||
+          r === "external"
+        ) {
+          return "lost";
+        }
+        if (r === "pending" || r === "active" || r === "open" || r === "current") return "pending";
+        return r;
+      }
+
+      /** Fonte da verdade: step.result (win=Bateu Casa→lost, zebra_protected→won). */
+      function resolveClientOutcome(part) {
+        var step = (part && part.desafio_steps) || null;
+        var stepRes = String((step && step.result) || "").toLowerCase().trim();
+        if (
+          stepRes === "win" ||
+          stepRes === "casa" ||
+          stepRes === "bateu_casa"
+        ) {
+          return "lost";
+        }
+        if (stepRes === "zebra_protected" || stepRes === "arbishield") {
+          return "won";
+        }
+        if (stepRes === "void" || stepRes === "empate_anula") return "void";
+        return normCircuitResult(part && part.result);
+      }
+
+      function currentCycleParts(parts) {
+        var list = (parts || []).slice().sort(function (a, b) {
+          return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+        });
+        // Mantém perdas no mapa (X vermelho); usa as últimas 5
+        if (list.length > 5) list = list.slice(list.length - 5);
+        return list;
+      }
+
+      async function loadClientCircuit() {
+        clientCircuit = {
+          active: false,
+          currentStage: 1,
+          totalStages: 5,
+          wonCount: 0,
+          lostCount: 0,
+          pendingCount: 0,
+          stageStates: [],
+          pendingStepIds: {},
+          pendingAmountsByStep: {},
+          pendingParticipationByStep: {},
+          pendingDesafioIds: {},
+          cycleParts: [],
+        };
+        try {
+          var pr = await supa
+            .from("desafio_participations")
+            .select(
+              "id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at," +
+                "desafio_steps(id,result,status,settled_at)"
+            )
+            .eq("user_id", viewUserId)
+            .eq("side", "arbishield")
+            .order("created_at", { ascending: true })
+            .limit(200);
+          if (pr.error || !Array.isArray(pr.data)) return clientCircuit;
+          var cycle = currentCycleParts(pr.data);
+          var won = 0;
+          var lost = 0;
+          var pending = 0;
+          var firstPendingIdx = -1;
+          var pendingStepIds = {};
+          var pendingAmountsByStep = {};
+          var pendingParticipationByStep = {};
+          var pendingDesafioIds = {};
+          var stageStates = [];
+          cycle.forEach(function (p, idx) {
+            var res = resolveClientOutcome(p);
+            if (res === "won") {
+              won += 1;
+              stageStates[idx] = "won";
+            } else if (res === "lost") {
+              lost += 1;
+              stageStates[idx] = "lost";
+            } else if (res === "pending") {
+              pending += 1;
+              stageStates[idx] = firstPendingIdx < 0 ? "current" : "waiting";
+              if (firstPendingIdx < 0) firstPendingIdx = idx;
+              if (p.step_id) {
+                pendingStepIds[String(p.step_id)] = true;
+                var amt = Number(p.amount_cents) || 0;
+                if (amt > 0) pendingAmountsByStep[String(p.step_id)] = amt;
+                if (p.id) pendingParticipationByStep[String(p.step_id)] = p.id;
+              }
+              if (p.desafio_id) pendingDesafioIds[String(p.desafio_id)] = true;
+            }
+          });
+          var stage =
+            firstPendingIdx >= 0
+              ? firstPendingIdx + 1
+              : Math.min(Math.max(1, cycle.length + 1), 5);
+          clientCircuit = {
+            active: cycle.length > 0 || pending > 0 || won > 0 || lost > 0,
+            currentStage: stage,
+            totalStages: 5,
+            wonCount: won,
+            lostCount: lost,
+            pendingCount: pending,
+            stageStates: stageStates,
+            pendingStepIds: pendingStepIds,
+            pendingAmountsByStep: pendingAmountsByStep,
+            pendingParticipationByStep: pendingParticipationByStep,
+            pendingDesafioIds: pendingDesafioIds,
+            cycleParts: cycle,
+          };
+        } catch (ex) {
+          console.warn("[desafio] circuito", ex);
+        }
+        return clientCircuit;
+      }
+
+
+      function splitItemsByCircuit(list) {
+        var andamento = [];
+        var disponiveis = [];
+        var c = clientCircuit || {};
+        var used = {};
+        function mark(it) {
+          used[String(it.id)] = true;
+        }
+        function isUsed(it) {
+          return !!used[String(it.id)];
+        }
+
+        // Só o step em que o cliente tem entrada pendente — nunca “todos os lançados”.
+        (list || []).forEach(function (it) {
+          if (c.pendingStepIds && c.pendingStepIds[String(it.stepId || "")]) {
+            andamento.push(it);
+            mark(it);
+          }
+        });
+
+        (list || []).forEach(function (it) {
+          if (!isUsed(it)) disponiveis.push(it);
+        });
+        return { andamento: andamento, disponiveis: disponiveis };
+      }
+
+      await refreshAccessBar();
+      // Atualiza saldo após depósito (evento do modal)
+      window.addEventListener("focus", function () {
+        refreshAccessBar();
+      });
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) refreshAccessBar();
+      });
+
+      function fmtHistDate(iso) {
+        if (!iso) return "—";
+        try {
+          return new Date(iso).toLocaleString("pt-BR", {
+            day: "2-digit",
+            month: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+        } catch (e) {
+          return "—";
+        }
+      }
+
+      function resultLabel(res) {
+        var r = String(res || "").toLowerCase();
+        if (r === "won") return "Vitória";
+        if (r === "lost") return "Casa";
+        if (r === "pending") return "Pendente";
+        return r || "—";
+      }
+
+      function closeHistModal() {
+        var m = document.getElementById("dzHistModal");
+        if (!m) return;
+        m.classList.remove("show");
+        m.setAttribute("aria-hidden", "true");
+      }
+
+      function renderHistBody(payload) {
+        var host = document.getElementById("dzHistBody");
+        if (!host) return;
+        var items = (payload && payload.items) || [];
+        var totals = (payload && payload.totals) || {};
+        if (!items.length) {
+          host.innerHTML =
+            '<div class="dz-hist-empty">Você ainda não entrou em nenhum desafio.<br/>Quando apostar, o ciclo aparece aqui com valores e lucros.</div>';
+          return;
+        }
+        var html =
+          '<div class="dz-hist-totals">' +
+          '<div class="dz-hist-tot"><span class="k">Em andamento</span><span class="v">' +
+          esc(String(totals.emAndamento || 0)) +
+          "</span></div>" +
+          '<div class="dz-hist-tot"><span class="k">Apostado</span><span class="v">' +
+          esc(money(totals.wageredCents || 0)) +
+          "</span></div>" +
+          '<div class="dz-hist-tot"><span class="k">Lucro obtido</span><span class="v is-profit">' +
+          esc(money(totals.profitCents || 0)) +
+          "</span></div>" +
+          "</div><div class=\"dz-hist-list\">";
+
+        items.forEach(function (it) {
+          var badgeCls =
+            it.status === "em_andamento"
+              ? "live"
+              : it.status === "sucesso_casa"
+                ? "ok"
+                : "done";
+          var entriesHtml = (it.entries || [])
+            .map(function (e) {
+              var resCls =
+                e.result === "won"
+                  ? "won"
+                  : e.result === "lost"
+                    ? "lost"
+                    : "pending";
+              var oddN = Number(e.odd);
+              var oddHtml =
+                Number.isFinite(oddN) && oddN > 1
+                  ? '<span class="odd">Odd ' + esc(fmtOdd(oddN)) + "</span>"
+                  : '<span class="odd">Odd —</span>';
+              var gainN = Number(e.profitCents) || 0;
+              var gainHtml =
+                e.result === "won" && gainN > 0
+                  ? '<span class="gain is-profit">+' +
+                    esc(money(gainN)) +
+                    "</span>"
+                  : e.result === "lost"
+                    ? '<span class="gain">R$&nbsp;0,00</span>'
+                    : '<span class="gain">—</span>';
+              return (
+                "<li>" +
+                '<span class="match">' +
+                esc(
+                  (e.stepIndex ? "E" + e.stepIndex + " · " : "") +
+                    (e.matchLabel || "Entrada")
+                ) +
+                "</span>" +
+                oddHtml +
+                '<span class="amt">' +
+                esc(money(e.amountCents || 0)) +
+                "</span>" +
+                gainHtml +
+                '<span class="res ' +
+                resCls +
+                '">' +
+                esc(resultLabel(e.result)) +
+                "</span>" +
+                "</li>"
+              );
+            })
+            .join("");
+          html +=
+            '<article class="dz-hist-card' +
+            (it.status === "em_andamento" ? " is-live" : "") +
+            '">' +
+            '<div class="dz-hist-card-top">' +
+            "<div><strong>" +
+            esc(it.title || "Desafio") +
+            "</strong>" +
+            '<div style="margin-top:4px;font-size:11px;color:rgba(255,220,180,.55)">' +
+            esc(fmtHistDate(it.firstAt)) +
+            (it.lastAt && it.lastAt !== it.firstAt
+              ? " → " + esc(fmtHistDate(it.lastAt))
+              : "") +
+            "</div></div>" +
+            '<span class="dz-hist-badge ' +
+            badgeCls +
+            '">' +
+            esc(it.statusLabel || it.status) +
+            "</span></div>" +
+            '<div class="dz-hist-metrics">' +
+            "<span>Entradas <b>" +
+            esc(String(it.entriesCount || 0)) +
+            "/" +
+            esc(String(it.maxEntries || 5)) +
+            "</b></span>" +
+            "<span>Apostado <b>" +
+            esc(money(it.wageredCents || 0)) +
+            "</b></span>" +
+            "<span>Lucro <b class=\"profit\">" +
+            esc(money(it.profitCents || 0)) +
+            "</b></span>" +
+            "</div>" +
+            (entriesHtml
+              ? '<ul class="dz-hist-entries">' + entriesHtml + "</ul>"
+              : "") +
+            (it.journeyUrl
+              ? '<div class="dz-hist-card-actions"><a class="dz-hist-link" href="' +
+                esc(it.journeyUrl) +
+                '">Ver jornada →</a></div>'
+              : "") +
+            "</article>";
+        });
+        html += "</div>";
+        host.innerHTML = html;
+      }
+
+      function normalizeHistResult(raw) {
+        var r = String(raw || "").toLowerCase().trim();
+        if (!r) return "pending";
+        if (r === "won" || r === "won_platform") return "won";
+        if (
+          r === "win" ||
+          r === "lose" ||
+          r === "lost" ||
+          r === "won_exchange" ||
+          r === "won_external" ||
+          r === "casa" ||
+          r === "external"
+        ) {
+          return "lost";
+        }
+        if (r === "pending" || r === "active" || r === "open") return "pending";
+        return r;
+      }
+
+      function buildHistoryFromParts(parts, desafios, steps) {
+        var stepMap = {};
+        (steps || []).forEach(function (s) {
+          if (s && s.id) stepMap[String(s.id)] = s;
+        });
+        var dzMap = {};
+        (desafios || []).forEach(function (d) {
+          if (d && d.id) dzMap[String(d.id)] = d;
+        });
+        var by = {};
+        (parts || []).forEach(function (p) {
+          var side = String(p.side || "arbishield").toLowerCase();
+          if (side === "casa" || side === "exchange") return;
+          var did = String(p.desafio_id || "");
+          if (!did && p.step_id && stepMap[String(p.step_id)]) {
+            did = String(stepMap[String(p.step_id)].desafio_id || "");
+          }
+          if (!did) return;
+          if (!by[did]) by[did] = [];
+          by[did].push(p);
+        });
+        var items = Object.keys(by).map(function (desafioId) {
+          var ordered = by[desafioId].slice().sort(function (a, b) {
+            return (
+              new Date(a.created_at || 0).getTime() -
+              new Date(b.created_at || 0).getTime()
+            );
+          });
+          var d = dzMap[desafioId] || {};
+          var maxEntries = Math.min(
+            5,
+            Math.max(1, Number(d.total_steps) || 5)
+          );
+          var wagered = 0;
+          var profit = 0;
+          var wonN = 0;
+          var lostN = 0;
+          var pendingN = 0;
+          var entries = ordered.map(function (p, entryIdx) {
+            var res = normalizeHistResult(p.result);
+            var amt = Number(p.amount_cents) || 0;
+            var pr = Number(p.profit_cents) || 0;
+            wagered += amt;
+            if (res === "won") {
+              profit += pr;
+              wonN += 1;
+            } else if (res === "lost") lostN += 1;
+            else pendingN += 1;
+            var step = stepMap[String(p.step_id || "")] || null;
+            var matchLabel = step
+              ? step.match_label ||
+                [step.home_team, step.away_team].filter(Boolean).join(" × ")
+              : null;
+            var rawStepIndex = step ? Number(step.step_index) || 0 : 0;
+            var oddRaw = step
+              ? Number(step.arbi_odd != null ? step.arbi_odd : step.home_odd)
+              : NaN;
+            var odd = Number.isFinite(oddRaw) && oddRaw > 1 ? oddRaw : null;
+            return {
+              id: p.id,
+              stepId: p.step_id || null,
+              stepIndex: Math.max(rawStepIndex, entryIdx + 1) || null,
+              matchLabel: matchLabel,
+              result: res,
+              amountCents: amt,
+              odd: odd,
+              profitCents: res === "won" ? pr : 0,
+              createdAt: p.created_at || null,
+              startsAt: step ? step.starts_at || null : null,
+            };
+          });
+          var last = ordered[ordered.length - 1];
+          var lastRes = last ? normalizeHistResult(last.result) : "";
+          // Em andamento = só com entrada pendente do cliente neste desafio.
+          var status = "finalizado";
+          var statusLabel = "Finalizado";
+          if (pendingN > 0) {
+            status = "em_andamento";
+            statusLabel = "Aguardando resultado";
+          } else if (lastRes === "lost" || lostN > 0) {
+            status = "sucesso_casa";
+            statusLabel = "Sucesso na casa";
+          } else if (wonN >= maxEntries) {
+            status = "finalizado";
+            statusLabel = "Finalizado";
+          } else if (wonN > 0) {
+            status = "pausado";
+            statusLabel = "Sem entrada ativa";
+          }
+          return {
+            desafioId: desafioId,
+            number: d.number != null ? d.number : null,
+            title: d.title || "Desafio " + String(desafioId).slice(0, 8),
+            subtitle: d.subtitle || null,
+            targetProfitPct: Number(d.target_profit_pct) || 5,
+            maxEntries: maxEntries,
+            status: status,
+            statusLabel: statusLabel,
+            entriesCount: ordered.length,
+            wonCount: wonN,
+            lostCount: lostN,
+            pendingCount: pendingN,
+            wageredCents: wagered,
+            profitCents: profit,
+            firstAt: ordered[0] && ordered[0].created_at,
+            lastAt: last && last.created_at,
+            entries: entries,
+            journeyUrl:
+              "/app-desafio-jornada.html?desafioId=" +
+              encodeURIComponent(desafioId),
+          };
+        });
+        items.sort(function (a, b) {
+          var rank = function (s) {
+            return s === "em_andamento" ? 0 : s === "sucesso_casa" ? 1 : 2;
+          };
+          if (rank(a.status) !== rank(b.status))
+            return rank(a.status) - rank(b.status);
+          return (
+            new Date(b.lastAt || 0).getTime() -
+            new Date(a.lastAt || 0).getTime()
+          );
+        });
+        return {
+          ok: true,
+          items: items,
+          totals: {
+            desafios: items.length,
+            emAndamento: items.filter(function (x) {
+              return x.status === "em_andamento";
+            }).length,
+            finalizados: items.filter(function (x) {
+              return x.status !== "em_andamento";
+            }).length,
+            wageredCents: items.reduce(function (a, x) {
+              return a + (x.wageredCents || 0);
+            }, 0),
+            profitCents: items.reduce(function (a, x) {
+              return a + (x.profitCents || 0);
+            }, 0),
+          },
+          source: "supabase",
+        };
+      }
+
+      async function loadDesafioHistoryFallback() {
+        var pr = await supa
+          .from("desafio_participations")
+          .select(
+            "id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at"
+          )
+          .eq("user_id", viewUserId)
+          .order("created_at", { ascending: false })
+          .limit(500);
+        if (pr.error) throw new Error(pr.error.message || "Falha no histórico");
+        var parts = pr.data || [];
+        var stepIds = [];
+        var dzIds = [];
+        parts.forEach(function (p) {
+          if (p.step_id) stepIds.push(p.step_id);
+          if (p.desafio_id) dzIds.push(p.desafio_id);
+        });
+        var steps = [];
+        if (stepIds.length) {
+          var sr = await supa
+            .from("desafio_steps")
+            .select(
+              "id,desafio_id,step_index,home_team,away_team,match_label,arbi_odd,home_odd,casa_odd,away_odd,starts_at,status"
+            )
+            .in("id", stepIds.slice(0, 200));
+          if (!sr.error) steps = sr.data || [];
+          steps.forEach(function (s) {
+            if (s.desafio_id) dzIds.push(s.desafio_id);
+          });
+        }
+        dzIds = Array.from(new Set(dzIds.map(String)));
+        var desafios = [];
+        if (dzIds.length) {
+          var dr = await supa
+            .from("desafios")
+            .select(
+              "id,number,title,subtitle,status,is_active,total_steps,target_profit_pct"
+            )
+            .in("id", dzIds.slice(0, 100));
+          if (!dr.error) desafios = dr.data || [];
+        }
+        return buildHistoryFromParts(parts, desafios, steps);
+      }
+
+      async function loadDesafioHistory() {
+        var session = await supa.auth.getSession();
+        var token =
+          session &&
+          session.data &&
+          session.data.session &&
+          session.data.session.access_token;
+        if (!token) throw new Error("Faça login para ver o histórico.");
+        try {
+          var res = await fetch("/api/arbishield/desafio-history", {
+            method: "GET",
+            headers: {
+              Accept: "application/json",
+              Authorization: "Bearer " + token,
+            },
+            cache: "no-store",
+          });
+          var data = await res.json().catch(function () {
+            return null;
+          });
+          if (res.ok && data && Array.isArray(data.items)) {
+            // Se a API voltar vazia, tenta fallback — pode ser bug de filtro antigo.
+            if (data.items.length > 0) return data;
+            var fb = await loadDesafioHistoryFallback();
+            if (fb.items && fb.items.length) return fb;
+            return data;
+          }
+        } catch (eApi) {
+          console.warn("[desafio-history] API falhou, fallback", eApi);
+        }
+        return loadDesafioHistoryFallback();
+      }
+
+      async function openHistModal() {
+        var m = document.getElementById("dzHistModal");
+        var body = document.getElementById("dzHistBody");
+        if (!m || !body) return;
+        m.classList.add("show");
+        m.setAttribute("aria-hidden", "false");
+        body.innerHTML = '<div class="dz-hist-empty">Carregando…</div>';
+        try {
+          var data = await loadDesafioHistory();
+          renderHistBody(data);
+        } catch (ex) {
+          body.innerHTML =
+            '<div class="dz-hist-empty">' +
+            esc(ex.message || "Erro ao carregar histórico") +
+            "</div>";
+        }
+      }
+
+      var btnHist = document.getElementById("btnDesafioHistorico");
+      if (btnHist) btnHist.addEventListener("click", openHistModal);
+      var btnHistClose = document.getElementById("btnDzHistClose");
+      if (btnHistClose) btnHistClose.addEventListener("click", closeHistModal);
+      var histModal = document.getElementById("dzHistModal");
+      if (histModal) {
+        histModal.addEventListener("click", function (e) {
+          if (e.target === histModal) closeHistModal();
+        });
+      }
+
+      function showErr(msg) {
+        var el = document.getElementById("err");
+        el.textContent = msg || "";
+        el.classList.toggle("show", !!msg);
+      }
+
+      function esc(v) {
+        return String(v == null ? "" : v)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function looksLikeMatchLabel(s) {
+        return /\s+[x×X]\s+/.test(String(s || ""));
+      }
+
+      /** Espelha SPA: homeTeam / awayTeam separados — nunca o label inteiro nos dois lados */
+      function splitTeams(step) {
+        var home = String(step.home_team || "").trim();
+        var away = String(step.away_team || "").trim();
+        var label = String(step.match_label || "").trim();
+
+        if (home && away && home !== away && !looksLikeMatchLabel(home) && !looksLikeMatchLabel(away)) {
+          return { home: home, away: away };
+        }
+
+        var raw = label || (looksLikeMatchLabel(home) ? home : looksLikeMatchLabel(away) ? away : "");
+        if (raw) {
+          var parts = raw.split(/\s+[x×X]\s+/);
+          if (parts.length >= 2) {
+            return {
+              home: parts[0].trim() || "Casa",
+              away: parts.slice(1).join(" x ").trim() || "Visitante",
+            };
+          }
+        }
+        if (home && away && home !== away) return { home: home, away: away };
+        return { home: home || "Casa", away: away || "Visitante" };
+      }
+
+      function initials(name) {
+        return String(name || "?")
+          .split(/\s+/)
+          .map(function (w) { return w[0] || ""; })
+          .join("")
+          .slice(0, 3)
+          .toUpperCase() || "?";
+      }
+
+      /** Resolve logo pelo nome do time (não misturar casa/arbi). */
+      function resolveTeamLogo(step, teamName, preferredUrl) {
+        if (preferredUrl) return preferredUrl;
+        var name = String(teamName || "")
+          .trim()
+          .toLowerCase();
+        if (!name || !step) return null;
+        var pairs = [
+          [step.home_team, step.home_logo_url],
+          [step.away_team, step.away_logo_url],
+          [step.casa_team_name, step.casa_team_logo_url],
+          [step.arbi_team_name, step.arbi_team_logo_url],
+        ];
+        for (var i = 0; i < pairs.length; i++) {
+          var n = String(pairs[i][0] || "")
+            .trim()
+            .toLowerCase();
+          var logo = pairs[i][1];
+          if (n && n === name && logo) return logo;
+        }
+        return null;
+      }
+
+      function teamBlock(name, logo, sideClass) {
+        var avatar = logo
+          ? '<img class="dz-v2-logo" width="72" height="72" src="' +
+            esc(logo) +
+            '" alt="' +
+            esc(name) +
+            '" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'" />' +
+            '<div class="dz-v2-logo-fallback" style="display:none">' +
+            esc(initials(name)) +
+            "</div>"
+          : '<div class="dz-v2-logo-fallback">' + esc(initials(name)) + "</div>";
+        return (
+          '<div class="dz-v2-side ' +
+          esc(sideClass || "") +
+          '">' +
+          avatar +
+          '<span class="dz-v2-team-name">' +
+          esc(name) +
+          "</span></div>"
+        );
+      }
+
+      function fmtKick(iso) {
+        if (!iso) return "A definir";
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return "A definir";
+        var now = new Date();
+        var tomorrow = new Date(now);
+        tomorrow.setDate(now.getDate() + 1);
+        var time = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+        if (d.toDateString() === now.toDateString()) return "Hoje • " + time;
+        if (d.toDateString() === tomorrow.toDateString()) return "Amanhã • " + time;
+        return (
+          d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) +
+          " • " +
+          time
+        );
+      }
+
+      /** Placar da etapa: final_score_* ou metadata.live (sync BetBra). */
+      function stepLiveInfo(step, nowMs) {
+        if (!step) return null;
+        var now = Number.isFinite(nowMs) ? nowMs : Date.now();
+        var meta = step.metadata && typeof step.metadata === "object" ? step.metadata : {};
+        var live = meta.live && typeof meta.live === "object" ? meta.live : null;
+        var home =
+          step.final_score_home != null
+            ? Number(step.final_score_home)
+            : live && live.home_score != null
+              ? Number(live.home_score)
+              : null;
+        var away =
+          step.final_score_away != null
+            ? Number(step.final_score_away)
+            : live && live.away_score != null
+              ? Number(live.away_score)
+              : null;
+        var scoreLabel = null;
+        if (Number.isFinite(home) && Number.isFinite(away)) {
+          scoreLabel = home + " — " + away;
+        } else if (live && live.score) {
+          scoreLabel = String(live.score).replace(/-/g, " — ");
+        }
+        var elapsed =
+          (live && (live.elapsed_label || live.elapsed)) || "";
+        if (elapsed && !/['′]$/.test(String(elapsed))) elapsed = elapsed + "'";
+
+        var finished = Boolean(
+          (live && live.finished) ||
+            stepIsFinished(step) ||
+            String(step.status || "").toLowerCase() === "done"
+        );
+        var startsMs = step.starts_at ? new Date(step.starts_at).getTime() : NaN;
+        var kickedOff = Number.isFinite(startsMs) && now >= startsMs;
+        var ageMin = kickedOff ? (now - startsMs) / 60000 : 0;
+        var elapsedMatch = String(elapsed || "").match(/\d+/);
+        var elapsedNum = elapsedMatch ? Number(elapsedMatch[0]) : NaN;
+        // Feed/metadata podem vir vazios na VPS — com placar + ≥105' do início = FT
+        if (
+          !finished &&
+          scoreLabel &&
+          (ageMin >= 105 ||
+            (ageMin >= 100 &&
+              Number.isFinite(elapsedNum) &&
+              elapsedNum >= 90))
+        ) {
+          finished = true;
+        }
+        var withinMatchWindow =
+          Number.isFinite(startsMs) && now <= startsMs + 3.5 * 60 * 60 * 1000;
+        var statusLive = ["live", "in_play", "inplay", "ao_vivo"].includes(
+          String(step.status || "").toLowerCase()
+        );
+        var isLive = Boolean(
+          !finished &&
+            ((live && live.live && !live.finished) ||
+              statusLive ||
+              (kickedOff && withinMatchWindow && ageMin < 105))
+        );
+
+        // Sem minuto da BetBra: estima pelo horário de início (ex.: 17')
+        if (isLive && !elapsed && kickedOff) {
+          var mins = Math.max(0, Math.floor((now - startsMs) / 60000));
+          if (mins <= 150) elapsed = mins + "'";
+        }
+
+        return {
+          score: scoreLabel,
+          home: Number.isFinite(home) ? home : null,
+          away: Number.isFinite(away) ? away : null,
+          elapsed: finished && !elapsed ? "FT" : elapsed,
+          live: isLive,
+          finished: finished,
+        };
+      }
+
+      function normMarketLabel(s) {
+        return String(s || "")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      /**
+       * Resultado só quando já está decidido (não “provisório”).
+       * Ex. BTTS Não ao vivo 0-1 → pending; se o outro marcar → lose (×) na hora.
+       * Retorno: "win" | "lose" | "pending" | null
+       */
+      function marketDecidedStatus(name, home, away, finished) {
+        if (!Number.isFinite(home) || !Number.isFinite(away)) return null;
+        var n = normMarketLabel(name);
+        if (!n) return null;
+        var done = !!finished;
+
+        var isBtts =
+          /ambas/.test(n) ||
+          /both teams/.test(n) ||
+          /\bbtts\b/.test(n) ||
+          (/marcam/.test(n) && /equipe/.test(n));
+        if (isBtts) {
+          var both = home > 0 && away > 0;
+          var isNo = /\bnao\b/.test(n) || /\bno\b/.test(n);
+          var isYes = /\bsim\b/.test(n) || /\byes\b/.test(n) || !isNo;
+          if (both) {
+            // Decidido no momento do 2º time a marcar — independente do tempo
+            return isNo ? "lose" : "win";
+          }
+          if (done) return isNo ? "win" : "lose";
+          return "pending";
+        }
+
+        var total = home + away;
+        var ou = n.match(/(acima|over|mais de)\s*(\d+(?:[.,]\d+)?)/);
+        if (ou) {
+          var lineOver = parseFloat(String(ou[2]).replace(",", "."));
+          if (!Number.isFinite(lineOver)) return null;
+          if (total > lineOver) return "win";
+          if (done) return "lose";
+          return "pending";
+        }
+        var uu = n.match(/(abaixo|under|menos de)\s*(\d+(?:[.,]\d+)?)/);
+        if (uu) {
+          var lineUnder = parseFloat(String(uu[2]).replace(",", "."));
+          if (!Number.isFinite(lineUnder)) return null;
+          if (total > lineUnder) return "lose";
+          if (done) return total < lineUnder ? "win" : "lose";
+          return "pending";
+        }
+
+        var isDraw =
+          (/\bempate\b/.test(n) || /\bdraw\b/.test(n)) && !/ambas/.test(n);
+        var isHome =
+          /\bvitoria (da )?casa\b/.test(n) ||
+          /\bcasa vence\b/.test(n) ||
+          /\bhome win\b/.test(n) ||
+          /\bmandante\b/.test(n);
+        var isAway =
+          /\bvitoria (do )?fora\b/.test(n) ||
+          /\bfora vence\b/.test(n) ||
+          /\baway win\b/.test(n) ||
+          /\bvisitante\b/.test(n);
+        if (isDraw || isHome || isAway) {
+          // 1X2 só fecha no encerramento
+          if (!done) return "pending";
+          if (isDraw) return home === away ? "win" : "lose";
+          if (isHome) return home > away ? "win" : "lose";
+          return away > home ? "win" : "lose";
+        }
+        return null;
+      }
+
+      function scoresFromLiveInfo(liveInfo) {
+        if (!liveInfo) return { home: null, away: null };
+        var home = liveInfo.home;
+        var away = liveInfo.away;
+        if (
+          (!Number.isFinite(home) || !Number.isFinite(away)) &&
+          liveInfo.score
+        ) {
+          var parts = String(liveInfo.score).split(/\s*[—–-]\s*/);
+          if (parts.length >= 2) {
+            home = Number(parts[0]);
+            away = Number(parts[1]);
+          }
+        }
+        return {
+          home: Number.isFinite(home) ? home : null,
+          away: Number.isFinite(away) ? away : null,
+        };
+      }
+
+      function marketFlagHtml(name, liveInfo) {
+        if (!liveInfo) return "";
+        var sc = scoresFromLiveInfo(liveInfo);
+        var status = marketDecidedStatus(
+          name,
+          sc.home,
+          sc.away,
+          !!liveInfo.finished
+        );
+        if (status == null) return "";
+        if (status === "pending") {
+          return (
+            '<span class="dz-mkt-flag is-pending" title="Aguardando resultado" aria-label="Aguardando resultado"></span>'
+          );
+        }
+        var win = status === "win";
+        var title = win ? "Venceu" : "Perdeu";
+        return (
+          '<span class="dz-mkt-flag ' +
+          (win ? "is-win" : "is-lose") +
+          '" title="' +
+          esc(title) +
+          '" aria-label="' +
+          esc(title) +
+          '">' +
+          (win ? "V" : "×") +
+          "</span>"
+        );
+      }
+
+      function marketLineHtml(name, liveInfo) {
+        var flag = "";
+        if (liveInfo && (liveInfo.live || liveInfo.finished || liveInfo.score)) {
+          flag = marketFlagHtml(name, liveInfo);
+        }
+        return (
+          '<div class="dz-sb-market">' +
+          '<span class="dz-sb-market-txt">' +
+          esc(name) +
+          "</span>" +
+          flag +
+          "</div>"
+        );
+      }
+
+      function fmtCountdown(ms) {
+        if (ms <= 0) return "00:00:00";
+        var s = Math.floor(ms / 1000);
+        var days = Math.floor(s / 86400);
+        var h = Math.floor((s % 86400) / 3600);
+        var m = Math.floor((s % 3600) / 60);
+        var sec = s % 60;
+        var pad = function (n) { return String(n).padStart(2, "0"); };
+        if (days > 0) return days + "d " + pad(h) + ":" + pad(m) + ":" + pad(sec);
+        return pad(h) + ":" + pad(m) + ":" + pad(sec);
+      }
+
+      function stepIsFinished(step) {
+        if (!step) return false;
+        var st = String(step.status || "").toLowerCase();
+        if (st === "done" || st === "settled" || st === "closed" || st === "cancelled") {
+          return true;
+        }
+        if (step.settled_at) return true;
+        var res = String(step.result || "").toLowerCase();
+        return (
+          res === "win" ||
+          res === "zebra_protected" ||
+          res === "lost" ||
+          res === "bateu" ||
+          res === "void" ||
+          res === "empate_anula"
+        );
+      }
+
+      function unlockAtMs(startsAtMs, releaseMinutesBefore) {
+        var rel = Number(releaseMinutesBefore);
+        if (!Number.isFinite(rel)) rel = 0;
+        // -1 ou >=100000 = publicar de imediato (disponível agora)
+        if (rel < 0 || rel >= 100000) return 0;
+        if (startsAtMs == null || !Number.isFinite(startsAtMs)) return 0;
+        return startsAtMs - rel * 6e4;
+      }
+
+      function phaseOf(item, now) {
+        if (item.isFinished || (item.liveInfo && item.liveInfo.finished)) {
+          return "done";
+        }
+        var start = item.startsAtMs;
+        if (start == null) return "ativo";
+        var unlock = unlockAtMs(start, item.releaseMinutesBefore);
+        if (item.liveInfo && item.liveInfo.live) return "live";
+        if (now >= start) return "live";
+        if (now < unlock) return "soon";
+        return "ativo";
+      }
+
+      function profitCents(entrada, pct) {
+        var e = Number(entrada) || 0;
+        var p = Number(pct);
+        if (!Number.isFinite(p) || p <= 0) p = 5;
+        return Math.round((e * p) / 100);
+      }
+
+      function liquidityShown(item, now) {
+        var total = Math.max(
+          Number(item.displayLiquidityCents) || 0,
+          Number(item.liquidityCents) || 0
+        );
+        if (total <= 0) return null;
+        var used = Number(item.usedLiquidityCents) || 0;
+        var avail = Math.max(0, total - used);
+        // SPA: liquidez “some” após liberação; aproximação simples
+        var start = item.startsAtMs;
+        var unlock =
+          start != null ? unlockAtMs(start, item.releaseMinutesBefore) : null;
+        if (unlock != null && now >= unlock && start != null && now < start) {
+          var span = Math.max(1, start - unlock);
+          var ratio = Math.max(0, Math.min(1, (start - now) / span));
+          avail = Math.round(avail * (0.35 + 0.65 * ratio));
+        }
+        return { total: total, shown: avail };
+      }
+
+      function toCardItem(desafio, step) {
+        var teams = splitTeams(step || {});
+        var entrada = Number(desafio.initial_balance_cents) || 0;
+        var pct = Number(desafio.target_profit_pct);
+        if (!Number.isFinite(pct) || pct <= 0) pct = 5;
+        var lucro = profitCents(entrada, pct);
+        var startsAt = step.starts_at || null;
+        var startsAtMs = startsAt ? new Date(startsAt).getTime() : null;
+        if (startsAtMs != null && isNaN(startsAtMs)) startsAtMs = null;
+        var marketArbi =
+          step.market_name_arbishield ||
+          step.market_name ||
+          "Mercado ArbiShield";
+        var marketCasa =
+          step.market_name_casa ||
+          step.market_name ||
+          "Mercado casa";
+        var external = step.external_bet_link || "";
+
+        return {
+          id: desafio.id + ":" + (step.id || step.step_index || 1),
+          desafioId: desafio.id,
+          desafioTitle: desafio.title || "Desafio",
+          desafioNumber: desafio.number,
+          stepIndex: step.step_index || 1,
+          homeTeam: teams.home,
+          awayTeam: teams.away,
+          homeLogo: resolveTeamLogo(step, teams.home, step.home_logo_url),
+          awayLogo: resolveTeamLogo(step, teams.away, step.away_logo_url),
+          market: marketCasa,
+          marketArbi: marketArbi,
+          marketCasa: marketCasa,
+          startsAt: startsAt,
+          startsAtMs: startsAtMs,
+          releaseMinutesBefore: (function () {
+            var n = Number(step.release_minutes_before);
+            return Number.isFinite(n) ? n : 0;
+          })(),
+          entradaCents: entrada,
+          stepId: step.id,
+          lucroMaxPct: pct,
+          totalSteps: (desafio.desafio_steps || []).length || Number(desafio.total_steps) || 1,
+          isNew: true,
+          isActiveDesafio: !!desafio.is_active,
+          isFinished: stepIsFinished(step),
+          stepStatus: step.status || null,
+          stepResult: step.result || null,
+          liquidityCents: Number(step.liquidity_cents) || 0,
+          displayLiquidityCents: Number(step.display_liquidity_cents) || Number(step.liquidity_cents) || 0,
+          usedLiquidityCents: Number(step.used_liquidity_cents) || 0,
+          guaranteedProfitCents: lucro,
+          profitArbiCents: lucro,
+          profitCasaCents: lucro,
+          arbiOdd: step.arbi_odd != null ? Number(step.arbi_odd) : Number(step.home_odd),
+          casaOdd: step.casa_odd != null ? Number(step.casa_odd) : Number(step.away_odd),
+          arbiCommissionPct: Number(step.arbi_commission_pct) || 0,
+          casaCommissionPct: Number(step.casa_commission_pct) || 0,
+          externalBetLink: external,
+          casaBrand: casaBrandFromLink(external),
+          betbraEventId: extractBetbraEventId(external),
+          liveInfo: stepLiveInfo(step, Date.now()),
+        };
+      }
+
+      function cardHtml(item, now) {
+        var phase = phaseOf(item, now);
+        var unlockMs =
+          item.startsAtMs != null
+            ? unlockAtMs(item.startsAtMs, item.releaseMinutesBefore)
+            : 0;
+        var waitMs = unlockMs != null ? unlockMs - now : null;
+        var waiting = phase === "soon" && waitMs != null && waitMs > 0;
+        var alreadyEntered = !!item.alreadyEntered;
+        var canPlay =
+          !alreadyEntered &&
+          !waiting &&
+          phase !== "done" &&
+          phase !== "live" &&
+          !!item.isActiveDesafio;
+
+        var defaultStake = alreadyEntered
+          ? item.entradaCents || 0
+          : 0;
+        var sides = calcSides(item, defaultStake);
+        var stakeInputValue = alreadyEntered
+          ? centsToInput(defaultStake)
+          : "";
+
+        var liq = phase !== "live" && phase !== "done" ? liquidityShown(item, now) : null;
+        var liqHtml = "";
+        if (liq && liq.total > 0) {
+          var pctLeft = Math.round(Math.max(0, Math.min(1, liq.shown / liq.total)) * 100);
+          var barClass = pctLeft < 20 ? "low" : pctLeft < 50 ? "mid" : "ok";
+          liqHtml =
+            '<div class="dz-v2-liq">' +
+            '<div class="dz-v2-liq-top"><span>Liquidez · Inicial ' +
+            money(liq.total) +
+            "</span><span>Disponível " +
+            money(liq.shown) +
+            "</span></div>" +
+            '<div class="dz-v2-liq-bar"><i class="' +
+            barClass +
+            '" style="width:' +
+            pctLeft +
+            '%"></i></div></div>';
+        }
+
+        var arbiCta;
+        var casaCta;
+        if (alreadyEntered) {
+          var canCancelEntry =
+            phase !== "live" &&
+            phase !== "done" &&
+            (item.startsAtMs == null || now < item.startsAtMs);
+          var participationId = String(item.participationId || "").trim();
+          if (canCancelEntry && (participationId || item.stepId)) {
+            arbiCta =
+              '<button type="button" class="dz-v2-cta arbi is-disabled" disabled>Entrada em andamento</button>' +
+              '<button type="button" class="dz-v2-cta cancel" data-cancel-entrada="1" data-participation-id="' +
+              esc(participationId) +
+              '" data-step-id="' +
+              esc(item.stepId || "") +
+              '" data-amount="' +
+              esc(String(item.entradaCents || 0)) +
+              '">Cancelar entrada</button>';
+          } else {
+            arbiCta =
+              '<button type="button" class="dz-v2-cta arbi is-disabled" disabled>Entrada em andamento</button>';
+          }
+          casaCta = item.externalBetLink
+            ? '<a class="dz-v2-cta casa" href="' +
+              esc(item.externalBetLink) +
+              '" target="_blank" rel="noopener">Abrir ' +
+              esc(item.casaBrand) +
+              "</a>"
+            : '<button type="button" class="dz-v2-cta casa is-disabled" disabled>Sem link da casa</button>';
+        } else if (waiting) {
+          arbiCta =
+            '<button type="button" class="dz-v2-cta arbi wait" disabled><span>Disponível em</span>' +
+            '<span class="dz-v2-cta-time" data-countdown="' +
+            esc(unlockMs) +
+            '">' +
+            esc(fmtCountdown(waitMs)) +
+            "</span></button>";
+          casaCta =
+            '<button type="button" class="dz-v2-cta casa wait is-disabled" disabled>Aguardando</button>';
+        } else if (!canPlay) {
+          var blocked =
+            phase === "done"
+              ? "Finalizado"
+              : phase === "live"
+                ? "Jogo ao vivo"
+                : "Em breve";
+          arbiCta =
+            '<button type="button" class="dz-v2-cta arbi is-disabled" disabled>' +
+            blocked +
+            "</button>";
+          casaCta =
+            '<button type="button" class="dz-v2-cta casa is-disabled" disabled>' +
+            blocked +
+            "</button>";
+        } else {
+          arbiCta =
+            '<button type="button" class="dz-v2-cta arbi" data-apostar="' +
+            esc(item.id) +
+            '">Apostar na ArbiShield →</button>';
+          casaCta = item.externalBetLink
+            ? '<a class="dz-v2-cta casa" href="' +
+              esc(item.externalBetLink) +
+              '" target="_blank" rel="noopener">Abrir ' +
+              esc(item.casaBrand) +
+              "</a>"
+            : '<button type="button" class="dz-v2-cta casa is-disabled" disabled>Sem link da casa</button>';
+        }
+
+        var clockSvg =
+          '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+
+        return (
+          '<article class="dz-card" data-card="' +
+          esc(item.id) +
+          '" data-step-id="' +
+          esc(item.stepId || "") +
+          '">' +
+          '<div class="dz-v2-head">' +
+          '<div class="dz-v2-brand"><img src="/brand/favicon-192.png" alt="" width="22" height="22" />ArbiShield</div>' +
+          "</div>" +
+          '<div class="dz-v2-match">' +
+          teamBlock(item.homeTeam, item.homeLogo, "is-home") +
+          '<div class="dz-v2-center">' +
+          (item.liveInfo && item.liveInfo.score
+            ? '<div class="dz-v2-score' +
+              (item.liveInfo.live || phase === "live" ? " is-live" : "") +
+              '">' +
+              esc(item.liveInfo.score) +
+              "</div>"
+            : '<div class="dz-v2-x">×</div>') +
+          (item.liveInfo && item.liveInfo.live
+            ? '<div class="dz-v2-elapsed"><span class="dot"></span>Ao vivo' +
+              (item.liveInfo.elapsed
+                ? " · " + esc(item.liveInfo.elapsed)
+                : "") +
+              "</div>"
+            : item.liveInfo && item.liveInfo.finished && item.liveInfo.score
+              ? '<div class="dz-v2-elapsed" style="color:#c9f223">Encerrado</div>'
+              : '<div class="dz-v2-when">' +
+                clockSvg +
+                esc(fmtKick(item.startsAt)) +
+                "</div>") +
+          "</div>" +
+          teamBlock(item.awayTeam, item.awayLogo, "is-away") +
+          "</div>" +
+          '<div class="dz-v2-compare">' +
+          '<div class="dz-v2-panel arbi" data-side="arbi">' +
+          '<div class="dz-v2-panel-top"><div class="dz-v2-panel-brand"><img src="/brand/favicon-192.png" alt="" width="20" height="20" />ArbiShield</div>' +
+          '<span class="dz-v2-chip arbi">Maior retorno</span></div>' +
+          marketLineHtml(item.marketArbi, item.liveInfo) +
+          '<div class="dz-sb-field"><span class="l">Odd</span><strong class="dz-sb-odd arbi" data-arbi-odd>' +
+          esc(fmtOdd(item.arbiOdd)) +
+          "</strong></div>" +
+
+          '<div class="dz-sb-field"><span class="l">' +
+          (alreadyEntered ? "Valor da entrada" : "Entrar com") +
+          "</span>" +
+          '<div class="dz-sb-input-row">' +
+          '<input class="dz-sb-input" data-stake-input inputmode="decimal" placeholder="0,00" ' +
+          (canPlay ? "" : "disabled ") +
+          'value="' +
+          esc(stakeInputValue) +
+          '" />' +
+          (alreadyEntered
+            ? ""
+            : '<button type="button" class="dz-sb-max" data-stake-max ' +
+              (canPlay ? "" : "disabled ") +
+              ">MAX</button>") +
+          "</div></div>" +
+          '<div class="dz-sb-field"><span class="l">Você recebe</span><strong class="dz-sb-recebe arbi" data-recebe-arbi>' +
+          money(sides.recebeArbiCents) +
+          "</strong></div>" +
+          arbiCta +
+          "</div>" +
+          '<div class="dz-v2-panel casa" data-side="casa">' +
+          '<div class="dz-v2-panel-top"><div class="dz-v2-panel-brand">' +
+          esc(item.casaBrand) +
+          '</div><span class="dz-v2-chip casa">Casa de aposta</span></div>' +
+          marketLineHtml(item.marketCasa, item.liveInfo) +
+          '<div class="dz-sb-field"><span class="l">Odd</span><strong class="dz-sb-odd casa">' +
+          esc(fmtOdd(item.casaOdd)) +
+          "</strong></div>" +
+
+          '<div class="dz-sb-field"><span class="l">Aposte exatamente</span>' +
+          '<div class="dz-sb-input-row">' +
+          '<strong class="dz-sb-exact" data-casa-stake>' +
+          money(sides.casaStakeCents) +
+          "</strong>" +
+          '<button type="button" class="dz-sb-copy" data-casa-copy ' +
+          (canPlay ? "" : "disabled ") +
+          ">Copiar</button></div></div>" +
+          '<div class="dz-sb-field"><span class="l">Você recebe</span><strong class="dz-sb-recebe casa" data-recebe-casa>' +
+          money(sides.recebeCasaCents) +
+          "</strong></div>" +
+          casaCta +
+          "</div></div>" +
+          liqHtml +
+          '<div class="dz-v2-retorno">' +
+          retornoEstimadoHtml(item) +
+          "</div></article>"
+        );
+      }
+
+      function applyFilter(list) {
+        var now = new Date();
+        var tomorrow = new Date(now);
+        tomorrow.setDate(now.getDate() + 1);
+        return list.filter(function (it) {
+          if (filter === "Todos" || filter === "Futebol") return true;
+          if (!it.startsAtMs) return filter !== "Hoje" && filter !== "Amanhã";
+          var d = new Date(it.startsAtMs);
+          if (filter === "Hoje") return d.toDateString() === now.toDateString();
+          if (filter === "Amanhã") return d.toDateString() === tomorrow.toDateString();
+          if (filter === "Alta") return Number(it.lucroMaxPct) >= 15;
+          return true;
+        });
+      }
+
+      function refreshCardMath(card) {
+        if (!card) return null;
+        var id = card.getAttribute("data-card");
+        var item = items.find(function (x) { return String(x.id) === String(id); });
+        if (!item) return null;
+        var input = card.querySelector("[data-stake-input]");
+        var stake = reaisToCents(input && input.value);
+        // Sem fallback para initial_balance: campo vazio = preview zerado
+        if (!(stake > 0)) stake = 0;
+        var sides = calcSides(item, stake);
+        var elCasa = card.querySelector("[data-casa-stake]");
+        var elArbi = card.querySelector("[data-recebe-arbi]");
+        var elCasaRec = card.querySelector("[data-recebe-casa]");
+        var elRet = card.querySelector(".dz-v2-retorno");
+        if (elCasa) elCasa.textContent = money(sides.casaStakeCents);
+        if (elArbi) elArbi.textContent = money(sides.recebeArbiCents);
+        if (elCasaRec) elCasaRec.textContent = money(sides.recebeCasaCents);
+        if (elRet) elRet.innerHTML = retornoEstimadoHtml(item);
+        return { item: item, sides: sides };
+      }
+
+      function bindCardHost(host) {
+        if (!host) return;
+        host.querySelectorAll("[data-stake-input]").forEach(function (input) {
+          input.addEventListener("input", function () {
+            refreshCardMath(input.closest(".dz-card"));
+          });
+        });
+        host.querySelectorAll("[data-stake-max]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var card = btn.closest(".dz-card");
+            var id = card && card.getAttribute("data-card");
+            var item = items.find(function (x) { return String(x.id) === String(id); });
+            if (!card || !item) return;
+            var maxCents = desafioBalCents > 0
+              ? Math.min(desafioBalCents, item.entradaCents || desafioBalCents)
+              : item.entradaCents || MIN_ACCESS_CENTS;
+            if (!(maxCents > 0)) maxCents = item.entradaCents || MIN_ACCESS_CENTS;
+            var input = card.querySelector("[data-stake-input]");
+            if (input) input.value = centsToInput(maxCents);
+            refreshCardMath(card);
+          });
+        });
+        host.querySelectorAll("[data-casa-copy]").forEach(function (btn) {
+          btn.addEventListener("click", async function () {
+            var card = btn.closest(".dz-card");
+            var state = refreshCardMath(card);
+            if (!state) return;
+            var reais = (state.sides.casaStakeCents / 100).toFixed(2).replace(".", ",");
+            try {
+              await navigator.clipboard.writeText(reais);
+              btn.textContent = "Copiado";
+              setTimeout(function () { btn.textContent = "Copiar"; }, 1200);
+            } catch (ex) {
+              window.prompt("Copie o valor da casa:", reais);
+            }
+          });
+        });
+        host.querySelectorAll("[data-apostar]").forEach(function (btn) {
+          btn.addEventListener("click", async function () {
+            var card = btn.closest(".dz-card");
+            var state = refreshCardMath(card);
+            if (!state || !state.item) return;
+            var item = state.item;
+            var amountCents = state.sides.stakeCents;
+            if (!(amountCents > 0)) {
+              alert("Informe o valor da entrada.");
+              return;
+            }
+            if (desafioBalCents < amountCents) {
+              alert(
+                "Saldo do Desafio insuficiente para esta entrada (" +
+                  money(desafioBalCents) +
+                  "). Deposite via PIX para continuar."
+              );
+              var dep = document.querySelector('[data-open-deposit][data-deposit-dest="desafio"]');
+              if (dep) dep.click();
+              return;
+            }
+            if (
+              !confirm(
+                "Apostar " +
+                  money(amountCents) +
+                  " na ArbiShield?\n\nOdd " +
+                  fmtOdd(item.arbiOdd) +
+                  " · Você recebe " +
+                  money(state.sides.recebeArbiCents)
+              )
+            ) {
+              return;
+            }
+            btn.disabled = true;
+            try {
+              var session = await ArbiV2.client().auth.getSession();
+              var token = session.data.session && session.data.session.access_token;
+              var res = await fetch("/api/arbishield/desafio-register", {
+                method: "POST",
+                headers: {
+                  Authorization: "Bearer " + token,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  stepId: item.stepId,
+                  side: "arbishield",
+                  amountCents: amountCents,
+                }),
+              });
+              var data = await res.json().catch(function () {
+                return {};
+              });
+              if (!res.ok) {
+                var msg = data.error || "Falha ao apostar";
+                if (String(msg).indexOf("already registered") >= 0) {
+                  msg = "Você já registrou entrada nesta etapa.";
+                } else if (String(msg).indexOf("insufficient") >= 0) {
+                  msg = "Saldo do Desafio insuficiente. Deposite via PIX na barra acima.";
+                } else if (String(msg).indexOf("Sem saldo retido") >= 0) {
+                  msg = "Saldo do Desafio insuficiente. Deposite via PIX na barra acima.";
+                }
+                throw new Error(msg);
+              }
+              alert("Aposta registrada na ArbiShield!");
+              location.href = "/app-desafio.html";
+            } catch (ex) {
+              alert((ex && ex.message) || "Erro ao apostar");
+              btn.disabled = false;
+            }
+          });
+        });
+        host.querySelectorAll("[data-cancel-entrada]").forEach(function (btn) {
+          btn.addEventListener("click", async function () {
+            var participationId = String(
+              btn.getAttribute("data-participation-id") || ""
+            ).trim();
+            var stepId = String(btn.getAttribute("data-step-id") || "").trim();
+            var amountCents = Number(btn.getAttribute("data-amount") || 0) || 0;
+            if (!participationId && !stepId) {
+              alert("Entrada não encontrada.");
+              return;
+            }
+            if (
+              !confirm(
+                "Cancelar esta entrada" +
+                  (amountCents > 0 ? " de " + money(amountCents) : "") +
+                  "?\n\nO valor volta para o saldo Desafio. Só é possível antes do jogo começar."
+              )
+            ) {
+              return;
+            }
+            btn.disabled = true;
+            var prev = btn.textContent;
+            btn.textContent = "Cancelando…";
+            try {
+              var session = await ArbiV2.client().auth.getSession();
+              var token =
+                session.data.session && session.data.session.access_token;
+              var body = participationId
+                ? { participationId: participationId }
+                : { stepId: stepId };
+              var res = await fetch("/api/arbishield/desafio-cancel", {
+                method: "POST",
+                headers: {
+                  Authorization: "Bearer " + token,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify(body),
+              });
+              var data = await res.json().catch(function () {
+                return {};
+              });
+              if (!res.ok) {
+                throw new Error(
+                  (data && (data.error || data.message)) ||
+                    "Falha ao cancelar entrada"
+                );
+              }
+              alert(
+                data.alreadyCancelled
+                  ? "Entrada já estava cancelada."
+                  : "Entrada cancelada. Valor devolvido ao saldo Desafio."
+              );
+              await refreshAccessBar();
+              await loadClientCircuit();
+              render();
+            } catch (ex) {
+              alert((ex && ex.message) || "Erro ao cancelar");
+              btn.disabled = false;
+              btn.textContent = prev || "Cancelar entrada";
+            }
+          });
+        });
+      }
+
+      function paintAndamentoSection(andamentoItems, now) {
+        var box = document.getElementById("dzAndamento");
+        var listHost = document.getElementById("listAndamento");
+        var note = document.getElementById("dzAndamentoNote");
+        if (!box || !listHost) return;
+
+        // Entrada pendente fica visível mesmo com saldo Desafio zerado.
+        var show =
+          clientCircuit.pendingCount > 0 &&
+          andamentoItems.length > 0;
+        box.hidden = !show;
+        if (!show) {
+          listHost.innerHTML = "";
+          if (note) {
+            note.hidden = true;
+            note.innerHTML = "";
+          }
+          return;
+        }
+
+        var dzId =
+          (andamentoItems[0] && andamentoItems[0].desafioId) ||
+          (clientCircuit.cycleParts[0] && clientCircuit.cycleParts[0].desafio_id) ||
+          "";
+        if (note) {
+          note.hidden = false;
+          note.innerHTML =
+            'Etapa <b style="color:#c6ff00">' +
+            esc(String(clientCircuit.currentStage || 1)) +
+            "</b> de " +
+            esc(String(clientCircuit.totalStages || 5)) +
+            ' · <a href="/app-desafio-jornada.html' +
+            (dzId ? "?desafioId=" + encodeURIComponent(dzId) : "") +
+            '">Ver jornada →</a>';
+        }
+        var amounts = (clientCircuit && clientCircuit.pendingAmountsByStep) || {};
+        var partsByStep =
+          (clientCircuit && clientCircuit.pendingParticipationByStep) || {};
+        listHost.innerHTML = andamentoItems
+          .map(function (it) {
+            var view = Object.assign({}, it, { alreadyEntered: true });
+            var amt = amounts[String(it.stepId || "")];
+            if (amt > 0) view.entradaCents = amt;
+            var pid = partsByStep[String(it.stepId || "")];
+            if (pid) view.participationId = pid;
+            return cardHtml(view, now);
+          })
+          .join("");
+        bindCardHost(listHost);
+      }
+
+      function render() {
+        var now = Date.now();
+        var host = document.getElementById("list");
+        var split = splitItemsByCircuit(items);
+        paintAndamentoSection(split.andamento, now);
+
+        if (!(desafioBalCents > 0)) {
+          host.innerHTML = split.andamento.length
+            ? '<div class="ops-empty"><h2>Novos desafios bloqueados</h2><p>Seu desafio em andamento está acima. Deposite no saldo do Desafio para ver e entrar em novos jogos.</p></div>'
+            : '<div class="ops-empty"><h2>Acesso aos desafios bloqueado</h2><p>Deposite no saldo do Desafio para ver e entrar nos jogos disponíveis.</p></div>';
+          return;
+        }
+        var visible = applyFilter(split.disponiveis);
+        if (!visible.length) {
+          host.innerHTML = split.andamento.length
+            ? '<div class="ops-empty"><h2>Nenhum outro desafio disponível</h2><p>Seu desafio em andamento está acima. Novos eventos aparecem aqui.</p></div>'
+            : '<div class="ops-empty"><h2>Nenhum desafio disponível no momento</h2><p>Aguarde o lançamento de um novo desafio pela equipe ArbiShield.</p></div>';
+          return;
+        }
+        host.innerHTML = visible.map(function (it) { return cardHtml(it, now); }).join("");
+        bindCardHost(host);
+      }
+
+      function tickCountdowns() {
+        var now = Date.now();
+        document.querySelectorAll("[data-countdown]").forEach(function (el) {
+          var unlock = Number(el.getAttribute("data-countdown"));
+          if (!Number.isFinite(unlock)) return;
+          var left = unlock - now;
+          if (left <= 0) {
+            render();
+            return;
+          }
+          el.textContent = fmtCountdown(left);
+        });
+      }
+
+      var liveSyncIn = 0;
+
+      function paintAlertToggle() {
+        var btn = document.getElementById("btnDzLiveAlerts");
+        if (!btn) return;
+        btn.textContent = liveAlertsEnabled ? "Alertas ON" : "Alertas OFF";
+        btn.classList.toggle("is-off", !liveAlertsEnabled);
+        btn.setAttribute("aria-pressed", liveAlertsEnabled ? "true" : "false");
+      }
+
+      function playAlertTone(kind) {
+        try {
+          var AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return;
+          if (!liveAudioCtx) liveAudioCtx = new AC();
+          if (liveAudioCtx.state === "suspended") liveAudioCtx.resume().catch(function () {});
+          var now = liveAudioCtx.currentTime;
+          var osc = liveAudioCtx.createOscillator();
+          var gain = liveAudioCtx.createGain();
+          osc.type = "triangle";
+          if (kind === "ft") {
+            osc.frequency.setValueAtTime(420, now);
+            osc.frequency.exponentialRampToValueAtTime(220, now + 0.35);
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.exponentialRampToValueAtTime(0.08, now + 0.04);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+            osc.start(now);
+            osc.stop(now + 0.45);
+          } else {
+            osc.frequency.setValueAtTime(660, now);
+            osc.frequency.exponentialRampToValueAtTime(990, now + 0.12);
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.exponentialRampToValueAtTime(0.09, now + 0.03);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+            osc.start(now);
+            osc.stop(now + 0.3);
+          }
+          osc.connect(gain);
+          gain.connect(liveAudioCtx.destination);
+        } catch (e) {
+          /* ignore */
+        }
+      }
+
+      function pushBrowserNotify(title, body) {
+        try {
+          if (!("Notification" in window)) return;
+          if (Notification.permission === "granted") {
+            new Notification(title, { body: body, silent: true });
+          }
+        } catch (e) {
+          /* ignore */
+        }
+      }
+
+      function showLiveToast(opts) {
+        var host = document.getElementById("dzLiveToasts");
+        if (!host || !opts) return;
+        var el = document.createElement("div");
+        el.className = "dz-live-toast" + (opts.kind === "ft" ? " is-ft" : "");
+        el.innerHTML =
+          '<div class="dz-live-toast-ico">' +
+          esc(opts.kind === "ft" ? "FT" : "GOL") +
+          "</div><div><strong>" +
+          esc(opts.title || "") +
+          "</strong><p>" +
+          esc(opts.body || "") +
+          '</p></div><div class="dz-live-toast-score">' +
+          esc(opts.score || "") +
+          "</div>";
+        host.appendChild(el);
+        playAlertTone(opts.kind === "ft" ? "ft" : "goal");
+        pushBrowserNotify(opts.title || "ArbiShield", opts.body || "");
+        setTimeout(function () {
+          el.classList.add("is-out");
+          setTimeout(function () {
+            if (el.parentNode) el.parentNode.removeChild(el);
+          }, 280);
+        }, opts.kind === "ft" ? 7000 : 5200);
+      }
+
+      function snapshotFromItem(item) {
+        var live = item && item.liveInfo ? item.liveInfo : null;
+        var home = live && live.home != null ? Number(live.home) : null;
+        var away = live && live.away != null ? Number(live.away) : null;
+        if (
+          (!Number.isFinite(home) || !Number.isFinite(away)) &&
+          live &&
+          live.score
+        ) {
+          var parts = String(live.score).split(/\s*[—–-]\s*/);
+          if (parts.length >= 2) {
+            home = Number(parts[0]);
+            away = Number(parts[1]);
+          }
+        }
+        return {
+          home: Number.isFinite(home) ? home : null,
+          away: Number.isFinite(away) ? away : null,
+          finished: Boolean(live && live.finished),
+          live: Boolean(live && live.live),
+          homeTeam: item.homeTeam || "Casa",
+          awayTeam: item.awayTeam || "Visitante",
+          score: (live && live.score) || "",
+        };
+      }
+
+      function detectLiveAlerts(nextItems) {
+        if (!liveAlertsEnabled) {
+          (nextItems || []).forEach(function (item) {
+            if (item.stepId) liveWatch[item.stepId] = snapshotFromItem(item);
+          });
+          return;
+        }
+        var seen = Object.create(null);
+        (nextItems || []).forEach(function (item) {
+          var id = item.stepId;
+          if (!id) return;
+          seen[id] = true;
+          var cur = snapshotFromItem(item);
+          var prev = liveWatch[id];
+          if (prev) {
+            var baseHome = prev.home;
+            var baseAway = prev.away;
+            // Se já acompanhávamos ao vivo sem placar, assume 0-0 como base
+            if (
+              baseHome == null &&
+              baseAway == null &&
+              (prev.live || cur.live) &&
+              cur.home != null &&
+              cur.away != null
+            ) {
+              baseHome = 0;
+              baseAway = 0;
+            }
+            var homeUp =
+              baseHome != null && cur.home != null && cur.home > baseHome;
+            var awayUp =
+              baseAway != null && cur.away != null && cur.away > baseAway;
+            if (homeUp || awayUp) {
+              var scorer = homeUp && !awayUp
+                ? cur.homeTeam
+                : awayUp && !homeUp
+                  ? cur.awayTeam
+                  : "Gol";
+              showLiveToast({
+                kind: "goal",
+                title: "Gol! " + scorer,
+                body: cur.homeTeam + " × " + cur.awayTeam,
+                score: cur.score || (cur.home + " — " + cur.away),
+              });
+            }
+            if (!prev.finished && cur.finished) {
+              showLiveToast({
+                kind: "ft",
+                title: "Fim de jogo",
+                body: cur.homeTeam + " × " + cur.awayTeam,
+                score: cur.score || "",
+              });
+            }
+          }
+          liveWatch[id] = cur;
+        });
+        // Sumiu da lista após estar ao vivo → trata como encerrado
+        Object.keys(liveWatch).forEach(function (id) {
+          if (seen[id]) return;
+          var prev = liveWatch[id];
+          if (prev && (prev.live || prev.home != null) && !prev.finished) {
+            showLiveToast({
+              kind: "ft",
+              title: "Fim de jogo",
+              body: prev.homeTeam + " × " + prev.awayTeam,
+              score: prev.score || "",
+            });
+          }
+          delete liveWatch[id];
+        });
+      }
+
+      async function refreshDesafioCardsLive() {
+        try {
+          // GET (nginx antigo às vezes bloqueia POST em rotas não mapeadas)
+          fetch("/api/arbishield/match-live-sync?t=" + Date.now(), {
+            method: "GET",
+            headers: { Accept: "application/json" },
+            cache: "no-store",
+          }).catch(function () {});
+          // GET /desafios também dispara sync no worker (throttled)
+          var res = await fetch("/api/arbishield/desafios", {
+            cache: "no-store",
+            headers: { accept: "application/json" },
+          });
+          var data = await res.json().catch(function () { return []; });
+          if (!res.ok) return;
+          var rows = Array.isArray(data) ? data : [];
+          var alive = rows.filter(function (d) {
+            return !d.deleted_at && String(d.status || "").toLowerCase() !== "deleted";
+          });
+          var active = alive.filter(function (d) { return !!d.is_active; });
+          var next = [];
+          active.forEach(function (d) {
+            var steps = (d.desafio_steps || [])
+              .slice()
+              .filter(function (s) { return !s.deleted_at && !stepIsFinished(s); })
+              .sort(function (a, b) { return (a.step_index || 0) - (b.step_index || 0); });
+            steps.forEach(function (s) { next.push(toCardItem(d, s)); });
+          });
+          next.sort(function (a, b) {
+            var na = a.startsAtMs || Number.MAX_SAFE_INTEGER;
+            var nb = b.startsAtMs || Number.MAX_SAFE_INTEGER;
+            return na - nb;
+          });
+          detectLiveAlerts(next);
+          items = next;
+          render();
+        } catch (e) {
+          /* silencioso */
+        }
+      }
+
+      document.querySelectorAll(".dz-filter").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          document.querySelectorAll(".dz-filter").forEach(function (b) {
+            b.classList.remove("is-on");
+          });
+          btn.classList.add("is-on");
+          filter = btn.getAttribute("data-f") || "Todos";
+          render();
+        });
+      });
+
+      paintAlertToggle();
+      var btnAlerts = document.getElementById("btnDzLiveAlerts");
+      if (btnAlerts) {
+        btnAlerts.addEventListener("click", function () {
+          liveAlertsEnabled = !liveAlertsEnabled;
+          localStorage.setItem("dz_live_alerts", liveAlertsEnabled ? "1" : "0");
+          paintAlertToggle();
+          if (liveAlertsEnabled && "Notification" in window && Notification.permission === "default") {
+            Notification.requestPermission().catch(function () {});
+          }
+        });
+      }
+
+      function paintDesafioBanner(imageUrl, title, ctaUrl, useBrandWebp) {
+        var host = document.getElementById("desafioBanner");
+        if (!host || !imageUrl) return false;
+        var href = ctaUrl || "#";
+        var external = /^https?:\/\//i.test(href);
+        var media = useBrandWebp
+          ? '<picture><source type="image/webp" srcset="/brand/desafio-banner.webp" />' +
+            '<img src="' +
+            esc(imageUrl) +
+            '" alt="' +
+            esc(title || "Desafio ArbiShield") +
+            '" width="1600" height="680" loading="eager" decoding="async" fetchpriority="high" /></picture>'
+          : '<img src="' +
+            esc(imageUrl) +
+            '" alt="' +
+            esc(title || "Desafio ArbiShield") +
+            '" loading="eager" decoding="async" fetchpriority="high" />';
+        host.innerHTML =
+          '<a class="dz-banner-link" href="' +
+          esc(href) +
+          '"' +
+          (external ? ' target="_blank" rel="noreferrer"' : "") +
+          ">" +
+          media +
+          "</a>";
+        return true;
+      }
+
+      async function loadDesafioBanner() {
+        var host = document.getElementById("desafioBanner");
+        if (!host) return;
+        var FALLBACK = "/brand/desafio-banner.jpg";
+
+        // 1) Banner cadastrado no admin (variant=desafio)
+        try {
+          var ban = await supa
+            .from("banners")
+            .select("id,title,image_url,cta_url,variant,active,sort_order,created_at")
+            .eq("active", true)
+            .order("sort_order", { ascending: true })
+            .limit(20);
+          if (!ban.error && Array.isArray(ban.data)) {
+            var row =
+              ban.data.find(function (b) {
+                return String(b.variant || "").toLowerCase() === "desafio" && b.image_url;
+              }) || null;
+            if (row && paintDesafioBanner(row.image_url, row.title, row.cta_url, false)) {
+              return;
+            }
+          } else if (ban.error) {
+            console.warn("[desafio] banners REST", ban.error.message || ban.error);
+          }
+        } catch (ex) {
+          console.warn("[desafio] banner", ex);
+        }
+
+        // 2) Arte padrão do SPA (deploy em /brand/desafio-banner.*)
+        if (paintDesafioBanner(FALLBACK, "Desafio ArbiShield", "#", true)) {
+          var img = host.querySelector("img");
+          if (img) {
+            img.onerror = function () {
+              host.innerHTML =
+                '<div class="dz-banner-placeholder">Banner do Desafio · aguardando publicação</div>';
+            };
+          }
+          return;
+        }
+
+        host.innerHTML =
+          '<div class="dz-banner-placeholder">Banner do Desafio · aguardando publicação</div>';
+      }
+
+      try {
+        await loadDesafioBanner();
+        var res = await fetch("/api/arbishield/desafios", {
+          cache: "no-store",
+          headers: { accept: "application/json" },
+        });
+        var data = await res.json().catch(function () { return []; });
+        if (!res.ok) throw new Error((data && data.error) || "Falha ao carregar desafios");
+        var rows = Array.isArray(data) ? data : [];
+        var alive = rows.filter(function (d) {
+          return !d.deleted_at && String(d.status || "").toLowerCase() !== "deleted";
+        });
+        // Cliente: só desafios publicados (ativos). Etapas encerradas (bateu) não entram.
+        var active = alive.filter(function (d) { return !!d.is_active; });
+
+        items = [];
+        active.forEach(function (d) {
+          var steps = (d.desafio_steps || [])
+            .slice()
+            .filter(function (s) { return !s.deleted_at && !stepIsFinished(s); })
+            .sort(function (a, b) { return (a.step_index || 0) - (b.step_index || 0); });
+          if (!steps.length) return;
+          steps.forEach(function (s) {
+            items.push(toCardItem(d, s));
+          });
+        });
+
+        // Preferir jogos ainda jogáveis; ao vivo ficam no fim
+        items.sort(function (a, b) {
+          var na = a.startsAtMs || Number.MAX_SAFE_INTEGER;
+          var nb = b.startsAtMs || Number.MAX_SAFE_INTEGER;
+          return na - nb;
+        });
+
+        await loadClientCircuit();
+
+        // Semeia placar atual (evita falso "gol" no 1º poll)
+        detectLiveAlerts(items);
+        render();
+        if (tickTimer) clearInterval(tickTimer);
+        tickTimer = setInterval(function () {
+          tickCountdowns();
+          liveSyncIn -= 1;
+          if (liveSyncIn <= 0) {
+            liveSyncIn = 30;
+            refreshDesafioCardsLive();
+          }
+        }, 1000);
+        liveSyncIn = 8;
+      } catch (ex) {
+        showErr(ex.message || "Erro");
+        document.getElementById("list").innerHTML = "";
+      }
+    })();
+  </script>
+</body>
+</html>
