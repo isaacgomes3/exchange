@@ -1051,12 +1051,22 @@ async function cancelDesafio(token, body) {
 
   for (const [stepId, delta] of stepDelta.entries()) {
     try {
-      const stepRows = await sb(
-        `/rest/v1/desafio_steps?select=id,used_liquidity_cents&id=eq.${encodeURIComponent(stepId)}&limit=1`,
-        { token: SERVICE_KEY }
-      );
-      const step = Array.isArray(stepRows) ? stepRows[0] : null;
-      if (!step) continue;
+      let step = null;
+      try {
+        const stepRows = await sb(
+          `/rest/v1/desafio_steps?select=id,used_liquidity_cents&id=eq.${encodeURIComponent(stepId)}&limit=1`,
+          { token: SERVICE_KEY }
+        );
+        step = Array.isArray(stepRows) ? stepRows[0] : null;
+      } catch (e) {
+        if (/used_liquidity_cents/i.test(String(e && e.message ? e.message : e))) {
+          continue; // schema antigo sem coluna
+        }
+        throw e;
+      }
+      if (!step || !Object.prototype.hasOwnProperty.call(step, "used_liquidity_cents")) {
+        continue;
+      }
       await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`, {
         method: "PATCH",
         token: SERVICE_KEY,
@@ -3839,11 +3849,26 @@ async function cancelDesafioParticipation(token, body) {
   }
 
   stepId = row.step_id || stepId;
-  const stepRows = await sb(
-    `/rest/v1/desafio_steps?select=id,status,starts_at,used_liquidity_cents,desafio_id&id=eq.${encodeURIComponent(stepId)}&limit=1`,
-    { token: SERVICE_KEY }
-  );
-  const step = Array.isArray(stepRows) ? stepRows[0] : null;
+  let step = null;
+  try {
+    const stepRows = await sb(
+      `/rest/v1/desafio_steps?select=id,status,starts_at,desafio_id,used_liquidity_cents&id=eq.${encodeURIComponent(stepId)}&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    step = Array.isArray(stepRows) ? stepRows[0] : null;
+  } catch (e) {
+    // VPS antiga: coluna used_liquidity_cents pode não existir
+    const msg = String(e && e.message ? e.message : e);
+    if (/used_liquidity_cents/i.test(msg)) {
+      const stepRows = await sb(
+        `/rest/v1/desafio_steps?select=id,status,starts_at,desafio_id&id=eq.${encodeURIComponent(stepId)}&limit=1`,
+        { token: SERVICE_KEY }
+      );
+      step = Array.isArray(stepRows) ? stepRows[0] : null;
+    } else {
+      throw e;
+    }
+  }
   if (!step) throw new Error("Etapa não encontrada");
 
   const stepStatus = String(step.status || "").toLowerCase();
@@ -3901,18 +3926,22 @@ async function cancelDesafioParticipation(token, body) {
     );
   }
 
+  // Liquidez do step é opcional (coluna pode não existir na VPS)
+  // marker: desafio-cancel-sem-used-liquidity-v1
   try {
-    const used = Math.max(0, n(step.used_liquidity_cents) - amount);
-    await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`, {
-      method: "PATCH",
-      token: SERVICE_KEY,
-      body: {
-        used_liquidity_cents: used,
-        updated_at: new Date().toISOString(),
-      },
-    });
+    if (Object.prototype.hasOwnProperty.call(step, "used_liquidity_cents")) {
+      const used = Math.max(0, n(step.used_liquidity_cents) - amount);
+      await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          used_liquidity_cents: used,
+          updated_at: new Date().toISOString(),
+        },
+      });
+    }
   } catch {
-    /* */
+    /* schema sem used_liquidity_cents — ignora */
   }
 
   try {
