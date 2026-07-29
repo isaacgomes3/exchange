@@ -13,7 +13,7 @@ RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
-MARKER="desafio-monitor-paginacao-v1"
+MARKER="desafio-monitor-paginacao-v2"
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }

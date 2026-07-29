@@ -29,7 +29,8 @@ grep -q 'Monitor de Desafios' "$WEB/admin-monitoring-desafios.html" || die "pág
 grep -q 'desafio_participations' "$WEB/admin-monitoring-desafios.html" || die "página sem query participations"
 grep -q 'Etapa' "$WEB/admin-monitoring-desafios.html" || die "página sem coluna Etapa"
 grep -q 'mdzPrev' "$WEB/admin-monitoring-desafios.html" || die "página sem paginação"
-grep -q 'desafio-monitor-paginacao-v1' "$WEB/admin-monitoring-desafios.html" || die "página sem build paginação"
+grep -q 'desafio-monitor-paginacao-v2' "$WEB/admin-monitoring-desafios.html" || die "página sem build paginação"
+grep -q 'Uma linha por entrada' "$WEB/admin-monitoring-desafios.html" || die "página ainda agrega por cliente"
 
 log "2/3 UI — v2-shell.js (item no menu Operação)"
 dl "deploy/vps-supabase/static/v2/v2-shell.js" "$WEB/v2-shell.js"

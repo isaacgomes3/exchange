@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Monitor de Desafios — ArbiShield</title>
-  <meta name="arbishield-build" content="desafio-monitor-paginacao-v1" />
+  <meta name="arbishield-build" content="desafio-monitor-paginacao-v2" />
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=monitor-desafios-paginacao-v1" />
+  <link rel="stylesheet" href="/v2.css?v=monitor-desafios-paginacao-v2" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=monitor-desafios-paginacao-v1"></script>
-  <script src="/v2-shell.js?v=monitor-desafios-paginacao-v1" defer></script>
+  <script src="/v2.js?v=monitor-desafios-paginacao-v2"></script>
+  <script src="/v2-shell.js?v=monitor-desafios-paginacao-v2" defer></script>
   <style>
     .mdz-wrap { display: grid; gap: 16px; padding-bottom: 48px; }
     .mdz-head h1 { margin: 0; font-size: clamp(1.4rem, 3vw, 1.9rem); font-weight: 900; letter-spacing: -0.03em; text-transform: uppercase; }
@@ -212,122 +212,128 @@
     return Math.max(1, ordinal);
   }
 
-  /** Uma linha por cliente — etapa do circuito, sem coluna/filtro de Desafio. */
+  /** Ciclo (entre losses) que contém a participação. */
+  function cycleContaining(userParts, part) {
+    var list = (userParts || []).slice().sort(function (a, b) {
+      return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+    });
+    var start = 0;
+    var cycles = [];
+    for (var i = 0; i < list.length; i++) {
+      if (normalizePartResult(list[i].result) === "lost") {
+        cycles.push(list.slice(start, i + 1));
+        start = i + 1;
+      }
+    }
+    if (start < list.length) cycles.push(list.slice(start));
+    for (var c = 0; c < cycles.length; c++) {
+      for (var j = 0; j < cycles[c].length; j++) {
+        if (cycles[c][j].id === part.id) return cycles[c];
+      }
+    }
+    return currentCycleParts(list);
+  }
+
+  /**
+   * Uma linha por entrada/evento (participação).
+   * Antes agregava 1 linha por cliente e escondia o histórico completo.
+   */
   function buildRows(parts) {
-    var map = {};
+    var byUser = {};
+    var list = [];
     (parts || []).forEach(function (p) {
       if (!p || !p.user_id) return;
       if (String(p.side || "").toLowerCase() !== "arbishield") return;
       var dz = p.desafios || {};
       if (dz.deleted_at) return;
-      var key = String(p.user_id);
-      if (!map[key]) {
-        map[key] = {
+      list.push(p);
+      var uid = String(p.user_id);
+      if (!byUser[uid]) byUser[uid] = [];
+      byUser[uid].push(p);
+    });
+
+    return list
+      .map(function (p) {
+        var userParts = byUser[String(p.user_id)] || [p];
+        var cycle = cycleContaining(userParts, p);
+        var step = p.desafio_steps || {};
+        var dz = p.desafios || {};
+        var totalSteps = Number(dz.total_steps) || 5;
+        var stepIndex = Math.min(resolveEtapaAtual(cycle, p), totalSteps);
+        var match =
+          step.match_label ||
+          [step.home_team, step.away_team].filter(Boolean).join(" × ") ||
+          "—";
+        var marketArbi =
+          step.market_name_arbishield || step.market_name || "";
+        var marketCasa = step.market_name_casa || "";
+        var scoreHint =
+          step.final_score_home != null && step.final_score_away != null
+            ? String(step.final_score_home) + "-" + String(step.final_score_away)
+            : "";
+        var stepStatus = String(step.status || "").toLowerCase();
+        var feedFinished =
+          stepStatus === "pending" ||
+          (!!scoreHint &&
+            (stepStatus === "live" ||
+              stepStatus === "current" ||
+              stepStatus === "pending"));
+        var stepResult = p.result || "";
+        var pending = normalizePartResult(stepResult) === "pending";
+        var totalAmount = 0;
+        var totalProfit = 0;
+        cycle.forEach(function (cp) {
+          totalAmount += Number(cp.amount_cents) || 0;
+          totalProfit += Number(cp.profit_cents) || 0;
+        });
+
+        return {
+          id: p.id,
           userId: p.user_id,
           userName: (p.profiles && p.profiles.full_name) || "—",
-          totalSteps: 5,
-          targetPct: 5,
-          totalAmount: 0,
-          totalProfit: 0,
-          parts: [],
+          totalSteps: totalSteps,
+          targetPct: Number(dz.target_profit_pct) || 5,
+          totalAmount: totalAmount,
+          totalProfit: totalProfit,
           latestAt: p.created_at || "",
+          stepIndex: stepIndex,
+          entriesPlayed: cycle.length,
+          stepResult: stepResult,
+          stepAmount: Number(p.amount_cents) || 0,
+          matchLabel: match,
+          marketArbi: marketArbi,
+          marketCasa: marketCasa,
+          league: step.league_name || "",
+          startsAt: step.starts_at || "",
+          stepId: p.step_id || step.id || "",
+          feedFinished: feedFinished,
+          scoreHint: scoreHint,
+          inProgress:
+            pending &&
+            (dz.is_active === true || pending),
+          finishedCycle:
+            !pending &&
+            (normalizePartResult(stepResult) === "lost" ||
+              stepIndex >= totalSteps),
         };
-      }
-      var row = map[key];
-      row.parts.push(p);
-      var ts = Number(dz.total_steps) || 0;
-      if (ts > row.totalSteps) row.totalSteps = ts;
-      var pct = Number(dz.target_profit_pct) || 0;
-      if (pct > 0) row.targetPct = pct;
-      if ((p.created_at || "") > (row.latestAt || "")) row.latestAt = p.created_at;
-    });
-
-    return Object.keys(map).map(function (key) {
-      var row = map[key];
-      var cycle = currentCycleParts(row.parts);
-      row.parts = cycle;
-
-      var totalAmount = 0;
-      var totalProfit = 0;
-      cycle.forEach(function (p) {
-        totalAmount += Number(p.amount_cents) || 0;
-        totalProfit += Number(p.profit_cents) || 0;
+      })
+      .sort(function (a, b) {
+        return String(b.latestAt || "").localeCompare(String(a.latestAt || ""));
       });
-      row.totalAmount = totalAmount;
-      row.totalProfit = totalProfit;
-
-      var current = null;
-      var pending = cycle.filter(function (p) {
-        return normalizePartResult(p.result) === "pending";
-      });
-      if (pending.length) {
-        current = pending[pending.length - 1];
-      } else {
-        current = cycle[cycle.length - 1] || null;
-      }
-
-      var step = (current && current.desafio_steps) || {};
-      var stepIndex = resolveEtapaAtual(cycle, current);
-      var match =
-        step.match_label ||
-        [step.home_team, step.away_team].filter(Boolean).join(" × ") ||
-        "—";
-      var marketArbi =
-        step.market_name_arbishield || step.market_name || "";
-      var marketCasa = step.market_name_casa || "";
-      var dz = (current && current.desafios) || {};
-      var active =
-        current &&
-        (dz.is_active === true ||
-          normalizePartResult(current.result) === "pending");
-      // Não usar desafio_steps.metadata — coluna pode não existir no schema PostgREST do join.
-      var scoreHint =
-        step.final_score_home != null && step.final_score_away != null
-          ? String(step.final_score_home) + "-" + String(step.final_score_away)
-          : "";
-      var stepStatus = String(step.status || "").toLowerCase();
-      var feedFinished =
-        stepStatus === "pending" ||
-        (!!scoreHint &&
-          (stepStatus === "live" ||
-            stepStatus === "current" ||
-            stepStatus === "pending"));
-
-      row.stepIndex = Math.min(stepIndex, row.totalSteps || 5);
-      row.entriesPlayed = cycle.length;
-      row.stepResult = (current && current.result) || "";
-      row.stepAmount = current ? Number(current.amount_cents) || 0 : 0;
-      row.matchLabel = match;
-      row.marketArbi = marketArbi;
-      row.marketCasa = marketCasa;
-      row.league = step.league_name || "";
-      row.startsAt = step.starts_at || "";
-      row.stepId = (current && (current.step_id || (step && step.id))) || "";
-      row.feedFinished = feedFinished;
-      row.scoreHint = scoreHint;
-      row.inProgress =
-        !!active && normalizePartResult(row.stepResult) === "pending";
-      row.finishedCycle =
-        !row.inProgress &&
-        (normalizePartResult(row.stepResult) === "lost" ||
-          row.stepIndex >= row.totalSteps);
-      return row;
-    }).sort(function (a, b) {
-      return String(b.latestAt || "").localeCompare(String(a.latestAt || ""));
-    });
   }
 
   function filtered() {
     var q = String(state.q || "").trim().toLowerCase();
     return (state.rows || []).filter(function (r) {
+      var norm = normalizePartResult(r.stepResult);
       if (state.tab === "andamento") {
         if (!r.inProgress) return false;
       } else if (state.tab === "pending") {
-        if (String(r.stepResult || "").toLowerCase() !== "pending") return false;
+        if (norm !== "pending") return false;
       } else if (state.tab === "won") {
-        if (!/^won/.test(String(r.stepResult || "").toLowerCase())) return false;
+        if (norm !== "won") return false;
       } else if (state.tab === "lost") {
-        if (String(r.stepResult || "").toLowerCase() !== "lost") return false;
+        if (norm !== "lost") return false;
       }
       if (q) {
         var hay = [
@@ -349,11 +355,12 @@
   function tabCount(tabKey) {
     var n = 0;
     (state.rows || []).forEach(function (r) {
+      var norm = normalizePartResult(r.stepResult);
       if (tabKey === "all") n += 1;
       else if (tabKey === "andamento" && r.inProgress) n += 1;
-      else if (tabKey === "pending" && String(r.stepResult || "").toLowerCase() === "pending") n += 1;
-      else if (tabKey === "won" && /^won/.test(String(r.stepResult || "").toLowerCase())) n += 1;
-      else if (tabKey === "lost" && String(r.stepResult || "").toLowerCase() === "lost") n += 1;
+      else if (tabKey === "pending" && norm === "pending") n += 1;
+      else if (tabKey === "won" && norm === "won") n += 1;
+      else if (tabKey === "lost" && norm === "lost") n += 1;
     });
     return n;
   }
@@ -521,7 +528,7 @@
 
     root.innerHTML =
       '<div class="mdz-head"><h1>Monitor de <span>Desafios</span></h1>' +
-      '<p class="sub">Clientes em operação · etapa do circuito · jogo e valores da entrada</p></div>' +
+      '<p class="sub">Todas as entradas em aberto e histórico · etapa do circuito · jogo e valores</p></div>' +
       '<div class="mdz-kpis">' +
       '<article class="mdz-kpi"><div class="l">Em andamento</div><strong>' +
       andamento +
@@ -649,43 +656,7 @@
         return;
       }
 
-      // Select em camadas: schema antigo pode não ter market_name_* / scores.
-      var selects = [
-        "id,user_id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at," +
-          "profiles(full_name)," +
-          "desafios(title,number,status,is_active,target_profit_pct,total_steps,deleted_at)," +
-          "desafio_steps(id,step_index,match_label,status,home_team,away_team,league_name,starts_at,result," +
-          "market_name,market_name_arbishield,market_name_casa,final_score_home,final_score_away)",
-        "id,user_id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at," +
-          "profiles(full_name)," +
-          "desafios(title,number,status,is_active,target_profit_pct,total_steps,deleted_at)," +
-          "desafio_steps(id,step_index,match_label,status,home_team,away_team,league_name,starts_at,result," +
-          "market_name,market_name_arbishield,market_name_casa)",
-        "id,user_id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at," +
-          "profiles(full_name)," +
-          "desafios(title,number,status,is_active,target_profit_pct,total_steps,deleted_at)," +
-          "desafio_steps(id,step_index,match_label,status,home_team,away_team,league_name,starts_at,result)",
-      ];
-      var selectSql = null;
-      var lastErr = null;
-      for (var si = 0; si < selects.length; si++) {
-        var probe = await supa
-          .from("desafio_participations")
-          .select(selects[si])
-          .eq("side", "arbishield")
-          .order("created_at", { ascending: false })
-          .range(0, 0);
-        if (!probe.error) {
-          selectSql = selects[si];
-          break;
-        }
-        lastErr = probe.error;
-        var msg = String((probe.error && probe.error.message) || "");
-        if (!/does not exist|column/i.test(msg)) break;
-      }
-      if (!selectSql) throw lastErr || new Error("Falha ao carregar");
-
-      // Carrega todas as páginas (PostgREST/Supabase corta por range).
+      // 1) Participações sem embed (evita truncar histórico no join).
       var pageSize = 1000;
       var allParts = [];
       var from = 0;
@@ -693,7 +664,9 @@
         var to = from + pageSize - 1;
         var res = await supa
           .from("desafio_participations")
-          .select(selectSql)
+          .select(
+            "id,user_id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at"
+          )
           .eq("side", "arbishield")
           .order("created_at", { ascending: false })
           .range(from, to);
@@ -704,6 +677,85 @@
         from += pageSize;
         if (from > 50000) break;
       }
+
+      // 2) Enriquece em lotes: profiles, desafios, steps.
+      var userIds = [];
+      var desafioIds = [];
+      var stepIds = [];
+      allParts.forEach(function (p) {
+        if (p.user_id) userIds.push(p.user_id);
+        if (p.desafio_id) desafioIds.push(p.desafio_id);
+        if (p.step_id) stepIds.push(p.step_id);
+      });
+      userIds = Array.from(new Set(userIds.map(String)));
+      desafioIds = Array.from(new Set(desafioIds.map(String)));
+      stepIds = Array.from(new Set(stepIds.map(String)));
+
+      async function fetchInChunks(table, columns, idList) {
+        var out = [];
+        var size = 200;
+        for (var i = 0; i < idList.length; i += size) {
+          var ids = idList.slice(i, i + size);
+          if (!ids.length) continue;
+          var r = await supa.from(table).select(columns).in("id", ids);
+          if (r.error) throw r.error;
+          out = out.concat(r.data || []);
+        }
+        return out;
+      }
+
+      var profiles = userIds.length
+        ? await fetchInChunks("profiles", "id,full_name", userIds)
+        : [];
+      var desafios = desafioIds.length
+        ? await fetchInChunks(
+            "desafios",
+            "id,title,number,status,is_active,target_profit_pct,total_steps,deleted_at",
+            desafioIds
+          )
+        : [];
+
+      var stepSelects = [
+        "id,desafio_id,step_index,match_label,status,home_team,away_team,league_name,starts_at,result,market_name,market_name_arbishield,market_name_casa,final_score_home,final_score_away",
+        "id,desafio_id,step_index,match_label,status,home_team,away_team,league_name,starts_at,result,market_name,market_name_arbishield,market_name_casa",
+        "id,desafio_id,step_index,match_label,status,home_team,away_team,league_name,starts_at,result",
+      ];
+      var steps = [];
+      var stepErr = null;
+      for (var ssi = 0; ssi < stepSelects.length; ssi++) {
+        try {
+          steps = stepIds.length
+            ? await fetchInChunks("desafio_steps", stepSelects[ssi], stepIds)
+            : [];
+          stepErr = null;
+          break;
+        } catch (eStep) {
+          stepErr = eStep;
+          var sm = String((eStep && eStep.message) || "");
+          if (!/does not exist|column/i.test(sm)) throw eStep;
+        }
+      }
+      if (stepErr) throw stepErr;
+
+      var profileMap = {};
+      profiles.forEach(function (pr) {
+        profileMap[String(pr.id)] = pr;
+      });
+      var desafioMap = {};
+      desafios.forEach(function (dz) {
+        desafioMap[String(dz.id)] = dz;
+      });
+      var stepMap = {};
+      steps.forEach(function (st) {
+        stepMap[String(st.id)] = st;
+      });
+
+      allParts.forEach(function (p) {
+        p.profiles = profileMap[String(p.user_id)] || null;
+        p.desafios = desafioMap[String(p.desafio_id)] || null;
+        p.desafio_steps = stepMap[String(p.step_id)] || null;
+      });
+
       state.rows = buildRows(allParts);
       if (!manual) {
         // Mantém a página atual no auto-refresh; só corrige se ficar inválida.
