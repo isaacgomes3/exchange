@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Gestão de Desafios — ArbiShield v2</title>
-  <meta name="arbishield-build" content="desafio-publicar-imediato-v4" />
+  <meta name="arbishield-build" content="desafio-lancado-por-admin-v5" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
@@ -1580,6 +1580,132 @@
       return headers;
     }
 
+    function parseDesafioMeta(raw) {
+      if (!raw) return {};
+      if (typeof raw === "object" && !Array.isArray(raw)) return raw;
+      if (typeof raw === "string") {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+        } catch {}
+      }
+      return {};
+    }
+
+    function isWeakAdminLabel(value) {
+      const t = String(value || "").trim();
+      if (!t) return true;
+      if (/^[0-9a-f]{8}$/i.test(t)) return true;
+      if (
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(t)
+      ) {
+        return true;
+      }
+      return false;
+    }
+
+    function pickAdminLabel(...candidates) {
+      for (const c of candidates) {
+        const t = String(c || "").trim();
+        if (t && !isWeakAdminLabel(t)) return t;
+      }
+      return null;
+    }
+
+    /** Resolve "Lançado por" via API admin_names + profiles (client fallback). */
+    async function attachDesafioAdminNames(rows) {
+      const list = Array.isArray(rows) ? rows : [];
+      const adminIds = {};
+      for (const d of list) {
+        const meta = parseDesafioMeta(d && d.metadata);
+        if (d) d.metadata = meta;
+        const cid = (d && (d.created_by || meta.created_by)) || null;
+        if (cid) adminIds[String(cid)] = true;
+      }
+      const ids = Object.keys(adminIds);
+      const nameMap = {};
+      if (ids.length) {
+        try {
+          const headers = await authHeaders();
+          const res = await fetch("/api/arbishield/matches", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ mode: "admin_names", ids }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data && data.names) {
+            Object.keys(data.names).forEach((k) => {
+              const v = pickAdminLabel(data.names[k]);
+              if (v) nameMap[String(k)] = v;
+            });
+          }
+        } catch {}
+        const missing = ids.filter((id) => !nameMap[id] || isWeakAdminLabel(nameMap[id]));
+        if (missing.length && window.ArbiV2) {
+          try {
+            const { data: profs } = await ArbiV2.client()
+              .from("profiles")
+              .select("id,full_name,email")
+              .in("id", missing);
+            (profs || []).forEach((p) => {
+              const label = pickAdminLabel(
+                p.full_name,
+                p.email && String(p.email).split("@")[0],
+                p.email
+              );
+              if (label) nameMap[String(p.id)] = label;
+            });
+          } catch {}
+        }
+      }
+      for (const d of list) {
+        const meta = parseDesafioMeta(d && d.metadata);
+        if (d) d.metadata = meta;
+        const cid = (d && (d.created_by || meta.created_by)) || null;
+        if (d) {
+          d._createdById = cid || d._createdById || null;
+          d._createdByName = pickAdminLabel(
+            d._createdByName,
+            meta.created_by_name,
+            cid && nameMap[String(cid)]
+          );
+        }
+      }
+      return list;
+    }
+
+    async function currentAdminIdentity() {
+      try {
+        if (!window.ArbiV2) return null;
+        const sess = await ArbiV2.client().auth.getSession();
+        const user = sess.data && sess.data.session && sess.data.session.user;
+        if (!user || !user.id) return null;
+        let name = null;
+        try {
+          const { data: prof } = await ArbiV2.client()
+            .from("profiles")
+            .select("full_name,email")
+            .eq("id", user.id)
+            .maybeSingle();
+          name = pickAdminLabel(
+            prof && prof.full_name,
+            prof && prof.email && String(prof.email).split("@")[0],
+            prof && prof.email,
+            user.email && String(user.email).split("@")[0],
+            user.email
+          );
+        } catch {
+          name = pickAdminLabel(
+            user.email && String(user.email).split("@")[0],
+            user.email
+          );
+        }
+        return { id: user.id, name: name || null };
+      } catch {
+        return null;
+      }
+    }
+
     async function fillMissingStepLogos() {
       readFormIntoDraft();
       if (!window.ArbiV2 || typeof ArbiV2.resolveFootballTeamLogo !== "function") return;
@@ -1890,9 +2016,10 @@
                   pendingClients > 0 ? ` · ${pendingClients} cliente(s) ativo(s)` : ""
                 }</div>
                 <div class="launched-by">Lançado por: <span>${esc(
-                  d._createdByName ||
-                    (d.metadata && d.metadata.created_by_name) ||
-                    "—"
+                  pickAdminLabel(
+                    d._createdByName,
+                    d.metadata && d.metadata.created_by_name
+                  ) || "—"
                 )}</span></div>
               </div>
               <div class="side">
@@ -2502,17 +2629,37 @@
                 publish_only: true,
               }),
             });
-            // Fallback: update direto no Supabase
+            // Fallback: update direto no Supabase (+ carimba admin se faltar)
             if (!res.ok) {
+              const admin = await currentAdminIdentity();
+              const patch = {
+                is_active: true,
+                status: "active",
+                published_at: new Date().toISOString(),
+              };
+              if (admin && admin.id) {
+                patch.created_by = admin.id;
+                patch.metadata = {
+                  created_by: admin.id,
+                  created_by_name: admin.name || String(admin.id).slice(0, 8),
+                };
+              }
               const up = await ArbiV2.client()
                 .from("desafios")
-                .update({
-                  is_active: true,
-                  status: "active",
-                  published_at: new Date().toISOString(),
-                })
+                .update(patch)
                 .eq("id", id);
-              if (up.error) throw new Error(up.error.message || "Falha ao publicar");
+              if (up.error) {
+                // schema antigo sem created_by/metadata
+                const up2 = await ArbiV2.client()
+                  .from("desafios")
+                  .update({
+                    is_active: true,
+                    status: "active",
+                    published_at: new Date().toISOString(),
+                  })
+                  .eq("id", id);
+                if (up2.error) throw new Error(up2.error.message || "Falha ao publicar");
+              }
             }
             alert("Desafio publicado para os clientes.");
             await load();
@@ -2823,6 +2970,11 @@
         }
         if (!res.ok) throw new Error((data && data.error) || "HTTP " + res.status);
         if (!Array.isArray(data)) throw new Error("Resposta inválida da API");
+        try {
+          await attachDesafioAdminNames(data);
+        } catch (e) {
+          /* nomes opcionais */
+        }
         window.__desafioRows = data;
         window.__desafioPendingCounts = {};
         try {

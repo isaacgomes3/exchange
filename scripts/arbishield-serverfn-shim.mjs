@@ -557,26 +557,111 @@ async function sb(path, { token, method = "GET", body } = {}) {
 }
 
 /** Nome amigável do admin (full_name → email → id curto). */
+function isWeakAdminLabel(value) {
+  const t = String(value || "").trim();
+  if (!t) return true;
+  if (/^[0-9a-f]{8}$/i.test(t)) return true;
+  if (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(t)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function pickAdminLabel(...candidates) {
+  for (const c of candidates) {
+    const t = String(c || "").trim();
+    if (t && !isWeakAdminLabel(t)) return t;
+  }
+  return null;
+}
+
+async function resolveAdminNameFromAuth(adminId) {
+  const id = String(adminId || "").trim();
+  if (!id || !SERVICE_KEY) return null;
+  try {
+    const user = await sb(`/auth/v1/admin/users/${encodeURIComponent(id)}`, {
+      token: SERVICE_KEY,
+    });
+    const meta =
+      (user && (user.user_metadata || user.raw_user_meta_data)) || {};
+    const email = user && user.email ? String(user.email).trim() : "";
+    return pickAdminLabel(
+      meta.full_name,
+      meta.name,
+      meta.display_name,
+      email ? email.split("@")[0] : null,
+      email
+    );
+  } catch {
+    return null;
+  }
+}
+
 async function resolveAdminDisplayName(adminId) {
   const id = String(adminId || "").trim();
   if (!id) return null;
-  let name = id.slice(0, 8);
   try {
     const profRows = await sb(
       `/rest/v1/profiles?select=full_name,email&id=eq.${encodeURIComponent(id)}&limit=1`,
       { token: SERVICE_KEY }
     );
     const prof = Array.isArray(profRows) ? profRows[0] : null;
-    if (prof) {
-      name =
-        (prof.full_name && String(prof.full_name).trim()) ||
-        (prof.email && String(prof.email).trim()) ||
-        name;
-    }
+    const fromProf = pickAdminLabel(
+      prof && prof.full_name,
+      prof && prof.email && String(prof.email).split("@")[0],
+      prof && prof.email
+    );
+    if (fromProf) return fromProf;
   } catch {
-    /* keep short id */
+    /* auth abaixo */
   }
-  return name;
+  const fromAuth = await resolveAdminNameFromAuth(id);
+  if (fromAuth) return fromAuth;
+  return id.slice(0, 8);
+}
+
+async function resolveAdminNamesMap(ids) {
+  const list = Array.from(
+    new Set(
+      (Array.isArray(ids) ? ids : [])
+        .map((x) => String(x || "").trim())
+        .filter(Boolean)
+    )
+  );
+  const out = {};
+  if (!list.length || !SERVICE_KEY) return out;
+  for (let i = 0; i < list.length; i += 80) {
+    const chunk = list.slice(i, i + 80);
+    try {
+      const profs = await sb(
+        `/rest/v1/profiles?select=id,full_name,email&id=in.(${chunk
+          .map((id) => encodeURIComponent(id))
+          .join(",")})`,
+        { token: SERVICE_KEY }
+      );
+      for (const p of Array.isArray(profs) ? profs : []) {
+        const label = pickAdminLabel(
+          p.full_name,
+          p.email && String(p.email).split("@")[0],
+          p.email
+        );
+        if (label) out[String(p.id)] = label;
+      }
+    } catch {
+      /* resolve individual abaixo */
+    }
+    for (const id of chunk) {
+      if (!out[id] || isWeakAdminLabel(out[id])) {
+        out[id] = await resolveAdminDisplayName(id);
+      }
+    }
+  }
+  for (const id of list) {
+    if (!out[id]) out[id] = id.slice(0, 8);
+  }
+  return out;
 }
 
 function creatorMetaPatch(prevMeta, adminId, adminName) {
@@ -597,34 +682,16 @@ async function enrichDesafiosWithCreatorNames(rows) {
     if (id) ids[String(id)] = true;
   }
   const idList = Object.keys(ids);
-  const nameMap = {};
-  if (idList.length) {
-    try {
-      const profs = await sb(
-        `/rest/v1/profiles?select=id,full_name,email&id=in.(${idList
-          .map(encodeURIComponent)
-          .join(",")})`,
-        { token: SERVICE_KEY }
-      );
-      for (const p of Array.isArray(profs) ? profs : []) {
-        nameMap[String(p.id)] =
-          (p.full_name && String(p.full_name).trim()) ||
-          (p.email && String(p.email).trim()) ||
-          String(p.id).slice(0, 8);
-      }
-    } catch {
-      /* nomes opcionais */
-    }
-  }
+  const nameMap = idList.length ? await resolveAdminNamesMap(idList) : {};
   for (const d of list) {
     const meta =
       d && d.metadata && typeof d.metadata === "object" ? d.metadata : {};
     const sid = d?.created_by || meta.created_by || null;
     d._createdById = sid || null;
-    d._createdByName =
-      (meta.created_by_name && String(meta.created_by_name).trim()) ||
-      (sid && nameMap[String(sid)]) ||
-      null;
+    d._createdByName = pickAdminLabel(
+      meta.created_by_name,
+      sid && nameMap[String(sid)]
+    );
   }
   return list;
 }
@@ -770,7 +837,8 @@ function buildStepRow(desafioId, stepIn, isActive) {
 }
 
 async function insertDesafioRow(auth, desafioRow) {
-  // Tenta gravar created_by + metadata; schema antigo pode não ter as colunas.
+  // Escrita com service role (como matches). Schema antigo pode não ter created_by/metadata.
+  const dbToken = SERVICE_KEY || auth;
   const attempts = [
     desafioRow,
     (() => {
@@ -787,7 +855,7 @@ async function insertDesafioRow(auth, desafioRow) {
     try {
       const created = await sb("/rest/v1/desafios", {
         method: "POST",
-        token: auth,
+        token: dbToken,
         body,
       });
       return Array.isArray(created) ? created[0] : created;
@@ -808,28 +876,175 @@ async function insertDesafioRow(auth, desafioRow) {
   throw lastErr || new Error("Falha ao criar desafio");
 }
 
+async function ensureDesafioCreator(desafioId, adminId, adminName, prevMeta) {
+  if (!desafioId || !adminId || !SERVICE_KEY) return null;
+  const meta = creatorMetaPatch(prevMeta, adminId, adminName);
+  const attempts = [
+    { created_by: adminId, metadata: meta, updated_at: new Date().toISOString() },
+    { created_by: adminId, updated_at: new Date().toISOString() },
+    { metadata: meta, updated_at: new Date().toISOString() },
+  ];
+  for (const body of attempts) {
+    try {
+      const patched = await sb(
+        `/rest/v1/desafios?id=eq.${encodeURIComponent(desafioId)}`,
+        { method: "PATCH", token: SERVICE_KEY, body }
+      );
+      return Array.isArray(patched) ? patched[0] : patched;
+    } catch (err) {
+      const msg = String(err?.message || err || "").toLowerCase();
+      if (
+        msg.includes("created_by") ||
+        msg.includes("metadata") ||
+        msg.includes("column") ||
+        msg.includes("schema cache")
+      ) {
+        continue;
+      }
+      throw err;
+    }
+  }
+  return null;
+}
+
+function desafioNeedsCreatorStamp(row) {
+  if (!row) return true;
+  const meta =
+    row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  const cid = row.created_by || meta.created_by || null;
+  const name = meta.created_by_name;
+  if (!cid) return true;
+  if (!name || isWeakAdminLabel(name)) return true;
+  return false;
+}
+
 async function createDesafio(token, body) {
-  const auth = token || SERVICE_KEY;
+  if (!SERVICE_KEY) throw new Error("SERVICE_ROLE_KEY ausente no .env da VPS");
+  const payload = decodeJwtPayload(token);
+  const adminId = payload?.sub ? String(payload.sub) : null;
+  if (!adminId) {
+    const err = new Error("Login admin necessário");
+    err.status = 401;
+    throw err;
+  }
+  const createdByName = await resolveAdminDisplayName(adminId);
+  const dbToken = SERVICE_KEY;
+
+  // Publicar desafio existente (área do cliente)
+  if (
+    body?.id &&
+    (body.publish_only || (body.is_active && !body.steps && !body.step))
+  ) {
+    let existing = null;
+    try {
+      const rows = await sb(
+        `/rest/v1/desafios?select=id,created_by,metadata&id=eq.${encodeURIComponent(body.id)}&limit=1`,
+        { token: SERVICE_KEY }
+      );
+      existing = Array.isArray(rows) ? rows[0] : null;
+    } catch {
+      try {
+        const rows = await sb(
+          `/rest/v1/desafios?select=id,created_by&id=eq.${encodeURIComponent(body.id)}&limit=1`,
+          { token: SERVICE_KEY }
+        );
+        existing = Array.isArray(rows) ? rows[0] : null;
+      } catch {
+        existing = null;
+      }
+    }
+    const prevMeta =
+      existing?.metadata && typeof existing.metadata === "object"
+        ? existing.metadata
+        : {};
+    const existingId = existing?.created_by || prevMeta.created_by || null;
+    const stampId = existingId || adminId;
+    const stampName =
+      (prevMeta.created_by_name &&
+        !isWeakAdminLabel(prevMeta.created_by_name) &&
+        String(prevMeta.created_by_name).trim()) ||
+      (stampId === adminId
+        ? createdByName
+        : await resolveAdminDisplayName(stampId));
+
+    const patchBody = {
+      is_active: true,
+      status: "active",
+      published_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    if (desafioNeedsCreatorStamp(existing)) {
+      patchBody.created_by = stampId;
+      patchBody.metadata = creatorMetaPatch(prevMeta, stampId, stampName);
+    }
+
+    let row = null;
+    try {
+      const patched = await sb(
+        `/rest/v1/desafios?id=eq.${encodeURIComponent(body.id)}`,
+        { method: "PATCH", token: SERVICE_KEY, body: patchBody }
+      );
+      row = Array.isArray(patched) ? patched[0] : patched;
+    } catch (err) {
+      const msg = String(err?.message || err || "").toLowerCase();
+      if (
+        msg.includes("created_by") ||
+        msg.includes("metadata") ||
+        msg.includes("column") ||
+        msg.includes("schema cache")
+      ) {
+        const patched = await sb(
+          `/rest/v1/desafios?id=eq.${encodeURIComponent(body.id)}`,
+          {
+            method: "PATCH",
+            token: SERVICE_KEY,
+            body: {
+              is_active: true,
+              status: "active",
+              published_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+          }
+        );
+        row = Array.isArray(patched) ? patched[0] : patched;
+      } else {
+        throw err;
+      }
+    }
+    const out = row || { id: body.id, is_active: true };
+    out._createdById = stampId;
+    out._createdByName = pickAdminLabel(stampName);
+    return out;
+  }
+
   const stepIn = body.step || (body.steps && body.steps[0]) || {};
   const desafioRow = buildDesafioRow(body);
   if (desafioRow.number == null) {
-    desafioRow.number = await nextDesafioNumber(auth);
+    desafioRow.number = await nextDesafioNumber(dbToken);
   }
 
-  const payload = decodeJwtPayload(token);
-  const adminId = payload?.sub ? String(payload.sub) : null;
-  if (adminId) {
-    const createdByName = await resolveAdminDisplayName(adminId);
-    desafioRow.created_by = adminId;
-    desafioRow.metadata = creatorMetaPatch(
-      desafioRow.metadata,
-      adminId,
-      createdByName
-    );
-  }
+  desafioRow.created_by = adminId;
+  desafioRow.metadata = creatorMetaPatch(
+    desafioRow.metadata,
+    adminId,
+    createdByName
+  );
 
-  const desafio = await insertDesafioRow(auth, desafioRow);
+  let desafio = await insertDesafioRow(dbToken, desafioRow);
   if (!desafio?.id) throw new Error("Falha ao criar desafio");
+
+  if (desafioNeedsCreatorStamp(desafio)) {
+    const stamped = await ensureDesafioCreator(
+      desafio.id,
+      adminId,
+      createdByName,
+      desafio.metadata
+    );
+    if (stamped) desafio = { ...desafio, ...stamped };
+  }
+
+  desafio._createdById = adminId;
+  desafio._createdByName = pickAdminLabel(createdByName);
 
   const stepsOut = [];
   for (const step of body.steps || [stepIn]) {
@@ -838,7 +1053,7 @@ async function createDesafio(token, body) {
     try {
       inserted = await sb("/rest/v1/desafio_steps", {
         method: "POST",
-        token: auth,
+        token: dbToken,
         body: stepRow,
       });
     } catch (err) {
@@ -847,7 +1062,7 @@ async function createDesafio(token, body) {
         const { metadata: _m, ...slim } = stepRow;
         inserted = await sb("/rest/v1/desafio_steps", {
           method: "POST",
-          token: auth,
+          token: dbToken,
           body: slim,
         });
       } else {
@@ -860,11 +1075,34 @@ async function createDesafio(token, body) {
 }
 
 async function upsertDesafio(token, body) {
-  const auth = token || SERVICE_KEY;
-  if (!body?.id) return createDesafio(auth, body);
+  const auth = SERVICE_KEY || token;
+  if (!body?.id) return createDesafio(token, body);
+
+  const payload = decodeJwtPayload(token);
+  const adminId = payload?.sub ? String(payload.sub) : null;
 
   const desafioRow = buildDesafioRow(body);
   delete desafioRow.number;
+  if (adminId) {
+    try {
+      const rows = await sb(
+        `/rest/v1/desafios?select=id,created_by,metadata&id=eq.${encodeURIComponent(body.id)}&limit=1`,
+        { token: SERVICE_KEY }
+      );
+      const existing = Array.isArray(rows) ? rows[0] : null;
+      if (desafioNeedsCreatorStamp(existing)) {
+        const createdByName = await resolveAdminDisplayName(adminId);
+        desafioRow.created_by = adminId;
+        desafioRow.metadata = creatorMetaPatch(
+          existing?.metadata,
+          adminId,
+          createdByName
+        );
+      }
+    } catch {
+      /* stamp opcional */
+    }
+  }
   await sb(`/rest/v1/desafios?id=eq.${encodeURIComponent(body.id)}`, {
     method: "PATCH",
     token: auth,
@@ -895,7 +1133,9 @@ async function upsertDesafio(token, body) {
     `/rest/v1/desafios?select=*,desafio_steps(*)&id=eq.${encodeURIComponent(body.id)}&limit=1`,
     { token: auth }
   );
-  return Array.isArray(rows) && rows[0] ? rows[0] : { id: body.id, desafio_steps: stepsOut };
+  const out =
+    Array.isArray(rows) && rows[0] ? rows[0] : { id: body.id, desafio_steps: stepsOut };
+  return enrichDesafiosWithCreatorNames([out]).then((list) => list[0]);
 }
 
 async function listPendingDesafioParticipations(desafioId) {
@@ -7431,7 +7671,7 @@ const server = createServer(async (req, res) => {
       }
       return sendJson(res, 405, { error: "method_not_allowed" });
     } catch (err) {
-      return sendJson(res, 500, {
+      return sendJson(res, err?.status || 500, {
         error: err instanceof Error ? err.message : String(err),
       });
     }

@@ -921,34 +921,17 @@ async function enrichDesafiosWithCreatorNames(rows) {
     if (id) ids[String(id)] = true;
   }
   const idList = Object.keys(ids);
-  const nameMap = {};
-  if (idList.length && SERVICE_KEY) {
-    try {
-      const profs = await sb(
-        `/rest/v1/profiles?select=id,full_name,email&id=in.(${idList
-          .map(encodeURIComponent)
-          .join(",")})`,
-        { token: SERVICE_KEY }
-      );
-      for (const p of Array.isArray(profs) ? profs : []) {
-        nameMap[String(p.id)] =
-          (p.full_name && String(p.full_name).trim()) ||
-          (p.email && String(p.email).trim()) ||
-          String(p.id).slice(0, 8);
-      }
-    } catch {
-      /* nomes opcionais */
-    }
-  }
+  const nameMap =
+    idList.length && SERVICE_KEY ? await resolveAdminNamesMap(idList) : {};
   for (const d of list) {
     const meta =
       d && d.metadata && typeof d.metadata === "object" ? d.metadata : {};
     const sid = d?.created_by || meta.created_by || null;
     d._createdById = sid || null;
-    d._createdByName =
-      (meta.created_by_name && String(meta.created_by_name).trim()) ||
-      (sid && nameMap[String(sid)]) ||
-      null;
+    d._createdByName = pickAdminLabel(
+      meta.created_by_name,
+      sid && nameMap[String(sid)]
+    );
   }
   return list;
 }
@@ -1188,7 +1171,8 @@ function buildStepRow(desafioId, stepIn, isActive) {
 }
 
 async function insertDesafioRow(auth, desafioRow) {
-  // Tenta gravar created_by + metadata; schema antigo pode não ter as colunas.
+  // Escrita com service role (como matches). Schema antigo pode não ter created_by/metadata.
+  const dbToken = SERVICE_KEY || auth;
   const attempts = [
     desafioRow,
     (() => {
@@ -1205,7 +1189,7 @@ async function insertDesafioRow(auth, desafioRow) {
     try {
       const created = await sb("/rest/v1/desafios", {
         method: "POST",
-        token: auth,
+        token: dbToken,
         body,
       });
       return Array.isArray(created) ? created[0] : created;
@@ -1226,44 +1210,177 @@ async function insertDesafioRow(auth, desafioRow) {
   throw lastErr || new Error("Falha ao criar desafio");
 }
 
+/** Garante created_by + metadata.created_by_name no desafio (PATCH service role). */
+async function ensureDesafioCreator(desafioId, adminId, adminName, prevMeta) {
+  if (!desafioId || !adminId || !SERVICE_KEY) return null;
+  const meta = creatorMetaPatch(prevMeta, adminId, adminName);
+  const attempts = [
+    { created_by: adminId, metadata: meta, updated_at: new Date().toISOString() },
+    { created_by: adminId, updated_at: new Date().toISOString() },
+    { metadata: meta, updated_at: new Date().toISOString() },
+  ];
+  for (const body of attempts) {
+    try {
+      const patched = await sb(
+        `/rest/v1/desafios?id=eq.${encodeURIComponent(desafioId)}`,
+        { method: "PATCH", token: SERVICE_KEY, body }
+      );
+      return Array.isArray(patched) ? patched[0] : patched;
+    } catch (err) {
+      const msg = String(err?.message || err || "").toLowerCase();
+      if (
+        msg.includes("created_by") ||
+        msg.includes("metadata") ||
+        msg.includes("column") ||
+        msg.includes("schema cache")
+      ) {
+        continue;
+      }
+      throw err;
+    }
+  }
+  return null;
+}
+
+function desafioNeedsCreatorStamp(row) {
+  if (!row) return true;
+  const meta =
+    row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  const cid = row.created_by || meta.created_by || null;
+  const name = meta.created_by_name;
+  if (!cid) return true;
+  if (!name || isWeakAdminLabel(name)) return true;
+  return false;
+}
+
 async function createDesafio(body, token) {
   if (!SERVICE_KEY) throw new Error("SERVICE_ROLE_KEY ausente no .env da VPS");
-  const auth = token || SERVICE_KEY;
-  // Publicar desafio existente (área do cliente)
-  if (body?.id && (body.publish_only || (body.is_active && !body.steps && !body.step))) {
-    const patched = await sb(`/rest/v1/desafios?id=eq.${encodeURIComponent(body.id)}`, {
-      method: "PATCH",
-      token: SERVICE_KEY,
-      body: {
-        is_active: true,
-        status: "active",
-        published_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-    });
-    const row = Array.isArray(patched) ? patched[0] : patched;
-    return row || { id: body.id, is_active: true };
+  const payload = decodeJwtPayload(token);
+  const adminId = payload?.sub ? String(payload.sub) : null;
+  if (!adminId) {
+    const err = new Error("Login admin necessário");
+    err.status = 401;
+    throw err;
   }
+  const createdByName = await resolveAdminDisplayName(adminId);
+  const dbToken = SERVICE_KEY;
+
+  // Publicar desafio existente (área do cliente)
+  if (
+    body?.id &&
+    (body.publish_only || (body.is_active && !body.steps && !body.step))
+  ) {
+    let existing = null;
+    try {
+      const rows = await sb(
+        `/rest/v1/desafios?select=id,created_by,metadata&id=eq.${encodeURIComponent(body.id)}&limit=1`,
+        { token: SERVICE_KEY }
+      );
+      existing = Array.isArray(rows) ? rows[0] : null;
+    } catch {
+      try {
+        const rows = await sb(
+          `/rest/v1/desafios?select=id,created_by&id=eq.${encodeURIComponent(body.id)}&limit=1`,
+          { token: SERVICE_KEY }
+        );
+        existing = Array.isArray(rows) ? rows[0] : null;
+      } catch {
+        existing = null;
+      }
+    }
+    const prevMeta =
+      existing?.metadata && typeof existing.metadata === "object"
+        ? existing.metadata
+        : {};
+    const existingId = existing?.created_by || prevMeta.created_by || null;
+    const stampId = existingId || adminId;
+    const stampName =
+      (prevMeta.created_by_name &&
+        !isWeakAdminLabel(prevMeta.created_by_name) &&
+        String(prevMeta.created_by_name).trim()) ||
+      (stampId === adminId
+        ? createdByName
+        : await resolveAdminDisplayName(stampId));
+
+    const patchBody = {
+      is_active: true,
+      status: "active",
+      published_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    if (desafioNeedsCreatorStamp(existing)) {
+      patchBody.created_by = stampId;
+      patchBody.metadata = creatorMetaPatch(prevMeta, stampId, stampName);
+    }
+
+    let row = null;
+    try {
+      const patched = await sb(
+        `/rest/v1/desafios?id=eq.${encodeURIComponent(body.id)}`,
+        { method: "PATCH", token: SERVICE_KEY, body: patchBody }
+      );
+      row = Array.isArray(patched) ? patched[0] : patched;
+    } catch (err) {
+      const msg = String(err?.message || err || "").toLowerCase();
+      if (
+        msg.includes("created_by") ||
+        msg.includes("metadata") ||
+        msg.includes("column") ||
+        msg.includes("schema cache")
+      ) {
+        const patched = await sb(
+          `/rest/v1/desafios?id=eq.${encodeURIComponent(body.id)}`,
+          {
+            method: "PATCH",
+            token: SERVICE_KEY,
+            body: {
+              is_active: true,
+              status: "active",
+              published_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+          }
+        );
+        row = Array.isArray(patched) ? patched[0] : patched;
+      } else {
+        throw err;
+      }
+    }
+    const out = row || { id: body.id, is_active: true };
+    out._createdById = stampId;
+    out._createdByName = pickAdminLabel(stampName);
+    return out;
+  }
+
   const stepIn = body.step || (body.steps && body.steps[0]) || {};
   const desafioRow = buildDesafioRow(body);
   if (desafioRow.number == null) {
     desafioRow.number = await nextDesafioNumber();
   }
 
-  const payload = decodeJwtPayload(token);
-  const adminId = payload?.sub ? String(payload.sub) : null;
-  if (adminId) {
-    const createdByName = await resolveAdminDisplayName(adminId);
-    desafioRow.created_by = adminId;
-    desafioRow.metadata = creatorMetaPatch(
-      desafioRow.metadata,
+  desafioRow.created_by = adminId;
+  desafioRow.metadata = creatorMetaPatch(
+    desafioRow.metadata,
+    adminId,
+    createdByName
+  );
+
+  let desafio = await insertDesafioRow(dbToken, desafioRow);
+  if (!desafio?.id) throw new Error("Falha ao criar desafio");
+
+  // Se o INSERT caiu no fallback sem created_by/metadata, tenta PATCH.
+  if (desafioNeedsCreatorStamp(desafio)) {
+    const stamped = await ensureDesafioCreator(
+      desafio.id,
       adminId,
-      createdByName
+      createdByName,
+      desafio.metadata
     );
+    if (stamped) desafio = { ...desafio, ...stamped };
   }
 
-  const desafio = await insertDesafioRow(auth, desafioRow);
-  if (!desafio?.id) throw new Error("Falha ao criar desafio");
+  desafio._createdById = adminId;
+  desafio._createdByName = pickAdminLabel(createdByName);
 
   const stepsOut = [];
   for (const step of body.steps || [stepIn]) {
@@ -1273,7 +1390,7 @@ async function createDesafio(body, token) {
     const stepRow = buildStepRow(desafio.id, step, desafioRow.is_active);
     const inserted = await sb("/rest/v1/desafio_steps", {
       method: "POST",
-      token: auth,
+      token: dbToken,
       body: stepRow,
     });
     stepsOut.push(Array.isArray(inserted) ? inserted[0] : inserted);
