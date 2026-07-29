@@ -63,6 +63,7 @@ tmp_shim="$(mktemp)"
 download_repo_file "scripts/arbishield-serverfn-shim.mjs" "$tmp_shim"
 grep -q 'launchImmediate' "$tmp_shim" || die "shim sem launchImmediate"
 grep -q 'desafio-step-update' "$tmp_shim" || die "shim sem rota desafio-step-update"
+grep -q 'arbi_odd,home_odd' "$tmp_shim" || die "shim sem odd no histórico"
 for dest in \
   "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs" \
   "$SHIM_DIR/arbishield-serverfn-shim.mjs" \
