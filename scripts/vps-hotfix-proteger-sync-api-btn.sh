@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Proteger (cliente): REMOVE o botão "Sincronizar API" da área do cliente.
+set -euo pipefail
+
+REF="${ARBISHIELD_REF:-cursor/fix-proteger-js-e85c}"
+BUST="${ARBISHIELD_BUST:-$(date +%s)}"
+RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
+API="https://api.github.com/repos/isaacgomes3/exchange/contents"
+WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
+WEB="$WEB_ROOT/v2"
+
+log() { echo "==> $*"; }
+die() { echo "ERRO: $*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null 2>&1 || die "$1 nao encontrado"; }
+need curl
+mkdir -p "$WEB" "$WEB_ROOT"
+
+download_repo_file() {
+  local rel="$1"
+  local out="$2"
+  if curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
+    -H "Accept: application/vnd.github.raw" \
+    -H "Cache-Control: no-cache" \
+    -H "User-Agent: arbishield-hotfix" \
+    "$API/$rel?ref=${REF}&t=$(date +%s)" -o "$out" \
+    && [[ -s "$out" ]]; then
+    return 0
+  fi
+  curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
+    -H "Cache-Control: no-cache" \
+    "$RAW/$rel?v=$BUST&t=$(date +%s)" -o "$out"
+  [[ -s "$out" ]] || die "download vazio: $rel"
+}
+
+log "1/1 UI app-proteger.html (sem Sincronizar API no cliente)"
+tmp_html="$(mktemp)"
+download_repo_file "deploy/vps-supabase/static/v2/app-proteger.html" "$tmp_html"
+grep -q 'proteger-sem-sync-api-cliente-v11' "$tmp_html" || die "sem marker proteger-sem-sync-api-cliente-v11"
+grep -q 'Sem partidas com liquidez' "$tmp_html" || die "sem empty state"
+# Não pode ter o botão de sync API no cliente
+if grep -q 'Sincronizar API' "$tmp_html"; then
+  die "ainda contém texto Sincronizar API"
+fi
+if grep -qE 'btnSyncApiHead|id="btnSync"' "$tmp_html"; then
+  die "ainda contém botão sync API"
+fi
+
+while IFS= read -r -d '' f; do
+  cp -a "$f" "${f}.bak-no-sync-btn-$(date +%s)" 2>/dev/null || true
+  cp -f "$tmp_html" "$f"
+  chmod 0644 "$f"
+  echo "  OK $f"
+done < <(find /var/www -type f -name 'app-proteger.html' -print0 2>/dev/null || true)
+for f in "$WEB/app-proteger.html" "$WEB_ROOT/app-proteger.html" "$WEB_ROOT/sandbox/app-proteger.html"; do
+  mkdir -p "$(dirname "$f")" 2>/dev/null || true
+  [[ -d "$(dirname "$f")" ]] || continue
+  cp -f "$tmp_html" "$f"
+  chmod 0644 "$f"
+  echo "  OK $f"
+done
+rm -f "$tmp_html"
+
+log "OK — Ctrl+Shift+R em /app-proteger.html"
+echo "  Cliente sem botão Sincronizar API (só ícone atualizar + auto-refresh)."
