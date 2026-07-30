@@ -40,6 +40,21 @@ export const UI_CRITICAL_MARKERS = Object.freeze({
       "searchFootballTeams",
       "football-teams",
       "Saldo Reembolso",
+      "Lançar evento",
+      "Publicar na fila",
+      "/api/arbishield/matches",
+      "publishMatch",
+    ]),
+  }),
+  "deploy/vps-supabase/static/v2/admin-manual-deposits.html": Object.freeze({
+    build: "admin-deposits-creditar-v1",
+    featuresMustInclude: Object.freeze(["admin-deposits-creditar-v1"]),
+    bodyMustInclude: Object.freeze([
+      "Confirmar e Creditar",
+      "Já creditado",
+      "requireFinanceAdmin",
+      "/_serverFn/",
+      "81753fec5a4788d0cecf17daf4605047d90238c386a240b54855a19f0fbc53d2",
     ]),
   }),
 });

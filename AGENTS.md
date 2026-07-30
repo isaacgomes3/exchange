@@ -77,9 +77,10 @@ Alterar qualquer item acima exige pedido explícito + atualização dos testes d
 
 **Status:** LOCKED — alterar **somente** com solicitação explícita do dono  
 **Marker:** `DO_NOT_CHANGE_SYSTEM_SURFACE_WITHOUT_EXPLICIT_REQUEST`  
-**Versão:** `system-non-regression-v1`  
+**Admin ops marker:** `DO_NOT_CHANGE_ADMIN_OPS_WITHOUT_EXPLICIT_REQUEST`  
+**Versão:** `system-non-regression-v1` · admin `admin-ops-contract-v1`  
 **Doc:** `docs/SYSTEM_NON_REGRESSION.md`  
-**CI:** `npm test` → contratos UI / wallet / deploy / DB + proteção v10
+**CI:** `npm test` → contratos UI / wallet / deploy / DB / admin-ops + proteção v10
 
 **Pedido explícito (2026-07-30):** travar o sistema inteiro contra regressão
 (API, UI, schema). Não reintroduzir `fee_upfront` como vigente, não remover
@@ -94,6 +95,7 @@ rotas/logos, não renomear buckets de carteira, não SELECT `profiles.email`.
 | Carteira | `scripts/lib/wallet-buckets-contract.mjs` | `wallet-buckets-contract.test.mjs` |
 | Schema DB | `scripts/lib/profiles-db-contract.mjs` + `profiles-schema.mjs` | `profiles-db-contract.test.mjs` + `profiles-schema.test.mjs` |
 | Deploy/API | `scripts/lib/deploy-surface-contract.mjs` | `deploy-surface-contract.test.mjs` |
+| Admin ops | `scripts/lib/admin-ops-contract.mjs` | `admin-ops-contract.test.mjs` |
 
 ## Regras rápidas
 
@@ -101,7 +103,9 @@ rotas/logos, não renomear buckets de carteira, não SELECT `profiles.email`.
 2. **Layout:** páginas críticas mantêm `arbishield-build` / features; carteira mostra **Saldo Reembolso** (nunca “Saldo Dedução”).
 3. **Banco:** sem `profiles.email`; colunas wallet (`locked_balance_cents`, `deduction_balance_cents`, …) e RPC `request_saldo_reembolso_withdrawal` permanecem.
 4. **Deploy:** `vps-atualizar-protecao-fee-upfront-prod.sh` bloqueado; shim em `/opt/arbishield/scripts/`; rota `/api/arbishield/football-teams` viva.
-5. **VPS:** após deploy → `vps-check-pos-deploy-v10.sh` (via API GitHub, não raw cacheado).
+5. **Admin — Lançar saldo:** `admin-manual-deposits.html` → `Confirmar e Creditar` / `Já creditado` (sem alterar saldo) via `approveManualDeposit` + finance admin.
+6. **Admin — Lançar jogos:** `admin-jogos.html` → `POST /api/arbishield/matches` (BetBra + manual); padrão rascunho; `Publicar na fila` explícito; unpublish finalizados.
+7. **VPS:** após deploy → `vps-check-pos-deploy-v10.sh` (via API GitHub, não raw cacheado).
 
 Mudança em qualquer item exige pedido explícito + bump + sync AGENTS/docs + testes verdes.
 <!-- END:system-non-regression -->

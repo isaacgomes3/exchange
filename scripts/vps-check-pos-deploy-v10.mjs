@@ -268,7 +268,8 @@ if (!SKIP_UI) {
   const pages = [
     ["app-proteger.html", ["proteger-stake-lock-v6", "proteger-sem-stake-equiv"]],
     ["app-carteira.html", ["Saldo Reembolso"]],
-    ["admin-jogos.html", ["football-teams", "searchFootballTeams"]],
+    ["admin-jogos.html", ["football-teams", "searchFootballTeams", "Lançar evento", "Publicar na fila"]],
+    ["admin-manual-deposits.html", ["Confirmar e Creditar", "Já creditado", "admin-deposits-creditar-v1"]],
   ];
   let checked = 0;
   for (const root of webRoots) {
