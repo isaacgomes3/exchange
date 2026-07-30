@@ -190,17 +190,12 @@ async function loadPrior(protectionId) {
     }
     if (t.type === "protection_fee" && amt < 0) feeCharged += Math.abs(amt);
     if (t.type === "protection_settlement" && amt < 0) {
-      const looksFee =
-        m.outcome === "exchange" ||
-        m.exchange_no_credit === true ||
-        n(m.fee_charged_now_cents) > 0 ||
-        /settle exchange/i.test(String(m.note || ""));
-      if (looksFee) feeCharged += Math.abs(amt);
+      feeCharged += Math.abs(amt);
     } else if (
       t.type === "protection_settlement" &&
-      m.outcome === "exchange" &&
       !(amt < 0) &&
-      n(m.fee_charged_now_cents) > 0
+      n(m.fee_charged_now_cents) > 0 &&
+      (m.outcome === "exchange" || m.exchange_no_credit === true)
     ) {
       feeCharged += n(m.fee_charged_now_cents);
     }
