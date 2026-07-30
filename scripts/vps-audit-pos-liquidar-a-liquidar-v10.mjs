@@ -189,8 +189,13 @@ async function loadPrior(protectionId) {
       continue;
     }
     if (t.type === "protection_fee" && amt < 0) feeCharged += Math.abs(amt);
-    if (t.type === "protection_settlement" && amt < 0 && m.outcome === "exchange") {
-      feeCharged += Math.abs(amt);
+    if (t.type === "protection_settlement" && amt < 0) {
+      const looksFee =
+        m.outcome === "exchange" ||
+        m.exchange_no_credit === true ||
+        n(m.fee_charged_now_cents) > 0 ||
+        /settle exchange/i.test(String(m.note || ""));
+      if (looksFee) feeCharged += Math.abs(amt);
     } else if (
       t.type === "protection_settlement" &&
       m.outcome === "exchange" &&
@@ -328,10 +333,20 @@ async function main() {
           flags.push(
             `stake incompleto (faltam ${money(amount - prior.stakeReturned)})`
           );
+        } else if (amount > 0 && prior.stakeReturned > amount) {
+          flags.push(
+            `stake ledger acima do bilhete (${money(prior.stakeReturned)} > ${money(
+              amount
+            )}) — possível re-run duplicando metadata`
+          );
         }
         if (fee > 0 && prior.feeCharged < fee) {
           flags.push(
             `dedução incompleta (faltam ${money(fee - prior.feeCharged)})`
+          );
+        } else if (fee > 0 && prior.feeCharged > fee + 50) {
+          flags.push(
+            `dedução ledger acima do esperado (${money(prior.feeCharged)} > ${money(fee)})`
           );
         }
         if (prior.reembolsoCredited > 0) {

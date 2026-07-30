@@ -282,8 +282,14 @@ async function loadPrior(protectionId) {
       continue;
     }
     if (t.type === "protection_fee" && amt < 0) feeCharged += Math.abs(amt);
-    if (t.type === "protection_settlement" && amt < 0 && m.outcome === "exchange") {
-      feeCharged += Math.abs(amt);
+    if (t.type === "protection_settlement" && amt < 0) {
+      // fee Exchange (amount negativo). Aceita mesmo se metadata.outcome sumiu.
+      const looksFee =
+        m.outcome === "exchange" ||
+        m.exchange_no_credit === true ||
+        n(m.fee_charged_now_cents) > 0 ||
+        /settle exchange/i.test(String(m.note || ""));
+      if (looksFee) feeCharged += Math.abs(amt);
     } else if (
       t.type === "protection_settlement" &&
       m.outcome === "exchange" &&
@@ -539,33 +545,37 @@ async function settleProtection(row, outcome, score) {
   const txAmt =
     o === "arbishield" ? reembNow : o === "exchange" ? -feeNow : stakeNow > 0 ? stakeNow : 0;
 
-  await insertTx({
-    user_id: row.user_id,
-    type: "protection_settlement",
-    amount_cents: txAmt,
-    ref: row.id,
-    metadata: {
-      tag: TAG,
-      outcome: o,
-      billing_model: "stake_lock_v1",
-      balance_type: bt,
-      stake_cents: amount,
-      fee_expected_cents: fee,
-      fee_charged_cents: feeNow + (o === "exchange" ? prior.feeCharged : 0),
-      fee_charged_now_cents: feeNow,
-      returned_stake_cents: stakeNow,
-      stake_returned: o === "exchange" || o === "void" ? true : false,
-      unlock_return_to_origin: o === "exchange" || o === "void",
-      unlocked_locked: true,
-      exchange_no_credit: o === "exchange",
-      bucket: o === "arbishield" ? "deduction_balance_cents" : originBucket(bt),
-      final_score: score,
-      protection_id: row.id,
-      match_id: row.match_id || null,
-      table: row._table,
-      note: `${TAG}: settle ${o} v10 placar ${score}`,
-    },
-  });
+  // Evita tx no-op que polui ledger em re-runs (stake_returned=true com R$0)
+  const moved = stakeNow > 0 || feeNow > 0 || reembNow > 0;
+  if (moved) {
+    await insertTx({
+      user_id: row.user_id,
+      type: "protection_settlement",
+      amount_cents: txAmt,
+      ref: row.id,
+      metadata: {
+        tag: TAG,
+        outcome: o,
+        billing_model: "stake_lock_v1",
+        balance_type: bt,
+        stake_cents: amount,
+        fee_expected_cents: fee,
+        fee_charged_cents: feeNow + (o === "exchange" ? prior.feeCharged : 0),
+        fee_charged_now_cents: feeNow,
+        returned_stake_cents: stakeNow,
+        stake_returned: stakeNow > 0,
+        unlock_return_to_origin: o === "exchange" || o === "void",
+        unlocked_locked: true,
+        exchange_no_credit: o === "exchange",
+        bucket: o === "arbishield" ? "deduction_balance_cents" : originBucket(bt),
+        final_score: score,
+        protection_id: row.id,
+        match_id: row.match_id || null,
+        table: row._table,
+        note: `${TAG}: settle ${o} v10 placar ${score}`,
+      },
+    });
+  }
 
   // status proteção
   const attempts = [
