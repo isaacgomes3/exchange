@@ -1638,13 +1638,24 @@
                   : ""
               }
               ${
-                !isDesafioCancelled(d) && !d.deleted_at
+                // Marker: protect-desafio-casual-v1 — protegido: sem Cancelar na UI
+                !isDesafioCancelled(d) &&
+                !d.deleted_at &&
+                !(d.metadata && d.metadata.protect_from_casual_delete)
                   ? `<button class="btn btn-warn" type="button" data-cancel-desafio="${esc(d.id)}">Cancelar · devolver saldo</button>`
                   : ""
               }
               ${
-                // Marker: hide-excluir-desafio-ativo-v1 — nunca Excluir em publicado/ativo
-                !d.deleted_at && !d.is_active && !isDesafioActiveOpen(d)
+                d.metadata && d.metadata.protect_from_casual_delete && !d.deleted_at
+                  ? `<span class="badge on" title="Só restaura/republica via script ou force deliberado">Protegido</span>`
+                  : ""
+              }
+              ${
+                // Marker: hide-excluir-desafio-ativo-v1 — nunca Excluir em publicado/ativo/protegido
+                !d.deleted_at &&
+                !d.is_active &&
+                !isDesafioActiveOpen(d) &&
+                !(d.metadata && d.metadata.protect_from_casual_delete)
                   ? `<button class="btn btn-danger" type="button" data-delete-desafio="${esc(d.id)}">Excluir</button>`
                   : ""
               }

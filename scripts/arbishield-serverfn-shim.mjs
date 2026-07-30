@@ -1104,8 +1104,9 @@ async function listPendingDesafioParticipations(desafioId) {
 
 /**
  * Soft-delete desafio.
- * Marker: delete-desafio-guard-v2 — exige confirm:"EXCLUIR";
- * bloqueia etapas abertas/ao vivo sem force:true.
+ * Marker: delete-desafio-guard-v3 — exige confirm:"EXCLUIR";
+ * bloqueia etapas abertas/ao vivo sem force:true;
+ * metadata.protect_from_casual_delete exige confirm:"FORCAR_EXCLUIR_PROTEGIDO".
  */
 async function deleteDesafio(token, body) {
   if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
@@ -1115,18 +1116,45 @@ async function deleteDesafio(token, body) {
   const confirm = String(body?.confirm || body?.confirmText || "")
     .trim()
     .toUpperCase();
-  if (confirm !== "EXCLUIR") {
+  const force =
+    body?.force === true ||
+    String(body?.force || "").toLowerCase() === "1" ||
+    String(body?.force || "").toLowerCase() === "true";
+
+  // Carrega metadata cedo — proteção anti-apagão acidental
+  let curMeta = {};
+  let curRow = null;
+  try {
+    const rows = await sb(
+      `/rest/v1/desafios?select=id,is_active,status,deleted_at,title,metadata&id=eq.${encodeURIComponent(id)}&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    curRow = Array.isArray(rows) ? rows[0] : null;
+    curMeta =
+      curRow && curRow.metadata && typeof curRow.metadata === "object"
+        ? curRow.metadata
+        : {};
+  } catch {
+    /* */
+  }
+
+  // Marker: protect-desafio-casual-v1
+  if (curMeta.protect_from_casual_delete === true) {
+    if (confirm !== "FORCAR_EXCLUIR_PROTEGIDO" || !force) {
+      const err = new Error(
+        "Este desafio está protegido contra exclusão acidental. " +
+          'Só com confirm:"FORCAR_EXCLUIR_PROTEGIDO" e force:true (ação deliberada).'
+      );
+      err.status = 409;
+      throw err;
+    }
+  } else if (confirm !== "EXCLUIR") {
     const err = new Error(
       'Confirmação obrigatória: envie confirm:"EXCLUIR" para excluir um desafio.'
     );
     err.status = 400;
     throw err;
   }
-
-  const force =
-    body?.force === true ||
-    String(body?.force || "").toLowerCase() === "1" ||
-    String(body?.force || "").toLowerCase() === "true";
 
   const pending = await listPendingDesafioParticipations(id);
   if (pending.length > 0) {
@@ -1139,12 +1167,7 @@ async function deleteDesafio(token, body) {
 
   // Marker: hide-excluir-desafio-ativo-v1 — backend: não apagar ativo/publicado
   try {
-    const rows = await sb(
-      `/rest/v1/desafios?select=id,is_active,status,deleted_at,title&id=eq.${encodeURIComponent(id)}&limit=1`,
-      { token: SERVICE_KEY }
-    );
-    const cur = Array.isArray(rows) ? rows[0] : null;
-    if (cur && cur.is_active === true && !force) {
+    if (curRow && curRow.is_active === true && !force) {
       const err = new Error(
         "Desafio ativo/publicado não pode ser excluído. Desative/cancele antes, ou use force:true só se for intencional."
       );
@@ -1208,23 +1231,14 @@ async function deleteDesafio(token, body) {
     status: "deleted",
     updated_at: now,
     metadata: {
-      deleted_via: "delete-desafio-guard-v2",
+      deleted_via: "delete-desafio-guard-v3",
       deleted_at: now,
       deleted_by: adminId,
       force: !!force,
     },
   };
   try {
-    // merge metadata best-effort
-    const cur = await sb(
-      `/rest/v1/desafios?select=metadata&id=eq.${encodeURIComponent(id)}&limit=1`,
-      { token: SERVICE_KEY }
-    );
-    const prev =
-      Array.isArray(cur) && cur[0] && cur[0].metadata && typeof cur[0].metadata === "object"
-        ? cur[0].metadata
-        : {};
-    delBody.metadata = { ...prev, ...delBody.metadata };
+    delBody.metadata = { ...curMeta, ...delBody.metadata };
   } catch {
     /* */
   }
@@ -1248,7 +1262,7 @@ async function deleteDesafio(token, body) {
     ok: true,
     deleted: true,
     id,
-    marker: "delete-desafio-guard-v2",
+    marker: "delete-desafio-guard-v3",
     force: !!force,
   };
 }
@@ -1397,7 +1411,7 @@ async function cancelDesafio(token, body) {
   if (!id) throw new Error("id obrigatório");
 
   const desafioRows = await sb(
-    `/rest/v1/desafios?select=id,title,status,is_active,deleted_at&id=eq.${encodeURIComponent(id)}&limit=1`,
+    `/rest/v1/desafios?select=id,title,status,is_active,deleted_at,metadata&id=eq.${encodeURIComponent(id)}&limit=1`,
     { token: SERVICE_KEY }
   );
   const desafio = Array.isArray(desafioRows) ? desafioRows[0] : null;
@@ -1411,6 +1425,21 @@ async function cancelDesafio(token, body) {
   }
   if (String(desafio.status) === "cancelled") {
     throw new Error("Desafio já cancelado");
+  }
+
+  // Marker: protect-desafio-casual-v1 — Cancelar também tira o jogo do ar
+  const meta =
+    desafio.metadata && typeof desafio.metadata === "object" ? desafio.metadata : {};
+  const unlockCancel =
+    body?.force === true ||
+    String(body?.confirm || "").trim().toUpperCase() === "FORCAR_CANCELAR_PROTEGIDO";
+  if (meta.protect_from_casual_delete === true && !unlockCancel) {
+    const err = new Error(
+      "Este desafio está protegido. Cancelar remove o jogo dos clientes. " +
+        'Envie confirm:"FORCAR_CANCELAR_PROTEGIDO" (ou force:true) só se for intencional.'
+    );
+    err.status = 409;
+    throw err;
   }
 
   const pending = await listPendingDesafioParticipations(id);
