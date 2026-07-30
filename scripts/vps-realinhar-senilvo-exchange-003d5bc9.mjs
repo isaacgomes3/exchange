@@ -1,19 +1,13 @@
 #!/usr/bin/env node
 /**
- * Realinha Senilvo 003d5bc9 → outcome EXCHANGE (bateu casa).
+ * Realinha Senilvo 003d5bc9 → EXCHANGE conforme v10 / stake_lock_v1
  *
- * Fatos (diagnóstico + dono do produto):
- *   - Jogo Kauno Žalgiris × KÍ Women foi FINALIZADO como Exchange
- *   - Proteção está com status cancelled (ERRADO) + settled_outcome null
- *   - billing fee_upfront_v1: na Exchange NÃO devolve stake; taxa permanece
- *   - Já houve: protection_fee −4,96 · protection_refund +4,96 (indevido se Exchange)
- *               repair void +200 (indevido)
+ * Regra v10 (fonte de verdade):
+ *   Exchange → DEVOLVE stake · cobra SÓ dedução · Reembolso R$ 0
  *
- * Ações FIX=1:
- *   1) Clawback R$200 (stake creditado no heal void)
- *   2) Clawback R$4,96 (estorno de taxa do “cancel”)
- *   3) status → won_exchange · settled_outcome → exchange
- *   4) match → settled/closed · markets settled_outcome=exchange (se ainda open)
+ * NÃO debita os R$200 (stake deve voltar).
+ * Cobra a dedução ArbiShield da odd canônica se ainda não cobrada.
+ * Corrige status cancelled → won_exchange e fecha o match.
  *
  * Dry-run:
  *   node scripts/vps-realinhar-senilvo-exchange-003d5bc9.mjs
@@ -22,12 +16,12 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIX = process.env.FIX === "1" || process.env.FIX === "true";
 const PROT_PREFIX = String(process.env.PROT || "003d5bc9").trim().toLowerCase();
-const STAKE_CENTS = Math.round(Number(process.env.STAKE_CENTS || 20000));
-const FEE_CENTS = Math.round(Number(process.env.FEE_CENTS || 496));
-const TAG = "realign-senilvo-exchange-003d5bc9-v1";
+const TAG = "realign-senilvo-exchange-v10-003d5bc9";
 
 function loadEnvFile(file) {
   if (!fs.existsSync(file)) return;
@@ -73,6 +67,11 @@ if (!SERVICE_KEY) {
   console.error("ERRO: SERVICE_ROLE_KEY ausente");
   process.exit(1);
 }
+
+const contract = await import(
+  pathToFileURL(path.resolve(__dirname, "lib/protection-flow-contract.mjs")).href
+);
+const { settlementDeductionCents, computeArbiShieldDeductionCents } = contract;
 
 function money(c) {
   return (Number(c || 0) / 100).toLocaleString("pt-BR", {
@@ -138,8 +137,9 @@ async function insertTx(payload) {
 }
 
 async function main() {
-  console.log("==> Realinhar Senilvo → EXCHANGE");
-  console.log("    PROT~", PROT_PREFIX);
+  console.log("==> Realinhar Senilvo → EXCHANGE (regra v10)");
+  console.log("    Exchange = devolve stake · cobra só dedução · Reembolso R$0");
+  console.log("    NÃO debita os R$200 do stake");
   console.log("    FIX:", FIX ? "SIM" : "não (dry-run)");
 
   let row = null;
@@ -158,6 +158,23 @@ async function main() {
     }
   }
   if (!row) throw new Error("proteção não encontrada");
+
+  // Força cálculo v10 (ignora billing fee_upfront legado para a taxa do settle)
+  const rowForFee = {
+    ...row,
+    metadata: {
+      ...metaOf(row),
+      billing_model: "stake_lock_v1",
+      stake_lock: true,
+      fee_upfront: false,
+      market_type: metaOf(row).market_type || "LAY",
+      market_odd: metaOf(row).market_odd || row.odd,
+    },
+  };
+  const feeExpected =
+    (typeof computeArbiShieldDeductionCents === "function"
+      ? computeArbiShieldDeductionCents(rowForFee)
+      : 0) || settlementDeductionCents(rowForFee);
 
   const prof = await sb(
     `/rest/v1/profiles?id=eq.${encodeURIComponent(
@@ -184,97 +201,106 @@ async function main() {
   );
   const tlist = Array.isArray(txs) ? txs : [];
 
-  const already = tlist.some((t) => metaOf(t).tag === TAG);
-  const feeCharged = tlist
-    .filter((t) => t.type === "protection_fee" && n(t.amount_cents) < 0)
-    .reduce((s, t) => s + Math.abs(n(t.amount_cents)), 0);
-  const feeRefunded = tlist
-    .filter((t) => t.type === "protection_refund" && n(t.amount_cents) > 0)
-    .reduce((s, t) => s + n(t.amount_cents), 0);
-  const stakeReturned = tlist
-    .filter((t) => {
-      const m = metaOf(t);
-      return (
-        t.type === "protection_settlement" &&
+  const already = tlist.some(
+    (t) => metaOf(t).tag === TAG || metaOf(t).tag === "realign-senilvo-exchange-003d5bc9-v1"
+  );
+
+  // Taxa líquida já retida na plataforma (fees cobrados − refunds)
+  let feeNet = 0;
+  for (const t of tlist) {
+    const typ = String(t.type || "");
+    const amt = n(t.amount_cents);
+    const m = metaOf(t);
+    if (typ === "protection_fee" && amt < 0) feeNet += Math.abs(amt);
+    if (typ === "protection_refund" && amt > 0) feeNet -= amt;
+    if (
+      typ === "protection_settlement" &&
+      amt < 0 &&
+      (m.outcome === "exchange" || m.clawback_kind === "fee")
+    ) {
+      feeNet += Math.abs(amt);
+    }
+  }
+  // Stake já devolvido?
+  const stakeReturned = tlist.some((t) => {
+    const m = metaOf(t);
+    return (
+      typPositiveStake(t, m) ||
+      (t.type === "protection_settlement" &&
         n(t.amount_cents) > 0 &&
-        (m.stake_returned === true || m.tag === "repair-protecoes-dia-v10")
-      );
-    })
-    .reduce((s, t) => s + n(t.amount_cents), 0);
-  const clawedStake = tlist
+        m.stake_returned === true)
+    );
+  });
+  // Clawback indevido de stake (script antigo) → precisa recreditar
+  const badStakeClawback = tlist
     .filter((t) => {
       const m = metaOf(t);
       return (
         n(t.amount_cents) < 0 &&
         (m.tag === "clawback-senilvo-cancel-003d5bc9-v1" ||
-          (m.tag === TAG && m.clawback_kind === "stake"))
+          (m.tag === "realign-senilvo-exchange-003d5bc9-v1" &&
+            m.clawback_kind === "stake"))
       );
     })
     .reduce((s, t) => s + Math.abs(n(t.amount_cents)), 0);
-  const clawedFee = tlist
-    .filter((t) => {
-      const m = metaOf(t);
-      return n(t.amount_cents) < 0 && m.tag === TAG && m.clawback_kind === "fee";
-    })
-    .reduce((s, t) => s + Math.abs(n(t.amount_cents)), 0);
 
-  const stakeToClaw = Math.max(0, Math.min(STAKE_CENTS, stakeReturned - clawedStake));
-  // Se refundou taxa no “cancel”, na Exchange a taxa deve permanecer → clawback do refund
-  const feeToClaw = Math.max(
-    0,
-    Math.min(FEE_CENTS, feeRefunded - clawedFee)
-  );
+  const feeStillDue = Math.max(0, feeExpected - Math.max(0, feeNet));
+  const stakeToRestore = badStakeClawback; // se debitou 200 errado, devolve
 
+  const amount = n(row.responsibility_cents || row.amount_cents);
   const bal = n(p.balance_cents) + n(p.reusable_balance_cents);
 
-  console.log("\n---- estado atual ----");
+  console.log("\n---- estado ----");
   console.log("  proteção:", row.id, `(${table})`);
-  console.log("  status:  ", row.status);
-  console.log("  settled: ", row.settled_outcome || "(null)");
+  console.log("  status:  ", row.status, "→ won_exchange");
   console.log("  cliente: ", p.full_name);
   console.log("  Apostador:", money(bal));
-  console.log("  locked:  ", money(p.locked_balance_cents));
   console.log(
     "  match:   ",
     match
-      ? `${match.home_team || "?"} × ${match.away_team || "?"} · status=${match.status}`
-      : row.match_id
+      ? `${match.home_team || "?"} × ${match.away_team || "?"} · ${match.status}`
+      : "-"
   );
-  console.log("  fee cobrada:     ", money(feeCharged));
-  console.log("  fee estornada:   ", money(feeRefunded), "→ clawback", money(feeToClaw));
-  console.log("  stake devolvido: ", money(stakeReturned), "→ clawback", money(stakeToClaw));
-  console.log("  realign já feito:", already ? "SIM" : "não");
+  console.log("  stake:   ", money(amount), stakeReturned ? "(já devolvido ✓)" : "(falta devolver)");
+  console.log("  dedução v10 esperada:", money(feeExpected));
+  console.log("  taxa líquida atual:  ", money(feeNet));
+  console.log("  dedução ainda devida:", money(feeStillDue));
+  console.log("  restaurar stake (clawback errado):", money(stakeToRestore));
   console.log(
-    "  Apostador após:  ",
-    money(bal - stakeToClaw - feeToClaw)
+    "  Apostador após:        ",
+    money(bal + stakeToRestore - feeStillDue)
   );
 
-  if (already && stakeToClaw === 0 && feeToClaw === 0) {
-    console.log("\nOK — já realinhado.");
+  if (
+    already &&
+    feeStillDue === 0 &&
+    stakeToRestore === 0 &&
+    String(row.status).toLowerCase() === "won_exchange"
+  ) {
+    console.log("\nOK — já conforme v10 Exchange.");
     return;
   }
 
   if (!FIX) {
-    console.log("\n(dry-run) Exporte FIX=1 para:");
-    console.log("  · debitar", money(stakeToClaw), "(stake indevido)");
-    console.log("  · debitar", money(feeToClaw), "(taxa que deve ficar na plataforma)");
-    console.log("  · status → won_exchange · settled_outcome → exchange");
-    console.log("  · fechar match como exchange (se open)");
+    console.log("\n(dry-run) FIX=1 vai:");
+    if (stakeToRestore > 0) {
+      console.log("  · RECREDITAR", money(stakeToRestore), "(desfaz clawback indevido do stake)");
+    }
+    if (!stakeReturned && stakeToRestore === 0 && amount > 0) {
+      console.log("  · garantir stake devolvido", money(amount), "(já deve estar)");
+    }
+    console.log("  · cobrar dedução", money(feeStillDue), "(se > 0)");
+    console.log("  · status → won_exchange · match settled exchange");
+    console.log("  · NÃO debitar os R$200 do stake");
     return;
-  }
-
-  const totalDebit = stakeToClaw + feeToClaw;
-  if (totalDebit > bal) {
-    throw new Error(
-      `Saldo insuficiente: Apostador ${money(bal)} < débito ${money(totalDebit)}`
-    );
   }
 
   const now = new Date().toISOString();
   let newBal = bal;
 
-  if (stakeToClaw > 0) {
-    newBal -= stakeToClaw;
+  // 1) Restaura stake se houve clawback indevido
+  if (stakeToRestore > 0) {
+    newBal += stakeToRestore;
     await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
       method: "PATCH",
       body: {
@@ -286,52 +312,63 @@ async function main() {
     await insertTx({
       user_id: row.user_id,
       type: "protection_settlement",
-      amount_cents: -stakeToClaw,
+      amount_cents: stakeToRestore,
       ref: row.id,
       metadata: {
         tag: TAG,
-        clawback_kind: "stake",
-        note: `${TAG}: clawback stake — Exchange fee_upfront não devolve stake`,
+        note: `${TAG}: restaura stake — v10 Exchange DEVOLVE stake`,
         outcome: "exchange",
-        billing_model: "fee_upfront_v1",
-        clawback_cents: stakeToClaw,
+        stake_returned: true,
+        unlock_return_to_origin: true,
+        billing_model: "stake_lock_v1",
         protection_id: row.id,
       },
       created_at: now,
     });
-    console.log("  OK clawback stake", money(stakeToClaw));
+    console.log("  OK restaurou stake", money(stakeToRestore));
   }
 
-  if (feeToClaw > 0) {
-    newBal -= feeToClaw;
+  // 2) Cobra dedução faltante
+  if (feeStillDue > 0) {
+    if (newBal < feeStillDue) {
+      throw new Error(
+        `Saldo insuficiente para dedução: ${money(newBal)} < ${money(feeStillDue)}`
+      );
+    }
+    newBal -= feeStillDue;
     await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
       method: "PATCH",
       body: {
         balance_cents: newBal,
         reusable_balance_cents: 0,
+        locked_balance_cents: 0,
         updated_at: now,
       },
     });
     await insertTx({
       user_id: row.user_id,
-      type: "protection_fee",
-      amount_cents: -feeToClaw,
+      type: "protection_settlement",
+      amount_cents: -feeStillDue,
       ref: row.id,
       metadata: {
         tag: TAG,
-        clawback_kind: "fee",
-        note: `${TAG}: reverte protection_refund — Exchange mantém taxa fee_upfront`,
+        note: `${TAG}: cobra dedução Exchange v10 (lucro−4,5%−1,5%)`,
         outcome: "exchange",
-        billing_model: "fee_upfront_v1",
-        clawback_cents: feeToClaw,
+        exchange_no_credit: true,
+        fee_charged_cents: feeStillDue,
+        fee_expected_cents: feeExpected,
+        stake_returned: true,
+        unlocked_locked: true,
+        billing_model: "stake_lock_v1",
         protection_id: row.id,
+        match_id: row.match_id || null,
       },
       created_at: new Date().toISOString(),
     });
-    console.log("  OK clawback fee", money(feeToClaw));
+    console.log("  OK cobrou dedução", money(feeStillDue));
   }
 
-  // Atualiza proteção
+  // 3) Status proteção
   const meta = metaOf(row);
   await sb(`/rest/v1/${table}?id=eq.${encodeURIComponent(row.id)}`, {
     method: "PATCH",
@@ -339,66 +376,51 @@ async function main() {
       status: "won_exchange",
       settled_outcome: "exchange",
       settled_at: row.settled_at || now,
+      platform_deduction_cents: feeExpected,
       metadata: {
         ...meta,
+        billing_model: "stake_lock_v1",
+        stake_lock: true,
         realigned_to_exchange: true,
         realign_tag: TAG,
         previous_status: row.status,
         previous_settled_outcome: row.settled_outcome || null,
+        fee_expected_cents: feeExpected,
       },
       updated_at: now,
     },
   });
-  console.log("  OK proteção → won_exchange / exchange");
+  console.log("  OK proteção → won_exchange");
 
-  // Fecha match se ainda open
+  // 4) Match
   if (match) {
     const mm = metaOf(match);
     const markets = Array.isArray(match.markets)
       ? match.markets.map((m) => ({
           ...m,
-          settled_outcome: m.settled_outcome || "exchange",
+          settled_outcome: "exchange",
         }))
       : match.markets;
-    const st = String(match.status || "").toLowerCase();
-    if (st === "open" || st === "live" || st === "published" || !match.settled_outcome) {
-      await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(match.id)}`, {
-        method: "PATCH",
-        body: {
-          status: "settled",
-          is_published: false,
-          settled_at: match.settled_at || now,
-          markets,
-          metadata: {
-            ...mm,
-            settled_outcome: "exchange",
-            outcome: "exchange",
-            realign_tag: TAG,
-            previous_status: match.status,
-          },
-          updated_at: now,
+    await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(match.id)}`, {
+      method: "PATCH",
+      body: {
+        status: "settled",
+        is_published: false,
+        settled_at: match.settled_at || now,
+        markets,
+        metadata: {
+          ...mm,
+          settled_outcome: "exchange",
+          outcome: "exchange",
+          realign_tag: TAG,
+          previous_status: match.status,
         },
-      });
-      console.log("  OK match → settled / exchange");
-    } else {
-      console.log("  match já", match.status, "— só reforça metadata outcome");
-      await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(match.id)}`, {
-        method: "PATCH",
-        body: {
-          markets,
-          metadata: {
-            ...mm,
-            settled_outcome: mm.settled_outcome || "exchange",
-            outcome: mm.outcome || "exchange",
-            realign_tag: TAG,
-          },
-          updated_at: now,
-        },
-      });
-    }
+        updated_at: now,
+      },
+    });
+    console.log("  OK match → settled / exchange");
   }
 
-  // tx auditoria final
   await insertTx({
     user_id: row.user_id,
     type: "protection_settlement",
@@ -406,13 +428,13 @@ async function main() {
     ref: row.id,
     metadata: {
       tag: TAG,
-      note: `${TAG}: realinhado cancelled→won_exchange (bateu Exchange)`,
+      note: `${TAG}: realinhado → Exchange v10 (stake devolvido · dedução cobrada · Reembolso R$0)`,
       outcome: "exchange",
       exchange_no_credit: true,
-      billing_model: "fee_upfront_v1",
-      stake_returned: false,
+      stake_returned: true,
       unlocked_locked: true,
-      fee_kept_cents: FEE_CENTS,
+      fee_expected_cents: feeExpected,
+      billing_model: "stake_lock_v1",
       protection_id: row.id,
       match_id: row.match_id || null,
     },
@@ -425,12 +447,11 @@ async function main() {
     )}&select=balance_cents,reusable_balance_cents&limit=1`
   );
   const a = Array.isArray(after) ? after[0] : null;
-  console.log("\nConcluído.");
+  console.log("\nConcluído (regra v10 Exchange).");
   console.log(
     "  Apostador:",
     money(n(a?.balance_cents) + n(a?.reusable_balance_cents))
   );
-  console.log("  Esperado Exchange fee_upfront: Reembolso R$0 · taxa retida · sem stake");
 }
 
 main().catch((e) => {
