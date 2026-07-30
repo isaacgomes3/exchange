@@ -15,6 +15,13 @@
  * Regra v10:
  *   Exchange   → devolve stake · cobra dedução · Reembolso R$0
  *   ArbiShield → stake → Saldo Reembolso · sem taxa
+ *
+ * Dry-run:
+ *   node scripts/vps-liquidar-eventos-a-liquidar-v10.mjs
+ * Aplicar:
+ *   FIX=1 node scripts/vps-liquidar-eventos-a-liquidar-v10.mjs
+ *
+ * Marker: vps-liquidar-eventos-a-liquidar-v10
  */
 import fs from "node:fs";
 import path from "node:path";
