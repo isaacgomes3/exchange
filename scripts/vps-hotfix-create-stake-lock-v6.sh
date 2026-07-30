@@ -23,7 +23,8 @@ SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-$SHIM_DIR/scripts}"
 MARKER="create-protection-stake-lock-v6"
 RUNTIME_MARKER="protection-runtime-stake-lock-v10"
 CONTRACT_VER="protection-flow-contract-v10"
-UI_META="proteger-stake-lock-toast-v6d"
+# Meta vigente em app-proteger.html (arbishield-features / arbishield-build)
+UI_META="proteger-stake-lock-v6"
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
@@ -114,26 +115,7 @@ chmod 0644 "$SHIM_DIR/arbishield-serverfn-shim.mjs"
 echo "  OK $SHIM_DIR/arbishield-serverfn-shim.mjs"
 rm -f "$tmp_shim"
 
-log "4/5 UI app-proteger.html ($UI_META)"
-tmp_ui="$(mktemp)"
-download_repo_file "deploy/vps-supabase/static/v2/app-proteger.html" "$tmp_ui"
-grep -q "$UI_META" "$tmp_ui" || die "UI sem meta $UI_META"
-grep -q 'data.lockedCents' "$tmp_ui" || die "UI sem toast lockedCents da API"
-grep -q 'currentEventMaxCents' "$tmp_ui" || die "UI sem currentEventMaxCents"
-grep -q 'Máx. efetivo neste evento' "$tmp_ui" || die "UI sem Máx. efetivo"
-n=0
-while IFS= read -r -d '' f; do
-  cp -a "$f" "${f}.bak-stake-lock-${BUST}" 2>/dev/null || true
-  cp -f "$tmp_ui" "$f"
-  chmod 0644 "$f"
-  echo "  OK $f"
-  n=$((n + 1))
-done < <(find /var/www /opt -type f -name 'app-proteger.html' -print0 2>/dev/null || true)
-rm -f "$tmp_ui"
-[[ "$n" -gt 0 ]] || die "nenhum app-proteger.html encontrado"
-echo "  => $n arquivo(s)"
-
-log "5/5 reiniciar serviços"
+log "4/5 reiniciar serviços (API antes da UI — não deixar processo velho no ar)"
 systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 systemctl restart arbishield-prelive-events.service 2>/dev/null || true
 systemctl restart arbishield-prelive.service 2>/dev/null || true
@@ -162,15 +144,39 @@ H3098="$(curl -fsS --max-time 8 http://127.0.0.1:3098/health || true)"
 H3101="$(curl -fsS --max-time 8 http://127.0.0.1:3101/health || true)"
 echo "  health :3098 → $H3098"
 echo "  health :3101 → $H3101"
-echo "$H3098" | grep -q "$MARKER" || die "health :3098 sem $MARKER — API não atualizou"
+echo "$H3098" | grep -q "$MARKER" || die "health :3098 sem $MARKER — API não atualizou (path do unit?)"
 echo "$H3098" | grep -q "$RUNTIME_MARKER" || die "health :3098 sem $RUNTIME_MARKER"
 echo "$H3098" | grep -q 'stake_lock_v1' || die "health :3098 sem stake_lock_v1"
 echo "$H3098" | grep -q "$CONTRACT_VER" || die "health :3098 sem $CONTRACT_VER"
 echo "$H3098" | grep -qE 'protection-fee-upfront-v[0-9]+' && die "REGRESSÃO fee_upfront no health" || true
+echo "$H3098" | grep -q 'protection-flow-contract-v1"' && die "health ainda em contract-v1 (processo velho)" || true
+
+log "5/5 UI app-proteger.html ($UI_META)"
+tmp_ui="$(mktemp)"
+UI_OK=0
+if download_repo_file "deploy/vps-supabase/static/v2/app-proteger.html" "$tmp_ui" \
+  && grep -qE "$UI_META|proteger-sem-stake-equiv-v1|lockedCents" "$tmp_ui" \
+  && grep -q 'data.lockedCents' "$tmp_ui" \
+  && grep -q 'currentEventMaxCents' "$tmp_ui" \
+  && grep -q 'Máx. efetivo neste evento' "$tmp_ui"; then
+  n=0
+  while IFS= read -r -d '' f; do
+    cp -a "$f" "${f}.bak-stake-lock-${BUST}" 2>/dev/null || true
+    cp -f "$tmp_ui" "$f"
+    chmod 0644 "$f"
+    echo "  OK $f"
+    n=$((n + 1))
+  done < <(find /var/www /opt -type f -name 'app-proteger.html' -print0 2>/dev/null || true)
+  [[ "$n" -gt 0 ]] && UI_OK=1 || echo "AVISO: nenhum app-proteger.html encontrado" >&2
+  echo "  => $n arquivo(s)"
+else
+  echo "AVISO: UI não publicada (meta/download) — API stake_lock já reiniciada" >&2
+fi
+rm -f "$tmp_ui"
 
 echo
 echo "OK — createProtection agora trava o STAKE (não só a dedução)."
-echo "  Markers: $CONTRACT_VER · $RUNTIME_MARKER · $MARKER · UI $UI_META"
+echo "  Markers: $CONTRACT_VER · $RUNTIME_MARKER · $MARKER · UI $UI_META (ok=$UI_OK)"
 echo "  Teste: ativar R\$ 1.000 → Apostador cai R\$ 1.000 · Congelado sobe R\$ 1.000"
 echo "  https://arbishield.app/app-proteger.html  (Ctrl+Shift+R)"
 echo
