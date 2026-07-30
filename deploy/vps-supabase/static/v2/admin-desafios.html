@@ -1643,7 +1643,8 @@
                   : ""
               }
               ${
-                !d.deleted_at
+                // Marker: hide-excluir-desafio-ativo-v1 — nunca Excluir em publicado/ativo
+                !d.deleted_at && !d.is_active && !isDesafioActiveOpen(d)
                   ? `<button class="btn btn-danger" type="button" data-delete-desafio="${esc(d.id)}">Excluir</button>`
                   : ""
               }

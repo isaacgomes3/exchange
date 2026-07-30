@@ -1137,6 +1137,24 @@ async function deleteDesafio(token, body) {
     throw err;
   }
 
+  // Marker: hide-excluir-desafio-ativo-v1 — backend: não apagar ativo/publicado
+  try {
+    const rows = await sb(
+      `/rest/v1/desafios?select=id,is_active,status,deleted_at,title&id=eq.${encodeURIComponent(id)}&limit=1`,
+      { token: SERVICE_KEY }
+    );
+    const cur = Array.isArray(rows) ? rows[0] : null;
+    if (cur && cur.is_active === true && !force) {
+      const err = new Error(
+        "Desafio ativo/publicado não pode ser excluído. Desative/cancele antes, ou use force:true só se for intencional."
+      );
+      err.status = 409;
+      throw err;
+    }
+  } catch (e) {
+    if (e && e.status) throw e;
+  }
+
   // Anti-regressão: não apagar desafio com etapa ainda jogável sem force
   try {
     const steps = await sb(
