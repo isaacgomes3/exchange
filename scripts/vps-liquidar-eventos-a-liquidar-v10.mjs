@@ -2,26 +2,19 @@
 /**
  * Liquida eventos "A LIQUIDAR" com placar real + regra v10 (stake_lock_v1).
  *
+ * Lógica de mercado (LAY = posição do cliente na casa externa):
+ *   - Placar BATE a seleção LAY  → LAY perde na casa → ARBISHIELD (reembolso)
+ *   - Placar NÃO bate a seleção  → LAY ganha na casa → EXCHANGE
+ *
  * Eventos (29/07):
- *   1. Kauno Žalgiris × KÍ Women     LAY Visitante  placar 1-0  → EXCHANGE
- *      (confirmado pelo dono; casa venceu)
- *   2. Lech Poznań × Aarhus          LAY 3X0        placar 1-4  → ARBISHIELD
- *      (placar ≠ 3-0 → LAY acerta → proteção bate)
- *   3. FC U Craiova × Levski Lom     LAY 2X2        placar 2-2  → EXCHANGE
- *      (placar = 2-2 → BACK 2-2 na casa acerta)
- *   4. Barracas Central × Aldosivi   LAY 2X2        placar 1-0  → ARBISHIELD
- *      (placar ≠ 2-2 → LAY acerta → proteção bate)
+ *   1. Kauno × KÍ Women   LAY Visitante  1-0  → EXCHANGE   (visitante não venceu)
+ *   2. Lech × Aarhus      LAY 3X0        1-4  → EXCHANGE   (≠ 3-0)
+ *   3. Craiova × Levski   LAY 2X2        2-2  → ARBISHIELD (= 2-2 → reembolso)
+ *   4. Barracas × Aldosivi LAY 2X2       1-0  → EXCHANGE   (≠ 2-2)
  *
  * Regra v10:
  *   Exchange   → devolve stake · cobra dedução · Reembolso R$0
  *   ArbiShield → stake → Saldo Reembolso · sem taxa
- *
- * Dry-run:
- *   node scripts/vps-liquidar-eventos-a-liquidar-v10.mjs
- * Aplicar:
- *   FIX=1 node scripts/vps-liquidar-eventos-a-liquidar-v10.mjs
- *
- * Marker: vps-liquidar-eventos-a-liquidar-v10
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -312,6 +305,59 @@ async function settleProtection(row, outcome, score) {
   const status = settlementStatusForOutcome(o);
   const bt = balType(row);
   const prior = await loadPrior(row.id);
+
+  // Se já liquidou como Exchange e o correto é ArbiShield: estorna stake/fee e credita Reembolso.
+  if (o === "arbishield" && prior.stakeReturned > 0) {
+    // clawback stake que voltou indevido ao Apostador
+    const claw = prior.stakeReturned;
+    const bt0 = balType(row);
+    const p0 = (await sb(
+      `/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}&select=*&limit=1`
+    ))?.[0];
+    if (p0) {
+      const now0 = new Date().toISOString();
+      const patch0 = { updated_at: now0, reusable_balance_cents: 0 };
+      const bucket = originBucket(bt0);
+      if (bucket === "demo_balance_cents") {
+        patch0.demo_balance_cents = Math.max(0, n(p0.demo_balance_cents) - claw);
+      } else if (bucket === "investor_balance_cents") {
+        patch0.investor_balance_cents = Math.max(0, n(p0.investor_balance_cents) - claw);
+      } else {
+        patch0.balance_cents = Math.max(0, n(p0.balance_cents) + n(p0.reusable_balance_cents) - claw);
+      }
+      // devolve fee cobrada no Exchange indevido
+      if (prior.feeCharged > 0) {
+        if (bucket === "demo_balance_cents") {
+          patch0.demo_balance_cents = n(patch0.demo_balance_cents) + prior.feeCharged;
+        } else if (bucket === "investor_balance_cents") {
+          patch0.investor_balance_cents = n(patch0.investor_balance_cents) + prior.feeCharged;
+        } else {
+          patch0.balance_cents = n(patch0.balance_cents) + prior.feeCharged;
+        }
+      }
+      await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+        method: "PATCH",
+        body: patch0,
+      });
+      await insertTx({
+        user_id: row.user_id,
+        type: "protection_settlement",
+        amount_cents: -(claw - prior.feeCharged),
+        ref: row.id,
+        metadata: {
+          tag: TAG,
+          note: `${TAG}: reverte Exchange indevido → prepara ArbiShield/reembolso`,
+          outcome: "arbishield",
+          clawback_stake_cents: claw,
+          fee_refunded_cents: prior.feeCharged,
+          protection_id: row.id,
+        },
+      });
+      prior.stakeReturned = 0;
+      prior.feeCharged = 0;
+    }
+  }
+
   const pRows = await sb(
     `/rest/v1/profiles?id=eq.${encodeURIComponent(
       row.user_id
