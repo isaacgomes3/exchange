@@ -9,8 +9,10 @@
  * travam o comportamento no CI.
  *
  * Versão: protection-flow-contract-v10 (2026-07-27)
- *   Pedido explícito: "esse erro não pode voltar a acontecer"
- *   (won_exchange sem devolver stake / fee odd errada).
+ *   Pedido explícito (2026-07-30): v10 é a ÚNICA fonte de verdade.
+ *   Qualquer outro modelo/versão de proteção está OBSOLETO e pode ser excluído
+ *   (fee_upfront_v1, lock_fee_after_v1, locked_margin_v2, FLUXO_PROTECAO_V1,
+ *   contracts v1–v9 como “vigente”). Não reintroduzir.
  *
  *   Regra vigente (stake_lock_v1):
  *     - Ativação → trava stake; máx. 50% do Apostador RESTANTE naquele momento
@@ -31,8 +33,8 @@
  *       carteira: 8.067,52 + 1.000 − 91,11 = 8.976,41
  *       ex.: 1000@32 → lucro 32,26 → fee 15,81 → 8.067,52+1.000−15,81=9.051,71
  *
- *   Histórico fee_upfront_v1 (linhas antigas): mantido só para settle/cancel
- *   de proteções já criadas com billing_model fee_upfront_v1.
+ *   Histórico fee_upfront_v1 (linhas antigas no banco): só settle/cancel de
+ *   proteções JÁ criadas. Novas proteções = sempre stake_lock_v1.
  *   Cancel fee_upfront → estorna SÓ a dedução (nunca o stake).
  *   Guarda: cancel-fee-upfront-nao-devolve-stake-v6
  * ============================================================================
@@ -40,6 +42,21 @@
 
 export const PROTECTION_FLOW_CONTRACT_VERSION =
   "protection-flow-contract-v10";
+
+/** Único modelo aceito para NOVAS proteções. */
+export const PROTECTION_BILLING_MODEL_CANONICAL = "stake_lock_v1";
+
+/**
+ * Modelos/versões obsoletos — NÃO usar como vigente; NÃO reintroduzir.
+ * Pedido explícito: v10 é fonte de verdade; qualquer outra versão pode excluir.
+ */
+export const PROTECTION_OBSOLETE_MODELS = Object.freeze([
+  "fee_upfront_v1",
+  "lock_fee_after_v1",
+  "locked_margin_v2",
+  "FLUXO_PROTECAO_V1",
+  "fluxo-protecao-v1",
+]);
 
 /**
  * LAY: lucro fee = responsabilidade × (backOdd − 1) = resp/(odd−1).
@@ -72,7 +89,9 @@ export const CANCEL_FEE_UPFRONT_NO_STAKE_REFUND =
  */
 export const PROTECTION_FLOW_SPEC = Object.freeze({
   version: PROTECTION_FLOW_CONTRACT_VERSION,
-  model: "stake_lock_v1",
+  model: PROTECTION_BILLING_MODEL_CANONICAL,
+  soleSourceOfTruth: true,
+  obsoleteModels: PROTECTION_OBSOLETE_MODELS,
   lock: PROTECTION_FLOW_LOCK,
   requiresExplicitRequestToChange: true,
   activation: Object.freeze({

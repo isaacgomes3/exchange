@@ -9,11 +9,17 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 **Status:** LOCKED — alterar **somente** com solicitação explícita do dono do produto  
 **Marker:** `DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST`  
-**Versão:** `protection-flow-contract-v10`  
+**Versão:** `protection-flow-contract-v10` — **ÚNICA fonte de verdade**  
 **Modelo vigente:** `stake_lock_v1`  
 **Fonte da verdade:** `scripts/lib/protection-flow-contract.mjs`  
 **Doc espelho:** `docs/PROTECTION_FLOW_LOCKED.md`  
 **Testes CI:** `npm test` → `scripts/protection-flow-contract.test.mjs`
+
+**Pedido explícito (2026-07-30):** v10 é a fonte de verdade. Qualquer outra
+versão/modelo de proteção está **obsoleto e pode ser excluído** —
+`fee_upfront_v1`, `lock_fee_after_v1`, `locked_margin_v2`, `FLUXO_PROTECAO_V1`,
+contracts v1–v9 como “vigente”. Agentes **não** devem basear PRs nesses modelos
+nem reintroduzi-los.
 
 ## Regra para agentes / PRs
 

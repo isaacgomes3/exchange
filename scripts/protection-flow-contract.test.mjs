@@ -11,6 +11,8 @@ import {
   PROTECTION_FLOW_CONTRACT_VERSION,
   PROTECTION_FLOW_LOCK,
   PROTECTION_FLOW_SPEC,
+  PROTECTION_BILLING_MODEL_CANONICAL,
+  PROTECTION_OBSOLETE_MODELS,
   STAKE_LOCK_RULE,
   MAX_STAKE_FRACTION_OF_APOSTADOR,
   ONE_OPERATION_PER_EVENT,
@@ -56,6 +58,14 @@ const root = resolve(__dirname, "..");
 describe("contrato travado — metadados", () => {
   it("mantém versão e lock", () => {
     assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v10");
+    assert.equal(PROTECTION_BILLING_MODEL_CANONICAL, "stake_lock_v1");
+    assert.deepEqual([...PROTECTION_OBSOLETE_MODELS], [
+      "fee_upfront_v1",
+      "lock_fee_after_v1",
+      "locked_margin_v2",
+      "FLUXO_PROTECAO_V1",
+      "fluxo-protecao-v1",
+    ]);
     assert.equal(STAKE_LOCK_RULE, "stake-lock-v1");
     assert.equal(MAX_STAKE_FRACTION_OF_APOSTADOR, 0.5);
     assert.equal(ONE_OPERATION_PER_EVENT, true);
@@ -73,9 +83,15 @@ describe("contrato travado — metadados", () => {
 
   it("PROTECTION_FLOW_SPEC espelha as regras vigentes (só muda com pedido explícito)", () => {
     assert.equal(PROTECTION_FLOW_SPEC.requiresExplicitRequestToChange, true);
+    assert.equal(PROTECTION_FLOW_SPEC.soleSourceOfTruth, true);
     assert.equal(PROTECTION_FLOW_SPEC.lock, PROTECTION_FLOW_LOCK);
     assert.equal(PROTECTION_FLOW_SPEC.version, PROTECTION_FLOW_CONTRACT_VERSION);
     assert.equal(PROTECTION_FLOW_SPEC.model, "stake_lock_v1");
+    assert.equal(PROTECTION_FLOW_SPEC.model, PROTECTION_BILLING_MODEL_CANONICAL);
+    assert.deepEqual(
+      [...PROTECTION_FLOW_SPEC.obsoleteModels],
+      [...PROTECTION_OBSOLETE_MODELS]
+    );
     assert.equal(PROTECTION_FLOW_SPEC.activation.locksStake, true);
     assert.equal(PROTECTION_FLOW_SPEC.activation.chargesDeductionOnCreate, false);
     assert.equal(PROTECTION_FLOW_SPEC.activation.maxFractionOfRemainingApostador, 0.5);
@@ -116,6 +132,14 @@ describe("contrato travado — metadados", () => {
     assert.match(agents, /Empate Anula/);
     assert.match(agents, /8\.976,?41|91,?11|settle-exchange-cobra-so-deducao-v9/);
     assert.match(agents, /settle-exchange-heal-incompleto-v10|9\.051,?71|15,?81/);
+    assert.match(agents, /ÚNICA fonte de verdade|unica fonte de verdade/i);
+    assert.match(agents, /obsoleto|pode ser excluíd/i);
+    assert.match(agents, /fee_upfront_v1/);
+    assert.match(agents, /locked_margin_v2|lock_fee_after_v1|FLUXO_PROTECAO_V1/);
+    assert.match(lockedDoc, /ÚNICA fonte de verdade|unica fonte de verdade/i);
+    assert.match(lockedDoc, /obsoleto|pode ser excluíd/i);
+    assert.match(lockedDoc, /fee_upfront_v1/);
+    assert.match(lockedDoc, /locked_margin_v2/);
     assert.match(lockedDoc, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
     assert.match(lockedDoc, /protection-flow-contract-v10/);
     assert.match(lockedDoc, /LOCKED/);

@@ -2,11 +2,23 @@
 
 **Status:** LOCKED  
 **Marker:** `DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST`  
-**Versão:** `protection-flow-contract-v10`  
+**Versão:** `protection-flow-contract-v10` — **ÚNICA fonte de verdade**  
 **Modelo:** `stake_lock_v1`  
 **Fonte da verdade:** `scripts/lib/protection-flow-contract.mjs`  
 **Espelho em:** `AGENTS.md` (bloco `<!-- BEGIN:protection-flow-lock -->`)  
 **CI:** `npm test` → `scripts/protection-flow-contract.test.mjs`
+
+**Pedido explícito (2026-07-30):** v10 é a fonte de verdade. Qualquer outra
+versão pode ser excluída. Modelos obsoletos (não usar / não reintroduzir):
+
+- `fee_upfront_v1`
+- `lock_fee_after_v1`
+- `locked_margin_v2`
+- `FLUXO_PROTECAO_V1` / `fluxo-protecao-v1`
+- contracts `v1`–`v9` tratados como vigentes
+
+Compatibilidade residual de `fee_upfront` no código existe **somente** para
+settle/cancel de linhas antigas no banco — nunca para novas proteções.
 
 ---
 
@@ -17,7 +29,7 @@ Este fluxo **só pode ser alterado** com **solicitação explícita** do dono do
 Sem esse pedido, agentes e PRs **não devem**:
 
 - mudar regras de ativação, settle, cancel, buckets de saldo;
-- reintroduzir `fee_upfront` como modelo vigente;
+- reintroduzir `fee_upfront`, `lock_fee_after`, `locked_margin` ou `FLUXO_PROTECAO_V1` como modelo vigente;
 - creditar Saldo Reembolso em vitória Exchange;
 - remover o teto de 50%, a regra 1 op/evento ou o bloqueio pós-kickoff.
 
