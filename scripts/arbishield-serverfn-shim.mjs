@@ -612,6 +612,27 @@ function bearerFromReq(req) {
   return m?.[1] || null;
 }
 
+/** IP + User-Agent do cliente (nginx deve enviar X-Real-IP / X-Forwarded-For). */
+function clientMetaFromReq(req) {
+  const h = (req && req.headers) || {};
+  const xff = String(h["x-forwarded-for"] || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const ip =
+    xff[0] ||
+    String(h["x-real-ip"] || "").trim() ||
+    String(h["cf-connecting-ip"] || "").trim() ||
+    (req && req.socket && req.socket.remoteAddress) ||
+    null;
+  const ua = String(h["user-agent"] || "").slice(0, 300) || null;
+  return {
+    ip: ip ? String(ip).replace(/^::ffff:/, "") : null,
+    userAgent: ua,
+    at: new Date().toISOString(),
+  };
+}
+
 function n(v) {
   const x = Number(v);
   return Number.isFinite(x) ? x : 0;
@@ -1108,10 +1129,16 @@ async function listPendingDesafioParticipations(desafioId) {
  * bloqueia etapas abertas/ao vivo sem force:true;
  * metadata.protect_from_casual_delete exige confirm:"FORCAR_EXCLUIR_PROTEGIDO".
  */
-async function deleteDesafio(token, body) {
+async function deleteDesafio(token, body, clientMeta = null) {
   if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
   const id = String(body?.id || body?.desafioId || body?.desafio_id || "").trim();
   if (!id) throw new Error("id obrigatório");
+  const audit =
+    clientMeta && typeof clientMeta === "object"
+      ? clientMeta
+      : body?.clientMeta && typeof body.clientMeta === "object"
+        ? body.clientMeta
+        : null;
 
   const confirm = String(body?.confirm || body?.confirmText || "")
     .trim()
@@ -1235,6 +1262,10 @@ async function deleteDesafio(token, body) {
       deleted_at: now,
       deleted_by: adminId,
       force: !!force,
+      // Marker: delete-audit-ip-ua-v1
+      deleted_ip: audit?.ip || null,
+      deleted_user_agent: audit?.userAgent || null,
+      deleted_from: audit?.at || now,
     },
   };
   try {
@@ -1264,6 +1295,7 @@ async function deleteDesafio(token, body) {
     id,
     marker: "delete-desafio-guard-v3",
     force: !!force,
+    deletedIp: audit?.ip || null,
   };
 }
 
@@ -1405,10 +1437,16 @@ async function restoreDesafio(token, body) {
 }
 
 /** Cancela o desafio inteiro e devolve entradas pendentes à carteira Desafio. */
-async function cancelDesafio(token, body) {
+async function cancelDesafio(token, body, clientMeta = null) {
   if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
   const id = String(body?.id || body?.desafioId || body?.desafio_id || "").trim();
   if (!id) throw new Error("id obrigatório");
+  const audit =
+    clientMeta && typeof clientMeta === "object"
+      ? clientMeta
+      : body?.clientMeta && typeof body.clientMeta === "object"
+        ? body.clientMeta
+        : null;
 
   const desafioRows = await sb(
     `/rest/v1/desafios?select=id,title,status,is_active,deleted_at,metadata&id=eq.${encodeURIComponent(id)}&limit=1`,
@@ -1569,10 +1607,28 @@ async function cancelDesafio(token, body) {
     /* */
   }
 
+  let adminId = null;
+  try {
+    adminId = requireUserId(token);
+  } catch {
+    /* */
+  }
+  const nowCancel = new Date().toISOString();
+  const prevMeta =
+    desafio.metadata && typeof desafio.metadata === "object" ? desafio.metadata : {};
   const cancelBody = {
     status: "cancelled",
     is_active: false,
-    updated_at: new Date().toISOString(),
+    updated_at: nowCancel,
+    metadata: {
+      ...prevMeta,
+      // Marker: delete-audit-ip-ua-v1
+      cancelled_via: "cancel-desafio-audit-v1",
+      cancelled_at: nowCancel,
+      cancelled_by: adminId,
+      cancelled_ip: audit?.ip || null,
+      cancelled_user_agent: audit?.userAgent || null,
+    },
   };
   try {
     await sb(`/rest/v1/desafios?id=eq.${encodeURIComponent(id)}`, {
@@ -1582,6 +1638,7 @@ async function cancelDesafio(token, body) {
     });
   } catch {
     delete cancelBody.status;
+    delete cancelBody.metadata;
     await sb(`/rest/v1/desafios?id=eq.${encodeURIComponent(id)}`, {
       method: "PATCH",
       token: SERVICE_KEY,
@@ -1595,6 +1652,91 @@ async function cancelDesafio(token, body) {
     id,
     refundedCount,
     refundedCents,
+    cancelledIp: audit?.ip || null,
+  };
+}
+
+/**
+ * Encerra outras sessões (ou todas) do usuário autenticado.
+ * Marker: auth-logout-others-v1
+ * scope: "others" (padrão) | "global"
+ */
+async function logoutAuthSessions(token, body = {}) {
+  if (!token) {
+    const err = new Error("Não autorizado");
+    err.status = 401;
+    throw err;
+  }
+  let uid;
+  try {
+    uid = requireUserId(token);
+  } catch {
+    const err = new Error("Não autorizado");
+    err.status = 401;
+    throw err;
+  }
+  const scope =
+    String(body?.scope || "others").toLowerCase() === "global" ? "global" : "others";
+  const apikey = ANON_KEY || SERVICE_KEY;
+  if (!apikey) throw new Error("ANON_KEY/SERVICE_ROLE_KEY ausente");
+
+  const logoutUrl = `${SUPABASE_URL}/auth/v1/logout?scope=${encodeURIComponent(scope)}`;
+  let gotrueStatus = 0;
+  let gotrueOk = false;
+  try {
+    const res = await fetch(logoutUrl, {
+      method: "POST",
+      headers: {
+        apikey,
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
+    gotrueStatus = res.status;
+    gotrueOk = res.ok || res.status === 204;
+  } catch (e) {
+    gotrueStatus = 0;
+  }
+
+  // Reforço async: ban curto + unban (não bloqueia a resposta HTTP)
+  let banScheduled = false;
+  if (SERVICE_KEY && uid) {
+    const headers = {
+      apikey: SERVICE_KEY,
+      Authorization: `Bearer ${SERVICE_KEY}`,
+      "Content-Type": "application/json",
+    };
+    const adminUser = `${SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(uid)}`;
+    banScheduled = true;
+    fetch(adminUser, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ ban_duration: "8s" }),
+    })
+      .catch(() => null)
+      .finally(() => {
+        setTimeout(() => {
+          fetch(adminUser, {
+            method: "PUT",
+            headers,
+            body: JSON.stringify({ ban_duration: "none" }),
+          }).catch(() => null);
+        }, 9000);
+      });
+  }
+
+  return {
+    ok: true,
+    marker: "auth-logout-others-v1",
+    userId: uid,
+    scope,
+    gotrueStatus,
+    gotrueOk,
+    banPulse: banScheduled,
+    note:
+      scope === "others"
+        ? "Outras sessões encerradas. Se esta aba pedir login em alguns segundos, entre de novo — é o reforço de segurança."
+        : "Todas as sessões encerradas. Faça login novamente.",
   };
 }
 
@@ -7658,7 +7800,7 @@ async function handleServerFn(req, res, id, rawBody = "") {
     console.log("[serverfn-shim] DELETE_DESAFIO");
     try {
       const params = extractServerFnData(rawBody);
-      const data = await deleteDesafio(token, params);
+      const data = await deleteDesafio(token, params, clientMetaFromReq(req));
       return sendTsrOk(res, data);
     } catch (err) {
       console.error("[serverfn-shim] DELETE_DESAFIO error", err);
@@ -8473,7 +8615,11 @@ const server = createServer(async (req, res) => {
       } catch {
         body = {};
       }
-      return sendJson(res, 200, await deleteDesafio(token, body.data || body));
+      return sendJson(
+        res,
+        200,
+        await deleteDesafio(token, body.data || body, clientMetaFromReq(req))
+      );
     } catch (err) {
       const status = Number(err && err.status) || 400;
       return sendJson(res, status, {
@@ -8501,6 +8647,30 @@ const server = createServer(async (req, res) => {
     }
   }
 
+  if (
+    (url.pathname === "/api/arbishield/auth-logout-others" ||
+      url.pathname === "/api/arbishield/auth-logout-sessions") &&
+    req.method === "POST"
+  ) {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      return sendJson(res, 200, await logoutAuthSessions(token, body.data || body));
+    } catch (err) {
+      const status = Number(err && err.status) || 400;
+      return sendJson(res, status, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   if (url.pathname === "/api/arbishield/desafio-cancel" && req.method === "POST") {
     try {
       const token = bearerFromReq(req);
@@ -8512,9 +8682,10 @@ const server = createServer(async (req, res) => {
         body = {};
       }
       const data = body.data || body;
+      const audit = clientMetaFromReq(req);
       // Admin cancela desafio inteiro: { id, cancelWhole: true }
       if (data.cancelWhole === true || data.cancel_desafio === true) {
-        return sendJson(res, 200, await cancelDesafio(token, data));
+        return sendJson(res, 200, await cancelDesafio(token, data, audit));
       }
       // Entrada individual (cliente ou admin): participationId / stepId / desafioId
       if (
@@ -8529,7 +8700,7 @@ const server = createServer(async (req, res) => {
       }
       // Fallback admin: só { id } sem refs de entrada
       if (data.id) {
-        return sendJson(res, 200, await cancelDesafio(token, data));
+        return sendJson(res, 200, await cancelDesafio(token, data, audit));
       }
       throw new Error("Informe participationId ou id do desafio");
     } catch (err) {

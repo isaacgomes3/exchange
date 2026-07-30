@@ -365,6 +365,8 @@
           '<div class="v2-admin-header-right">' +
           '<a class="v2-mode-switch" id="v2ModeSwitch" href="/app.html" title="Abrir área do usuário">Modo usuário</a>' +
           '<button type="button" class="v2-search-chip" id="v2SearchPages">Buscar página <kbd>⌘K</kbd></button>' +
+          // Marker: auth-logout-others-v1
+          '<button type="button" class="v2-search-chip" id="v2EndOtherSessions" title="Encerra sessões em outros PCs/navegadores">Encerrar outras sessões</button>' +
           '<button type="button" class="v2-logout-btn" id="v2AdminLogout">Sair do Sistema</button>' +
           "</div>";
         main.appendChild(adminHeader);
@@ -592,6 +594,54 @@
     logoutLinks.forEach(function (el) {
       el.addEventListener("click", doLogout);
     });
+
+    // Marker: auth-logout-others-v1
+    var endOthersBtn = document.getElementById("v2EndOtherSessions");
+    if (endOthersBtn) {
+      endOthersBtn.addEventListener("click", async function () {
+        if (
+          !confirm(
+            "Encerrar sessões em OUTROS dispositivos/navegadores?\n\n" +
+              "Use se alguém estiver logado na sua conta em outra rede.\n" +
+              "Esta aba pode pedir login de novo em alguns segundos."
+          )
+        ) {
+          return;
+        }
+        endOthersBtn.disabled = true;
+        try {
+          var supa = global.ArbiV2 && global.ArbiV2.client && global.ArbiV2.client();
+          var sess = await supa.auth.getSession();
+          var token =
+            sess &&
+            sess.data &&
+            sess.data.session &&
+            sess.data.session.access_token;
+          if (!token) throw new Error("Sessão não encontrada — faça login.");
+          var res = await fetch("/api/arbishield/auth-logout-others", {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + token,
+            },
+            body: JSON.stringify({ scope: "others" }),
+          });
+          var data = await res.json().catch(function () {
+            return {};
+          });
+          if (!res.ok) throw new Error((data && data.error) || "Falha ao encerrar sessões");
+          alert(
+            "Outras sessões encerradas.\n" +
+              (data.note || "Se esta tela travar, faça login novamente.")
+          );
+        } catch (err) {
+          alert((err && err.message) || "Erro ao encerrar sessões");
+        } finally {
+          endOthersBtn.disabled = false;
+        }
+      });
+    }
 
     if (shell === "app") {
       try {
