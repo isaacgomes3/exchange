@@ -29,12 +29,12 @@ download() {
   if curl -fsSL --retry 3 -H "Accept: application/vnd.github.raw" -H "Cache-Control: no-cache" \
     "$API/$rel?ref=${REF}&t=$t" -o "$tmp" && [[ -s "$tmp" ]]; then
     if [[ -z "$needle" ]] || grep -q "$needle" "$tmp"; then
-      mv -f "$tmp" "$out"; return 0
+      install -m 0644 "$tmp" "$out"; rm -f "$tmp"; return 0
     fi
   fi
   if curl -fsSL --retry 3 "$JSDELIVR/$rel?t=$t" -o "$tmp" && [[ -s "$tmp" ]]; then
     if [[ -z "$needle" ]] || grep -q "$needle" "$tmp"; then
-      mv -f "$tmp" "$out"; return 0
+      install -m 0644 "$tmp" "$out"; rm -f "$tmp"; return 0
     fi
   fi
   rm -f "$tmp"
@@ -168,9 +168,10 @@ sleep 1
 
 log "3/3 publicar admin-desafios (confirm + restore + force)"
 download "deploy/vps-supabase/static/v2/admin-desafios.html" "$WEB/admin-desafios.html" "data-restore-desafio"
-cp -f "$WEB/admin-desafios.html" "$WEB_ROOT/admin-desafios.html" 2>/dev/null || true
+install -m 0644 "$WEB/admin-desafios.html" "$WEB_ROOT/admin-desafios.html" 2>/dev/null || true
 sed -i -E "s|/v2\\.js(\\?[^\"]*)?|/v2.js?v=desafio-guard-$BUST|g; s|/v2-shell\\.js(\\?[^\"]*)?|/v2-shell.js?v=desafio-guard-$BUST|g" \
   "$WEB/admin-desafios.html" "$WEB_ROOT/admin-desafios.html" 2>/dev/null || true
+chmod 0644 "$WEB/admin-desafios.html" "$WEB_ROOT/admin-desafios.html" 2>/dev/null || true
 
 log "checar API publica"
 curl -fsS -m 15 "https://arbishield.app/api/arbishield/desafios" -o /tmp/dz-after.json || true

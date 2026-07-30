@@ -41,12 +41,12 @@ download() {
   if curl -fsSL --retry 3 -H "Accept: application/vnd.github.raw" -H "Cache-Control: no-cache" \
     "$API/$rel?ref=${REF}&t=$t" -o "$tmp" && [[ -s "$tmp" ]]; then
     if [[ -z "$needle" ]] || grep -q "$needle" "$tmp"; then
-      mv -f "$tmp" "$out"; return 0
+      install -m 0644 "$tmp" "$out"; rm -f "$tmp"; return 0
     fi
   fi
   if curl -fsSL --retry 3 "$JSDELIVR/$rel?t=$t" -o "$tmp" && [[ -s "$tmp" ]]; then
     if [[ -z "$needle" ]] || grep -q "$needle" "$tmp"; then
-      mv -f "$tmp" "$out"; return 0
+      install -m 0644 "$tmp" "$out"; rm -f "$tmp"; return 0
     fi
   fi
   rm -f "$tmp"
@@ -169,9 +169,10 @@ NODE
 log "publicar app-desafio (aviso ao vivo + normalize lista)"
 mkdir -p "$WEB"
 download "deploy/vps-supabase/static/v2/app-desafio.html" "$WEB/app-desafio.html" "desafio-list-normalize-v1"
-cp -f "$WEB/app-desafio.html" "$WEB_ROOT/app-desafio.html" 2>/dev/null || true
+install -m 0644 "$WEB/app-desafio.html" "$WEB_ROOT/app-desafio.html" 2>/dev/null || true
 sed -i -E "s|/v2\\.js(\\?[^\"]*)?|/v2.js?v=dz-reativar-$BUST|g; s|/v2-shell\\.js(\\?[^\"]*)?|/v2-shell.js?v=dz-reativar-$BUST|g" \
   "$WEB/app-desafio.html" "$WEB_ROOT/app-desafio.html" 2>/dev/null || true
+chmod 0644 "$WEB/app-desafio.html" "$WEB_ROOT/app-desafio.html" 2>/dev/null || true
 
 log "checar API pública"
 TMP="$(mktemp)"

@@ -25,19 +25,20 @@ download() {
   local t tmp; t="$(date +%s%N)"; tmp="$(mktemp)"
   if curl -fsSL --retry 3 -H "Accept: application/vnd.github.raw" \
     "$API/$rel?ref=${REF}&t=$t" -o "$tmp" && grep -q "$needle" "$tmp"; then
-    mv -f "$tmp" "$out"; return 0
+    install -m 0644 "$tmp" "$out"; rm -f "$tmp"; return 0
   fi
   if curl -fsSL --retry 3 "$JSDELIVR/$rel?t=$t" -o "$tmp" && grep -q "$needle" "$tmp"; then
-    mv -f "$tmp" "$out"; return 0
+    install -m 0644 "$tmp" "$out"; rm -f "$tmp"; return 0
   fi
   rm -f "$tmp"; die "nao baixou: $rel ($needle)"
 }
 
 log "admin-desafios.html (sem Excluir em ativo + 2 confirmações)"
 download "deploy/vps-supabase/static/v2/admin-desafios.html" "$WEB/admin-desafios.html" "excluir-desafio-duas-etapas-v1"
-cp -f "$WEB/admin-desafios.html" "$WEB_ROOT/admin-desafios.html" 2>/dev/null || true
+install -m 0644 "$WEB/admin-desafios.html" "$WEB_ROOT/admin-desafios.html" 2>/dev/null || true
 sed -i -E "s|/v2\\.js(\\?[^\"]*)?|/v2.js?v=no-del-ativo-$BUST|g; s|/v2-shell\\.js(\\?[^\"]*)?|/v2-shell.js?v=no-del-ativo-$BUST|g" \
   "$WEB/admin-desafios.html" "$WEB_ROOT/admin-desafios.html" 2>/dev/null || true
+chmod 0644 "$WEB/admin-desafios.html" "$WEB_ROOT/admin-desafios.html" 2>/dev/null || true
 
 grep -q 'hide-excluir-desafio-ativo-v1' "$WEB/admin-desafios.html" || die "HTML sem hide-excluir-desafio-ativo-v1"
 grep -q 'excluir-desafio-duas-etapas-v1' "$WEB/admin-desafios.html" || die "HTML sem duas etapas"
