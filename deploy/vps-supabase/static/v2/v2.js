@@ -128,7 +128,7 @@
     return res.data.user;
   }
 
-  async function requireAdmin(supa, user) {
+  async function isAdminUser(supa, user) {
     if (!user || isBlockedEmail(user.email)) return false;
     var profile = await supa
       .from("profiles")
@@ -139,12 +139,74 @@
       .from("user_roles")
       .select("role")
       .eq("user_id", user.id);
-    var ok =
+    return (
       !!(profile.data && profile.data.is_super_admin) ||
       (roles.data || []).some(function (r) {
         return r.role === "admin" || r.role === "master_admin";
+      })
+    );
+  }
+
+  /** Status MFA TOTP (Marker: admin-mfa-required-v1). */
+  async function adminMfaStatus(supa) {
+    try {
+      var aal = await supa.auth.mfa.getAuthenticatorAssuranceLevel();
+      var listed = await supa.auth.mfa.listFactors();
+      var totp = (listed.data && listed.data.totp) || [];
+      var all = (listed.data && listed.data.all) || [];
+      var pool = totp.length ? totp : all;
+      var verified = pool.filter(function (f) {
+        var t = String(f.factor_type || f.factorType || f.type || "totp").toLowerCase();
+        return (
+          (t === "totp" || !f.factor_type) &&
+          String(f.status || "").toLowerCase() === "verified"
+        );
       });
-    return ok;
+      return {
+        currentLevel: (aal.data && aal.data.currentLevel) || "aal1",
+        nextLevel: (aal.data && aal.data.nextLevel) || null,
+        hasVerified: verified.length > 0,
+      };
+    } catch (e) {
+      return { currentLevel: "aal1", nextLevel: null, hasVerified: false };
+    }
+  }
+
+  /**
+   * Admin obrigatório com 2FA cadastrado + sessão aal2.
+   * Sem fator → Perfil para cadastrar. Com fator mas aal1 → login 2FA.
+   */
+  async function ensureAdminMfa(supa, user, opts) {
+    opts = opts || {};
+    if (!(await isAdminUser(supa, user))) {
+      return { ok: true, admin: false };
+    }
+    var st = await adminMfaStatus(supa);
+    var path = String((location && location.pathname) || "");
+    var onPerfil = /app-perfil\.html/i.test(path);
+    var onAuth = /auth\.html/i.test(path);
+    if (!st.hasVerified) {
+      if (!onPerfil && !onAuth && opts.redirect !== false) {
+        location.replace("/app-perfil.html?force_mfa=1");
+      }
+      return { ok: false, admin: true, needEnroll: true };
+    }
+    if (String(st.currentLevel) !== "aal2") {
+      if (!onAuth && opts.redirect !== false) {
+        location.replace("/auth.html?mfa_required=1");
+      }
+      return { ok: false, admin: true, needChallenge: true };
+    }
+    return { ok: true, admin: true, mfa: true };
+  }
+
+  async function requireAdmin(supa, user, opts) {
+    opts = opts || {};
+    if (!(await isAdminUser(supa, user))) return false;
+    // Marker: admin-mfa-required-v1 — todos os admins precisam de 2FA
+    if (opts.skipMfa) return true;
+    var mfa = await ensureAdminMfa(supa, user, opts);
+    return !!mfa.ok;
   }
 
   async function requireFinanceAdmin(supa, user) {
@@ -318,6 +380,9 @@
     money: money,
     requireUser: requireUser,
     requireAdmin: requireAdmin,
+    isAdminUser: isAdminUser,
+    adminMfaStatus: adminMfaStatus,
+    ensureAdminMfa: ensureAdminMfa,
     requireFinanceAdmin: requireFinanceAdmin,
     canAccessFinance: canAccessFinance,
     isFinancePageId: isFinancePageId,

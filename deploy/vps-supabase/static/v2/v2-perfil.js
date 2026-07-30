@@ -726,6 +726,34 @@
       if (!user) return;
       state.user = user;
       await load(supa);
+      // Marker: admin-mfa-required-v1 — força cadastro 2FA para admin
+      var forceMfa = false;
+      try {
+        forceMfa = new URLSearchParams(location.search || "").get("force_mfa") === "1";
+      } catch (eF) {}
+      var isAdm = false;
+      try {
+        isAdm =
+          typeof ArbiV2.isAdminUser === "function" &&
+          (await ArbiV2.isAdminUser(supa, user));
+      } catch (eA) {}
+      if (isAdm) {
+        var st = { hasVerified: false };
+        try {
+          st =
+            (typeof ArbiV2.adminMfaStatus === "function" &&
+              (await ArbiV2.adminMfaStatus(supa))) ||
+            st;
+        } catch (eS) {}
+        if (!st.hasVerified || forceMfa) {
+          showErr(
+            "Admin: autenticação em 2 fatores é obrigatória. Escaneie o QR e confirme o código para liberar o painel."
+          );
+          if (!st.hasVerified) {
+            startMfaEnroll(supa);
+          }
+        }
+      }
     } catch (ex) {
       showErr((ex && ex.message) || "Erro ao carregar perfil");
       var root = document.getElementById("pfRoot");

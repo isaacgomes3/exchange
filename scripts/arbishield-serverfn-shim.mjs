@@ -1232,7 +1232,7 @@ async function listPendingDesafioParticipations(desafioId) {
  * metadata.protect_from_casual_delete exige confirm:"FORCAR_EXCLUIR_PROTEGIDO".
  */
 async function deleteDesafio(token, body, clientMeta = null) {
-  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  await requireAdminMfa(token);
   const id = String(body?.id || body?.desafioId || body?.desafio_id || "").trim();
   if (!id) throw new Error("id obrigatório");
   const audit =
@@ -1422,7 +1422,7 @@ async function deleteDesafio(token, body, clientMeta = null) {
  * Marker: restore-desafio-v1
  */
 async function restoreDesafio(token, body) {
-  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  await requireAdminMfa(token);
   const id = String(body?.id || body?.desafioId || body?.desafio_id || "").trim();
   if (!id) throw new Error("id obrigatório");
   const publish =
@@ -1556,7 +1556,7 @@ async function restoreDesafio(token, body) {
 
 /** Cancela o desafio inteiro e devolve entradas pendentes à carteira Desafio. */
 async function cancelDesafio(token, body, clientMeta = null) {
-  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  await requireAdminMfa(token);
   const id = String(body?.id || body?.desafioId || body?.desafio_id || "").trim();
   if (!id) throw new Error("id obrigatório");
   const audit =
@@ -2514,6 +2514,32 @@ async function currentUserIsAdmin(token) {
   return (Array.isArray(roles) ? roles : []).some(
     (r) => r.role === "admin" || r.role === "master_admin"
   );
+}
+
+/** JWT aal (aal1 | aal2). Marker: admin-mfa-required-v1 */
+function tokenAal(token) {
+  const payload = decodeJwtPayload(token);
+  return String(payload?.aal || "aal1").toLowerCase();
+}
+
+/**
+ * Admin + sessão 2FA (aal2). Bloqueia delete/settle/cancel sem autenticador.
+ */
+async function requireAdminMfa(token) {
+  if (!(await currentUserIsAdmin(token))) {
+    const err = new Error("Acesso negado");
+    err.status = 403;
+    throw err;
+  }
+  if (tokenAal(token) !== "aal2") {
+    const err = new Error(
+      "2FA obrigatório para admin. Cadastre em Perfil → Ativar 2FA e faça login com o código do autenticador."
+    );
+    err.status = 403;
+    err.code = "admin_mfa_required";
+    throw err;
+  }
+  return true;
 }
 
 /** Só estes e-mails acessam APIs da área Financeiro. */
@@ -3834,7 +3860,7 @@ async function activateNextDesafioStep(desafioId, currentStepIndex) {
 }
 
 async function settleDesafioStep(token, body, clientMeta = null) {
-  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  await requireAdminMfa(token);
   const stepId = String(body?.stepId || body?.step_id || "").trim();
   let winningSide = String(
     body?.winningSide || body?.winning_side || body?.outcome || ""

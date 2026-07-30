@@ -278,7 +278,25 @@
               return;
             }
           }
-          location.replace("/app.html");
+          // Marker: admin-mfa-required-v1 — admin sem 2FA vai cadastrar no Perfil
+          try {
+            if (ArbiV2.isAdminUser && (await ArbiV2.isAdminUser(supa, res.data.user))) {
+              var mfaSt = ArbiV2.adminMfaStatus
+                ? await ArbiV2.adminMfaStatus(supa)
+                : { hasVerified: false };
+              if (!mfaSt.hasVerified) {
+                location.replace("/app-perfil.html?force_mfa=1");
+                return;
+              }
+            }
+          } catch (eAdm) {}
+          var nextUrl = "/app.html";
+          try {
+            var q = new URLSearchParams(location.search || "");
+            if (q.get("next")) nextUrl = q.get("next");
+            else if (q.get("mfa_required") === "1") nextUrl = "/admin.html";
+          } catch (eQ) {}
+          location.replace(nextUrl);
         } catch (ex) {
           err.textContent = mapAuthError(ex, mode);
           err.classList.add("show");
@@ -305,7 +323,13 @@
             code: code,
           });
           if (ver.error) throw ver.error;
-          location.replace("/app.html");
+          var dest = "/app.html";
+          try {
+            var q2 = new URLSearchParams(location.search || "");
+            if (q2.get("mfa_required") === "1") dest = "/admin.html";
+            else if (q2.get("next")) dest = q2.get("next");
+          } catch (eD) {}
+          location.replace(dest);
         } catch (ex) {
           err.textContent = (ex && ex.message) || "Falha no 2FA";
           err.classList.add("show");

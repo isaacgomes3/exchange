@@ -302,17 +302,29 @@
         : "Líder global em proteção de apostas";
 
     // Área Financeiro: só isaacgomes3@gmail.com e financeiro@arbishield.com
+    // Marker: admin-mfa-required-v1 — admin sem 2FA não entra no painel
     var canFinance = false;
     if (shell === "admin" && global.ArbiV2 && global.ArbiV2.client) {
       try {
         var earlySupa = global.ArbiV2.client();
         var earlySess = await earlySupa.auth.getUser();
         var earlyUser = earlySess.data && earlySess.data.user;
-        if (earlyUser) {
-          canFinance =
-            typeof global.ArbiV2.canAccessFinance === "function" &&
-            !!global.ArbiV2.canAccessFinance(earlyUser.email);
+        if (!earlyUser) {
+          location.replace("/auth.html");
+          return;
         }
+        if (typeof global.ArbiV2.ensureAdminMfa === "function") {
+          var mfaGate = await global.ArbiV2.ensureAdminMfa(earlySupa, earlyUser);
+          if (!mfaGate.ok) return;
+        } else if (typeof global.ArbiV2.requireAdmin === "function") {
+          if (!(await global.ArbiV2.requireAdmin(earlySupa, earlyUser))) {
+            location.replace("/auth.html");
+            return;
+          }
+        }
+        canFinance =
+          typeof global.ArbiV2.canAccessFinance === "function" &&
+          !!global.ArbiV2.canAccessFinance(earlyUser.email);
       } catch (earlyErr) {}
       if (
         !canFinance &&
@@ -655,8 +667,8 @@
               var modeBtn = document.getElementById("v2ModeSwitch");
               if (
                 modeBtn &&
-                global.ArbiV2.requireAdmin &&
-                (await global.ArbiV2.requireAdmin(appSupa, appUser))
+                global.ArbiV2.isAdminUser &&
+                (await global.ArbiV2.isAdminUser(appSupa, appUser))
               ) {
                 modeBtn.hidden = false;
               }
