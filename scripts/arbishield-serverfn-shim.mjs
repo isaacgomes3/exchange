@@ -7989,7 +7989,11 @@ async function handleServerFn(req, res, id, rawBody = "") {
     try {
       return sendTsrOk(
         res,
-        await settleDesafioStep(token, extractServerFnData(rawBody))
+        await settleDesafioStep(
+          token,
+          extractServerFnData(rawBody),
+          clientMetaFromReq(req)
+        )
       );
     } catch (err) {
       console.error("[serverfn-shim] DESAFIO_SETTLE error", err);
