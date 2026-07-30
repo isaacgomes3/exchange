@@ -51,15 +51,16 @@ if [[ "$SHIM_UNIT" == *arbishield-serverfn-shim.mjs* ]]; then
   SHIM_PATH="$(echo "$SHIM_UNIT" | grep -oE '/[^ ]+arbishield-serverfn-shim\.mjs' | head -1 || true)"
 fi
 [[ -n "${SHIM_PATH:-}" ]] || SHIM_PATH="$SCRIPTS_DIR/arbishield-serverfn-shim.mjs"
-download "scripts/arbishield-serverfn-shim.mjs" "$SHIM_PATH" "auth-logout-others-v1"
+download "scripts/arbishield-serverfn-shim.mjs" "$SHIM_PATH" "delete-audit-admin-name-v1"
 grep -q 'delete-audit-ip-ua-v1' "$SHIM_PATH" || die "shim sem delete-audit-ip-ua-v1"
+grep -q 'delete-audit-admin-name-v1' "$SHIM_PATH" || die "shim sem delete-audit-admin-name-v1"
 install -m 0644 "$SHIM_PATH" "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs" 2>/dev/null || true
 systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 sleep 1
 
 log "2/4 v2-shell.js + admin-desafios.html"
 download "deploy/vps-supabase/static/v2/v2-shell.js" "$WEB/v2-shell.js" "auth-logout-others-v1"
-download "deploy/vps-supabase/static/v2/admin-desafios.html" "$WEB/admin-desafios.html" "deleted_ip"
+download "deploy/vps-supabase/static/v2/admin-desafios.html" "$WEB/admin-desafios.html" "Excluído por:"
 install -m 0644 "$WEB/v2-shell.js" "$WEB_ROOT/v2-shell.js" 2>/dev/null || true
 install -m 0644 "$WEB/admin-desafios.html" "$WEB_ROOT/admin-desafios.html" 2>/dev/null || true
 # cache bust em páginas admin comuns
@@ -125,4 +126,5 @@ echo "  local auth-logout-others → HTTP $code (401/400 sem token = rota ok)"
 echo
 echo "OK — hard refresh no admin."
 echo "Botão: Encerrar outras sessões (topo direito)."
-echo "Delete/cancel passam a gravar deleted_ip / deleted_user_agent no metadata."
+echo "Delete/cancel/settle gravam e-mail do admin + IP no metadata."
+echo "Consultar histórico: bash scripts/vps-quem-apagou-desafios.sh (ou curl do GitHub)."

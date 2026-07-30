@@ -775,22 +775,49 @@ async function sb(path, { token, method = "GET", body } = {}) {
 async function resolveAdminDisplayName(adminId) {
   const id = String(adminId || "").trim();
   if (!id) return null;
-  let name = id.slice(0, 8);
+  const ident = await resolveAdminIdentity(adminId);
+  return (ident && (ident.name || ident.email)) || id.slice(0, 8);
+}
+
+/** Nome + e-mail do admin (para audit de delete/cancel/settle). */
+async function resolveAdminIdentity(adminId) {
+  const id = String(adminId || "").trim();
+  if (!id) return { name: null, email: null };
+  let name = null;
+  let email = null;
   try {
     const profRows = await sb(
       `/rest/v1/profiles?select=full_name&id=eq.${encodeURIComponent(id)}&limit=1`,
       { token: SERVICE_KEY }
     );
     const prof = Array.isArray(profRows) ? profRows[0] : null;
-    if (prof) {
-      name =
-        (prof.full_name && String(prof.full_name).trim()) ||
-        name;
+    if (prof && prof.full_name) name = String(prof.full_name).trim() || null;
+  } catch {
+    /* */
+  }
+  try {
+    if (SERVICE_KEY && SUPABASE_URL) {
+      const res = await fetch(
+        `${SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(id)}`,
+        {
+          headers: {
+            apikey: SERVICE_KEY,
+            Authorization: `Bearer ${SERVICE_KEY}`,
+          },
+        }
+      );
+      if (res.ok) {
+        const u = await res.json();
+        email = (u && u.email && String(u.email).trim()) || null;
+        if (!name && u && u.user_metadata && u.user_metadata.full_name) {
+          name = String(u.user_metadata.full_name).trim() || null;
+        }
+      }
     }
   } catch {
-    /* keep short id */
+    /* */
   }
-  return name;
+  return { name: name || null, email: email || null };
 }
 
 function creatorMetaPatch(prevMeta, adminId, adminName) {
@@ -1250,6 +1277,7 @@ async function deleteDesafio(token, body, clientMeta = null) {
   } catch {
     /* */
   }
+  const adminIdent = adminId ? await resolveAdminIdentity(adminId) : { name: null, email: null };
 
   const now = new Date().toISOString();
   const delBody = {
@@ -1261,6 +1289,9 @@ async function deleteDesafio(token, body, clientMeta = null) {
       deleted_via: "delete-desafio-guard-v3",
       deleted_at: now,
       deleted_by: adminId,
+      // Marker: delete-audit-admin-name-v1
+      deleted_by_name: adminIdent.name || null,
+      deleted_by_email: adminIdent.email || null,
       force: !!force,
       // Marker: delete-audit-ip-ua-v1
       deleted_ip: audit?.ip || null,
@@ -1613,6 +1644,7 @@ async function cancelDesafio(token, body, clientMeta = null) {
   } catch {
     /* */
   }
+  const cancelIdent = adminId ? await resolveAdminIdentity(adminId) : { name: null, email: null };
   const nowCancel = new Date().toISOString();
   const prevMeta =
     desafio.metadata && typeof desafio.metadata === "object" ? desafio.metadata : {};
@@ -1626,6 +1658,9 @@ async function cancelDesafio(token, body, clientMeta = null) {
       cancelled_via: "cancel-desafio-audit-v1",
       cancelled_at: nowCancel,
       cancelled_by: adminId,
+      // Marker: delete-audit-admin-name-v1
+      cancelled_by_name: cancelIdent.name || null,
+      cancelled_by_email: cancelIdent.email || null,
       cancelled_ip: audit?.ip || null,
       cancelled_user_agent: audit?.userAgent || null,
     },
@@ -3964,6 +3999,7 @@ async function settleDesafioStep(token, body, clientMeta = null) {
         ? body.clientMeta
         : null;
   const settledAt = new Date().toISOString();
+  const settleIdent = adminId ? await resolveAdminIdentity(adminId) : { name: null, email: null };
   await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`, {
     method: "PATCH",
     token: SERVICE_KEY,
@@ -3984,6 +4020,9 @@ async function settleDesafioStep(token, body, clientMeta = null) {
         settled_ip: audit?.ip || null,
         settled_user_agent: audit?.userAgent || null,
         settled_outcome: result,
+        // Marker: delete-audit-admin-name-v1
+        settled_by_name: settleIdent.name || null,
+        settled_by_email: settleIdent.email || null,
       },
     },
   });
