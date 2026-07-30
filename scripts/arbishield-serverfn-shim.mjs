@@ -1317,6 +1317,15 @@ async function restoreDesafio(token, body) {
     }
   }
 
+  // reopen_settled / force: também limpa void+settled_at (senão o jogo some do app)
+  const reopenSettled =
+    body?.reopen_settled === true ||
+    body?.force === true ||
+    String(body?.reopen_settled || "").toLowerCase() === "1";
+  const shiftMin = Math.max(0, Number(body?.shift_starts_minutes || body?.shiftMinutes || 0) || 0);
+  const newStarts =
+    shiftMin > 0 ? new Date(Date.now() + shiftMin * 60 * 1000).toISOString() : null;
+
   let stepsRestored = 0;
   try {
     const steps = await sb(
@@ -1324,24 +1333,44 @@ async function restoreDesafio(token, body) {
       { token: SERVICE_KEY }
     );
     for (const s of Array.isArray(steps) ? steps : []) {
-      if (s.deleted_at || s.settled_at) continue;
       const st = String(s.status || "").toLowerCase();
       const res = String(s.result || "").toLowerCase();
-      const needs =
+      const softNeeds =
+        !!s.deleted_at ||
         st === "cancelled" ||
         st === "canceled" ||
         res === "cancelled" ||
         res === "canceled";
-      if (!needs && st === "pending") continue;
+      const settledNeeds =
+        reopenSettled &&
+        (!!s.settled_at ||
+          ["done", "settled", "closed", "void"].includes(st) ||
+          ["void", "win", "lost", "bateu", "empate_anula"].includes(res));
+      const needs = softNeeds || settledNeeds || (!!newStarts && !s.settled_at);
+      if (!needs && st === "pending" && !s.deleted_at) {
+        if (newStarts) {
+          await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(s.id)}`, {
+            method: "PATCH",
+            token: SERVICE_KEY,
+            body: { starts_at: newStarts, updated_at: now },
+          }).catch(() => null);
+          stepsRestored += 1;
+        }
+        continue;
+      }
       if (!needs) continue;
+      const patchBody = {
+        deleted_at: null,
+        status: "pending",
+        result: null,
+        updated_at: now,
+      };
+      if (reopenSettled || settledNeeds) patchBody.settled_at = null;
+      if (newStarts) patchBody.starts_at = newStarts;
       await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(s.id)}`, {
         method: "PATCH",
         token: SERVICE_KEY,
-        body: {
-          status: "pending",
-          result: null,
-          updated_at: now,
-        },
+        body: patchBody,
       }).catch(() => null);
       stepsRestored += 1;
     }
@@ -1355,7 +1384,9 @@ async function restoreDesafio(token, body) {
     id,
     published: !!publish,
     stepsRestored,
-    marker: "restore-desafio-v1",
+    reopenSettled: !!reopenSettled,
+    shiftedStartsMinutes: shiftMin || 0,
+    marker: "restore-desafio-v2",
   };
 }
 

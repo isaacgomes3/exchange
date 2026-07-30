@@ -63,9 +63,11 @@ SERVICE_KEY="${ARBISHIELD_SERVICE_ROLE_KEY:-${SERVICE_ROLE_KEY:-${SUPABASE_SERVI
 [[ -n "$SUPABASE_URL" ]] || die "SUPABASE_URL ausente"
 
 IDS="${IDS:-9dd0901f-a449-47c1-8443-c1b0c66303c4,e502804b-05ca-4c0d-8f69-a3a45d9d18ee,8beb938c-fa29-4bb6-9d97-fd1650bba3c4,b598561a-abe0-41c3-aeaa-5f1bd7c90d52}"
+# Se >0, empurra starts_at para o futuro (deixar apostável de novo). Ex: SHIFT_MINUTES=90
+SHIFT_MINUTES="${SHIFT_MINUTES:-90}"
 
 log "1/3 restaurar desafios no banco"
-export SUPABASE_URL SERVICE_KEY IDS
+export SUPABASE_URL SERVICE_KEY IDS SHIFT_MINUTES
 node --input-type=module <<'NODE'
 const url = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const key = process.env.SERVICE_KEY;
@@ -110,21 +112,36 @@ for (const id of ids) {
       },
     },
   });
-  const steps = await sb(`/rest/v1/desafio_steps?select=id,status,result,settled_at,match_label,starts_at&desafio_id=eq.${encodeURIComponent(id)}`);
+  // Reabre etapas mesmo com settled_at/void — senão o app “some” com o jogo
+  // (stepIsFinished) e a aba Ativos trata como Encerrado.
+  const steps = await sb(`/rest/v1/desafio_steps?select=id,status,result,settled_at,deleted_at,match_label,starts_at&desafio_id=eq.${encodeURIComponent(id)}`);
+  const shiftMin = Math.max(0, Number(process.env.SHIFT_MINUTES || 0) || 0);
+  const newStarts = shiftMin > 0
+    ? new Date(Date.now() + shiftMin * 60 * 1000).toISOString()
+    : null;
   for (const s of Array.isArray(steps) ? steps : []) {
-    if (s.settled_at) continue;
     const st = String(s.status || "").toLowerCase();
     const res = String(s.result || "").toLowerCase();
     const reopen =
-      ["cancelled", "canceled"].includes(st) ||
-      ["cancelled", "canceled", "void"].includes(res) ||
+      !!s.deleted_at ||
+      !!s.settled_at ||
+      ["cancelled", "canceled", "done", "settled", "closed"].includes(st) ||
+      ["cancelled", "canceled", "void", "win", "lost", "bateu", "empate_anula"].includes(res) ||
       !st;
-    if (reopen) {
+    if (reopen || newStarts) {
+      const body = {
+        deleted_at: null,
+        status: "pending",
+        result: null,
+        settled_at: null,
+        updated_at: now,
+      };
+      if (newStarts) body.starts_at = newStarts;
       await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(s.id)}`, {
         method: "PATCH",
-        body: { status: "pending", result: null, updated_at: now },
+        body,
       });
-      console.log("  step reopen:", s.match_label || s.id);
+      console.log("  step reopen:", s.match_label || s.id, st || res || "ok", newStarts ? `starts→${newStarts}` : "");
     } else {
       console.log("  step keep:", s.match_label || s.id, st);
     }

@@ -1708,7 +1708,21 @@
             '<div class="ops-empty"><h2>Nenhum desafio disponível no momento</h2><p>Aguarde o lançamento de um novo desafio pela equipe ArbiShield.</p></div>';
           return;
         }
-        host.innerHTML = visible.map(function (it) { return cardHtml(it, now); }).join("");
+        // Se só há jogos já iniciados, deixa claro que não “sumiram” — só fecharam entrada.
+        var playableN = 0;
+        var liveN = 0;
+        visible.forEach(function (it) {
+          var ph = phaseOf(it, now);
+          if (ph === "live") liveN += 1;
+          else if (ph !== "done" && ph !== "soon") playableN += 1;
+        });
+        var tip =
+          playableN === 0 && liveN > 0
+            ? '<div class="ops-empty" style="margin-bottom:14px;padding:14px 16px"><h2 style="font-size:1.05rem;margin:0 0 6px">Entradas encerradas (ao vivo)</h2><p style="margin:0">Há ' +
+              liveN +
+              " jogo(s) em andamento abaixo — apostas só antes do horário de início.</p></div>"
+            : "";
+        host.innerHTML = tip + visible.map(function (it) { return cardHtml(it, now); }).join("");
 
         function refreshCardMath(card) {
           var id = card.getAttribute("data-card");
@@ -2033,6 +2047,14 @@
         });
       }
 
+      function normalizeDesafioRows(data) {
+        // marker: desafio-list-normalize-v1
+        if (Array.isArray(data)) return data;
+        if (data && Array.isArray(data.items)) return data.items;
+        if (data && Array.isArray(data.desafios)) return data.desafios;
+        return [];
+      }
+
       async function refreshDesafioCardsLive() {
         try {
           // GET (nginx antigo às vezes bloqueia POST em rotas não mapeadas)
@@ -2048,7 +2070,7 @@
           });
           var data = await res.json().catch(function () { return []; });
           if (!res.ok) return;
-          var rows = Array.isArray(data) ? data : [];
+          var rows = normalizeDesafioRows(data);
           var alive = rows.filter(function (d) {
             return !d.deleted_at && String(d.status || "").toLowerCase() !== "deleted";
           });
@@ -2178,7 +2200,7 @@
         });
         var data = await res.json().catch(function () { return []; });
         if (!res.ok) throw new Error((data && data.error) || "Falha ao carregar desafios");
-        var rows = Array.isArray(data) ? data : [];
+        var rows = normalizeDesafioRows(data);
         var alive = rows.filter(function (d) {
           return !d.deleted_at && String(d.status || "").toLowerCase() !== "deleted";
         });
