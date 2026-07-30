@@ -69,8 +69,8 @@ install -m 0644 "$SHIM_PATH" "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs" 2>/dev/
 systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 sleep 1
 
-log "4/5 UI enroll-v3 + nginx rota"
-download "deploy/vps-supabase/static/v2/v2-perfil.js" "$WEB/v2-perfil.js" "mfa-totp-enroll-v3"
+log "4/5 UI enroll-v4 (fix código apagado no confirm) + nginx"
+download "deploy/vps-supabase/static/v2/v2-perfil.js" "$WEB/v2-perfil.js" "mfa-totp-enroll-v4"
 download "deploy/vps-supabase/static/v2/v2.js" "$WEB/v2.js" "admin-mfa-required-v1"
 download "deploy/vps-supabase/static/v2/app-perfil.html" "$WEB/app-perfil.html" "v2-perfil.js"
 for f in v2-perfil.js v2.js app-perfil.html; do
@@ -94,6 +94,12 @@ if [[ -n "$NGINX_FILE" ]]; then
   nginx -t && systemctl reload nginx
   log "nginx: $NGINX_FILE"
 fi
+
+log "4b/5 sincronizar relógio da VPS (NTP) — TOTP depende disso"
+timedatectl set-ntp true 2>/dev/null || true
+chronyc makestep 2>/dev/null || ntpdate -u pool.ntp.org 2>/dev/null || true
+date -u '+  UTC agora: %Y-%m-%d %H:%M:%S'
+timedatectl status 2>/dev/null | head -8 || true
 
 log "5/5 checagens"
 echo "  MFA env no auth:"

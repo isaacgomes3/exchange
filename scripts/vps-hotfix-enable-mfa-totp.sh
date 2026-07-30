@@ -138,7 +138,7 @@ log "2/4 recrear auth (GoTrue) com MFA — sessões JWT atuais continuam até ex
 sleep 2
 
 log "3/4 publicar UI (perfil 2FA + login challenge)"
-download "deploy/vps-supabase/static/v2/v2-perfil.js" "$WEB/v2-perfil.js" "mfa-totp-enroll-v3"
+download "deploy/vps-supabase/static/v2/v2-perfil.js" "$WEB/v2-perfil.js" "mfa-totp-enroll-v4"
 download "deploy/vps-supabase/static/v2/auth.html" "$WEB/auth.html" "mfa-totp-challenge-v1"
 download "deploy/vps-supabase/static/v2/app-perfil.html" "$WEB/app-perfil.html" "v2-perfil.js"
 install -m 0644 "$WEB/v2-perfil.js" "$WEB_ROOT/v2-perfil.js" 2>/dev/null || true
