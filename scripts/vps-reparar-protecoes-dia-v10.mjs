@@ -725,7 +725,8 @@ async function fetchDayProtections(fromIso, toIso) {
   const select =
     "id,user_id,match_id,status,settled_outcome,settled_at,created_at,amount_cents,responsibility_cents,odd,platform_deduction_cents,platform_profit_cents,locked_deduction_cents,exchange_fee_cents,metadata";
   const statusIn =
-    "won_exchange,lost_exchange,won_platform,lost_platform,settled,void,cancelled,canceled";
+    "won_exchange,lost_exchange,won_platform,lost_platform,settled,void";
+  // cancelled/canceled de propósito FORA — cancel ≠ Empate Anula
 
   const [laysBySettle, backsBySettle, laysByCreate, backsByCreate] =
     await Promise.all([
@@ -780,6 +781,12 @@ async function main() {
   const issues = [];
 
   for (const row of rows) {
+    const st = String(row.status || "")
+      .toLowerCase()
+      .trim();
+    // Cancelamento NÃO é Empate Anula — fee_upfront só estorna taxa (já feito no cancel).
+    if (st === "cancelled" || st === "canceled") continue;
+
     const outcome = settlementOutcomeFromProtectionRow(row);
     if (!outcome) continue;
     const amount = n(row.responsibility_cents || row.amount_cents);
