@@ -665,6 +665,7 @@
         if (r === "won") return "Vitória";
         if (r === "lost") return "Casa";
         if (r === "pending") return "Pendente";
+        if (r === "cancelled" || r === "canceled") return "Cancelado";
         return r || "—";
       }
 
@@ -790,6 +791,7 @@
         if (r === "win" || r === "won" || r === "won_platform") return "won";
         if (r === "lose" || r === "lost" || r === "won_exchange" || r === "casa")
           return "lost";
+        if (r === "cancelled" || r === "canceled") return "cancelled";
         if (r === "pending" || r === "active" || r === "open") return "pending";
         return r;
       }
@@ -832,6 +834,7 @@
           var wonN = 0;
           var lostN = 0;
           var pendingN = 0;
+          var cancelledN = 0;
           var entries = ordered.map(function (p) {
             var res = normalizeHistResult(p.result);
             var amt = Number(p.amount_cents) || 0;
@@ -841,6 +844,7 @@
               profit += pr;
               wonN += 1;
             } else if (res === "lost") lostN += 1;
+            else if (res === "cancelled") cancelledN += 1;
             else pendingN += 1;
             var step = stepMap[String(p.step_id || "")] || null;
             var matchLabel = step
@@ -866,11 +870,17 @@
           if (lastRes === "lost") {
             status = "sucesso_casa";
             statusLabel = "Sucesso na casa";
+          } else if (lastRes === "cancelled" && pendingN === 0) {
+            status = "cancelado";
+            statusLabel = "Cancelado";
           } else if (wonN >= maxEntries && pendingN === 0) {
             status = "finalizado";
             statusLabel = "Finalizado";
           } else if (pendingN > 0) {
             statusLabel = "Aguardando resultado";
+          } else if (cancelledN > 0 && pendingN === 0 && wonN === 0 && lostN === 0) {
+            status = "cancelado";
+            statusLabel = "Cancelado";
           }
           return {
             desafioId: desafioId,

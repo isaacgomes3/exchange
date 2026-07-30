@@ -1139,6 +1139,112 @@ async function deleteDesafio(token, body) {
   return { ok: true, deleted: true, id };
 }
 
+/**
+ * Restaura desafio soft-deleted (e etapas canceladas sem settle).
+ * Marker: restore-desafio-v1
+ */
+async function restoreDesafio(token, body) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const id = String(body?.id || body?.desafioId || body?.desafio_id || "").trim();
+  if (!id) throw new Error("id obrigatório");
+  const publish =
+    body?.publish === true ||
+    body?.is_active === true ||
+    String(body?.publish || "").toLowerCase() === "1";
+
+  const desafioRows = await sb(
+    `/rest/v1/desafios?select=id,title,status,is_active,deleted_at&id=eq.${encodeURIComponent(id)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const desafio = Array.isArray(desafioRows) ? desafioRows[0] : null;
+  if (!desafio?.id) {
+    const err = new Error("Desafio não encontrado");
+    err.status = 404;
+    throw err;
+  }
+
+  const now = new Date().toISOString();
+  const patch = {
+    deleted_at: null,
+    status: publish ? "active" : "draft",
+    is_active: !!publish,
+    updated_at: now,
+  };
+  if (publish) {
+    patch.published_at = now;
+  }
+
+  try {
+    await sb(`/rest/v1/desafios?id=eq.${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: patch,
+    });
+  } catch {
+    // alguns ambientes rejeitam null em deleted_at via JSON — retry sem status
+    const soft = {
+      is_active: !!publish,
+      updated_at: now,
+    };
+    await sb(`/rest/v1/desafios?id=eq.${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: soft,
+    });
+    // força deleted_at null via filtro dedicado se necessário
+    try {
+      await sb(`/rest/v1/desafios?id=eq.${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: { deleted_at: null, status: publish ? "active" : "draft" },
+      });
+    } catch {
+      /* */
+    }
+  }
+
+  let stepsRestored = 0;
+  try {
+    const steps = await sb(
+      `/rest/v1/desafio_steps?select=id,status,result,settled_at,deleted_at,starts_at&desafio_id=eq.${encodeURIComponent(id)}`,
+      { token: SERVICE_KEY }
+    );
+    for (const s of Array.isArray(steps) ? steps : []) {
+      if (s.deleted_at || s.settled_at) continue;
+      const st = String(s.status || "").toLowerCase();
+      const res = String(s.result || "").toLowerCase();
+      const needs =
+        st === "cancelled" ||
+        st === "canceled" ||
+        res === "cancelled" ||
+        res === "canceled";
+      if (!needs && st === "pending") continue;
+      if (!needs) continue;
+      await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(s.id)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          status: "pending",
+          result: null,
+          updated_at: now,
+        },
+      }).catch(() => null);
+      stepsRestored += 1;
+    }
+  } catch {
+    /* */
+  }
+
+  return {
+    ok: true,
+    restored: true,
+    id,
+    published: !!publish,
+    stepsRestored,
+    marker: "restore-desafio-v1",
+  };
+}
+
 /** Cancela o desafio inteiro e devolve entradas pendentes à carteira Desafio. */
 async function cancelDesafio(token, body) {
   if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
@@ -8194,6 +8300,25 @@ const server = createServer(async (req, res) => {
         body = {};
       }
       return sendJson(res, 200, await deleteDesafio(token, body.data || body));
+    } catch (err) {
+      const status = Number(err && err.status) || 400;
+      return sendJson(res, status, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/desafio-restore" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = JSON.parse(raw || "{}");
+      } catch {
+        body = {};
+      }
+      return sendJson(res, 200, await restoreDesafio(token, body.data || body));
     } catch (err) {
       const status = Number(err && err.status) || 400;
       return sendJson(res, status, {

@@ -491,6 +491,7 @@
       <button type="button" class="tab is-on" data-f="active">Ativos</button>
       <button type="button" class="tab" data-f="draft">Rascunhos</button>
       <button type="button" class="tab" data-f="pending">Pendente</button>
+      <button type="button" class="tab" data-f="deleted">Excluídos</button>
       <input id="search" type="search" placeholder="Buscar desafio ou jogo" />
     </div>
     <div class="meta" id="meta">Carregando…</div>
@@ -676,6 +677,9 @@
     }
 
     function desafioBadge(d) {
+      if (d && d.deleted_at) {
+        return { cls: "red", label: "Excluído" };
+      }
       if (isDesafioCancelled(d)) {
         return { cls: "amber", label: "Cancelado" };
       }
@@ -1491,20 +1495,25 @@
       const filter = window.__desafioFilter || "active";
       const q = (window.__desafioQ || "").trim().toLowerCase();
       let visible = rows
-        .filter((x) => !x.deleted_at)
+        .slice()
         .sort((a, b) => {
           const ta = new Date(a.updated_at || a.created_at || 0).getTime();
           const tb = new Date(b.updated_at || b.created_at || 0).getTime();
           return tb - ta;
         });
       // Ativos: só publicados com etapa em aberto. Finalizados ficam em Todos.
-      if (filter === "active") visible = visible.filter(isDesafioActiveOpen);
-      if (filter === "draft") visible = visible.filter((x) => !x.is_active && !isDesafioClosed(x));
-      if (filter === "pending") {
-        visible = visible.filter((x) =>
-          isDesafioActiveOpen(x) &&
-          (x.desafio_steps || []).some((s) => stepState(s) === "pending")
-        );
+      if (filter === "deleted") {
+        visible = visible.filter((x) => !!x.deleted_at);
+      } else {
+        visible = visible.filter((x) => !x.deleted_at);
+        if (filter === "active") visible = visible.filter(isDesafioActiveOpen);
+        if (filter === "draft") visible = visible.filter((x) => !x.is_active && !isDesafioClosed(x));
+        if (filter === "pending") {
+          visible = visible.filter((x) =>
+            isDesafioActiveOpen(x) &&
+            (x.desafio_steps || []).some((s) => stepState(s) === "pending")
+          );
+        }
       }
       if (q) {
         visible = visible.filter((d) => {
@@ -1624,6 +1633,11 @@
             </div>
             <div class="card-quick-actions">
               ${
+                d.deleted_at
+                  ? `<button class="btn btn-primary" type="button" data-restore-desafio="${esc(d.id)}">Restaurar · republicar</button>`
+                  : ""
+              }
+              ${
                 !isDesafioCancelled(d) && !d.deleted_at
                   ? `<button class="btn btn-warn" type="button" data-cancel-desafio="${esc(d.id)}">Cancelar · devolver saldo</button>`
                   : ""
@@ -1634,7 +1648,7 @@
                   : ""
               }
               ${
-                d.is_active || isDesafioClosed(d)
+                d.deleted_at || d.is_active || isDesafioClosed(d)
                   ? ""
                   : `<button class="btn btn-primary" type="button" data-publish="${esc(d.id)}">Publicar</button>`
               }
@@ -1778,9 +1792,17 @@
           if (!id) return;
           if (
             !confirm(
-              "Excluir este desafio?\nSó funciona se não houver nenhum cliente com entrada ativa.\nSe houver clientes, use Cancelar · devolver saldo."
+              "Excluir este desafio?\nSó funciona se não houver nenhum cliente com entrada ativa.\nSe houver clientes, use Cancelar · devolver saldo.\n\nDigite OK na próxima caixa para confirmar."
             )
           ) {
+            return;
+          }
+          const typed = window.prompt(
+            "Para confirmar a exclusão, digite EXCLUIR:",
+            ""
+          );
+          if (String(typed || "").trim().toUpperCase() !== "EXCLUIR") {
+            alert("Exclusão cancelada.");
             return;
           }
           btn.disabled = true;
@@ -1797,6 +1819,47 @@
             await load();
           } catch (err) {
             alert(err.message || "Erro ao excluir");
+            btn.disabled = false;
+          }
+        });
+      });
+
+      $("list").querySelectorAll("[data-restore-desafio]").forEach((btn) => {
+        btn.addEventListener("click", async (ev) => {
+          if (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+          }
+          const id = btn.getAttribute("data-restore-desafio");
+          if (!id) return;
+          if (
+            !confirm(
+              "Restaurar este desafio e republicar para os clientes?\nEtapas canceladas (sem settle) voltam para pendente."
+            )
+          ) {
+            return;
+          }
+          btn.disabled = true;
+          try {
+            const headers = await authHeaders();
+            const res = await fetch("/api/arbishield/desafio-restore", {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ id, publish: true }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || "Falha ao restaurar");
+            alert(
+              "Desafio restaurado · republicado.\nEtapas reabertas: " +
+                (data.stepsRestored || 0)
+            );
+            window.__desafioFilter = "active";
+            document.querySelectorAll(".filters .tab").forEach((b) => {
+              b.classList.toggle("is-on", b.getAttribute("data-f") === "active");
+            });
+            await load();
+          } catch (err) {
+            alert(err.message || "Erro ao restaurar");
             btn.disabled = false;
           }
         });
