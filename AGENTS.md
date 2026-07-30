@@ -79,14 +79,16 @@ Alterar qualquer item acima exige pedido explícito + atualização dos testes d
 **Marker:** `DO_NOT_CHANGE_SYSTEM_SURFACE_WITHOUT_EXPLICIT_REQUEST`  
 **Admin ops marker:** `DO_NOT_CHANGE_ADMIN_OPS_WITHOUT_EXPLICIT_REQUEST`  
 **Admin UI layout marker:** `DO_NOT_CHANGE_ADMIN_UI_LAYOUT_WITHOUT_EXPLICIT_REQUEST`  
-**Versão:** `system-non-regression-v1` · admin `admin-ops-contract-v1` · layout `admin-ui-layout-contract-v1`  
+**Admin session marker:** `DO_NOT_CHANGE_ADMIN_SESSION_MODE_WITHOUT_EXPLICIT_REQUEST`  
+**Versão:** `system-non-regression-v1` · admin `admin-ops-contract-v1` · layout `admin-ui-layout-contract-v1` · session `admin-session-mode-contract-v1`  
 **Doc:** `docs/SYSTEM_NON_REGRESSION.md`  
-**CI:** `npm test` → contratos UI / wallet / deploy / DB / admin-ops / admin-ui-layout + proteção v10
+**CI:** `npm test` → contratos UI / wallet / deploy / DB / admin-ops / admin-ui-layout / admin-session-mode + proteção v10
 
 **Pedido explícito (2026-07-30):** travar o sistema inteiro contra regressão
 (API, UI, schema). Não reintroduzir `fee_upfront` como vigente, não remover
 rotas/logos, não renomear buckets de carteira, não SELECT `profiles.email`.
 Não reverter menu admin accordion nem cards do Monitor de Desafios.
+Não reverter **Modo usuário / Modo ADM** nem **espelho de conta**.
 
 ## Camadas (não remover do CI)
 
@@ -99,6 +101,7 @@ Não reverter menu admin accordion nem cards do Monitor de Desafios.
 | Deploy/API | `scripts/lib/deploy-surface-contract.mjs` | `deploy-surface-contract.test.mjs` |
 | Admin ops | `scripts/lib/admin-ops-contract.mjs` | `admin-ops-contract.test.mjs` |
 | Admin UI layout | `scripts/lib/admin-ui-layout-contract.mjs` | `admin-ui-layout-contract.test.mjs` |
+| Admin session | `scripts/lib/admin-session-mode-contract.mjs` | `admin-session-mode-contract.test.mjs` |
 
 ## Regras rápidas
 
@@ -110,7 +113,9 @@ Não reverter menu admin accordion nem cards do Monitor de Desafios.
 6. **Admin — Lançar jogos:** `admin-jogos.html` → `POST /api/arbishield/matches` (BetBra + manual); padrão rascunho; `Publicar na fila` explícito; unpublish finalizados.
 7. **Admin — menu accordion:** `v2-shell.js` + `v2.css` → só títulos; clique abre; `bindAdminNavAccordion` / `v2-nav-accordion-btn`.
 8. **Admin — Monitor Desafios cards:** `admin-monitoring-desafios.html` (`desafio-monitor-card-layout-v1`) → zonas `mdz-card-top` / `mdz-card-game` / `mdz-card-foot` + settle Bateu Arbi/Casa/Empate Anula; sem tabela `.mdz` densa.
-9. **VPS:** após deploy → `vps-check-pos-deploy-v10.sh` (via API GitHub, não raw cacheado).
+9. **Modo usuário / Modo ADM:** `v2ModeSwitch` — admin→`/app.html` («Modo usuário»); app→`/admin.html` («Modo ADM», hidden até `requireAdmin`).
+10. **Espelho de conta:** `setImpersonation` / `getEffectiveUserId` / banner «Sair do espelho»; entrada em `admin-users` (Espelho); proteger readonly (`proteger-espelho-readonly-v13`).
+11. **VPS:** após deploy → `vps-check-pos-deploy-v10.sh` (via API GitHub, não raw cacheado).
 
 Mudança em qualquer item exige pedido explícito + bump + sync AGENTS/docs + testes verdes.
 <!-- END:system-non-regression -->

@@ -282,8 +282,34 @@ if (!SKIP_UI) {
     ],
   ];
   const assets = [
-    ["v2-shell.js", ["bindAdminNavAccordion", "v2-nav-accordion-btn", 'accordion: shell === "admin"']],
-    ["v2.css", ["v2-nav-accordion-btn", "sec-chevron"]],
+    [
+      "v2-shell.js",
+      [
+        "bindAdminNavAccordion",
+        "v2-nav-accordion-btn",
+        'accordion: shell === "admin"',
+        "Modo usuário",
+        "Modo ADM",
+        "v2ModeSwitch",
+        "getEffectiveUserId",
+        "Sair do espelho",
+        "v2ImpersonateBanner",
+      ],
+    ],
+    ["v2.css", ["v2-nav-accordion-btn", "sec-chevron", ".v2-mode-switch"]],
+    [
+      "v2.js",
+      [
+        "impersonated_user_id",
+        "getEffectiveUserId",
+        "setImpersonation",
+        "clearImpersonation",
+      ],
+    ],
+    [
+      "admin-users.html",
+      ["startMirror", "Espelho", "Acessar Conta (Espelho)", "setImpersonation"],
+    ],
   ];
   let checked = 0;
   for (const root of webRoots) {

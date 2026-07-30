@@ -14,12 +14,16 @@ export const UI_CRITICAL_MARKERS = Object.freeze({
     featuresMustInclude: Object.freeze([
       "proteger-stake-lock-v6",
       "proteger-sem-stake-equiv-v1",
+      "proteger-espelho-readonly-v13",
     ]),
     bodyMustInclude: Object.freeze([
       "currentEventMaxCents",
       "data.lockedCents",
       "Máx. efetivo neste evento",
       "1 proteção por evento",
+      "getEffectiveUserId",
+      "isMirror",
+      "Espelho é somente leitura para ativar proteção",
     ]),
   }),
   "deploy/vps-supabase/static/v2/app-protecoes.html": Object.freeze({

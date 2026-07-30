@@ -23,9 +23,11 @@ do dono + bump de versão + sync docs/testes.
 | Deploy/API | `deploy-surface-contract-v1` | football-teams, fee_upfront bloqueado, path shim |
 | Admin ops | `admin-ops-contract-v1` | **Lançar saldo** (depósitos) + **Lançar jogos** |
 | Admin UI layout | `admin-ui-layout-contract-v1` | **Menu accordion** + **Monitor Desafios cards** |
+| Admin session | `admin-session-mode-contract-v1` | **Modo usuário/ADM** + **Espelho de conta** |
 
 Marker admin: `DO_NOT_CHANGE_ADMIN_OPS_WITHOUT_EXPLICIT_REQUEST`  
-Marker layout admin: `DO_NOT_CHANGE_ADMIN_UI_LAYOUT_WITHOUT_EXPLICIT_REQUEST`
+Marker layout admin: `DO_NOT_CHANGE_ADMIN_UI_LAYOUT_WITHOUT_EXPLICIT_REQUEST`  
+Marker session admin: `DO_NOT_CHANGE_ADMIN_SESSION_MODE_WITHOUT_EXPLICIT_REQUEST`
 
 ### Admin — Lançar saldo (Depósitos manuais)
 
@@ -55,6 +57,21 @@ Marker layout admin: `DO_NOT_CHANGE_ADMIN_UI_LAYOUT_WITHOUT_EXPLICIT_REQUEST`
 - Settle: **Bateu Arbi** / **Bateu Casa** / **Empate Anula**
 - Proibido reverter para `<table class="mdz">`
 - Hotfix: `scripts/vps-hotfix-monitor-desafios-card-layout.sh` (REF = branch v10)
+
+### Modo usuário / Modo ADM (anti-regressão)
+
+- `v2-shell.js` + `v2.css`: `#v2ModeSwitch` / `.v2-mode-switch`
+- Shell **admin:** link **Modo usuário** → `/app.html`
+- Shell **app:** link **Modo ADM** → `/admin.html` (inicia `hidden`; só `requireAdmin` revela)
+- Não remover o switch nem revelar Modo ADM para não-admin
+
+### Espelho de conta (anti-regressão)
+
+- `v2.js`: `impersonated_user_id` / `setImpersonation` / `getEffectiveUserId` / `clearImpersonation`
+- `admin-users.html`: botão **Espelho** + **Acessar Conta (Espelho)** → `/app-carteira.html`
+- Banner app: **Sair do espelho** → `/admin-users.html`; saldos usam `viewUserId` efetivo
+- `app-proteger.html`: `proteger-espelho-readonly-v13` (não ativa proteção em espelho)
+- Logout limpa impersonation antes do `signOut`
 
 ---
 
