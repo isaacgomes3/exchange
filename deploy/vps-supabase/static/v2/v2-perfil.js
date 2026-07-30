@@ -264,7 +264,10 @@
           '<div class="field"><label>Ou digite a chave</label><input id="f_mfa_secret" readonly value="' +
           esc(mfa.secret || "") +
           '" /></div>' +
-          '<div class="field"><label>Código de 6 dígitos</label><input id="f_mfa_code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="000000" /></div>';
+          '<div class="field"><label>Código de 6 dígitos</label><input id="f_mfa_code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="000000" value="' +
+          esc((state.form && state.form.mfaCode) || "") +
+          '" /></div>' +
+          '<p class="pf-note" style="margin-top:8px">Use o código <strong>atual</strong> do app (muda a cada 30s). Relógio do celular precisa estar automático.</p>';
       } else {
         body = '<p class="pf-note">Gerando QR…</p>';
       }
@@ -483,21 +486,49 @@
     }
   }
 
-  async function confirmMfaEnroll(supa) {
-    var codeEl = document.getElementById("f_mfa_code");
-    var code = codeEl ? String(codeEl.value || "").replace(/\s+/g, "") : "";
-    if (!/^\d{6}$/.test(code)) throw new Error("Digite o código de 6 dígitos do app.");
+  async function confirmMfaEnroll(supa, codeRaw) {
+    // Marker: mfa-totp-enroll-v4 — lê o código ANTES do paint (bug: paint apagava o input)
+    var code = String(codeRaw || (state.form && state.form.mfaCode) || "")
+      .replace(/\s+/g, "")
+      .replace(/\D/g, "");
+    if (!/^\d{6}$/.test(code)) {
+      throw new Error("Digite o código de 6 dígitos do autenticador e confirme de novo.");
+    }
     var factorId = state.mfa && state.mfa.factorId;
     if (!factorId) throw new Error("Fator 2FA ausente — abra Ativar 2FA de novo.");
-    var ch = await supa.auth.mfa.challenge({ factorId: factorId });
-    if (ch.error) throw ch.error;
-    var challengeId = ch.data && ch.data.id;
-    var ver = await supa.auth.mfa.verify({
-      factorId: factorId,
-      challengeId: challengeId,
-      code: code,
-    });
-    if (ver.error) throw ver.error;
+
+    async function tryVerify(onceCode) {
+      var ch = await supa.auth.mfa.challenge({ factorId: factorId });
+      if (ch.error) throw ch.error;
+      var challengeId = ch.data && ch.data.id;
+      return await supa.auth.mfa.verify({
+        factorId: factorId,
+        challengeId: challengeId,
+        code: onceCode,
+      });
+    }
+
+    var ver = await tryVerify(code);
+    if (ver.error) {
+      // 2ª tentativa imediata (skew de relógio / código virou no meio)
+      ver = await tryVerify(code);
+    }
+    if (ver.error) {
+      var msg = String((ver.error && ver.error.message) || ver.error || "");
+      var low = msg.toLowerCase();
+      if (
+        low.indexOf("invalid") >= 0 ||
+        low.indexOf("totp") >= 0 ||
+        low.indexOf("code") >= 0
+      ) {
+        throw new Error(
+          "Código não conferiu. Espere o app gerar um código NOVO, digite os 6 dígitos e confirme em até 20s. " +
+            "No celular: data/hora automáticas. Se persistir: apague a conta ArbiShield no autenticador, " +
+            "Ativar 2FA de novo e escaneie o QR novo."
+        );
+      }
+      throw ver.error;
+    }
     // Encerra OUTRAS sessões; a atual (já aal2) permanece.
     try {
       var sess = await supa.auth.getSession();
@@ -520,6 +551,7 @@
       /* best-effort — 2FA já está ativo */
     }
     state.mfa = { verified: true, factorId: factorId, friendlyName: "ArbiShield" };
+    state.form = {};
     state.modal = null;
     showOk(
       "2FA ativado. Outras sessões foram encerradas; a sua continua. Próximos logins pedem o código."
@@ -558,6 +590,9 @@
         newPassword: val("f_newPassword"),
         confirmPassword: val("f_confirmPassword"),
       };
+    }
+    if (state.modal === "mfa") {
+      return { mfaCode: val("f_mfa_code") };
     }
     return {};
   }
@@ -673,14 +708,15 @@
         if (auth.error) throw auth.error;
         showOk("Senha atualizada.");
       } else if (state.modal === "mfa") {
-        // Marker: mfa-totp-enroll-v1
+        // Marker: mfa-totp-enroll-v4
         if (state.mfa && state.mfa.verified) {
           state.modal = null;
           state.form = {};
           paint();
           return;
         }
-        await confirmMfaEnroll(supa);
+        // data.mfaCode foi lido do input ANTES do paint() acima
+        await confirmMfaEnroll(supa, data.mfaCode);
         state.form = {};
         paint();
         return;
