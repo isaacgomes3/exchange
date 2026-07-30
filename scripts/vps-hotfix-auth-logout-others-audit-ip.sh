@@ -71,49 +71,59 @@ done
 chmod 0644 "$WEB/v2-shell.js" "$WEB/admin-desafios.html" 2>/dev/null || true
 
 log "3/4 nginx (rota + X-Real-IP)"
+# procura em todo /etc/nginx (nome do site varia na VPS)
 NGINX_FILE=""
 for cand in "$NGINX_SITE" "$NGINX_SITE_ALT" \
   /etc/nginx/sites-enabled/arbishield.app \
+  /etc/nginx/sites-available/arbishield.app \
+  /etc/nginx/sites-enabled/arbishield \
   /etc/nginx/sites-available/arbishield \
+  /etc/nginx/conf.d/arbishield.app.conf \
   /etc/nginx/conf.d/arbishield.conf
 do
-  if [[ -f "$cand" ]] && grep -q 'desafio-delete' "$cand" 2>/dev/null; then
+  if [[ -f "$cand" ]] && grep -qE 'desafio-delete|desafio-settle|127\.0\.0\.1:3101' "$cand" 2>/dev/null; then
     NGINX_FILE="$cand"
     break
   fi
 done
+if [[ -z "$NGINX_FILE" ]]; then
+  NGINX_FILE="$(grep -RIlE 'desafio-delete|desafio-settle|127\.0\.0\.1:3101' /etc/nginx 2>/dev/null | head -1 || true)"
+fi
 
-if [[ -n "$NGINX_FILE" ]]; then
+if [[ -n "$NGINX_FILE" && -f "$NGINX_FILE" ]]; then
   cp -a "$NGINX_FILE" "${NGINX_FILE}.bak-logout-others-$BUST"
   python3 - "$NGINX_FILE" <<'PY'
-import re, sys
+import sys
 path = sys.argv[1]
 text = open(path, encoding="utf-8", errors="replace").read()
 orig = text
-# garante rotas novas na regex do shim :3101
 for route in ("desafio-restore", "auth-logout-others", "auth-logout-sessions"):
     if route not in text and "desafio-delete" in text:
         text = text.replace("desafio-delete", f"desafio-delete|{route}", 1)
-# X-Real-IP no primeiro proxy_pass :3101
-if "X-Real-IP" not in text and "proxy_pass http://127.0.0.1:3101;" in text:
-    text = text.replace(
-        "proxy_pass http://127.0.0.1:3101;",
-        "proxy_pass http://127.0.0.1:3101;\n"
-        "        proxy_set_header X-Real-IP $remote_addr;\n"
-        "        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n"
-        "        proxy_set_header X-Forwarded-Proto $scheme;",
-        1,
-    )
+    elif route not in text and "desafio-settle" in text:
+        text = text.replace("desafio-settle", f"desafio-settle|{route}", 1)
+# X-Real-IP em todo proxy :3101
+needle = "proxy_pass http://127.0.0.1:3101;"
+inject = (
+    "proxy_pass http://127.0.0.1:3101;\n"
+    "        proxy_set_header X-Real-IP $remote_addr;\n"
+    "        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n"
+    "        proxy_set_header X-Forwarded-Proto $scheme;"
+)
+if "X-Real-IP" not in text and needle in text:
+    text = text.replace(needle, inject)
 if text != orig:
     open(path, "w", encoding="utf-8").write(text)
     print("nginx: atualizado", path)
 else:
-    print("nginx: sem mudanças necessárias")
+    print("nginx: sem mudanças necessárias (já ok ou padrão diferente)")
 PY
   nginx -t && systemctl reload nginx
   log "nginx atualizado: $NGINX_FILE"
 else
-  log "AVISO: conf nginx com desafio-delete não encontrada — adicione auth-logout-others manualmente"
+  log "AVISO: conf nginx com :3101/desafio-* não encontrada"
+  echo "  Procure com: grep -RIl '3101\\|desafio-settle' /etc/nginx"
+  echo "  Depois adicione auth-logout-others na regex do location do shim."
 fi
 
 log "4/4 smoke local"
