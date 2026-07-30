@@ -6,16 +6,18 @@
 # Causa: API produção ainda em fee_upfront (cobra só a dedução LAY odd 10).
 # Correção: publicar createProtection stake_lock (trava o stake inteiro).
 #
-# Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-v10-fonte-verdade-501d/scripts/vps-hotfix-create-stake-lock-v6.sh?$(date +%s)")
+# Na VPS (root) — preferir jsDelivr @SHA (raw.githubusercontent cacheia):
+#   bash <(curl -fsSL "https://cdn.jsdelivr.net/gh/isaacgomes3/exchange@cursor/protecao-v10-fonte-verdade-501d/scripts/vps-hotfix-create-stake-lock-v6.sh")
 # Depois:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-v10-fonte-verdade-501d/scripts/vps-check-pos-deploy-v10.sh?$(date +%s)")
+#   bash <(curl -fsSL "https://cdn.jsdelivr.net/gh/isaacgomes3/exchange@cursor/protecao-v10-fonte-verdade-501d/scripts/vps-check-pos-deploy-v10.sh")
 set -euo pipefail
 
+HOTFIX_SCRIPT_VER="stake-lock-hotfix-v10-restart-before-ui-20260730"
 REF="${ARBISHIELD_REF:-cursor/protecao-v10-fonte-verdade-501d}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"
+JSDELIVR="https://cdn.jsdelivr.net/gh/isaacgomes3/exchange@${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
 SHIM_DIR="${ARBISHIELD_SHIM_DIR:-/opt/arbishield}"
@@ -33,20 +35,35 @@ need curl
 [[ "$(id -u)" -eq 0 ]] || die "rode como root"
 mkdir -p "$WEB" "$WEB_ROOT" "$SCRIPTS_DIR/lib" "$SHIM_DIR/lib" "$SHIM_DIR/scripts/lib"
 
+echo "======== HOTFIX $HOTFIX_SCRIPT_VER ========"
+echo "  REF=$REF  (se ainda ver toast-v6d, está no script CACHEADO — use jsDelivr)"
+echo "  Ordem: contrato → prelive → shim → RESTART → UI"
+echo "=========================================="
+
 download_repo_file() {
   local rel="$1"
   local out="$2"
+  local t; t="$(date +%s%N)"
+  # 1) GitHub Contents API (menos cache que raw)
   if curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
     -H "Accept: application/vnd.github.raw" \
     -H "Cache-Control: no-cache" \
     -H "User-Agent: arbishield-hotfix" \
-    "$API/$rel?ref=${REF}&t=$(date +%s%N)" -o "$out" \
+    "$API/$rel?ref=${REF}&t=$t" -o "$out" \
     && [[ -s "$out" ]]; then
     return 0
   fi
+  # 2) jsDelivr
+  if curl -fsSL --retry 3 --retry-delay 1 \
+    -H "Cache-Control: no-cache" \
+    "$JSDELIVR/$rel?t=$t" -o "$out" \
+    && [[ -s "$out" ]]; then
+    return 0
+  fi
+  # 3) raw (último recurso)
   curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
     -H "Cache-Control: no-cache" \
-    "$RAW/$rel?v=$BUST&t=$(date +%s%N)" -o "$out"
+    "$RAW/$rel?v=$BUST&t=$t" -o "$out"
   [[ -s "$out" ]] || die "download vazio: $rel"
 }
 
