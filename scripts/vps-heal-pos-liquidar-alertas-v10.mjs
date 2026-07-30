@@ -37,6 +37,16 @@ const TARGETS = [
     action: "reconcile_stake_meta",
   },
   {
+    key: "kauno-carlos-fee-over",
+    prefix: "7200f01a",
+    action: "refund_fee_over",
+  },
+  {
+    key: "kauno-senilvo-fee-over",
+    prefix: "003d5bc9",
+    action: "refund_fee_over",
+  },
+  {
     key: "barracas-carlos-fee-over",
     prefix: "4ef625d3",
     action: "refund_fee_over",
@@ -187,16 +197,21 @@ function analyzeLedger(txs, amount) {
     }
     if (t.type === "protection_fee" && amt < 0) {
       feeCharged += Math.abs(amt);
-    } else if (n(m.fee_charged_now_cents) > 0) {
-      feeCharged += n(m.fee_charged_now_cents);
     } else if (
       t.type === "protection_settlement" &&
       amt < 0 &&
       (m.outcome === "exchange" ||
         m.exchange_no_credit === true ||
-        /settle exchange/i.test(String(m.note || "")))
+        /settle exchange|cobra dedu/i.test(String(m.note || "")))
     ) {
       feeCharged += Math.abs(amt);
+    } else if (
+      t.type === "protection_settlement" &&
+      amt >= 0 &&
+      n(m.fee_charged_now_cents) > 0 &&
+      (m.outcome === "exchange" || m.exchange_no_credit === true)
+    ) {
+      feeCharged += n(m.fee_charged_now_cents);
     }
     if (t.type === "protection_settlement" && amt < 0) negSettlements += 1;
     if (

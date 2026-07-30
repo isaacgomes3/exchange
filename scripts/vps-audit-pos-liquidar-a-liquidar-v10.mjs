@@ -188,19 +188,25 @@ async function loadPrior(protectionId) {
       }
       continue;
     }
-    // Fee Exchange: prefer fee_charged_now (evita double-count com amount negativo)
+    // Fee Exchange = débito real (amount < 0). Só usa fee_charged_now se amount ≥ 0
+    // (senão re-runs com fee_charged_now repetido inflam 1,92×N).
     if (t.type === "protection_fee" && amt < 0) {
       feeCharged += Math.abs(amt);
-    } else if (n(m.fee_charged_now_cents) > 0) {
-      feeCharged += n(m.fee_charged_now_cents);
     } else if (
       t.type === "protection_settlement" &&
       amt < 0 &&
       (m.outcome === "exchange" ||
         m.exchange_no_credit === true ||
-        /settle exchange/i.test(String(m.note || "")))
+        /settle exchange|cobra dedu/i.test(String(m.note || "")))
     ) {
       feeCharged += Math.abs(amt);
+    } else if (
+      t.type === "protection_settlement" &&
+      amt >= 0 &&
+      n(m.fee_charged_now_cents) > 0 &&
+      (m.outcome === "exchange" || m.exchange_no_credit === true)
+    ) {
+      feeCharged += n(m.fee_charged_now_cents);
     }
     // Só netar refund explícito de fee/dedução (não refund genérico de cancel/void)
     if (

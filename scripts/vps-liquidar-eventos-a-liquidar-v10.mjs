@@ -283,16 +283,21 @@ async function loadPrior(protectionId) {
     }
     if (t.type === "protection_fee" && amt < 0) {
       feeCharged += Math.abs(amt);
-    } else if (n(m.fee_charged_now_cents) > 0) {
-      feeCharged += n(m.fee_charged_now_cents);
     } else if (
       t.type === "protection_settlement" &&
       amt < 0 &&
       (m.outcome === "exchange" ||
         m.exchange_no_credit === true ||
-        /settle exchange/i.test(String(m.note || "")))
+        /settle exchange|cobra dedu/i.test(String(m.note || "")))
     ) {
       feeCharged += Math.abs(amt);
+    } else if (
+      t.type === "protection_settlement" &&
+      amt >= 0 &&
+      n(m.fee_charged_now_cents) > 0 &&
+      (m.outcome === "exchange" || m.exchange_no_credit === true)
+    ) {
+      feeCharged += n(m.fee_charged_now_cents);
     }
     if (
       t.type === "protection_refund" &&
