@@ -197,7 +197,7 @@ async function loadPrior(protectionId) {
       amt < 0 &&
       (m.outcome === "exchange" ||
         m.exchange_no_credit === true ||
-        /settle exchange|cobra dedu/i.test(String(m.note || "")))
+        /settle exchange|cobra dedu|heal-pos-liquidar/i.test(String(m.note || "")))
     ) {
       feeCharged += Math.abs(amt);
     } else if (
@@ -256,6 +256,7 @@ async function main() {
   console.log("==> Auditoria pós-liquidar A LIQUIDAR");
   console.log("    contrato:", PROTECTION_FLOW_CONTRACT_VERSION);
   console.log("    tag:", TAG);
+  console.log("    ledger: v4 (fee=amount real, não soma fee_charged_now de re-runs)");
 
   const matches = await loadMatches();
   let alerts = 0;
@@ -359,7 +360,7 @@ async function main() {
           flags.push(
             `dedução incompleta (faltam ${money(fee - prior.feeCharged)})`
           );
-        } else if (fee > 0 && prior.feeCharged > fee + 50) {
+        } else if (fee > 0 && prior.feeCharged > fee + 1) {
           flags.push(
             `dedução ledger acima do esperado (${money(prior.feeCharged)} > ${money(fee)})`
           );

@@ -183,6 +183,7 @@ function analyzeLedger(txs, amount) {
   let stakeReturned = 0;
   let reembolsoCredited = 0;
   let negSettlements = 0;
+  const feeDebits = [];
   for (const t of txs) {
     const m = metaOf(t);
     const amt = n(t.amount_cents);
@@ -195,23 +196,32 @@ function analyzeLedger(txs, amount) {
       if (m.fee_refunded_cents != null) feeCharged -= Math.abs(n(m.fee_refunded_cents));
       continue;
     }
-    if (t.type === "protection_fee" && amt < 0) {
-      feeCharged += Math.abs(amt);
-    } else if (
-      t.type === "protection_settlement" &&
-      amt < 0 &&
-      (m.outcome === "exchange" ||
-        m.exchange_no_credit === true ||
-        /settle exchange|cobra dedu/i.test(String(m.note || "")))
-    ) {
-      feeCharged += Math.abs(amt);
-    } else if (
-      t.type === "protection_settlement" &&
-      amt >= 0 &&
-      n(m.fee_charged_now_cents) > 0 &&
-      (m.outcome === "exchange" || m.exchange_no_credit === true)
-    ) {
-      feeCharged += n(m.fee_charged_now_cents);
+    const exchangeFee =
+      t.type === "protection_fee" && amt < 0
+        ? Math.abs(amt)
+        : t.type === "protection_settlement" &&
+            amt < 0 &&
+            (m.outcome === "exchange" ||
+              m.exchange_no_credit === true ||
+              /settle exchange|cobra dedu|heal-pos-liquidar/i.test(
+                String(m.note || "")
+              ))
+          ? Math.abs(amt)
+          : t.type === "protection_settlement" &&
+              amt >= 0 &&
+              n(m.fee_charged_now_cents) > 0 &&
+              (m.outcome === "exchange" || m.exchange_no_credit === true)
+            ? n(m.fee_charged_now_cents)
+            : 0;
+    if (exchangeFee > 0) {
+      feeCharged += exchangeFee;
+      feeDebits.push({
+        id: String(t.id || "").slice(0, 8),
+        type: t.type,
+        amt,
+        fee: exchangeFee,
+        note: String(m.note || m.tag || "").slice(0, 60),
+      });
     }
     if (t.type === "protection_settlement" && amt < 0) negSettlements += 1;
     if (
@@ -247,6 +257,7 @@ function analyzeLedger(txs, amount) {
     stakeEffective: Math.min(amount, Math.max(0, stakeReturned)),
     reembolsoCredited: Math.max(0, reembolsoCredited),
     negSettlements,
+    feeDebits,
   };
 }
 
@@ -297,6 +308,14 @@ async function main() {
         prior.reembolsoCredited
       )} neg_tx=${prior.negSettlements}`
     );
+    if (prior.feeDebits?.length) {
+      console.log("  fee débitos:");
+      for (const d of prior.feeDebits) {
+        console.log(
+          `    - ${d.id} ${d.type} amt=${d.amt} fee=+${d.fee} ${d.note}`
+        );
+      }
+    }
     console.log(
       `  txs (${list.length}):`,
       list
@@ -381,11 +400,7 @@ async function main() {
         console.log("  OK fee sem excesso");
         continue;
       }
-      // só estorna se excesso > R$ 0,50 (ruído de arredondamento)
-      if (over <= 50) {
-        console.log(`  OK excesso pequeno ${money(over)} (≤ R$ 0,50) — ignora`);
-        continue;
-      }
+      // estorna qualquer excesso > R$ 0,01 (antes ignorava ≤0,50 e deixava alerta)
       console.log(`  → estornar fee excedente ${money(over)}`);
       if (!FIX) continue;
       const bal = n(p.balance_cents) + n(p.reusable_balance_cents);
@@ -405,7 +420,7 @@ async function main() {
         metadata: {
           tag: TAG,
           outcome: "exchange",
-          note: `${TAG}: estorna dedução acima do esperado`,
+          note: `${TAG}: estorna fee excedente (dedução acima do esperado)`,
           fee_expected_cents: fee,
           fee_was_cents: prior.feeCharged,
           protection_id: row.id,
