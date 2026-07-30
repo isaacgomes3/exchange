@@ -705,7 +705,9 @@
               ? "live"
               : it.status === "sucesso_casa"
                 ? "ok"
-                : "done";
+                : it.status === "cancelado"
+                  ? "done"
+                  : "done";
           var entriesHtml = (it.entries || [])
             .map(function (e) {
               var resCls =
@@ -713,7 +715,9 @@
                   ? "won"
                   : e.result === "lost"
                     ? "lost"
-                    : "pending";
+                    : e.result === "cancelled"
+                      ? "lost"
+                      : "pending";
               var profitBit =
                 e.result === "won" && Number(e.profitCents) > 0
                   ? " · +" + money(e.profitCents)
