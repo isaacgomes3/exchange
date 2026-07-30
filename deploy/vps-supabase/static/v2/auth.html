@@ -147,6 +147,41 @@
       var supa = ArbiV2.client();
       var session = await supa.auth.getSession();
       if (session.data.session) {
+        // Marker: admin-mfa-required-v1 — sessão aal1 com 2FA cadastrado → pedir código
+        try {
+          var aalBoot = await supa.auth.mfa.getAuthenticatorAssuranceLevel();
+          var curBoot = aalBoot.data && aalBoot.data.currentLevel;
+          var nextBoot = aalBoot.data && aalBoot.data.nextLevel;
+          if (curBoot === "aal1" && nextBoot === "aal2") {
+            var facBoot = await supa.auth.mfa.listFactors();
+            var totpBoot = (facBoot.data && facBoot.data.totp) || [];
+            var factorBoot =
+              totpBoot.find(function (f) {
+                return String(f.status || "").toLowerCase() === "verified";
+              }) || totpBoot[0];
+            if (factorBoot && factorBoot.id) {
+              window.__mfaFactorId = factorBoot.id;
+              document.getElementById("form").style.display = "none";
+              document.getElementById("mfaForm").style.display = "block";
+              document.getElementById("title").textContent = "Verificação 2FA";
+              document.getElementById("subtitle").textContent =
+                "Admin: informe o código do autenticador para liberar o painel";
+              return;
+            }
+          }
+          var userBoot = session.data.session.user;
+          if (
+            ArbiV2.isAdminUser &&
+            (await ArbiV2.isAdminUser(supa, userBoot)) &&
+            ArbiV2.adminMfaStatus
+          ) {
+            var stBoot = await ArbiV2.adminMfaStatus(supa);
+            if (!stBoot.hasVerified) {
+              location.replace("/app-perfil.html?force_mfa=1");
+              return;
+            }
+          }
+        } catch (eBoot) {}
         if (refCode) {
           try {
             var tok = session.data.session.access_token;
@@ -161,7 +196,13 @@
             try { localStorage.removeItem(REF_KEY); } catch (e) {}
           } catch (e) {}
         }
-        location.replace("/app.html");
+        var bootDest = "/app.html";
+        try {
+          var qBoot = new URLSearchParams(location.search || "");
+          if (qBoot.get("mfa_required") === "1") bootDest = "/admin.html";
+          else if (qBoot.get("next")) bootDest = qBoot.get("next");
+        } catch (eBd) {}
+        location.replace(bootDest);
         return;
       }
 
