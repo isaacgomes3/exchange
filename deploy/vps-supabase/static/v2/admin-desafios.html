@@ -1791,21 +1791,32 @@
           if (ev) { ev.preventDefault(); ev.stopPropagation(); }
           const id = btn.getAttribute("data-delete-desafio");
           if (!id) return;
+
+          // Marker: excluir-desafio-duas-etapas-v1 — duas confirmações anti-acidente
+          // Etapa 1/2
           if (
             !confirm(
-              "Excluir este desafio?\nSó funciona se não houver nenhum cliente com entrada ativa.\nSe houver clientes, use Cancelar · devolver saldo.\n\nDigite OK na próxima caixa para confirmar."
+              "Tem certeza que deseja excluir este desafio?\n\n" +
+                "• Só funciona se não houver cliente com entrada ativa.\n" +
+                "• Se houver clientes, use «Cancelar · devolver saldo».\n\n" +
+                "Etapa 1 de 2"
             )
           ) {
             return;
           }
-          const typed = window.prompt(
-            "Para confirmar a exclusão, digite EXCLUIR:",
-            ""
-          );
-          if (String(typed || "").trim().toUpperCase() !== "EXCLUIR") {
-            alert("Exclusão cancelada.");
+          // Etapa 2/2
+          if (
+            !confirm(
+              "Última confirmação: excluir este desafio de verdade?\n\n" +
+                "Ele sai da listagem ativa (soft-delete).\n" +
+                "Esta etapa evita exclusão acidental.\n\n" +
+                "Etapa 2 de 2 — OK = excluir · Cancelar = manter"
+            )
+          ) {
+            alert("Exclusão cancelada. O desafio foi mantido.");
             return;
           }
+
           btn.disabled = true;
           try {
             const headers = await authHeaders();
@@ -1815,36 +1826,21 @@
               body: JSON.stringify({
                 id,
                 confirm: "EXCLUIR",
-                // force só se o admin insistir após o backend bloquear etapa aberta
                 force: false,
               }),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
               const msg = data.error || "Falha ao excluir";
-              if (/etapa\(s\) aberta|force:true/i.test(String(msg))) {
-                const again = window.prompt(
-                  msg +
-                    "\n\nSe REALMENTE quiser excluir mesmo com etapa aberta, digite FORCAR:",
-                  ""
+              if (/ativo\/publicado|etapa\(s\) aberta|force:true/i.test(String(msg))) {
+                alert(
+                  "Exclusão bloqueada:\n" +
+                    msg +
+                    "\n\nDesafios ativos não podem ser excluídos por este botão."
                 );
-                if (String(again || "").trim().toUpperCase() !== "FORCAR") {
-                  throw new Error("Exclusão cancelada (etapa ainda aberta).");
-                }
-                const res2 = await fetch("/api/arbishield/desafio-delete", {
-                  method: "POST",
-                  headers,
-                  body: JSON.stringify({
-                    id,
-                    confirm: "EXCLUIR",
-                    force: true,
-                  }),
-                });
-                const data2 = await res2.json().catch(() => ({}));
-                if (!res2.ok) throw new Error(data2.error || "Falha ao excluir");
-              } else {
                 throw new Error(msg);
               }
+              throw new Error(msg);
             }
             alert("Desafio excluído.");
             await load();

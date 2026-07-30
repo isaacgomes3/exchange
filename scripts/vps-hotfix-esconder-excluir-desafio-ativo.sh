@@ -33,11 +33,14 @@ download() {
   rm -f "$tmp"; die "nao baixou: $rel ($needle)"
 }
 
-log "admin-desafios.html (sem Excluir em ativo)"
-download "deploy/vps-supabase/static/v2/admin-desafios.html" "$WEB/admin-desafios.html" "hide-excluir-desafio-ativo-v1"
+log "admin-desafios.html (sem Excluir em ativo + 2 confirmações)"
+download "deploy/vps-supabase/static/v2/admin-desafios.html" "$WEB/admin-desafios.html" "excluir-desafio-duas-etapas-v1"
 cp -f "$WEB/admin-desafios.html" "$WEB_ROOT/admin-desafios.html" 2>/dev/null || true
 sed -i -E "s|/v2\\.js(\\?[^\"]*)?|/v2.js?v=no-del-ativo-$BUST|g; s|/v2-shell\\.js(\\?[^\"]*)?|/v2-shell.js?v=no-del-ativo-$BUST|g" \
   "$WEB/admin-desafios.html" "$WEB_ROOT/admin-desafios.html" 2>/dev/null || true
+
+grep -q 'hide-excluir-desafio-ativo-v1' "$WEB/admin-desafios.html" || die "HTML sem hide-excluir-desafio-ativo-v1"
+grep -q 'excluir-desafio-duas-etapas-v1' "$WEB/admin-desafios.html" || die "HTML sem duas etapas"
 
 log "shim (bloqueia delete de ativo)"
 SHIM_UNIT="$(systemctl show -p ExecStart --value arbishield-serverfn-shim.service 2>/dev/null || true)"
