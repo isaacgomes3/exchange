@@ -628,6 +628,35 @@
 
     let draft = emptyDraft();
 
+    // Marker: protect-ops-isaac-carlos-v1 — estes admins veem Finalizar/Cancelar em protegidos
+    const PROTECTED_OPS_ADMINS = {
+      "isaacgomes3@gmail.com": 1,
+      "carlos@arbishield.com": 1,
+    };
+    let __adminEmail = "";
+    function canManageProtectedDesafio() {
+      const e = String(__adminEmail || "")
+        .trim()
+        .toLowerCase();
+      return !!PROTECTED_OPS_ADMINS[e];
+    }
+    async function refreshAdminEmail() {
+      try {
+        const sess = await ArbiV2.client().auth.getSession();
+        __adminEmail = String(
+          (sess.data.session &&
+            sess.data.session.user &&
+            sess.data.session.user.email) ||
+            ""
+        )
+          .trim()
+          .toLowerCase();
+      } catch (e) {
+        __adminEmail = "";
+      }
+      return __adminEmail;
+    }
+
     function stepState(step) {
       if (!step?.starts_at) return "upcoming";
       if (step.status === "done" || step.status === "current") return step.status === "done" ? "done" : "live";
@@ -1553,6 +1582,13 @@
               const st = stepState(s);
               const done = st === "done" || s.status === "done";
               const isProtected = !!(d.metadata && d.metadata.protect_from_casual_delete);
+              const allowProtectedOps = canManageProtectedDesafio();
+              const settleBtns = `<div class="card-actions" style="margin-top:8px">
+                    <button class="btn btn-primary" type="button" data-settle="${esc(s.id)}" data-side="arbishield" data-protected="${isProtected ? "1" : "0"}">Bateu ArbiShield</button>
+                    <button class="btn btn-ghost" type="button" data-settle="${esc(s.id)}" data-side="casa" data-protected="${isProtected ? "1" : "0"}">Bateu Casa</button>
+                    <button class="btn btn-ghost" type="button" data-settle="${esc(s.id)}" data-side="empate_anula" data-protected="${isProtected ? "1" : "0"}">Empate Anula</button>
+                  </div>
+                  <p style="margin:6px 0 0;font-size:10px;color:var(--muted)">Circuito: vitórias só na ArbiShield até o fim → ganhos vão aos provedores de liquidez.</p>`;
               const settle = done
                 ? `<div class="tags"><span class="tag-arbi">Encerrada · ${
                     s.result === "zebra_protected"
@@ -1563,15 +1599,14 @@
                         ? "Bateu Casa"
                         : esc(s.result || "done")
                   }</span></div>`
-                : isProtected
+                : isProtected && !allowProtectedOps
                   ? `<div class="tags" style="margin-top:8px"><span class="badge on">Protegido — liquidação bloqueada</span></div>
-                  <p style="margin:6px 0 0;font-size:10px;color:var(--muted)">Para liquidar de propósito, remova a proteção ou use force no backend.</p>`
-                : `<div class="card-actions" style="margin-top:8px">
-                    <button class="btn btn-primary" type="button" data-settle="${esc(s.id)}" data-side="arbishield">Bateu ArbiShield</button>
-                    <button class="btn btn-ghost" type="button" data-settle="${esc(s.id)}" data-side="casa">Bateu Casa</button>
-                    <button class="btn btn-ghost" type="button" data-settle="${esc(s.id)}" data-side="empate_anula">Empate Anula</button>
-                  </div>
-                  <p style="margin:6px 0 0;font-size:10px;color:var(--muted)">Circuito: vitórias só na ArbiShield até o fim → ganhos vão aos provedores de liquidez.</p>`;
+                  <p style="margin:6px 0 0;font-size:10px;color:var(--muted)">Só Isaac/Carlos podem liquidar desafios protegidos.</p>`
+                : isProtected && allowProtectedOps
+                  ? `<div class="tags" style="margin-top:8px"><span class="badge on">Protegido — liberado para você</span></div>
+                  ${settleBtns}
+                  <p style="margin:6px 0 0;font-size:10px;color:var(--muted)">Confirmação extra exigida (FORCAR_SETTLE_PROTEGIDO).</p>`
+                : settleBtns;
               return `<div class="step-box">
                 <strong>Etapa ${s.step_index}</strong> · ${label}
                 <div class="tags">
@@ -1679,16 +1714,19 @@
                   : ""
               }
               ${
-                // Marker: protect-desafio-casual-v1 — protegido: sem Cancelar na UI
+                // Marker: protect-ops-isaac-carlos-v1 — Isaac/Carlos veem Cancelar em protegido
                 !isDesafioCancelled(d) &&
                 !d.deleted_at &&
-                !(d.metadata && d.metadata.protect_from_casual_delete)
-                  ? `<button class="btn btn-warn" type="button" data-cancel-desafio="${esc(d.id)}">Cancelar · devolver saldo</button>`
+                (!(d.metadata && d.metadata.protect_from_casual_delete) ||
+                  canManageProtectedDesafio())
+                  ? `<button class="btn btn-warn" type="button" data-cancel-desafio="${esc(d.id)}" data-protected="${
+                      d.metadata && d.metadata.protect_from_casual_delete ? "1" : "0"
+                    }">Cancelar · devolver saldo</button>`
                   : ""
               }
               ${
                 d.metadata && d.metadata.protect_from_casual_delete && !d.deleted_at
-                  ? `<span class="badge on" title="Só restaura/republica via script ou force deliberado">Protegido</span>`
+                  ? `<span class="badge on" title="Protegido — Isaac/Carlos podem liquidar/cancelar com confirmação">Protegido</span>`
                   : ""
               }
               ${
@@ -1743,6 +1781,7 @@
         btn.addEventListener("click", async () => {
           const stepId = btn.getAttribute("data-settle");
           const winningSide = btn.getAttribute("data-side");
+          const isProt = btn.getAttribute("data-protected") === "1";
           if (!stepId || !winningSide) return;
           if (
             !confirm(
@@ -1755,17 +1794,33 @@
           ) {
             return;
           }
+          if (isProt) {
+            if (
+              !confirm(
+                "Este desafio está PROTEGIDO.\n\n" +
+                  "Liquidar remove o jogo dos clientes.\n" +
+                  "OK = forçar liquidação · Cancelar = manter"
+              )
+            ) {
+              return;
+            }
+          }
           btn.disabled = true;
           try {
             const session = await ArbiV2.client().auth.getSession();
             const token = session.data.session?.access_token;
+            const payload = { stepId, winningSide };
+            if (isProt) {
+              payload.force = true;
+              payload.confirm = "FORCAR_SETTLE_PROTEGIDO";
+            }
             const res = await fetch("/api/arbishield/desafio-settle", {
               method: "POST",
               headers: {
                 Authorization: "Bearer " + token,
                 "Content-Type": "application/json",
               },
-              body: JSON.stringify({ stepId, winningSide }),
+              body: JSON.stringify(payload),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || "Falha ao encerrar");
@@ -1948,6 +2003,7 @@
         btn.addEventListener("click", async (ev) => {
           if (ev) { ev.preventDefault(); ev.stopPropagation(); }
           const id = btn.getAttribute("data-cancel-desafio");
+          const isProt = btn.getAttribute("data-protected") === "1";
           if (!id) return;
           const nClients = Number(
             (window.__desafioPendingCounts && window.__desafioPendingCounts[id]) || 0
@@ -1962,13 +2018,29 @@
           ) {
             return;
           }
+          if (isProt) {
+            if (
+              !confirm(
+                "Este desafio está PROTEGIDO.\n\n" +
+                  "Cancelar remove o jogo dos clientes e devolve entradas.\n" +
+                  "OK = forçar cancelamento · Cancelar = manter"
+              )
+            ) {
+              return;
+            }
+          }
           btn.disabled = true;
           try {
             const headers = await authHeaders();
+            const body = { id, cancelWhole: true };
+            if (isProt) {
+              body.force = true;
+              body.confirm = "FORCAR_CANCELAR_PROTEGIDO";
+            }
             const res = await fetch("/api/arbishield/desafio-cancel", {
               method: "POST",
               headers,
-              body: JSON.stringify({ id, cancelWhole: true }),
+              body: JSON.stringify(body),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || "Falha ao cancelar");
@@ -2200,6 +2272,7 @@
       $("list").innerHTML = `<div class="loading">Carregando desafios…</div>`;
       $("meta").textContent = "Buscando…";
       try {
+        await refreshAdminEmail();
         const res = await fetch("/api/arbishield/desafios", {
           cache: "no-store",
           headers: { accept: "application/json" },
