@@ -177,6 +177,17 @@ async function loadPrior(protectionId) {
     const m = metaOf(t);
     if (m.tag === TAG || String(m.note || "").includes(TAG)) tagHits += 1;
     const amt = n(t.amount_cents);
+    if (m.clawback_reembolso_cents != null) {
+      reembolsoCredited -= Math.abs(n(m.clawback_reembolso_cents) || Math.abs(amt));
+      continue;
+    }
+    if (m.clawback_stake_cents != null) {
+      stakeReturned -= Math.abs(n(m.clawback_stake_cents));
+      if (m.fee_refunded_cents != null) {
+        feeCharged -= Math.abs(n(m.fee_refunded_cents));
+      }
+      continue;
+    }
     if (t.type === "protection_fee" && amt < 0) feeCharged += Math.abs(amt);
     if (t.type === "protection_settlement" && amt < 0 && m.outcome === "exchange") {
       feeCharged += Math.abs(amt);
@@ -185,16 +196,21 @@ async function loadPrior(protectionId) {
     if (
       t.type === "protection_settlement" &&
       amt > 0 &&
-      (m.stake_returned === true || m.outcome === "arbishield")
+      (m.outcome === "arbishield" ||
+        (m.bucket === "deduction_balance_cents" && m.outcome !== "exchange"))
     ) {
-      if (m.outcome === "arbishield" || m.bucket === "deduction_balance_cents") {
-        reembolsoCredited += amt;
-      } else {
+      reembolsoCredited += amt;
+    }
+    if (t.type === "protection_settlement" && m.stake_returned === true) {
+      if (m.returned_stake_cents != null) {
+        stakeReturned += Math.abs(n(m.returned_stake_cents));
+      } else if (
+        amt > 0 &&
+        m.outcome !== "arbishield" &&
+        m.bucket !== "deduction_balance_cents"
+      ) {
         stakeReturned += amt;
       }
-    }
-    if (m.stake_returned === true && amt > 0 && m.outcome === "exchange") {
-      stakeReturned += amt;
     }
     if (m.unlocked_locked === true) unlocked = true;
   }
@@ -311,18 +327,23 @@ async function main() {
             `dedução incompleta (faltam ${money(fee - prior.feeCharged)})`
           );
         }
-        if (prior.reembolsoCredited > 0 && prior.tagHits > 0) {
-          // reembolso creditado neste bilhete em Exchange é suspeito
-          flags.push(`reembolso creditado em bilhete Exchange (${money(prior.reembolsoCredited)})`);
+        if (prior.reembolsoCredited > 0) {
+          flags.push(
+            `reembolso indevido em bilhete Exchange (${money(prior.reembolsoCredited)}) — deve reverter`
+          );
         }
-        if (
+        if (st === "lost_exchange" || st === "won_platform") {
+          flags.push(
+            `status ${st} = ArbiShield, mas placar manda Exchange (won_exchange)`
+          );
+        } else if (
           !["won_exchange", "settled"].includes(st) &&
           st !== "cancelled" &&
           st !== "canceled"
         ) {
           flags.push(`status inesperado para Exchange: ${st}`);
         }
-        if (exchangeWalletHealNeeded(row, prior)) {
+        if (exchangeWalletHealNeeded(row, { ...prior, hasTx: true })) {
           flags.push("exchangeWalletHealNeeded=true");
         }
       } else if (ev.outcome === "arbishield") {
@@ -331,12 +352,11 @@ async function main() {
             `reembolso incompleto (faltam ${money(amount - prior.reembolsoCredited)})`
           );
         }
-        if (!["won_platform", "lost_exchange", "settled"].includes(st) && st !== "won_exchange") {
-          // won_exchange residual após reverso ainda pode aparecer se PATCH falhou parcial
-          flags.push(`status inesperado para ArbiShield: ${st}`);
-        }
+        // lost_exchange é o status canônico v10 para ArbiShield (settlementStatusForOutcome)
         if (st === "won_exchange") {
-          flags.push("ainda marcado won_exchange — deveria ser ArbiShield/won_platform");
+          flags.push("ainda marcado won_exchange — deveria ser lost_exchange/ArbiShield");
+        } else if (!["won_platform", "lost_exchange", "settled", "lost_platform"].includes(st)) {
+          flags.push(`status inesperado para ArbiShield: ${st}`);
         }
       }
 

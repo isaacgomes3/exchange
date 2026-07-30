@@ -269,24 +269,43 @@ async function loadPrior(protectionId) {
   for (const t of list) {
     const m = metaOf(t);
     const amt = n(t.amount_cents);
+    // Clawbacks explícitos (não são fee nem crédito)
+    if (m.clawback_reembolso_cents != null) {
+      reembolsoCredited -= Math.abs(n(m.clawback_reembolso_cents) || Math.abs(amt));
+      continue;
+    }
+    if (m.clawback_stake_cents != null) {
+      stakeReturned -= Math.abs(n(m.clawback_stake_cents));
+      if (m.fee_refunded_cents != null) {
+        feeCharged -= Math.abs(n(m.fee_refunded_cents));
+      }
+      continue;
+    }
     if (t.type === "protection_fee" && amt < 0) feeCharged += Math.abs(amt);
     if (t.type === "protection_settlement" && amt < 0 && m.outcome === "exchange") {
       feeCharged += Math.abs(amt);
     }
     if (t.type === "protection_refund" && amt > 0) feeCharged -= amt;
+    // Crédito Reembolso (ArbiShield)
     if (
       t.type === "protection_settlement" &&
       amt > 0 &&
-      (m.stake_returned === true || m.outcome === "arbishield")
+      (m.outcome === "arbishield" ||
+        (m.bucket === "deduction_balance_cents" && m.outcome !== "exchange"))
     ) {
-      if (m.outcome === "arbishield" || m.bucket === "deduction_balance_cents") {
-        reembolsoCredited += amt;
-      } else {
+      reembolsoCredited += amt;
+    }
+    // Stake devolvido à origem (Exchange/void) — preferir returned_stake_cents
+    if (t.type === "protection_settlement" && m.stake_returned === true) {
+      if (m.returned_stake_cents != null) {
+        stakeReturned += Math.abs(n(m.returned_stake_cents));
+      } else if (
+        amt > 0 &&
+        m.outcome !== "arbishield" &&
+        m.bucket !== "deduction_balance_cents"
+      ) {
         stakeReturned += amt;
       }
-    }
-    if (m.stake_returned === true && amt > 0 && m.outcome === "exchange") {
-      stakeReturned += amt;
     }
     if (m.unlocked_locked === true) unlocked = true;
   }
@@ -362,6 +381,43 @@ async function settleProtection(row, outcome, score) {
       });
       prior.stakeReturned = 0;
       prior.feeCharged = 0;
+    }
+  }
+
+  // Se já liquidou como ArbiShield e o correto é Exchange (ex.: Barracas LAY 2X2, placar ≠ 2-2):
+  // remove Reembolso indevido → depois devolve stake à origem e cobra dedução.
+  if (o === "exchange" && prior.reembolsoCredited > 0) {
+    const clawReemb = prior.reembolsoCredited;
+    const p0 = (await sb(
+      `/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}&select=*&limit=1`
+    ))?.[0];
+    if (p0) {
+      const now0 = new Date().toISOString();
+      const take = Math.min(clawReemb, Math.max(0, n(p0.deduction_balance_cents)));
+      await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
+        method: "PATCH",
+        body: {
+          updated_at: now0,
+          deduction_balance_cents: Math.max(0, n(p0.deduction_balance_cents) - take),
+        },
+      });
+      await insertTx({
+        user_id: row.user_id,
+        type: "protection_settlement",
+        amount_cents: -take,
+        ref: row.id,
+        metadata: {
+          tag: TAG,
+          note: `${TAG}: reverte ArbiShield indevido → prepara Exchange (remove Reembolso)`,
+          outcome: "exchange",
+          clawback_reembolso_cents: take,
+          bucket: "deduction_balance_cents",
+          protection_id: row.id,
+        },
+      });
+      prior.reembolsoCredited = Math.max(0, prior.reembolsoCredited - take);
+      // Stake estava no Reembolso, não na origem — precisa devolver via caminho Exchange abaixo.
+      prior.stakeReturned = 0;
     }
   }
 
@@ -622,8 +678,15 @@ async function main() {
         ["active", "pending", "review_odd", "open", "cancelled", "canceled"].includes(
           st
         ) ||
-        // também reprocessa won_exchange/void incompletos do Senilvo
-        ["won_exchange", "void", "settled"].includes(st)
+        // reprocessa liquidados incompletos / outcome invertido (Barracas lost_exchange→Exchange)
+        [
+          "won_exchange",
+          "lost_exchange",
+          "won_platform",
+          "lost_platform",
+          "void",
+          "settled",
+        ].includes(st)
       );
     });
 
