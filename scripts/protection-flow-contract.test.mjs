@@ -13,6 +13,9 @@ import {
   PROTECTION_FLOW_SPEC,
   PROTECTION_BILLING_MODEL_CANONICAL,
   PROTECTION_OBSOLETE_MODELS,
+  PROTECTION_RUNTIME_HEALTH_MARKER,
+  CREATE_PROTECTION_FIX_MARKER,
+  isProtectionRuntimeHealthy,
   STAKE_LOCK_RULE,
   MAX_STAKE_FRACTION_OF_APOSTADOR,
   ONE_OPERATION_PER_EVENT,
@@ -59,6 +62,14 @@ describe("contrato travado — metadados", () => {
   it("mantém versão e lock", () => {
     assert.equal(PROTECTION_FLOW_CONTRACT_VERSION, "protection-flow-contract-v10");
     assert.equal(PROTECTION_BILLING_MODEL_CANONICAL, "stake_lock_v1");
+    assert.equal(
+      PROTECTION_RUNTIME_HEALTH_MARKER,
+      "protection-runtime-stake-lock-v10"
+    );
+    assert.equal(
+      CREATE_PROTECTION_FIX_MARKER,
+      "create-protection-stake-lock-v6"
+    );
     assert.deepEqual([...PROTECTION_OBSOLETE_MODELS], [
       "fee_upfront_v1",
       "lock_fee_after_v1",
@@ -88,6 +99,14 @@ describe("contrato travado — metadados", () => {
     assert.equal(PROTECTION_FLOW_SPEC.version, PROTECTION_FLOW_CONTRACT_VERSION);
     assert.equal(PROTECTION_FLOW_SPEC.model, "stake_lock_v1");
     assert.equal(PROTECTION_FLOW_SPEC.model, PROTECTION_BILLING_MODEL_CANONICAL);
+    assert.equal(
+      PROTECTION_FLOW_SPEC.runtimeHealthMarker,
+      PROTECTION_RUNTIME_HEALTH_MARKER
+    );
+    assert.equal(
+      PROTECTION_FLOW_SPEC.createProtectionFixMarker,
+      CREATE_PROTECTION_FIX_MARKER
+    );
     assert.deepEqual(
       [...PROTECTION_FLOW_SPEC.obsoleteModels],
       [...PROTECTION_OBSOLETE_MODELS]
@@ -136,6 +155,8 @@ describe("contrato travado — metadados", () => {
     assert.match(agents, /obsoleto|pode ser excluíd/i);
     assert.match(agents, /fee_upfront_v1/);
     assert.match(agents, /locked_margin_v2|lock_fee_after_v1|FLUXO_PROTECAO_V1/);
+    assert.match(agents, /Anti-regressão runtime|protection-runtime-stake-lock-v10/);
+    assert.match(agents, /ALLOW_FEE_UPFRONT_DEPLOY|vps-check-pos-deploy-v10/);
     assert.match(lockedDoc, /ÚNICA fonte de verdade|unica fonte de verdade/i);
     assert.match(lockedDoc, /obsoleto|pode ser excluíd/i);
     assert.match(lockedDoc, /fee_upfront_v1/);
@@ -171,6 +192,85 @@ describe("contrato travado — metadados", () => {
     assert.match(prelive, /isCancelledProtectionStatus/);
     assert.doesNotMatch(prelive, /function settlementCreditParts\s*\(/);
     assert.doesNotMatch(shim, /function settlementCreditParts\s*\(/);
+  });
+
+  it("health fail-hard: marker runtime + stake_lock; rejeita fee_upfront", () => {
+    assert.equal(
+      isProtectionRuntimeHealthy({
+        createProtectionModel: "stake_lock_v1",
+        protectionRuntime: PROTECTION_RUNTIME_HEALTH_MARKER,
+        protectionFlowContract: PROTECTION_FLOW_CONTRACT_VERSION,
+        fix: CREATE_PROTECTION_FIX_MARKER,
+      }),
+      true
+    );
+    assert.equal(
+      isProtectionRuntimeHealthy({
+        createProtectionModel: "fee_upfront_v1",
+        fix: "protection-fee-upfront-v11",
+      }),
+      false
+    );
+    assert.equal(
+      isProtectionRuntimeHealthy({
+        createProtectionModel: "stake_lock_v1",
+        protectionRuntime: "protection-fee-upfront-v11",
+      }),
+      false
+    );
+
+    const prelive = readFileSync(
+      resolve(root, "scripts/arbishield-prelive-events.mjs"),
+      "utf8"
+    );
+    const shim = readFileSync(
+      resolve(root, "scripts/arbishield-serverfn-shim.mjs"),
+      "utf8"
+    );
+    assert.match(prelive, /PROTECTION_RUNTIME_HEALTH_MARKER/);
+    assert.match(prelive, /isProtectionRuntimeHealthy/);
+    assert.match(prelive, /runtimeOk \? 200 : 503/);
+    assert.match(shim, /PROTECTION_RUNTIME_HEALTH_MARKER/);
+    assert.match(shim, /isProtectionRuntimeHealthy/);
+    assert.match(shim, /runtimeOk \? 200 : 503/);
+  });
+
+  it("anti-regressão ops: fee_upfront prod bloqueado; check pós-deploy; restaurar logo sob v10", () => {
+    const feeUp = readFileSync(
+      resolve(root, "scripts/vps-atualizar-protecao-fee-upfront-prod.sh"),
+      "utf8"
+    );
+    const checkSh = readFileSync(
+      resolve(root, "scripts/vps-check-pos-deploy-v10.sh"),
+      "utf8"
+    );
+    const checkJs = readFileSync(
+      resolve(root, "scripts/vps-check-pos-deploy-v10.mjs"),
+      "utf8"
+    );
+    const logo = readFileSync(
+      resolve(root, "scripts/vps-restaurar-api-logo-times.sh"),
+      "utf8"
+    );
+    const hotfix = readFileSync(
+      resolve(root, "scripts/vps-hotfix-create-stake-lock-v6.sh"),
+      "utf8"
+    );
+    assert.match(feeUp, /ALLOW_FEE_UPFRONT_DEPLOY/);
+    assert.match(feeUp, /BLOQUEADO/);
+    assert.match(feeUp, /stake_lock_v1/);
+    assert.match(checkSh, /vps-check-pos-deploy-v10/);
+    assert.match(checkSh, /protection-runtime-stake-lock-v10/);
+    assert.match(checkJs, /vps-check-pos-deploy-v10/);
+    assert.match(checkJs, /isProtectionRuntimeHealthy/);
+    assert.match(checkJs, /fee_upfront_v1/);
+    assert.match(logo, /protecao-v10-fonte-verdade-501d/);
+    assert.match(logo, /stake_lock_v1/);
+    assert.doesNotMatch(logo, /perdeu fee_upfront/);
+    assert.match(hotfix, /protecao-v10-fonte-verdade-501d/);
+    assert.match(hotfix, /protection-flow-contract-v10/);
+    assert.match(hotfix, /protection-runtime-stake-lock-v10/);
+    assert.match(hotfix, /vps-check-pos-deploy-v10/);
   });
 
   it("create-protection e UI: 50% + 1op + antes do kickoff", () => {

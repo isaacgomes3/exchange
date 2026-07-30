@@ -15,6 +15,23 @@ import { createRequire } from "node:module";
 // para o shim não cair e a rota de saque continuar disponível).
 let PROTECTION_FLOW_LOCK = "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST";
 let PROTECTION_FLOW_CONTRACT_VERSION = "protection-flow-contract-v10";
+let PROTECTION_BILLING_MODEL_CANONICAL = "stake_lock_v1";
+let PROTECTION_RUNTIME_HEALTH_MARKER = "protection-runtime-stake-lock-v10";
+let CREATE_PROTECTION_FIX_MARKER = "create-protection-stake-lock-v6";
+let isProtectionRuntimeHealthy = (health = {}) => {
+  const model = String(health.createProtectionModel || "").trim();
+  const runtime = String(
+    health.protectionRuntime || health.fix || ""
+  ).trim();
+  const blob = JSON.stringify(health);
+  if (/protection-fee-upfront-v\d+/i.test(blob)) return false;
+  if (/fee_upfront/i.test(model)) return false;
+  return (
+    model === "stake_lock_v1" ||
+    runtime.includes("protection-runtime-stake-lock-v10") ||
+    runtime.includes("create-protection-stake-lock-v6")
+  );
+};
 let isStakeLockProtection;
 let settlementCreditParts;
 let settlementCreditCents;
@@ -45,6 +62,18 @@ try {
   );
   PROTECTION_FLOW_LOCK = mod.PROTECTION_FLOW_LOCK;
   PROTECTION_FLOW_CONTRACT_VERSION = mod.PROTECTION_FLOW_CONTRACT_VERSION;
+  if (mod.PROTECTION_BILLING_MODEL_CANONICAL) {
+    PROTECTION_BILLING_MODEL_CANONICAL = mod.PROTECTION_BILLING_MODEL_CANONICAL;
+  }
+  if (mod.PROTECTION_RUNTIME_HEALTH_MARKER) {
+    PROTECTION_RUNTIME_HEALTH_MARKER = mod.PROTECTION_RUNTIME_HEALTH_MARKER;
+  }
+  if (mod.CREATE_PROTECTION_FIX_MARKER) {
+    CREATE_PROTECTION_FIX_MARKER = mod.CREATE_PROTECTION_FIX_MARKER;
+  }
+  if (typeof mod.isProtectionRuntimeHealthy === "function") {
+    isProtectionRuntimeHealthy = mod.isProtectionRuntimeHealthy;
+  }
   settlementCreditParts = mod.settlementCreditParts;
   settlementCreditCents = mod.settlementCreditCents;
   settlementDeductionCents = mod.settlementDeductionCents;
@@ -301,6 +330,10 @@ try {
 
 void PROTECTION_FLOW_LOCK;
 void PROTECTION_FLOW_CONTRACT_VERSION;
+void PROTECTION_BILLING_MODEL_CANONICAL;
+void PROTECTION_RUNTIME_HEALTH_MARKER;
+void CREATE_PROTECTION_FIX_MARKER;
+void isProtectionRuntimeHealthy;
 void CANCEL_FEE_UPFRONT_NO_STAKE_REFUND;
 void EXCHANGE_CHARGE_DEDUCTION_RULE;
 void EXCHANGE_INCOMPLETE_HEAL_RULE;
@@ -8408,19 +8441,23 @@ const server = createServer(async (req, res) => {
     const base = {
       ok: true,
       service: "serverfn-shim",
-      fix: "create-protection-stake-lock-v6",
-      createProtectionModel: "stake_lock_v1",
+      fix: CREATE_PROTECTION_FIX_MARKER,
+      protectionRuntime: PROTECTION_RUNTIME_HEALTH_MARKER,
+      createProtectionModel: PROTECTION_BILLING_MODEL_CANONICAL,
       cancelRefundGuard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
       exchangeChargeGuard: EXCHANGE_CHARGE_DEDUCTION_RULE,
       protectionFlowContract: PROTECTION_FLOW_CONTRACT_VERSION,
       env: process.env.ARBISHIELD_ENV || "production",
       listen: LISTEN,
     };
+    const runtimeOk = isProtectionRuntimeHealthy(base);
+    base.ok = runtimeOk;
+    const status = runtimeOk ? 200 : 503;
     try {
       const buckets = await ensureStorageBuckets();
-      return sendJson(res, 200, { ...base, buckets });
+      return sendJson(res, status, { ...base, buckets });
     } catch (e) {
-      return sendJson(res, 200, base);
+      return sendJson(res, status, base);
     }
   }
 

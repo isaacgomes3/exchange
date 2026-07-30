@@ -7,10 +7,12 @@
 # Correção: publicar createProtection stake_lock (trava o stake inteiro).
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-reembolso-lucas-perdeu-723d/scripts/vps-hotfix-create-stake-lock-v6.sh?$(date +%s)")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-v10-fonte-verdade-501d/scripts/vps-hotfix-create-stake-lock-v6.sh?$(date +%s)")
+# Depois:
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-v10-fonte-verdade-501d/scripts/vps-check-pos-deploy-v10.sh?$(date +%s)")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/fix-reembolso-lucas-perdeu-723d}"
+REF="${ARBISHIELD_REF:-cursor/protecao-v10-fonte-verdade-501d}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"
@@ -19,7 +21,8 @@ WEB="$WEB_ROOT/v2"
 SHIM_DIR="${ARBISHIELD_SHIM_DIR:-/opt/arbishield}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-$SHIM_DIR/scripts}"
 MARKER="create-protection-stake-lock-v6"
-CONTRACT_VER="protection-flow-contract-v6"
+RUNTIME_MARKER="protection-runtime-stake-lock-v10"
+CONTRACT_VER="protection-flow-contract-v10"
 UI_META="proteger-stake-lock-toast-v6d"
 
 log() { echo "==> $*"; }
@@ -55,6 +58,7 @@ tmp_c="$(mktemp)"
 download_repo_file "scripts/lib/protection-flow-contract.mjs" "$tmp_c"
 grep -q "$CONTRACT_VER" "$tmp_c" || die "contrato sem $CONTRACT_VER"
 grep -q 'stake_lock_v1' "$tmp_c" || die "contrato sem stake_lock_v1"
+grep -q "$RUNTIME_MARKER" "$tmp_c" || die "contrato sem $RUNTIME_MARKER"
 grep -q 'chargesDeductionOnCreate: false' "$tmp_c" || die "contrato ainda cobra dedução na criação"
 for dest in \
   "$SCRIPTS_DIR/lib/protection-flow-contract.mjs" \
@@ -68,11 +72,13 @@ for dest in \
 done
 rm -f "$tmp_c"
 
-log "2/5 prelive :3098 ($MARKER)"
+log "2/5 prelive :3098 ($MARKER · $RUNTIME_MARKER)"
 tmp_pre="$(mktemp)"
 download_repo_file "scripts/arbishield-prelive-events.mjs" "$tmp_pre"
 grep -q "$MARKER" "$tmp_pre" || die "prelive sem $MARKER"
-grep -q 'createProtectionModel: "stake_lock_v1"' "$tmp_pre" || die "prelive sem createProtectionModel stake_lock"
+grep -q "$RUNTIME_MARKER" "$tmp_pre" || die "prelive sem $RUNTIME_MARKER"
+grep -q 'createProtectionModel: PROTECTION_BILLING_MODEL_CANONICAL\|createProtectionModel: "stake_lock_v1"' "$tmp_pre" \
+  || die "prelive sem createProtectionModel stake_lock"
 grep -q 'v2_create_protection_stake_lock' "$tmp_pre" || die "prelive sem source stake_lock"
 grep -q 'const lockCents = amountCents' "$tmp_pre" || die "prelive sem lockCents = amountCents"
 # Regressão: create NÃO pode debitar só a fee na ativação
@@ -96,11 +102,13 @@ for dest in \
 done
 rm -f "$tmp_pre"
 
-log "3/5 shim :3101 ($MARKER)"
+log "3/5 shim :3101 ($MARKER · $RUNTIME_MARKER)"
 tmp_shim="$(mktemp)"
 download_repo_file "scripts/arbishield-serverfn-shim.mjs" "$tmp_shim"
 grep -q "$MARKER" "$tmp_shim" || die "shim sem $MARKER"
-grep -q 'createProtectionModel: "stake_lock_v1"' "$tmp_shim" || die "shim sem createProtectionModel"
+grep -q "$RUNTIME_MARKER" "$tmp_shim" || die "shim sem $RUNTIME_MARKER"
+grep -q 'createProtectionModel: PROTECTION_BILLING_MODEL_CANONICAL\|createProtectionModel: "stake_lock_v1"' "$tmp_shim" \
+  || die "shim sem createProtectionModel"
 cp -f "$tmp_shim" "$SHIM_DIR/arbishield-serverfn-shim.mjs"
 chmod 0644 "$SHIM_DIR/arbishield-serverfn-shim.mjs"
 echo "  OK $SHIM_DIR/arbishield-serverfn-shim.mjs"
@@ -155,14 +163,19 @@ H3101="$(curl -fsS --max-time 8 http://127.0.0.1:3101/health || true)"
 echo "  health :3098 → $H3098"
 echo "  health :3101 → $H3101"
 echo "$H3098" | grep -q "$MARKER" || die "health :3098 sem $MARKER — API não atualizou"
+echo "$H3098" | grep -q "$RUNTIME_MARKER" || die "health :3098 sem $RUNTIME_MARKER"
 echo "$H3098" | grep -q 'stake_lock_v1' || die "health :3098 sem stake_lock_v1"
 echo "$H3098" | grep -q "$CONTRACT_VER" || die "health :3098 sem $CONTRACT_VER"
+echo "$H3098" | grep -qE 'protection-fee-upfront-v[0-9]+' && die "REGRESSÃO fee_upfront no health" || true
 
 echo
 echo "OK — createProtection agora trava o STAKE (não só a dedução)."
-echo "  Markers: $CONTRACT_VER · $MARKER · UI $UI_META"
+echo "  Markers: $CONTRACT_VER · $RUNTIME_MARKER · $MARKER · UI $UI_META"
 echo "  Teste: ativar R\$ 1.000 → Apostador cai R\$ 1.000 · Congelado sobe R\$ 1.000"
 echo "  https://arbishield.app/app-proteger.html  (Ctrl+Shift+R)"
+echo
+echo "Validar pós-deploy:"
+echo "  bash <(curl -fsSL \"$RAW/scripts/vps-check-pos-deploy-v10.sh?v=$BUST\")"
 echo
 echo "Obs: proteções já criadas em fee_upfront (ex.: a do vídeo, débito R\$ 96,11)"
 echo "  continuam no modelo histórico no settle/cancel — não são reescritas."

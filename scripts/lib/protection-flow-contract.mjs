@@ -47,6 +47,18 @@ export const PROTECTION_FLOW_CONTRACT_VERSION =
 export const PROTECTION_BILLING_MODEL_CANONICAL = "stake_lock_v1";
 
 /**
+ * Marker obrigatório em GET /health (prelive :3098 + shim :3101).
+ * Pós-deploy e hotfixes falham se ausente ou se health ainda citar fee_upfront.
+ * Pedido explícito (anti-regressão 2026-07-30): fail-hard sob v10.
+ */
+export const PROTECTION_RUNTIME_HEALTH_MARKER =
+  "protection-runtime-stake-lock-v10";
+
+/** Marker `fix` no health — createProtection trava stake (não cobra fee). */
+export const CREATE_PROTECTION_FIX_MARKER =
+  "create-protection-stake-lock-v6";
+
+/**
  * Modelos/versões obsoletos — NÃO usar como vigente; NÃO reintroduzir.
  * Pedido explícito: v10 é fonte de verdade; qualquer outra versão pode excluir.
  */
@@ -57,6 +69,46 @@ export const PROTECTION_OBSOLETE_MODELS = Object.freeze([
   "FLUXO_PROTECAO_V1",
   "fluxo-protecao-v1",
 ]);
+
+/**
+ * Health runtime: só OK se o processo vigente for stake_lock_v1 / v10.
+ * Qualquer createProtectionModel obsoleto (ex. fee_upfront) → fail-hard (503).
+ */
+export function isProtectionRuntimeHealthy(health = {}) {
+  const model = String(
+    health.createProtectionModel || health.billingModel || ""
+  ).trim();
+  const contract = String(
+    health.protectionFlowContract || health.contract || ""
+  ).trim();
+  const runtime = String(
+    health.protectionRuntime || health.fix || ""
+  ).trim();
+  const blob = JSON.stringify(health);
+  if (/protection-fee-upfront-v\d+/i.test(blob)) return false;
+  if (/fee_upfront_v1/i.test(model)) return false;
+  if (PROTECTION_OBSOLETE_MODELS.includes(model)) return false;
+  if (model && model !== PROTECTION_BILLING_MODEL_CANONICAL) return false;
+  if (
+    contract &&
+    contract !== PROTECTION_FLOW_CONTRACT_VERSION &&
+    !contract.includes("v10")
+  ) {
+    return false;
+  }
+  if (
+    runtime &&
+    !runtime.includes("stake-lock") &&
+    !runtime.includes("stake_lock")
+  ) {
+    return false;
+  }
+  return (
+    model === PROTECTION_BILLING_MODEL_CANONICAL ||
+    runtime.includes(PROTECTION_RUNTIME_HEALTH_MARKER) ||
+    runtime.includes(CREATE_PROTECTION_FIX_MARKER)
+  );
+}
 
 /**
  * LAY: lucro fee = responsabilidade × (backOdd − 1) = resp/(odd−1).
@@ -93,6 +145,8 @@ export const PROTECTION_FLOW_SPEC = Object.freeze({
   soleSourceOfTruth: true,
   obsoleteModels: PROTECTION_OBSOLETE_MODELS,
   lock: PROTECTION_FLOW_LOCK,
+  runtimeHealthMarker: PROTECTION_RUNTIME_HEALTH_MARKER,
+  createProtectionFixMarker: CREATE_PROTECTION_FIX_MARKER,
   requiresExplicitRequestToChange: true,
   activation: Object.freeze({
     locksStake: true,

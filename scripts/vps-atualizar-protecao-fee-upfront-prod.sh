@@ -1,13 +1,46 @@
 #!/usr/bin/env bash
 # ATUALIZA PRODUÇÃO: fee_upfront_v1 (API :3098 + UI /app-proteger.html)
 #
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  BLOQUEADO sob protection-flow-contract-v10 / stake_lock_v1.   ║
+# ║  Novas proteções NÃO podem voltar a fee_upfront.                ║
+# ║  Override de emergência APENAS com pedido explícito do dono:    ║
+# ║    ALLOW_FEE_UPFRONT_DEPLOY=1 bash ...                          ║
+# ╚══════════════════════════════════════════════════════════════════╝
+#
 # - Proteções JÁ ATIVAS (legado) continuam liquidando no modelo antigo
 # - Só proteções NOVAS usam cobrança na criação
 # - LAY converte odd → back L/(L−1)
 #
-# Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-fee-upfront-3cf9/scripts/vps-atualizar-protecao-fee-upfront-prod.sh?$(date +%s)")
+# Na VPS (root) — NÃO usar sob v10 (use vps-hotfix-create-stake-lock-v6.sh
+# apontando para cursor/protecao-v10-fonte-verdade-501d):
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-v10-fonte-verdade-501d/scripts/vps-atualizar-protecao-fee-upfront-prod.sh?$(date +%s)")
 set -euo pipefail
+
+log() { echo "==> $*"; }
+die() { echo "ERRO: $*" >&2; exit 1; }
+
+# Anti-regressão v10: fail-hard a menos que override explícito de emergência.
+if [[ "${ALLOW_FEE_UPFRONT_DEPLOY:-}" != "1" ]]; then
+  cat >&2 <<'EOF'
+ERRO: vps-atualizar-protecao-fee-upfront-prod.sh está BLOQUEADO.
+
+Motivo: protection-flow-contract-v10 / stake_lock_v1 é a ÚNICA fonte de verdade.
+Publicar fee_upfront em produção reintroduz cobrança na criação (regressão).
+
+Use em vez disso (stake_lock):
+  bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-v10-fonte-verdade-501d/scripts/vps-hotfix-create-stake-lock-v6.sh?$(date +%s)")
+
+Depois valide:
+  bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-v10-fonte-verdade-501d/scripts/vps-check-pos-deploy-v10.sh?$(date +%s)")
+
+Override de emergência (somente com pedido explícito do dono):
+  ALLOW_FEE_UPFRONT_DEPLOY=1 bash ...
+EOF
+  exit 1
+fi
+
+log "OVERRIDE ALLOW_FEE_UPFRONT_DEPLOY=1 — seguindo (emergência)"
 
 REF="${ARBISHIELD_REF:-cursor/protecao-fee-upfront-3cf9}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
@@ -16,8 +49,6 @@ WEB_V2="${ARBISHIELD_WEB:-/var/www/arbishield/v2}"
 SANDBOX_WEB="${ARBISHIELD_SANDBOX_WEB:-/var/www/arbishield/sandbox}"
 TS="$(date +%s)"
 
-log() { echo "==> $*"; }
-die() { echo "ERRO: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null || die "$1 não encontrado"; }
 need curl
 need systemctl
@@ -135,7 +166,7 @@ echo "$H" | grep -qE 'protection-fee-upfront-v[0-9]+' || die "produção sem mar
 [[ "$PUB" -ge 1 ]] || echo "AVISO: HTML público ainda sem lucroBruto (cache?) — use janela anônima"
 
 echo
-echo "OK — PRODUÇÃO atualizada (fee_upfront)"
+echo "OK — PRODUÇÃO atualizada (fee_upfront) [OVERRIDE DE EMERGÊNCIA]"
 echo "  Backup: $BK"
 echo "  Abrir: https://arbishield.app/app-proteger.html?v=$TS"
 echo "  Legado ativo: settle continua no modelo antigo"

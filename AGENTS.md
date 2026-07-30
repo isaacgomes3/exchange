@@ -49,6 +49,13 @@ Arquivos cobertos (lista mínima):
 9. **LAY lucro (fees):** `resp/(odd−1)` — ex. R$1000 @10 = R$111,11 → fee **91,11** → carteira `8.067,52+1.000−91,11=**8.976,41**`; R$1000 @32 → fee **15,81** → `8.067,52+1.000−15,81=**9.051,71**`. Odd canônica: `approved_odd` > `calculations.marketOdd` > `metadata.market_odd` > `row.odd` (`settlement-odd-canonico-v10`). Marker settle: `settle-exchange-cobra-so-deducao-v9`. Helper anti-duplo: `settlementExchangeCommissionWalletCents()` sempre **0**.
 
 Alterar qualquer item acima exige pedido explícito + atualização dos testes do contrato.
+
+## Anti-regressão runtime (pedido 2026-07-30)
+
+- Health `:3098`/`:3101` deve expor `protectionRuntime=protection-runtime-stake-lock-v10` + `createProtectionModel=stake_lock_v1` (fail-hard → 503 se fee_upfront).
+- `scripts/vps-atualizar-protecao-fee-upfront-prod.sh` está **BLOQUEADO** sob v10 (só `ALLOW_FEE_UPFRONT_DEPLOY=1` com pedido explícito).
+- Pós-deploy: `scripts/vps-check-pos-deploy-v10.sh` (health + billing_model de proteções novas).
+- Hotfix stake_lock / restaurar logos apontam para branch `cursor/protecao-v10-fonte-verdade-501d` (não `protecao-fee-upfront-3cf9`).
 <!-- END:protection-flow-lock -->
 
 <!-- BEGIN:profiles-schema-lock -->

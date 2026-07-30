@@ -13,6 +13,10 @@ import { randomUUID } from "node:crypto";
 import {
   PROTECTION_FLOW_LOCK,
   PROTECTION_FLOW_CONTRACT_VERSION,
+  PROTECTION_BILLING_MODEL_CANONICAL,
+  PROTECTION_RUNTIME_HEALTH_MARKER,
+  CREATE_PROTECTION_FIX_MARKER,
+  isProtectionRuntimeHealthy,
   settlementCreditParts,
   settlementCreditCents,
   settlementDeductionCents,
@@ -68,6 +72,10 @@ import {
 // Trava de produto: fluxo de proteção — não alterar sem pedido explícito.
 void PROTECTION_FLOW_LOCK;
 void PROTECTION_FLOW_CONTRACT_VERSION;
+void PROTECTION_BILLING_MODEL_CANONICAL;
+void PROTECTION_RUNTIME_HEALTH_MARKER;
+void CREATE_PROTECTION_FIX_MARKER;
+void isProtectionRuntimeHealthy;
 void CANCEL_FEE_UPFRONT_NO_STAKE_REFUND;
 void EXCHANGE_CHARGE_DEDUCTION_RULE;
 void EXCHANGE_INCOMPLETE_HEAL_RULE;
@@ -4556,11 +4564,12 @@ async function handleApi(req, res) {
   const url = new URL(req.url, "http://127.0.0.1");
 
   if (url.pathname === "/health") {
-    return sendJson(res, 200, {
+    const health = {
       ok: true,
       service: "arbishield-matches",
-      fix: "create-protection-stake-lock-v6",
-      createProtectionModel: "stake_lock_v1",
+      fix: CREATE_PROTECTION_FIX_MARKER,
+      protectionRuntime: PROTECTION_RUNTIME_HEALTH_MARKER,
+      createProtectionModel: PROTECTION_BILLING_MODEL_CANONICAL,
       cancelRefundGuard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
       exchangeChargeGuard: EXCHANGE_CHARGE_DEDUCTION_RULE,
       protectionFlowContract: PROTECTION_FLOW_CONTRACT_VERSION,
@@ -4575,7 +4584,11 @@ async function handleApi(req, res) {
       betbraEventsRadar: "/api/arbishield/betbra-events-radar",
       unpublishExpired: "/api/arbishield/unpublish-expired",
       eventsRadar: BETBRA_EVENTS_RADAR_VERSION,
-    });
+    };
+    // Fail-hard anti-regressão: fee_upfront / modelo errado → 503
+    const runtimeOk = isProtectionRuntimeHealthy(health);
+    health.ok = runtimeOk;
+    return sendJson(res, runtimeOk ? 200 : 503, health);
   }
 
   if (

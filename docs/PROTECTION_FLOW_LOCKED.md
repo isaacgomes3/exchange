@@ -20,6 +20,16 @@ versão pode ser excluída. Modelos obsoletos (não usar / não reintroduzir):
 Compatibilidade residual de `fee_upfront` no código existe **somente** para
 settle/cancel de linhas antigas no banco — nunca para novas proteções.
 
+## Anti-regressão runtime
+
+| Controle | Marker / script |
+|---|---|
+| Health fail-hard | `protection-runtime-stake-lock-v10` + `createProtectionModel=stake_lock_v1` → 503 se fee_upfront |
+| Bloqueio deploy fee_upfront | `vps-atualizar-protecao-fee-upfront-prod.sh` (só `ALLOW_FEE_UPFRONT_DEPLOY=1`) |
+| Check pós-deploy | `vps-check-pos-deploy-v10.sh` / `.mjs` (health + billing_model) |
+| Hotfix create | `vps-hotfix-create-stake-lock-v6.sh` → branch `protecao-v10-fonte-verdade-501d` |
+| Restaurar logos | `vps-restaurar-api-logo-times.sh` exige stake_lock (não republica fee_upfront) |
+
 ---
 
 ## Política de alteração

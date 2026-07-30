@@ -3,10 +3,10 @@
 #   GET /api/arbishield/football-teams?q=Flamengo
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-fee-upfront-3cf9/scripts/vps-restaurar-api-logo-times.sh?$(date +%s)")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-v10-fonte-verdade-501d/scripts/vps-restaurar-api-logo-times.sh?$(date +%s)")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/protecao-fee-upfront-3cf9}"
+REF="${ARBISHIELD_REF:-cursor/protecao-v10-fonte-verdade-501d}"
 TS="$(date +%s)"
 RAW_SHA="https://raw.githubusercontent.com/isaacgomes3/exchange"
 
@@ -32,14 +32,21 @@ BK="/opt/arbishield/backups/logo-api-$TS"
 mkdir -p "$BK"
 cp -a "$PRELIVE" "$BK/" 2>/dev/null || true
 
-log "1) Worker prelive (rota football-teams + fee_upfront)"
+log "1) Worker prelive (rota football-teams + stake_lock_v1)"
 curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
   "$RAW_SHA/${SHA}/scripts/arbishield-prelive-events.mjs?v=$TS" \
   -o "$PRELIVE"
 chmod 0755 "$PRELIVE"
 grep -q 'searchFootballTeams' "$PRELIVE" || die "sem searchFootballTeams"
 grep -q '/api/arbishield/football-teams' "$PRELIVE" || die "sem rota football-teams"
-grep -q 'fee_upfront_v1\|isFeeUpfrontProtection' "$PRELIVE" || die "perdeu fee_upfront"
+grep -q 'stake_lock_v1' "$PRELIVE" || die "perdeu stake_lock_v1"
+grep -q 'protection-runtime-stake-lock-v10\|create-protection-stake-lock-v6' "$PRELIVE" \
+  || die "prelive sem marker runtime stake_lock v10"
+# Anti-regressão: não republicar fee_upfront como create vigente
+if grep -qE 'protection-fee-upfront-v[0-9]+' "$PRELIVE" && \
+   ! grep -q 'createProtectionModel: "stake_lock_v1"\|PROTECTION_BILLING_MODEL_CANONICAL' "$PRELIVE"; then
+  die "prelive parece fee_upfront vigente — abortado sob v10"
+fi
 cp -f "$PRELIVE" /opt/arbishield/scripts/arbishield-prelive-events.mjs 2>/dev/null || true
 cp -f "$PRELIVE" /opt/arbishield/arbishield-prelive-events.mjs 2>/dev/null || true
 
@@ -132,6 +139,12 @@ echo "$BODY" | grep -qi 'Flamengo' || die "worker sem Flamengo: $BODY"
 PUB="$(curl -fsS --max-time 12 "https://arbishield.app/api/arbishield/football-teams?q=Flamengo" || true)"
 echo "$PUB" | grep -q '"ok":true' || die "nginx público falhou: $PUB"
 
-log "OK — logo API travada (worker + nginx + UI)"
+H="$(curl -fsS --max-time 8 http://127.0.0.1:3098/health 2>/dev/null || true)"
+echo "$H" | grep -q 'stake_lock_v1' || die "health sem stake_lock_v1: $H"
+echo "$H" | grep -qE 'protection-runtime-stake-lock-v10|create-protection-stake-lock-v6' \
+  || die "health sem marker stake_lock: $H"
+echo "$H" | grep -qE 'protection-fee-upfront-v[0-9]+' && die "REGRESSÃO fee_upfront no health: $H" || true
+
+log "OK — logo API travada (worker + nginx + UI) sob stake_lock_v1"
 echo "  Digite Flamengo no Admin → Lançar evento (Ctrl+Shift+R)"
-echo "  Health: $(curl -fsS http://127.0.0.1:3098/health 2>/dev/null || true)"
+echo "  Health: $H"
