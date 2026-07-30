@@ -168,8 +168,13 @@
   function renderSections(sections, active, opts) {
     opts = opts || {};
     var withIcons = !!opts.withIcons;
+    var accordion = !!opts.accordion;
     return sections
       .map(function (sec) {
+        var hasActive = sec.items.some(function (item) {
+          return item.id === active;
+        });
+        var open = !accordion || hasActive;
         var links = sec.items
           .map(function (item) {
             var cls =
@@ -203,18 +208,72 @@
             );
           })
           .join("");
-        return (
-          '<div class="v2-nav-section">' +
+
+        var secHead =
           (opts.hideDots
             ? ""
-            : '<span class="dot" style="background:' + esc(sec.color) + '"></span>') +
+            : '<span class="dot" style="background:' +
+              esc(sec.color) +
+              '"></span>') +
           '<span class="sec-lbl">' +
           esc(sec.title) +
-          "</span></div>" +
-          links
+          "</span>";
+
+        if (!accordion) {
+          return (
+            '<div class="v2-nav-section">' + secHead + "</div>" + links
+          );
+        }
+
+        var sid = String(sec.title || "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/gi, "-")
+          .replace(/^-|-$/g, "");
+        return (
+          '<div class="v2-nav-group' +
+          (open ? " is-open" : "") +
+          '" data-nav-group="' +
+          esc(sid) +
+          '">' +
+          '<button type="button" class="v2-nav-section v2-nav-accordion-btn" aria-expanded="' +
+          (open ? "true" : "false") +
+          '" aria-controls="v2-nav-items-' +
+          esc(sid) +
+          '">' +
+          secHead +
+          '<span class="sec-chevron" aria-hidden="true">' +
+          '<svg viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+          "</span>" +
+          "</button>" +
+          '<div class="v2-nav-group-items" id="v2-nav-items-' +
+          esc(sid) +
+          '"' +
+          (open ? "" : " hidden") +
+          ">" +
+          links +
+          "</div>" +
+          "</div>"
         );
       })
       .join("");
+  }
+
+  function bindAdminNavAccordion(root) {
+    if (!root) return;
+    root.querySelectorAll(".v2-nav-accordion-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var group = btn.closest(".v2-nav-group");
+        if (!group) return;
+        var willOpen = !group.classList.contains("is-open");
+        group.classList.toggle("is-open", willOpen);
+        btn.setAttribute("aria-expanded", willOpen ? "true" : "false");
+        var panel = group.querySelector(".v2-nav-group-items");
+        if (panel) {
+          if (willOpen) panel.removeAttribute("hidden");
+          else panel.setAttribute("hidden", "");
+        }
+      });
+    });
   }
 
   async function mount() {
@@ -426,9 +485,12 @@
       renderSections(sections, active, {
         withIcons: true,
         hideDots: true,
+        accordion: shell === "admin",
       }) +
       "</div>" +
       footHtml;
+
+    if (shell === "admin") bindAdminNavAccordion(sidebar);
 
     var collapseBtn = document.getElementById("v2CollapseBtn");
 

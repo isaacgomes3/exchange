@@ -57,6 +57,19 @@ export const UI_CRITICAL_MARKERS = Object.freeze({
       "81753fec5a4788d0cecf17daf4605047d90238c386a240b54855a19f0fbc53d2",
     ]),
   }),
+  "deploy/vps-supabase/static/v2/admin-monitoring-desafios.html": Object.freeze({
+    build: "desafio-monitor-card-layout-v1",
+    featuresMustInclude: Object.freeze([]),
+    bodyMustInclude: Object.freeze([
+      "mdz-cards",
+      "mdz-card-game",
+      "mdz-card-foot",
+      "Bateu Arbi",
+      "Bateu Casa",
+      "Empate Anula",
+    ]),
+    bodyMustNotInclude: Object.freeze(['<table class="mdz">']),
+  }),
 });
 
 export function parseHtmlMeta(html, name) {

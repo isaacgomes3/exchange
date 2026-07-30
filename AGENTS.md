@@ -78,13 +78,15 @@ Alterar qualquer item acima exige pedido explícito + atualização dos testes d
 **Status:** LOCKED — alterar **somente** com solicitação explícita do dono  
 **Marker:** `DO_NOT_CHANGE_SYSTEM_SURFACE_WITHOUT_EXPLICIT_REQUEST`  
 **Admin ops marker:** `DO_NOT_CHANGE_ADMIN_OPS_WITHOUT_EXPLICIT_REQUEST`  
-**Versão:** `system-non-regression-v1` · admin `admin-ops-contract-v1`  
+**Admin UI layout marker:** `DO_NOT_CHANGE_ADMIN_UI_LAYOUT_WITHOUT_EXPLICIT_REQUEST`  
+**Versão:** `system-non-regression-v1` · admin `admin-ops-contract-v1` · layout `admin-ui-layout-contract-v1`  
 **Doc:** `docs/SYSTEM_NON_REGRESSION.md`  
-**CI:** `npm test` → contratos UI / wallet / deploy / DB / admin-ops + proteção v10
+**CI:** `npm test` → contratos UI / wallet / deploy / DB / admin-ops / admin-ui-layout + proteção v10
 
 **Pedido explícito (2026-07-30):** travar o sistema inteiro contra regressão
 (API, UI, schema). Não reintroduzir `fee_upfront` como vigente, não remover
 rotas/logos, não renomear buckets de carteira, não SELECT `profiles.email`.
+Não reverter menu admin accordion nem cards do Monitor de Desafios.
 
 ## Camadas (não remover do CI)
 
@@ -96,6 +98,7 @@ rotas/logos, não renomear buckets de carteira, não SELECT `profiles.email`.
 | Schema DB | `scripts/lib/profiles-db-contract.mjs` + `profiles-schema.mjs` | `profiles-db-contract.test.mjs` + `profiles-schema.test.mjs` |
 | Deploy/API | `scripts/lib/deploy-surface-contract.mjs` | `deploy-surface-contract.test.mjs` |
 | Admin ops | `scripts/lib/admin-ops-contract.mjs` | `admin-ops-contract.test.mjs` |
+| Admin UI layout | `scripts/lib/admin-ui-layout-contract.mjs` | `admin-ui-layout-contract.test.mjs` |
 
 ## Regras rápidas
 
@@ -105,7 +108,9 @@ rotas/logos, não renomear buckets de carteira, não SELECT `profiles.email`.
 4. **Deploy:** `vps-atualizar-protecao-fee-upfront-prod.sh` bloqueado; shim em `/opt/arbishield/scripts/`; rota `/api/arbishield/football-teams` viva.
 5. **Admin — Lançar saldo:** `admin-manual-deposits.html` → `Confirmar e Creditar` / `Já creditado` (sem alterar saldo) via `approveManualDeposit` + finance admin.
 6. **Admin — Lançar jogos:** `admin-jogos.html` → `POST /api/arbishield/matches` (BetBra + manual); padrão rascunho; `Publicar na fila` explícito; unpublish finalizados.
-7. **VPS:** após deploy → `vps-check-pos-deploy-v10.sh` (via API GitHub, não raw cacheado).
+7. **Admin — menu accordion:** `v2-shell.js` + `v2.css` → só títulos; clique abre; `bindAdminNavAccordion` / `v2-nav-accordion-btn`.
+8. **Admin — Monitor Desafios cards:** `admin-monitoring-desafios.html` (`desafio-monitor-card-layout-v1`) → zonas `mdz-card-top` / `mdz-card-game` / `mdz-card-foot` + settle Bateu Arbi/Casa/Empate Anula; sem tabela `.mdz` densa.
+9. **VPS:** após deploy → `vps-check-pos-deploy-v10.sh` (via API GitHub, não raw cacheado).
 
 Mudança em qualquer item exige pedido explícito + bump + sync AGENTS/docs + testes verdes.
 <!-- END:system-non-regression -->

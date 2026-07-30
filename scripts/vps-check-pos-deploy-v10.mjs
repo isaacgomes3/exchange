@@ -270,6 +270,20 @@ if (!SKIP_UI) {
     ["app-carteira.html", ["Saldo Reembolso"]],
     ["admin-jogos.html", ["football-teams", "searchFootballTeams", "Lançar evento", "Publicar na fila"]],
     ["admin-manual-deposits.html", ["Confirmar e Creditar", "Já creditado", "admin-deposits-creditar-v1"]],
+    [
+      "admin-monitoring-desafios.html",
+      [
+        "desafio-monitor-card-layout-v1",
+        "mdz-card-game",
+        "mdz-card-foot",
+        "Bateu Arbi",
+        "Empate Anula",
+      ],
+    ],
+  ];
+  const assets = [
+    ["v2-shell.js", ["bindAdminNavAccordion", "v2-nav-accordion-btn", 'accordion: shell === "admin"']],
+    ["v2.css", ["v2-nav-accordion-btn", "sec-chevron"]],
   ];
   let checked = 0;
   for (const root of webRoots) {
@@ -285,6 +299,23 @@ if (!SKIP_UI) {
       }
       if (name === "app-carteira.html" && html.includes("Saldo Dedução")) {
         errors.push(`UI ${p} ainda tem "Saldo Dedução"`);
+      }
+      if (
+        name === "admin-monitoring-desafios.html" &&
+        html.includes('<table class="mdz">')
+      ) {
+        errors.push(`UI ${p} reverteu para tabela .mdz (esperado cards)`);
+      }
+    }
+    for (const [name, needles] of assets) {
+      const p = path.join(root, name);
+      if (!fs.existsSync(p)) continue;
+      const text = fs.readFileSync(p, "utf8");
+      checked += 1;
+      for (const n of needles) {
+        if (!text.includes(n)) {
+          errors.push(`UI ${p} sem "${n}"`);
+        }
       }
     }
     if (checked > 0) break;

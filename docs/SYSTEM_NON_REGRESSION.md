@@ -22,8 +22,10 @@ do dono + bump de versão + sync docs/testes.
 | Schema DB | `profiles-db-contract-v1` + `profiles-sem-coluna-email-v1` | migrations/RPC; sem `profiles.email` |
 | Deploy/API | `deploy-surface-contract-v1` | football-teams, fee_upfront bloqueado, path shim |
 | Admin ops | `admin-ops-contract-v1` | **Lançar saldo** (depósitos) + **Lançar jogos** |
+| Admin UI layout | `admin-ui-layout-contract-v1` | **Menu accordion** + **Monitor Desafios cards** |
 
-Marker admin: `DO_NOT_CHANGE_ADMIN_OPS_WITHOUT_EXPLICIT_REQUEST`
+Marker admin: `DO_NOT_CHANGE_ADMIN_OPS_WITHOUT_EXPLICIT_REQUEST`  
+Marker layout admin: `DO_NOT_CHANGE_ADMIN_UI_LAYOUT_WITHOUT_EXPLICIT_REQUEST`
 
 ### Admin — Lançar saldo (Depósitos manuais)
 
@@ -39,6 +41,21 @@ Marker admin: `DO_NOT_CHANGE_ADMIN_OPS_WITHOUT_EXPLICIT_REQUEST`
 - Padrão: **rascunho**; **Publicar na fila** só se marcado
 - Logos: `/api/arbishield/football-teams`; unpublish de finalizados permanece
 
+### Admin — Menu accordion (anti-reversão)
+
+- `v2-shell.js`: `bindAdminNavAccordion`, `v2-nav-accordion-btn`, `accordion: shell === "admin"`
+- `v2.css`: estilos `body[data-shell="admin"] .v2-nav-group`
+- Só títulos de seção; clique expande; seção ativa começa aberta
+- Hotfix: `scripts/vps-hotfix-admin-menu-accordion.sh` (REF = branch v10)
+
+### Admin — Monitor de Desafios (cards)
+
+- UI: `admin-monitoring-desafios.html` (`desafio-monitor-card-layout-v1`)
+- Zonas: `mdz-card-top` · `mdz-card-game` · `mdz-card-foot` (+ `mdz-card-markets`)
+- Settle: **Bateu Arbi** / **Bateu Casa** / **Empate Anula**
+- Proibido reverter para `<table class="mdz">`
+- Hotfix: `scripts/vps-hotfix-monitor-desafios-card-layout.sh` (REF = branch v10)
+
 ---
 
 ## Páginas críticas (layout)
@@ -48,6 +65,7 @@ Marker admin: `DO_NOT_CHANGE_ADMIN_OPS_WITHOUT_EXPLICIT_REQUEST`
 - `app-carteira.html` — Saldo Reembolso (nunca “Saldo Dedução”)
 - `admin-jogos.html` — settle + busca logos + lançar/publicar
 - `admin-manual-deposits.html` — creditar saldo (depósitos)
+- `admin-monitoring-desafios.html` — cards 3 zonas + settle
 
 ## Runtime (VPS)
 
