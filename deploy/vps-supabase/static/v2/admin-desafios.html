@@ -1552,6 +1552,7 @@
                 "—";
               const st = stepState(s);
               const done = st === "done" || s.status === "done";
+              const isProtected = !!(d.metadata && d.metadata.protect_from_casual_delete);
               const settle = done
                 ? `<div class="tags"><span class="tag-arbi">Encerrada · ${
                     s.result === "zebra_protected"
@@ -1562,6 +1563,9 @@
                         ? "Bateu Casa"
                         : esc(s.result || "done")
                   }</span></div>`
+                : isProtected
+                  ? `<div class="tags" style="margin-top:8px"><span class="badge on">Protegido — liquidação bloqueada</span></div>
+                  <p style="margin:6px 0 0;font-size:10px;color:var(--muted)">Para liquidar de propósito, remova a proteção ou use force no backend.</p>`
                 : `<div class="card-actions" style="margin-top:8px">
                     <button class="btn btn-primary" type="button" data-settle="${esc(s.id)}" data-side="arbishield">Bateu ArbiShield</button>
                     <button class="btn btn-ghost" type="button" data-settle="${esc(s.id)}" data-side="casa">Bateu Casa</button>

@@ -136,20 +136,21 @@ for (const id of ids) {
 console.log(`OK — ${ok}/${ids.length} restaurados/protegidos (starts +${shiftMin}min)`);
 NODE
 
-log "2/3 shim protect-desafio-casual-v1"
+log "2/3 shim protect-desafio-casual-v1 (+ bloqueio settle/void)"
 SHIM_UNIT="$(systemctl show -p ExecStart --value arbishield-serverfn-shim.service 2>/dev/null || true)"
 SHIM_PATH=""
 if [[ "$SHIM_UNIT" == *arbishield-serverfn-shim.mjs* ]]; then
   SHIM_PATH="$(echo "$SHIM_UNIT" | grep -oE '/[^ ]+arbishield-serverfn-shim\.mjs' | head -1 || true)"
 fi
 [[ -n "${SHIM_PATH:-}" ]] || SHIM_PATH="$SCRIPTS_DIR/arbishield-serverfn-shim.mjs"
-download "scripts/arbishield-serverfn-shim.mjs" "$SHIM_PATH" "protect-desafio-casual-v1"
+download "scripts/arbishield-serverfn-shim.mjs" "$SHIM_PATH" "FORCAR_SETTLE_PROTEGIDO"
+grep -q 'protect-desafio-casual-v1' "$SHIM_PATH" || die "shim sem protect-desafio-casual-v1"
 install -m 0644 "$SHIM_PATH" "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs" 2>/dev/null || true
 systemctl restart arbishield-serverfn-shim.service 2>/dev/null || systemctl restart arbishield-serverfn.service 2>/dev/null || true
 sleep 1
 
-log "3/3 admin-desafios (sem Cancelar/Excluir em protegido)"
-download "deploy/vps-supabase/static/v2/admin-desafios.html" "$WEB/admin-desafios.html" "protect-desafio-casual-v1"
+log "3/3 admin-desafios (sem Cancelar/Excluir/Liquidar em protegido)"
+download "deploy/vps-supabase/static/v2/admin-desafios.html" "$WEB/admin-desafios.html" "liquidação bloqueada"
 install -m 0644 "$WEB/admin-desafios.html" "$WEB_ROOT/admin-desafios.html" 2>/dev/null || true
 sed -i -E "s|/v2\\.js(\\?[^\"]*)?|/v2.js?v=protect-dz-$BUST|g; s|/v2-shell\\.js(\\?[^\"]*)?|/v2-shell.js?v=protect-dz-$BUST|g" \
   "$WEB/admin-desafios.html" "$WEB_ROOT/admin-desafios.html" 2>/dev/null || true

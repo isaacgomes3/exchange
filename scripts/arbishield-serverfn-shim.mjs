@@ -3698,7 +3698,7 @@ async function activateNextDesafioStep(desafioId, currentStepIndex) {
   return { ...next, status: "current", activated: true };
 }
 
-async function settleDesafioStep(token, body) {
+async function settleDesafioStep(token, body, clientMeta = null) {
   if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
   const stepId = String(body?.stepId || body?.step_id || "").trim();
   let winningSide = String(
@@ -3731,6 +3731,33 @@ async function settleDesafioStep(token, body) {
   if (!step) throw new Error("Etapa não encontrada");
   if (String(step.status) === "done") {
     throw new Error("Etapa já encerrada");
+  }
+
+  // Marker: protect-desafio-casual-v1 — settle/void também tira o jogo do ar
+  if (step.desafio_id) {
+    try {
+      const dzRows = await sb(
+        `/rest/v1/desafios?select=id,metadata,title,is_active&id=eq.${encodeURIComponent(step.desafio_id)}&limit=1`,
+        { token: SERVICE_KEY }
+      );
+      const dz = Array.isArray(dzRows) ? dzRows[0] : null;
+      const meta =
+        dz && dz.metadata && typeof dz.metadata === "object" ? dz.metadata : {};
+      const unlockSettle =
+        body?.force === true ||
+        String(body?.confirm || "").trim().toUpperCase() ===
+          "FORCAR_SETTLE_PROTEGIDO";
+      if (meta.protect_from_casual_delete === true && !unlockSettle) {
+        const err = new Error(
+          "Este desafio está protegido. Liquidar/Empate Anula encerra o jogo para os clientes. " +
+            'Envie confirm:"FORCAR_SETTLE_PROTEGIDO" (ou force:true) só se for intencional.'
+        );
+        err.status = 409;
+        throw err;
+      }
+    } catch (e) {
+      if (e && e.status) throw e;
+    }
   }
 
   const parts = await sb(
@@ -3930,19 +3957,34 @@ async function settleDesafioStep(token, body) {
       : winningSide === "arbishield"
         ? "zebra_protected"
         : "win";
+  const audit =
+    clientMeta && typeof clientMeta === "object"
+      ? clientMeta
+      : body?.clientMeta && typeof body.clientMeta === "object"
+        ? body.clientMeta
+        : null;
+  const settledAt = new Date().toISOString();
   await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`, {
     method: "PATCH",
     token: SERVICE_KEY,
     body: {
       status: "done",
       result,
-      settled_at: new Date().toISOString(),
+      settled_at: settledAt,
       settled_by: adminId,
       final_score_home:
         body?.homeScore != null ? Number(body.homeScore) : step.final_score_home,
       final_score_away:
         body?.awayScore != null ? Number(body.awayScore) : step.final_score_away,
-      updated_at: new Date().toISOString(),
+      updated_at: settledAt,
+      // Marker: delete-audit-ip-ua-v1
+      metadata: {
+        ...(step.metadata && typeof step.metadata === "object" ? step.metadata : {}),
+        settled_via: "settle-desafio-audit-v1",
+        settled_ip: audit?.ip || null,
+        settled_user_agent: audit?.userAgent || null,
+        settled_outcome: result,
+      },
     },
   });
 
@@ -3974,14 +4016,31 @@ async function settleDesafioStep(token, body) {
         return true;
       });
       if (!open.length) {
+        const dzPrev = await sb(
+          `/rest/v1/desafios?select=metadata&id=eq.${encodeURIComponent(step.desafio_id)}&limit=1`,
+          { token: SERVICE_KEY }
+        ).catch(() => []);
+        const prevMeta =
+          Array.isArray(dzPrev) && dzPrev[0]?.metadata && typeof dzPrev[0].metadata === "object"
+            ? dzPrev[0].metadata
+            : {};
         await sb(`/rest/v1/desafios?id=eq.${encodeURIComponent(step.desafio_id)}`, {
           method: "PATCH",
           token: SERVICE_KEY,
           body: {
             is_active: false,
             status: "completed",
-            completed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
+            completed_at: settledAt,
+            updated_at: settledAt,
+            metadata: {
+              ...prevMeta,
+              completed_via: "settle-desafio-audit-v1",
+              completed_at: settledAt,
+              completed_by: adminId,
+              completed_ip: audit?.ip || null,
+              completed_user_agent: audit?.userAgent || null,
+              completed_outcome: result,
+            },
           },
         });
         desafioDeactivated = true;
@@ -8557,7 +8616,15 @@ const server = createServer(async (req, res) => {
       } catch {
         body = {};
       }
-      return sendJson(res, 200, await settleDesafioStep(token, body.data || body));
+      return sendJson(
+        res,
+        200,
+        await settleDesafioStep(
+          token,
+          body.data || body,
+          clientMetaFromReq(req)
+        )
+      );
     } catch (err) {
       return sendJson(res, 400, {
         error: err instanceof Error ? err.message : String(err),
