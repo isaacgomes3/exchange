@@ -279,6 +279,9 @@ describe("contrato travado — metadados", () => {
     assert.match(hotfix, /protection-runtime-stake-lock-v10/);
     assert.match(hotfix, /vps-check-pos-deploy-v10/);
     assert.match(hotfix, /CREATE_PROTECTION_FIX_MARKER/);
+    assert.match(hotfix, /proteger-stake-lock-v6/);
+    assert.doesNotMatch(hotfix, /proteger-stake-lock-toast-v6d/);
+    assert.match(hotfix, /reiniciar serviços \(API antes da UI/);
   });
 
   it("create-protection e UI: 50% + 1op + antes do kickoff", () => {
