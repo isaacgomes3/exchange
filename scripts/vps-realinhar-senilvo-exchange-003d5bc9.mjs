@@ -221,14 +221,15 @@ async function main() {
       feeNet += Math.abs(amt);
     }
   }
-  // Stake já devolvido?
+  // Stake já devolvido? (tx +R$ com stake_returned / repair dia)
   const stakeReturned = tlist.some((t) => {
     const m = metaOf(t);
     return (
-      typPositiveStake(t, m) ||
-      (t.type === "protection_settlement" &&
-        n(t.amount_cents) > 0 &&
-        m.stake_returned === true)
+      t.type === "protection_settlement" &&
+      n(t.amount_cents) > 0 &&
+      (m.stake_returned === true ||
+        m.tag === "repair-protecoes-dia-v10" ||
+        m.tag === TAG)
     );
   });
   // Clawback indevido de stake (script antigo) → precisa recreditar
