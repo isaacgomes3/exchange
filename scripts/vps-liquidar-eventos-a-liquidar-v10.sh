@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Liquida eventos A LIQUIDAR (29/07) com placar real + regra v10
-# WRAPPER_VER=4 — download multi-fonte + validação estrita (não aceita JSON/CDN velho)
+# WRAPPER_VER=5 — multi-fonte + reverte ArbiShield→Exchange (Barracas/Lech)
 #
 # Dry-run:
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-v10-fonte-verdade-501d/scripts/vps-liquidar-eventos-a-liquidar-v10.sh?$(date +%s)")
@@ -24,7 +24,7 @@ need node
 [[ "$(id -u)" -eq 0 ]] || die "rode como root na VPS"
 mkdir -p "$SCRIPTS_DIR/lib"
 
-log "wrapper v4 FIX=$FIX ref=$REF"
+log "wrapper v5 FIX=$FIX ref=$REF"
 
 # Conteúdo válido = código-fonte real (nunca metadata JSON do GitHub API).
 is_valid_contract() {

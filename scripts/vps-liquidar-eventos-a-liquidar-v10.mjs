@@ -284,6 +284,13 @@ async function loadPrior(protectionId) {
     if (t.type === "protection_fee" && amt < 0) feeCharged += Math.abs(amt);
     if (t.type === "protection_settlement" && amt < 0 && m.outcome === "exchange") {
       feeCharged += Math.abs(amt);
+    } else if (
+      t.type === "protection_settlement" &&
+      m.outcome === "exchange" &&
+      !(amt < 0) &&
+      n(m.fee_charged_now_cents) > 0
+    ) {
+      feeCharged += n(m.fee_charged_now_cents);
     }
     if (t.type === "protection_refund" && amt > 0) feeCharged -= amt;
     // Crédito Reembolso (ArbiShield)
@@ -384,7 +391,7 @@ async function settleProtection(row, outcome, score) {
     }
   }
 
-  // Se já liquidou como ArbiShield e o correto é Exchange (ex.: Barracas LAY 2X2, placar ≠ 2-2):
+  // Se já liquidou como ArbiShield e o correto é Exchange (ex.: Barracas/Lech LAY placar ≠ seleção):
   // remove Reembolso indevido → depois devolve stake à origem e cobra dedução.
   if (o === "exchange" && prior.reembolsoCredited > 0) {
     const clawReemb = prior.reembolsoCredited;
@@ -394,6 +401,11 @@ async function settleProtection(row, outcome, score) {
     if (p0) {
       const now0 = new Date().toISOString();
       const take = Math.min(clawReemb, Math.max(0, n(p0.deduction_balance_cents)));
+      console.log(
+        `  >> REVERTE ArbiShield→Exchange ${String(row.id).slice(0, 8)} remove Reembolso ${money(
+          take
+        )}`
+      );
       await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(row.user_id)}`, {
         method: "PATCH",
         body: {

@@ -191,6 +191,13 @@ async function loadPrior(protectionId) {
     if (t.type === "protection_fee" && amt < 0) feeCharged += Math.abs(amt);
     if (t.type === "protection_settlement" && amt < 0 && m.outcome === "exchange") {
       feeCharged += Math.abs(amt);
+    } else if (
+      t.type === "protection_settlement" &&
+      m.outcome === "exchange" &&
+      !(amt < 0) &&
+      n(m.fee_charged_now_cents) > 0
+    ) {
+      feeCharged += n(m.fee_charged_now_cents);
     }
     if (t.type === "protection_refund" && amt > 0) feeCharged -= amt;
     if (
