@@ -7,19 +7,14 @@
  *   - Placar NÃO bate a seleção  → LAY ganha na casa → EXCHANGE
  *
  * Eventos (29/07):
- *   1. Kauno × KÍ Women   LAY Visitante  1-0  → EXCHANGE   (visitante não venceu)
- *   2. Lech × Aarhus      LAY 3X0        1-4  → EXCHANGE   (≠ 3-0)
- *   3. Craiova × Levski   LAY 2X2        2-2  → ARBISHIELD (= 2-2 → reembolso)
- *   4. Barracas × Aldosivi LAY 2X2       1-0  → EXCHANGE   (≠ 2-2)
+ *   1. Kauno × KÍ Women   LAY Visitante  1-0  → EXCHANGE
+ *   2. Lech × Aarhus      LAY 3X0        1-4  → EXCHANGE
+ *   3. Craiova × Levski   LAY 2X2        2-2  → ARBISHIELD
+ *  4. Barracas × Aldosivi LAY 2X2       1-0  → EXCHANGE
+ *   5. Ipswich × Osasuna  LAY 3X1        1-2  → EXCHANGE  (≠ 3-1)
  *
- * Regra v10:
- *   Exchange   → devolve stake · cobra dedução · Reembolso R$0
- *   ArbiShield → stake → Saldo Reembolso · sem taxa
- *
- * Dry-run:
- *   node scripts/vps-liquidar-eventos-a-liquidar-v10.mjs
- * Aplicar:
- *   FIX=1 node scripts/vps-liquidar-eventos-a-liquidar-v10.mjs
+ * Filtrar um evento:
+ *   EVENT_KEY=ipswich FIX=1 node scripts/vps-liquidar-eventos-a-liquidar-v10.mjs
  *
  * Marker: vps-liquidar-eventos-a-liquidar-v10
  */
@@ -29,10 +24,15 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIX = process.env.FIX === "1" || process.env.FIX === "true";
-const TAG = "liquidar-eventos-a-liquidar-v10";
+const EVENT_KEY = String(process.env.EVENT_KEY || "")
+  .trim()
+  .toLowerCase();
+const TAG = EVENT_KEY
+  ? `liquidar-${EVENT_KEY}-v10`
+  : "liquidar-eventos-a-liquidar-v10";
 
-/** Planilha travada — placares de 29/07/2026 (fontes ESPN/Transfermarkt/Sofascore). */
-const EVENTS = [
+/** Planilha — placares reais (fontes ESPN/BBC/clube). */
+const ALL_EVENTS = [
   {
     key: "kauno",
     homeHint: "Kauno",
@@ -69,7 +69,29 @@ const EVENTS = [
     outcome: "exchange",
     why: "Barracas 1-0 Aldosivi · LAY 2X2 · placar ≠ 2-2 → LAY ganha na casa → Exchange",
   },
+  {
+    key: "ipswich",
+    homeHint: "Ipswich",
+    awayHint: "Osasuna",
+    marketHint: /3\s*[x×]\s*1|3-1|3×1/i,
+    score: "1-2",
+    outcome: "exchange",
+    why: "Ipswich 1-2 Osasuna · LAY 3X1 · placar ≠ 3-1 → LAY ganha na casa → Exchange",
+  },
 ];
+
+const EVENTS = EVENT_KEY
+  ? ALL_EVENTS.filter((e) => e.key === EVENT_KEY)
+  : ALL_EVENTS.filter((e) => e.key !== "ipswich");
+
+if (EVENT_KEY && !EVENTS.length) {
+  console.error("ERRO: EVENT_KEY desconhecido:", EVENT_KEY);
+  console.error(
+    "  válidos:",
+    ALL_EVENTS.map((e) => e.key).join(", ")
+  );
+  process.exit(2);
+}
 
 function loadEnvFile(file) {
   if (!fs.existsSync(file)) return;
@@ -667,6 +689,12 @@ async function main() {
   console.log("==> Liquidar eventos A LIQUIDAR (v10 / stake_lock_v1)");
   console.log("    contrato:", PROTECTION_FLOW_CONTRACT_VERSION);
   console.log("    FIX:", FIX ? "SIM" : "não (dry-run)");
+  console.log("    EVENT_KEY:", EVENT_KEY || "(lote padrão sem ipswich)");
+  console.log("    tag:", TAG);
+  console.log(
+    "    eventos:",
+    EVENTS.map((e) => `${e.key}→${e.outcome}`).join(", ")
+  );
 
   const matches = await sbAll(
     `/rest/v1/matches?select=*&order=starts_at.desc`

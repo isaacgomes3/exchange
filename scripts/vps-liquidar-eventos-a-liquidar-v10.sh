@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Liquida eventos A LIQUIDAR (29/07) com placar real + regra v10
-# WRAPPER_VER=5 — multi-fonte + reverte ArbiShield→Exchange (Barracas/Lech)
+# WRAPPER_VER=6 — EVENT_KEY=ipswich (Ipswich×Osasuna LAY 3X1 → Exchange 1-2)
 #
 # Dry-run:
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-v10-fonte-verdade-501d/scripts/vps-liquidar-eventos-a-liquidar-v10.sh?$(date +%s)")
@@ -15,6 +15,7 @@ API="https://api.github.com/repos/isaacgomes3/exchange/contents"
 JSDELIVR="https://cdn.jsdelivr.net/gh/isaacgomes3/exchange@${REF}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
 FIX="${FIX:-0}"
+EVENT_KEY="${EVENT_KEY:-}"
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
@@ -24,7 +25,7 @@ need node
 [[ "$(id -u)" -eq 0 ]] || die "rode como root na VPS"
 mkdir -p "$SCRIPTS_DIR/lib"
 
-log "wrapper v5 FIX=$FIX ref=$REF"
+log "wrapper v6 FIX=$FIX EVENT_KEY=${EVENT_KEY:-lote} ref=$REF"
 
 # Conteúdo válido = código-fonte real (nunca metadata JSON do GitHub API).
 is_valid_contract() {
@@ -42,9 +43,10 @@ is_valid_liquidar() {
   [[ -s "$f" ]] || return 1
   # rejeita metadata JSON (nome do arquivo no JSON passaria em grep frouxo)
   head -c 80 "$f" | grep -q '^{' && return 1
-  grep -q 'const TAG = "liquidar-eventos-a-liquidar-v10"' "$f" || return 1
-  grep -q 'const EVENTS = \[' "$f" || return 1
+  grep -qE 'liquidar-eventos-a-liquidar-v10|liquidar-\$\{EVENT_KEY\}|ALL_EVENTS' "$f" || return 1
+  grep -qE 'const (ALL_)?EVENTS = \[' "$f" || grep -q 'ALL_EVENTS' "$f" || return 1
   grep -q 'protection-flow-contract' "$f" || return 1
+  grep -q 'ipswich' "$f" || return 1
   return 0
 }
 
@@ -131,6 +133,6 @@ cp -f "$tmp" "$SCRIPTS_DIR/vps-liquidar-eventos-a-liquidar-v10.mjs"
 chmod 0755 "$SCRIPTS_DIR/vps-liquidar-eventos-a-liquidar-v10.mjs"
 rm -f "$tmp"
 
-log "3/3 executar FIX=$FIX"
+log "3/3 executar FIX=$FIX EVENT_KEY=${EVENT_KEY:-lote}"
 cd "$SCRIPTS_DIR"
-FIX="$FIX" node ./vps-liquidar-eventos-a-liquidar-v10.mjs
+FIX="$FIX" EVENT_KEY="$EVENT_KEY" node ./vps-liquidar-eventos-a-liquidar-v10.mjs
