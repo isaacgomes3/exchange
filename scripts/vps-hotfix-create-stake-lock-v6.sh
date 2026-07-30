@@ -12,7 +12,7 @@
 #   bash <(curl -fsSL "https://cdn.jsdelivr.net/gh/isaacgomes3/exchange@cursor/protecao-v10-fonte-verdade-501d/scripts/vps-check-pos-deploy-v10.sh")
 set -euo pipefail
 
-HOTFIX_SCRIPT_VER="stake-lock-hotfix-v10-restart-before-ui-20260730"
+HOTFIX_SCRIPT_VER="stake-lock-hotfix-v10-shim-scripts-path-20260730"
 REF="${ARBISHIELD_REF:-cursor/protecao-v10-fonte-verdade-501d}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
@@ -127,9 +127,19 @@ grep -qE "$MARKER|CREATE_PROTECTION_FIX_MARKER" "$tmp_shim" || die "shim sem $MA
 grep -qE "$RUNTIME_MARKER|PROTECTION_RUNTIME_HEALTH_MARKER" "$tmp_shim" || die "shim sem $RUNTIME_MARKER"
 grep -q 'createProtectionModel: PROTECTION_BILLING_MODEL_CANONICAL\|createProtectionModel: "stake_lock_v1"' "$tmp_shim" \
   || die "shim sem createProtectionModel"
-cp -f "$tmp_shim" "$SHIM_DIR/arbishield-serverfn-shim.mjs"
-chmod 0644 "$SHIM_DIR/arbishield-serverfn-shim.mjs"
-echo "  OK $SHIM_DIR/arbishield-serverfn-shim.mjs"
+# Unit de produção: ExecStart=.../opt/arbishield/scripts/arbishield-serverfn-shim.mjs
+# (NÃO só /opt/arbishield/arbishield-serverfn-shim.mjs — esse path deixa :3101 velho)
+for dest in \
+  /opt/arbishield/scripts/arbishield-serverfn-shim.mjs \
+  "$SCRIPTS_DIR/arbishield-serverfn-shim.mjs" \
+  "$SHIM_DIR/arbishield-serverfn-shim.mjs" \
+  "$SHIM_DIR/scripts/arbishield-serverfn-shim.mjs"; do
+  mkdir -p "$(dirname "$dest")" 2>/dev/null || true
+  [[ -f "$dest" ]] && cp -a "$dest" "$BK/$(basename "$dest").$(echo "$dest" | tr '/' '_')" 2>/dev/null || true
+  cp -f "$tmp_shim" "$dest"
+  chmod 0644 "$dest"
+  echo "  OK $dest"
+done
 rm -f "$tmp_shim"
 
 log "4/5 reiniciar serviços (API antes da UI — não deixar processo velho no ar)"

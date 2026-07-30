@@ -1,13 +1,73 @@
 #!/usr/bin/env bash
-# Atalho: só reinicia prelive/shim e valida health v10.
-# Use quando os arquivos já foram copiados mas o hotfix morreu antes do restart
-# (ex.: cache raw.githubusercontent com script antigo toast-v6d).
+# Reinicia prelive/shim sob stake_lock v10.
+# Também republica o shim no path do unit (scripts/) — hotfix antigo só
+# copiava /opt/arbishield/arbishield-serverfn-shim.mjs e :3101 ficava velho.
 #
 #   bash <(curl -fsSL "https://cdn.jsdelivr.net/gh/isaacgomes3/exchange@cursor/protecao-v10-fonte-verdade-501d/scripts/vps-restart-stake-lock-v10.sh")
 set -euo pipefail
 
+REF="${ARBISHIELD_REF:-cursor/protecao-v10-fonte-verdade-501d}"
+BUST="$(date +%s%N)"
+API="https://api.github.com/repos/isaacgomes3/exchange/contents"
+JSDELIVR="https://cdn.jsdelivr.net/gh/isaacgomes3/exchange@${REF}"
+RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
+RUNTIME_MARKER="protection-runtime-stake-lock-v10"
+
 die() { echo "ERRO: $*" >&2; exit 1; }
 [[ "$(id -u)" -eq 0 ]] || die "rode como root"
+mkdir -p /opt/arbishield/scripts/lib /opt/arbishield/lib
+
+download_repo_file() {
+  local rel="$1" out="$2"
+  local t; t="$(date +%s%N)"
+  if curl -fsSL --retry 3 -H "Accept: application/vnd.github.raw" \
+    -H "Cache-Control: no-cache" -H "User-Agent: arbishield-restart" \
+    "$API/$rel?ref=${REF}&t=$t" -o "$out" && [[ -s "$out" ]]; then
+    return 0
+  fi
+  if curl -fsSL --retry 3 -H "Cache-Control: no-cache" \
+    "$JSDELIVR/$rel?t=$t" -o "$out" && [[ -s "$out" ]]; then
+    return 0
+  fi
+  curl -fsSL --retry 3 -H "Cache-Control: no-cache" \
+    "$RAW/$rel?v=$BUST&t=$t" -o "$out"
+  [[ -s "$out" ]] || die "download vazio: $rel"
+}
+
+echo "==> republicar shim + contrato no path do unit (:3101)"
+tmp_c="$(mktemp)"
+tmp_s="$(mktemp)"
+download_repo_file "scripts/lib/protection-flow-contract.mjs" "$tmp_c"
+download_repo_file "scripts/arbishield-serverfn-shim.mjs" "$tmp_s"
+grep -q "$RUNTIME_MARKER" "$tmp_c" || die "contrato sem $RUNTIME_MARKER"
+grep -q "$RUNTIME_MARKER" "$tmp_s" || die "shim sem $RUNTIME_MARKER"
+
+for dest in \
+  /opt/arbishield/scripts/lib/protection-flow-contract.mjs \
+  /opt/arbishield/lib/protection-flow-contract.mjs
+do
+  mkdir -p "$(dirname "$dest")" 2>/dev/null || true
+  cp -f "$tmp_c" "$dest"
+  chmod 0644 "$dest"
+  echo "  contrato → $dest"
+done
+
+for dest in \
+  /opt/arbishield/scripts/arbishield-serverfn-shim.mjs \
+  /opt/arbishield/arbishield-serverfn-shim.mjs
+do
+  mkdir -p "$(dirname "$dest")" 2>/dev/null || true
+  cp -f "$tmp_s" "$dest"
+  chmod 0644 "$dest"
+  echo "  shim → $dest"
+done
+rm -f "$tmp_c" "$tmp_s"
+
+# Diagnóstico: o que o unit realmente executa
+if systemctl cat arbishield-serverfn-shim.service >/tmp/shim-unit.txt 2>/dev/null; then
+  echo "  unit ExecStart:"
+  grep -E 'ExecStart=' /tmp/shim-unit.txt || true
+fi
 
 echo "==> restart stake_lock v10"
 systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
@@ -28,6 +88,12 @@ if pgrep -af 'arbishield-serverfn-shim\.mjs' >/dev/null 2>&1; then
   sleep 1
   systemctl start arbishield-serverfn-shim.service 2>/dev/null || true
 fi
+# Se ainda houver listener velho em 3101, mata pela porta
+if command -v fuser >/dev/null 2>&1; then
+  fuser -k 3101/tcp 2>/dev/null || true
+  sleep 1
+  systemctl start arbishield-serverfn-shim.service 2>/dev/null || true
+fi
 
 sleep 2
 H3098="$(curl -fsS --max-time 8 http://127.0.0.1:3098/health || true)"
@@ -36,10 +102,11 @@ echo "health :3098 → $H3098"
 echo "health :3101 → $H3101"
 
 echo "$H3098" | grep -q 'protection-runtime-stake-lock-v10' \
-  || die "health :3098 sem protection-runtime-stake-lock-v10 — rode o hotfix completo via jsDelivr"
+  || die "health :3098 sem protection-runtime-stake-lock-v10"
 echo "$H3098" | grep -q 'stake_lock_v1' || die "health :3098 sem stake_lock_v1"
-echo "$H3098" | grep -q 'protection-flow-contract-v10' || die "health :3098 sem contract-v10"
-echo "$H3098" | grep -q 'protection-flow-contract-v1"' && die "ainda no processo v1" || true
+echo "$H3101" | grep -q 'protection-runtime-stake-lock-v10' \
+  || die "health :3101 sem protection-runtime-stake-lock-v10 — unit path?"
+echo "$H3101" | grep -q 'stake_lock_v1' || die "health :3101 sem stake_lock_v1"
 
-echo "OK — runtime reiniciado sob stake_lock_v10"
+echo "OK — runtime reiniciado sob stake_lock_v10 (:3098 + :3101)"
 echo "Validar: bash <(curl -fsSL \"https://cdn.jsdelivr.net/gh/isaacgomes3/exchange@cursor/protecao-v10-fonte-verdade-501d/scripts/vps-check-pos-deploy-v10.sh\")"
