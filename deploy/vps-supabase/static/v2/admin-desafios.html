@@ -1811,10 +1811,40 @@
             const res = await fetch("/api/arbishield/desafio-delete", {
               method: "POST",
               headers,
-              body: JSON.stringify({ id }),
+              body: JSON.stringify({
+                id,
+                confirm: "EXCLUIR",
+                // force só se o admin insistir após o backend bloquear etapa aberta
+                force: false,
+              }),
             });
             const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.error || "Falha ao excluir");
+            if (!res.ok) {
+              const msg = data.error || "Falha ao excluir";
+              if (/etapa\(s\) aberta|force:true/i.test(String(msg))) {
+                const again = window.prompt(
+                  msg +
+                    "\n\nSe REALMENTE quiser excluir mesmo com etapa aberta, digite FORCAR:",
+                  ""
+                );
+                if (String(again || "").trim().toUpperCase() !== "FORCAR") {
+                  throw new Error("Exclusão cancelada (etapa ainda aberta).");
+                }
+                const res2 = await fetch("/api/arbishield/desafio-delete", {
+                  method: "POST",
+                  headers,
+                  body: JSON.stringify({
+                    id,
+                    confirm: "EXCLUIR",
+                    force: true,
+                  }),
+                });
+                const data2 = await res2.json().catch(() => ({}));
+                if (!res2.ok) throw new Error(data2.error || "Falha ao excluir");
+              } else {
+                throw new Error(msg);
+              }
+            }
             alert("Desafio excluído.");
             await load();
           } catch (err) {
