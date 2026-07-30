@@ -315,8 +315,53 @@ async function loadProfile(userId) {
   return Array.isArray(rows) ? rows[0] : null;
 }
 
+/** Colunas reais de wallet_transactions (sem balance_type — vai em metadata). */
 async function insertTx(body) {
-  return sb(`/rest/v1/wallet_transactions`, { method: "POST", body });
+  const {
+    user_id,
+    type,
+    amount_cents,
+    ref,
+    note,
+    metadata,
+    created_at,
+    balance_before_cents,
+    balance_after_cents,
+  } = body || {};
+  const payload = {
+    user_id,
+    type,
+    amount_cents: n(amount_cents),
+    ref: ref || null,
+    metadata: {
+      ...(metadata && typeof metadata === "object" ? metadata : {}),
+      ...(body?.balance_type ? { balance_type: body.balance_type } : {}),
+      ...(note ? { note } : {}),
+    },
+  };
+  if (created_at) payload.created_at = created_at;
+  if (balance_before_cents != null) {
+    payload.balance_before_cents = n(balance_before_cents);
+  }
+  if (balance_after_cents != null) {
+    payload.balance_after_cents = n(balance_after_cents);
+  }
+  // `note` como coluna é opcional em alguns schemas — tenta com, cai sem
+  try {
+    return await sb(`/rest/v1/wallet_transactions`, {
+      method: "POST",
+      body: { ...payload, note: note || null },
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/PGRST204|Could not find the 'note' column/i.test(msg)) {
+      return sb(`/rest/v1/wallet_transactions`, {
+        method: "POST",
+        body: payload,
+      });
+    }
+    throw err;
+  }
 }
 
 async function patchProfile(userId, patch) {
@@ -335,18 +380,35 @@ function originBucket(bt) {
 /**
  * Aplica patch de carteira para Exchange incompleto (v10).
  * Devolve stake + cobra fee faltante + destrava.
+ * fee_upfront com locked preso: só destrava e devolve (taxa já cobrada na criação).
  */
 async function fixExchange(row, prior, feeExpected) {
   const amount = n(row.responsibility_cents || row.amount_cents);
   const bt = balanceTypeOf(row);
   const feeUpfront = isFeeUpfrontProtection(row);
   const stakeLock = isStakeLockProtection(row);
-  const needsUnlock = (stakeLock || !feeUpfront) && amount > 0;
-  const needsReturn = stakeLock && !feeUpfront && amount > 0;
-  const feeStillDue = Math.max(
-    0,
-    feeExpected - n(prior.feeCharged) - n(prior.feeShortfall)
-  );
+  const p = await loadProfile(row.user_id);
+  if (!p) throw new Error(`perfil ${row.user_id} não encontrado`);
+
+  // Idempotência: se locked do perfil já < amount, considera destravado
+  const lockedNow = n(p.locked_balance_cents);
+  const profileShowsLocked = amount > 0 && lockedNow >= amount;
+  const alreadyUnlocked =
+    !!prior.unlocked || (amount > 0 && !profileShowsLocked && lockedNow === 0);
+
+  // stake_lock: destrava+devolve. fee_upfront com locked preso (bug): destrava+devolve.
+  const needsUnlock =
+    amount > 0 &&
+    !alreadyUnlocked &&
+    (stakeLock || !feeUpfront || profileShowsLocked);
+  const needsReturn =
+    amount > 0 &&
+    !prior.stakeReturned &&
+    (stakeLock || (feeUpfront && profileShowsLocked));
+
+  const feeStillDue = feeUpfront
+    ? 0
+    : Math.max(0, feeExpected - n(prior.feeCharged) - n(prior.feeShortfall));
   // Comissão wallet deve ser 0 no v10 — se cobrou, devolve
   const commissionWallet = settlementExchangeCommissionWalletCents(row);
   const commissionToRefund = Math.max(
@@ -354,21 +416,18 @@ async function fixExchange(row, prior, feeExpected) {
     n(prior.commissionCharged) - commissionWallet
   );
 
-  const p = await loadProfile(row.user_id);
-  if (!p) throw new Error(`perfil ${row.user_id} não encontrado`);
-
   const now = new Date().toISOString();
   const patch = { updated_at: now };
-  let unlocked = !!prior.unlocked;
+  let unlocked = alreadyUnlocked;
   let stakeReturned = !!prior.stakeReturned;
   let feeChargedNow = 0;
 
-  if (needsUnlock && !unlocked) {
-    patch.locked_balance_cents = Math.max(0, n(p.locked_balance_cents) - amount);
+  if (needsUnlock) {
+    patch.locked_balance_cents = Math.max(0, lockedNow - amount);
     unlocked = true;
   }
 
-  if (needsReturn && !stakeReturned) {
+  if (needsReturn) {
     const bucket = originBucket(bt);
     if (bucket === "demo_balance_cents") {
       patch.demo_balance_cents = n(p.demo_balance_cents) + amount;
@@ -487,7 +546,17 @@ async function fixExchange(row, prior, feeExpected) {
     }
   }
 
-  await patchProfile(row.user_id, patch);
+  const didSomething =
+    needsUnlock ||
+    needsReturn ||
+    clawback > 0 ||
+    commissionToRefund > 0 ||
+    feeChargedNow > 0 ||
+    Object.keys(patch).length > 1;
+
+  if (didSomething) {
+    await patchProfile(row.user_id, patch);
+  }
   await insertTx({
     user_id: row.user_id,
     type: "protection_settlement",
@@ -498,19 +567,21 @@ async function fixExchange(row, prior, feeExpected) {
     metadata: {
       tag: TAG,
       outcome: "exchange",
-      billing_model: "stake_lock_v1",
+      billing_model: feeUpfront ? "fee_upfront_v1" : "stake_lock_v1",
+      balance_type: bt,
       fee_expected_cents: feeExpected,
       fee_charged_cents: feeChargedNow + n(prior.feeCharged),
       fee_charged_now_cents: feeChargedNow,
       unlocked_locked: unlocked,
       stake_returned: stakeReturned,
-      returned_stake_cents: needsReturn ? amount : 0,
-      unlock_return_to_origin: needsReturn,
+      returned_stake_cents: stakeReturned && needsReturn ? amount : 0,
+      unlock_return_to_origin: stakeReturned,
       exchange_no_credit: true,
       clawback_reembolso_cents: clawback,
       commission_refunded_cents: commissionToRefund,
       exchange_commission_charged_cents: 0,
       protection_id: row.id,
+      match_id: row.match_id || null,
       table: row._table,
     },
     created_at: now,
@@ -556,9 +627,11 @@ async function fixArbiShield(row, prior) {
         tag: TAG,
         outcome: "arbishield",
         billing_model: "stake_lock_v1",
+        balance_type: bt,
         bucket: "deduction_balance_cents",
         unlocked_locked: unlocked,
         protection_id: row.id,
+        match_id: row.match_id || null,
         table: row._table,
       },
       created_at: now,
@@ -614,11 +687,13 @@ async function fixVoid(row, prior) {
       tag: TAG,
       outcome: "void",
       billing_model: feeUpfront ? "fee_upfront_v1" : "stake_lock_v1",
+      balance_type: bt,
       unlocked_locked: unlocked,
       stake_returned: returned,
       returned_stake_cents: !feeUpfront ? amount : 0,
       unlock_return_to_origin: !feeUpfront,
       protection_id: row.id,
+      match_id: row.match_id || null,
       table: row._table,
     },
     created_at: now,
@@ -704,8 +779,17 @@ async function main() {
       const prior = await loadExchangePrior(row.id);
       const stakeLock = isStakeLockProtection(row);
       const feeUpfront = isFeeUpfrontProtection(row);
-      const needsUnlock = (stakeLock || !feeUpfront) && amount > 0;
-      const needsReturn = stakeLock && !feeUpfront && amount > 0;
+      const prof = await loadProfile(row.user_id);
+      const lockedNow = n(prof?.locked_balance_cents);
+      const profileShowsLocked = amount > 0 && lockedNow >= amount;
+      const needsUnlock =
+        amount > 0 &&
+        !prior.unlocked &&
+        (stakeLock || !feeUpfront || profileShowsLocked);
+      const needsReturn =
+        amount > 0 &&
+        !prior.stakeReturned &&
+        (stakeLock || (feeUpfront && profileShowsLocked));
       const heal = exchangeWalletHealNeeded(row, {
         hasTx: prior.hasTx,
         feeCharged: prior.feeCharged,
@@ -725,7 +809,15 @@ async function main() {
       });
       const badReembolso = n(prior.reembolsoCredited) > 0;
       const badCommission = n(prior.commissionCharged) > 0;
-      if (heal || !complete || badReembolso || badCommission) {
+      if (
+        heal ||
+        !complete ||
+        badReembolso ||
+        badCommission ||
+        profileShowsLocked ||
+        needsUnlock ||
+        needsReturn
+      ) {
         issues.push({
           kind: "exchange",
           row,
@@ -735,9 +827,11 @@ async function main() {
           billing,
           prior,
           reasons: [
-            !prior.stakeReturned && needsReturn ? "stake_nao_devolvido" : null,
-            !prior.unlocked && needsUnlock ? "locked_preso" : null,
-            fee > prior.feeCharged + prior.feeShortfall ? "fee_faltando" : null,
+            needsReturn ? "stake_nao_devolvido" : null,
+            needsUnlock || profileShowsLocked ? "locked_preso" : null,
+            !feeUpfront && fee > prior.feeCharged + prior.feeShortfall
+              ? "fee_faltando"
+              : null,
             badReembolso ? `reembolso_indevido_${prior.reembolsoCredited}` : null,
             badCommission
               ? `comissao_wallet_indevida_${prior.commissionCharged}`
