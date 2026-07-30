@@ -20,6 +20,10 @@ versão pode ser excluída. Modelos obsoletos (não usar / não reintroduzir):
 Compatibilidade residual de `fee_upfront` no código existe **somente** para
 settle/cancel de linhas antigas no banco — nunca para novas proteções.
 
+**Modo sistema inteiro:** ver também `docs/SYSTEM_NON_REGRESSION.md`
+(`system-non-regression-v1`) — layout UI, buckets de carteira, schema e
+superfície de deploy.
+
 ## Anti-regressão runtime
 
 | Controle | Marker / script |

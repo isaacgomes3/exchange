@@ -71,3 +71,37 @@ Alterar qualquer item acima exige pedido explícito + atualização dos testes d
 - Buscar usuário por `id`, `full_name` + saldo, ou `auth/v1/admin/users` (email).
 - Helpers: `scripts/lib/profiles-schema.mjs` · teste: `scripts/profiles-schema.test.mjs` (incluído em `npm test`).
 <!-- END:profiles-schema-lock -->
+
+<!-- BEGIN:system-non-regression -->
+# Sistema — MODO NÃO-REGRESSÃO (funcionamento + layout + banco)
+
+**Status:** LOCKED — alterar **somente** com solicitação explícita do dono  
+**Marker:** `DO_NOT_CHANGE_SYSTEM_SURFACE_WITHOUT_EXPLICIT_REQUEST`  
+**Versão:** `system-non-regression-v1`  
+**Doc:** `docs/SYSTEM_NON_REGRESSION.md`  
+**CI:** `npm test` → contratos UI / wallet / deploy / DB + proteção v10
+
+**Pedido explícito (2026-07-30):** travar o sistema inteiro contra regressão
+(API, UI, schema). Não reintroduzir `fee_upfront` como vigente, não remover
+rotas/logos, não renomear buckets de carteira, não SELECT `profiles.email`.
+
+## Camadas (não remover do CI)
+
+| Camada | Fonte | Teste |
+|---|---|---|
+| Proteção | `scripts/lib/protection-flow-contract.mjs` | `protection-flow-contract.test.mjs` |
+| Layout UI | `scripts/lib/ui-markers-contract.mjs` | `ui-markers-contract.test.mjs` |
+| Carteira | `scripts/lib/wallet-buckets-contract.mjs` | `wallet-buckets-contract.test.mjs` |
+| Schema DB | `scripts/lib/profiles-db-contract.mjs` + `profiles-schema.mjs` | `profiles-db-contract.test.mjs` + `profiles-schema.test.mjs` |
+| Deploy/API | `scripts/lib/deploy-surface-contract.mjs` | `deploy-surface-contract.test.mjs` |
+
+## Regras rápidas
+
+1. **Funcionamento:** create = `stake_lock_v1`; health com `protection-runtime-stake-lock-v10`; settle/cancel conforme v10.
+2. **Layout:** páginas críticas mantêm `arbishield-build` / features; carteira mostra **Saldo Reembolso** (nunca “Saldo Dedução”).
+3. **Banco:** sem `profiles.email`; colunas wallet (`locked_balance_cents`, `deduction_balance_cents`, …) e RPC `request_saldo_reembolso_withdrawal` permanecem.
+4. **Deploy:** `vps-atualizar-protecao-fee-upfront-prod.sh` bloqueado; shim em `/opt/arbishield/scripts/`; rota `/api/arbishield/football-teams` viva.
+5. **VPS:** após deploy → `vps-check-pos-deploy-v10.sh` (via API GitHub, não raw cacheado).
+
+Mudança em qualquer item exige pedido explícito + bump + sync AGENTS/docs + testes verdes.
+<!-- END:system-non-regression -->

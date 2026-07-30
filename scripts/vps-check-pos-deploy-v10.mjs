@@ -255,11 +255,49 @@ if (!SKIP_DB) {
   console.log("  SKIP_DB=1 — sem check billing_model");
 }
 
+// Layout no disco (VPS): metas críticas se os HTML existirem
+const SKIP_UI = ["1", "true", "yes"].includes(
+  String(process.env.SKIP_UI || "").toLowerCase()
+);
+if (!SKIP_UI) {
+  const webRoots = [
+    process.env.ARBISHIELD_WEB,
+    "/var/www/arbishield/v2",
+    "/var/www/arbishield",
+  ].filter(Boolean);
+  const pages = [
+    ["app-proteger.html", ["proteger-stake-lock-v6", "proteger-sem-stake-equiv"]],
+    ["app-carteira.html", ["Saldo Reembolso"]],
+    ["admin-jogos.html", ["football-teams", "searchFootballTeams"]],
+  ];
+  let checked = 0;
+  for (const root of webRoots) {
+    for (const [name, needles] of pages) {
+      const p = path.join(root, name);
+      if (!fs.existsSync(p)) continue;
+      const html = fs.readFileSync(p, "utf8");
+      checked += 1;
+      for (const n of needles) {
+        if (!html.includes(n)) {
+          errors.push(`UI ${p} sem "${n}"`);
+        }
+      }
+      if (name === "app-carteira.html" && html.includes("Saldo Dedução")) {
+        errors.push(`UI ${p} ainda tem "Saldo Dedução"`);
+      }
+    }
+    if (checked > 0) break;
+  }
+  console.log(`  UI disco pages_checked=${checked}`);
+} else {
+  console.log("  SKIP_UI=1 — sem check layout");
+}
+
 if (errors.length) {
   console.error("\nFALHOU pós-deploy v10:");
   for (const e of errors) console.error("  -", e);
   process.exit(1);
 }
 
-console.log("\nOK — runtime v10/stake_lock saudável (health + billing).");
+console.log("\nOK — runtime v10/stake_lock saudável (health + billing + UI).");
 process.exit(0);
