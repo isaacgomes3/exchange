@@ -11,8 +11,9 @@ set -euo pipefail
 
 ENV_FILE="${ARBISHIELD_ENV:-/opt/arbishield/deploy/vps-supabase/.env}"
 PUBLISH="${PUBLISH:-1}"
-# Noah + Turku (cancelados+excluídos). Hradec resolvido via REST.
-IDS_RAW="${IDS:-9dd0901f-a449-47c1-8443-c1b0c66303c4,e502804b-05ca-4c0d-8f69-a3a45d9d18ee}"
+# Publicados hoje e apagados no lote 15:12–15:13Z (estado = ativos de novo):
+# Noah×Zimbru · Turku×Başakşehir · Augsburg×Bournemouth · Hradec×Tromsø
+IDS_RAW="${IDS:-9dd0901f-a449-47c1-8443-c1b0c66303c4,e502804b-05ca-4c0d-8f69-a3a45d9d18ee,8beb938c-fa29-4bb6-9d97-fd1650bba3c4,b598561a-abe0-41c3-aeaa-5f1bd7c90d52}"
 
 die() { echo "ERRO: $*" >&2; exit 1; }
 log() { echo "==> $*"; }
