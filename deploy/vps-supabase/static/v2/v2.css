@@ -1626,6 +1626,66 @@ body[data-shell="admin"] .v2-nav-section {
 }
 body[data-shell="app"] .v2-nav-section .dot,
 body[data-shell="admin"] .v2-nav-section .dot { display: none; }
+
+/* Admin: accordion — só títulos das seções; clique abre os itens */
+body[data-shell="admin"] .v2-nav-group {
+  margin: 0;
+}
+body[data-shell="admin"] .v2-nav-accordion-btn {
+  width: 100%;
+  margin: 6px 0 2px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #9ca36a;
+  letter-spacing: 0.18em;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+body[data-shell="admin"] .v2-nav-accordion-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #c8d08a;
+}
+body[data-shell="admin"] .v2-nav-accordion-btn .sec-lbl {
+  flex: 1;
+  min-width: 0;
+}
+body[data-shell="admin"] .v2-nav-accordion-btn .sec-chevron {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  opacity: 0.7;
+  transition: transform 0.18s ease;
+  flex-shrink: 0;
+}
+body[data-shell="admin"] .v2-nav-accordion-btn .sec-chevron svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+body[data-shell="admin"] .v2-nav-group.is-open > .v2-nav-accordion-btn .sec-chevron {
+  transform: rotate(180deg);
+}
+body[data-shell="admin"] .v2-nav-group.is-open > .v2-nav-accordion-btn {
+  color: var(--lime-hot, #c6ff00);
+}
+body[data-shell="admin"] .v2-nav-group-items {
+  display: grid;
+  gap: 0;
+  padding: 0 0 6px;
+}
+body[data-shell="admin"] .v2-nav-group-items[hidden] {
+  display: none !important;
+}
 body[data-shell="app"] .v2-nav-link,
 body[data-shell="admin"] .v2-nav-link {
   gap: 12px;
