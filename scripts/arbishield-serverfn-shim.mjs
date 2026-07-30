@@ -6,7 +6,7 @@
  * Env: ARBISHIELD_SUPABASE_URL, SERVICE_ROLE_KEY (ou ANON_KEY + Authorization do browser)
  */
 import { createServer } from "node:http";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, appendFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
@@ -820,6 +820,81 @@ async function resolveAdminIdentity(adminId) {
   return { name: name || null, email: email || null };
 }
 
+/**
+ * Grava QUEM (e-mail) + IP em admin_audit_logs + arquivo local + console.
+ * Marker: desafio-admin-audit-email-v1
+ */
+async function logDesafioAdminAction({
+  action,
+  adminId,
+  adminEmail,
+  adminName,
+  entityType,
+  entityId,
+  ip,
+  userAgent,
+  details,
+}) {
+  const at = new Date().toISOString();
+  const email = adminEmail || null;
+  const line = [
+    at,
+    action,
+    `admin=${email || adminId || "?"}`,
+    `name=${adminName || "-"}`,
+    `ip=${ip || "-"}`,
+    `entity=${entityType || "-"}:${entityId || "-"}`,
+    details && details.outcome ? `outcome=${details.outcome}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  try {
+    console.log(`[desafio-admin-audit] ${line}`);
+  } catch {
+    /* */
+  }
+  try {
+    const dir = process.env.DESAFIO_ADMIN_AUDIT_DIR || "/var/log/arbishield";
+    const file =
+      process.env.DESAFIO_ADMIN_AUDIT_LOG ||
+      `${dir}/desafio-admin-actions.log`;
+    try {
+      mkdirSync(dir, { recursive: true });
+    } catch {
+      /* */
+    }
+    appendFileSync(file, line + "\n", { encoding: "utf8" });
+  } catch {
+    /* sem permissão de escrita — segue */
+  }
+  try {
+    await sb("/rest/v1/admin_audit_logs", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        admin_id: adminId || null,
+        action: String(action || "DESAFIO_ADMIN"),
+        entity_type: String(entityType || "desafio"),
+        entity_id: String(entityId || ""),
+        details: {
+          admin_email: email,
+          admin_name: adminName || null,
+          ip: ip || null,
+          user_agent: userAgent ? String(userAgent).slice(0, 300) : null,
+          at,
+          marker: "desafio-admin-audit-email-v1",
+          ...(details && typeof details === "object" ? details : {}),
+        },
+      },
+    });
+  } catch (e) {
+    console.warn(
+      "[desafio-admin-audit] admin_audit_logs:",
+      (e && e.message) || e
+    );
+  }
+}
+
 function creatorMetaPatch(prevMeta, adminId, adminName) {
   const meta =
     prevMeta && typeof prevMeta === "object" ? { ...prevMeta } : {};
@@ -1320,6 +1395,17 @@ async function deleteDesafio(token, body, clientMeta = null) {
       body: delBody,
     });
   }
+  await logDesafioAdminAction({
+    action: "DESAFIO_DELETE",
+    adminId,
+    adminEmail: adminIdent.email,
+    adminName: adminIdent.name,
+    entityType: "desafio",
+    entityId: id,
+    ip: audit?.ip || null,
+    userAgent: audit?.userAgent || null,
+    details: { force: !!force, title: curMeta?.title || null },
+  });
   return {
     ok: true,
     deleted: true,
@@ -1327,6 +1413,7 @@ async function deleteDesafio(token, body, clientMeta = null) {
     marker: "delete-desafio-guard-v3",
     force: !!force,
     deletedIp: audit?.ip || null,
+    deletedByEmail: adminIdent.email || null,
   };
 }
 
@@ -1681,6 +1768,18 @@ async function cancelDesafio(token, body, clientMeta = null) {
     });
   }
 
+  await logDesafioAdminAction({
+    action: "DESAFIO_CANCEL",
+    adminId,
+    adminEmail: cancelIdent.email,
+    adminName: cancelIdent.name,
+    entityType: "desafio",
+    entityId: id,
+    ip: audit?.ip || null,
+    userAgent: audit?.userAgent || null,
+    details: { refundedCount, refundedCents },
+  });
+
   return {
     ok: true,
     cancelled: true,
@@ -1688,6 +1787,7 @@ async function cancelDesafio(token, body, clientMeta = null) {
     refundedCount,
     refundedCents,
     cancelledIp: audit?.ip || null,
+    cancelledByEmail: cancelIdent.email || null,
   };
 }
 
@@ -4024,6 +4124,23 @@ async function settleDesafioStep(token, body, clientMeta = null) {
         settled_by_name: settleIdent.name || null,
         settled_by_email: settleIdent.email || null,
       },
+    },
+  });
+
+  await logDesafioAdminAction({
+    action: "DESAFIO_SETTLE",
+    adminId,
+    adminEmail: settleIdent.email,
+    adminName: settleIdent.name,
+    entityType: "desafio_step",
+    entityId: stepId,
+    ip: audit?.ip || null,
+    userAgent: audit?.userAgent || null,
+    details: {
+      outcome: result,
+      winningSide,
+      desafio_id: step.desafio_id || null,
+      match_label: step.match_label || null,
     },
   });
 

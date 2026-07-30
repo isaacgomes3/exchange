@@ -118,7 +118,74 @@ ORDER BY s.settled_at DESC NULLS LAST
 LIMIT ${LIMIT};
 SQL
 
-log "3) Nginx — só API real (/api/arbishield/desafio-delete|settle|cancel)"
+log "3) HISTÓRICO — e-mail do admin via settled_by / deleted_by (mesmo sem IP no metadata)"
+psql_db <<SQL
+\pset pager off
+SELECT
+  s.settled_at AS quando,
+  left(coalesce(d.title, '?'), 28) AS desafio,
+  s.result,
+  coalesce(u.email::text, '(sem email)') AS admin_email,
+  left(s.settled_by::text, 8) AS admin_uid,
+  s.metadata->>'settled_ip' AS ip
+FROM public.desafio_steps s
+LEFT JOIN public.desafios d ON d.id = s.desafio_id
+LEFT JOIN auth.users u ON u.id = s.settled_by
+WHERE s.settled_by IS NOT NULL
+  AND s.settled_at IS NOT NULL
+  AND (${ID_FILTER_S})
+ORDER BY s.settled_at DESC
+LIMIT ${LIMIT};
+SQL
+
+echo "--- deletes com deleted_by no metadata ---"
+psql_db <<SQL
+\pset pager off
+SELECT
+  coalesce((d.metadata->>'deleted_at')::timestamptz, d.deleted_at) AS quando,
+  left(coalesce(d.title, '?'), 28) AS desafio,
+  coalesce(
+    d.metadata->>'deleted_by_email',
+    u.email::text,
+    '(uid sem email)'
+  ) AS admin_email,
+  left(coalesce(d.metadata->>'deleted_by',''), 8) AS admin_uid,
+  d.metadata->>'deleted_ip' AS ip
+FROM public.desafios d
+LEFT JOIN auth.users u ON u.id::text = nullif(d.metadata->>'deleted_by','')
+WHERE d.metadata ? 'deleted_by'
+   OR d.deleted_at IS NOT NULL
+ORDER BY coalesce(d.deleted_at, d.updated_at) DESC NULLS LAST
+LIMIT ${LIMIT};
+SQL
+
+echo "--- admin_audit_logs (DESAFIO_*) ---"
+psql_db <<SQL
+\pset pager off
+SELECT
+  a.created_at AS quando,
+  a.action,
+  coalesce(a.details->>'admin_email', u.email::text, '(?)') AS admin_email,
+  a.details->>'ip' AS ip,
+  left(coalesce(a.entity_id,''), 8) AS entity,
+  a.details->>'outcome' AS outcome
+FROM public.admin_audit_logs a
+LEFT JOIN auth.users u ON u.id = a.admin_id
+WHERE a.action ILIKE 'DESAFIO_%'
+   OR a.action ILIKE '%desafio%delete%'
+   OR a.action ILIKE '%desafio%settle%'
+ORDER BY a.created_at DESC
+LIMIT ${LIMIT};
+SQL
+
+echo "--- arquivo local do shim (se existir) ---"
+if [[ -f /var/log/arbishield/desafio-admin-actions.log ]]; then
+  tail -n 40 /var/log/arbishield/desafio-admin-actions.log
+else
+  echo "(ainda vazio — começa a gravar após republicar o shim com desafio-admin-audit-email-v1)"
+fi
+
+log "4) Nginx — só API real (/api/arbishield/desafio-delete|settle|cancel)"
 FOUND=0
 shopt -s nullglob
 for f in /var/log/nginx/access.log /var/log/nginx/access.log.* /var/log/nginx/*access*.log; do
@@ -149,7 +216,7 @@ if [[ "$FOUND" -eq 0 ]]; then
   echo "Dica: grep manual → zgrep -h 'desafio-settle' /var/log/nginx/access.log* | tail"
 fi
 
-log "4) Conf nginx (onde está o proxy :3101)"
+log "5) Conf nginx (onde está o proxy :3101)"
 NGINX_HITS="$(grep -RIl '3101\|desafio-settle\|desafio-delete' /etc/nginx 2>/dev/null | head -20 || true)"
 if [[ -n "$NGINX_HITS" ]]; then
   echo "$NGINX_HITS"
