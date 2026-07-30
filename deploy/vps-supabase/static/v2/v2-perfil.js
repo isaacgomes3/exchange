@@ -317,18 +317,115 @@
     paint();
   }
 
+  function mfaErrorText(ex) {
+    var msg = String((ex && (ex.message || ex.msg || ex.error_description)) || ex || "");
+    var code = String((ex && (ex.code || ex.error_code)) || "").toLowerCase();
+    var low = msg.toLowerCase();
+    if (
+      code.indexOf("enroll_disabled") >= 0 ||
+      low.indexOf("enroll is disabled") >= 0 ||
+      low.indexOf("mfa enroll is disabled") >= 0
+    ) {
+      return (
+        "2FA ainda desligado no servidor. Na VPS rode: " +
+        "scripts/vps-hotfix-enable-mfa-totp.sh (force-recreate auth)."
+      );
+    }
+    if (
+      code.indexOf("factor_name_conflict") >= 0 ||
+      low.indexOf("friendly name") >= 0 ||
+      low.indexOf("already exists") >= 0
+    ) {
+      return (
+        "Já existe um fator 2FA incompleto nesta conta. " +
+        "Clique de novo em Ativar 2FA (limpamos automático) ou na VPS: " +
+        "FORCE_ALL=1 EMAIL='seu@email' bash scripts/vps-limpar-mfa-pendente.sh"
+      );
+    }
+    if (
+      code.indexOf("too_many") >= 0 ||
+      low.indexOf("maximum number") >= 0
+    ) {
+      return (
+        "Limite de fatores 2FA atingido. Na VPS limpe com FORCE_ALL=1 " +
+        "no script vps-limpar-mfa-pendente.sh e tente de novo."
+      );
+    }
+    if (code.indexOf("insufficient_aal") >= 0 || low.indexOf("aal2 required") >= 0) {
+      return (
+        "Esta conta já tem 2FA. Faça logout, entre com senha + código do autenticador."
+      );
+    }
+    return msg || "Falha ao iniciar 2FA";
+  }
+
+  function normalizeQrSrc(qr) {
+    var s = String(qr || "").trim();
+    if (!s) return "";
+    if (s.indexOf("data:") === 0) return s;
+    if (s.indexOf("<svg") === 0 || s.indexOf("<?xml") === 0) {
+      try {
+        return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(s);
+      } catch (e) {
+        return "";
+      }
+    }
+    return s;
+  }
+
+  async function clearPendingMfaFactors(supa) {
+    // 1) API GoTrue do próprio usuário
+    var listed = await supa.auth.mfa.listFactors();
+    if (listed.error) throw listed.error;
+    var all = (listed.data && listed.data.all) || [];
+    var totpList = (listed.data && listed.data.totp) || [];
+    var factors = all.length ? all : totpList;
+    var pending = factors.filter(function (f) {
+      var st = String(f.status || "").toLowerCase();
+      return st !== "verified";
+    });
+    for (var i = 0; i < pending.length; i++) {
+      if (!pending[i] || !pending[i].id) continue;
+      await supa.auth.mfa.unenroll({ factorId: pending[i].id }).catch(function () {});
+    }
+    // 2) reforço via shim (service role) se ainda restar lixo
+    try {
+      var sess = await supa.auth.getSession();
+      var tok =
+        sess &&
+        sess.data &&
+        sess.data.session &&
+        sess.data.session.access_token;
+      if (tok) {
+        await fetch("/api/arbishield/mfa-clear-pending", {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + tok,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        });
+      }
+    } catch (eClear) {
+      /* best-effort */
+    }
+    return factors;
+  }
+
   async function startMfaEnroll(supa) {
     state.busy = true;
     state.modal = "mfa";
     paint();
     try {
-      // Marker: mfa-totp-enroll-v2 — remove fator incompleto e gera QR de novo
-      var listed = await supa.auth.mfa.listFactors();
-      if (listed.error) throw listed.error;
-      var all = (listed.data && listed.data.all) || [];
-      var totpList = (listed.data && listed.data.totp) || [];
-      var factors = all.length ? all : totpList;
-      var active = factors.filter(function (f) {
+      // Marker: mfa-totp-enroll-v3 — limpa pendentes + QR SVG + erros PT
+      var factors = await clearPendingMfaFactors(supa);
+      var listed2 = await supa.auth.mfa.listFactors();
+      if (!listed2.error) {
+        var all2 = (listed2.data && listed2.data.all) || [];
+        var totp2 = (listed2.data && listed2.data.totp) || [];
+        factors = all2.length ? all2 : totp2.length ? totp2 : factors;
+      }
+      var active = (factors || []).filter(function (f) {
         var t = String(f.factor_type || f.factorType || f.type || "totp").toLowerCase();
         return (
           (t === "totp" || !f.factor_type) &&
@@ -343,38 +440,38 @@
         };
         state.busy = false;
         paint();
+        showOk("2FA já está ativo nesta conta.");
         return;
       }
-      // Fator criado antes sem confirmar — apaga para poder gerar QR novo
-      var pending = factors.filter(function (f) {
-        var st = String(f.status || "").toLowerCase();
-        return st === "unverified" || st === "pending" || !st || st === "";
-      });
-      for (var i = 0; i < pending.length; i++) {
-        if (!pending[i] || !pending[i].id) continue;
-        var un = await supa.auth.mfa.unenroll({ factorId: pending[i].id });
-        if (un.error) {
-          // tenta mesmo assim; enroll pode falhar com nome duplicado
-          console.warn("mfa unenroll", un.error);
-        }
-      }
-      var friendly =
-        "ArbiShield-" + String(Date.now()).slice(-6);
+      var friendly = "ArbiShield-" + String(Date.now()).slice(-8);
       var en = await supa.auth.mfa.enroll({
         factorType: "totp",
         friendlyName: friendly,
-        issuer: "ArbiShield",
       });
+      if (en.error) {
+        // retry único após limpar de novo
+        await clearPendingMfaFactors(supa);
+        friendly = "ArbiShield-" + String(Date.now()).slice(-8);
+        en = await supa.auth.mfa.enroll({
+          factorType: "totp",
+          friendlyName: friendly,
+        });
+      }
       if (en.error) throw en.error;
       var totp = (en.data && en.data.totp) || {};
       state.mfa = {
         verified: false,
         factorId: en.data && en.data.id,
-        qr: totp.qr_code || totp.qrCode || "",
+        qr: normalizeQrSrc(totp.qr_code || totp.qrCode || ""),
         secret: totp.secret || "",
         uri: totp.uri || "",
         friendlyName: friendly,
       };
+      if (!state.mfa.qr && !state.mfa.secret) {
+        throw new Error(
+          "Servidor não devolveu QR/secret. Confirme MFA TOTP habilitado no GoTrue."
+        );
+      }
       state.busy = false;
       paint();
       showOk("Escaneie o QR e digite o código de 6 dígitos.");
@@ -382,7 +479,7 @@
       state.busy = false;
       state.modal = null;
       paint();
-      showErr((ex && ex.message) || "Falha ao iniciar 2FA. Rode o hotfix MFA na VPS.");
+      showErr(mfaErrorText(ex));
     }
   }
 

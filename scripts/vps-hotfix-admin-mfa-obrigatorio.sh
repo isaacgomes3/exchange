@@ -64,7 +64,7 @@ sleep 1
 log "2/4 UI (v2.js + shell + perfil + auth)"
 download "deploy/vps-supabase/static/v2/v2.js" "$WEB/v2.js" "admin-mfa-required-v1"
 download "deploy/vps-supabase/static/v2/v2-shell.js" "$WEB/v2-shell.js" "admin-mfa-required-v1"
-download "deploy/vps-supabase/static/v2/v2-perfil.js" "$WEB/v2-perfil.js" "admin-mfa-required-v1"
+download "deploy/vps-supabase/static/v2/v2-perfil.js" "$WEB/v2-perfil.js" "mfa-totp-enroll-v3"
 download "deploy/vps-supabase/static/v2/auth.html" "$WEB/auth.html" "admin-mfa-required-v1"
 for f in v2.js v2-shell.js v2-perfil.js auth.html; do
   install -m 0644 "$WEB/$f" "$WEB_ROOT/$f" 2>/dev/null || true

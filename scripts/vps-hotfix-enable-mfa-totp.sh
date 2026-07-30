@@ -122,19 +122,23 @@ print("compose MFA ok")
 PY
 fi
 
-log "2/4 reiniciar auth (GoTrue) — sessões atuais NÃO são apagadas por isso"
+log "2/4 recrear auth (GoTrue) com MFA — sessões JWT atuais continuam até expirar"
 (
   cd "$COMPOSE_DIR"
-  docker compose up -d auth 2>/dev/null || docker compose up -d gotrue 2>/dev/null || true
-  # nomes comuns
+  # force-recreate para pegar GOTRUE_MFA_* do compose/.env
+  docker compose up -d --force-recreate auth 2>/dev/null \
+    || docker compose up -d --force-recreate gotrue 2>/dev/null \
+    || true
+  sleep 2
   for c in $(docker ps --format '{{.Names}}' | grep -Ei 'auth|gotrue' || true); do
-    docker restart "$c" 2>/dev/null || true
+    echo "  container: $c"
+    docker exec "$c" sh -c 'printenv | grep -E "^GOTRUE_MFA_TOTP_|^GOTRUE_MFA_MAX" || true' 2>/dev/null || true
   done
 )
 sleep 2
 
 log "3/4 publicar UI (perfil 2FA + login challenge)"
-download "deploy/vps-supabase/static/v2/v2-perfil.js" "$WEB/v2-perfil.js" "mfa-totp-enroll-v2"
+download "deploy/vps-supabase/static/v2/v2-perfil.js" "$WEB/v2-perfil.js" "mfa-totp-enroll-v3"
 download "deploy/vps-supabase/static/v2/auth.html" "$WEB/auth.html" "mfa-totp-challenge-v1"
 download "deploy/vps-supabase/static/v2/app-perfil.html" "$WEB/app-perfil.html" "v2-perfil.js"
 install -m 0644 "$WEB/v2-perfil.js" "$WEB_ROOT/v2-perfil.js" 2>/dev/null || true

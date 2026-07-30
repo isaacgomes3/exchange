@@ -1792,6 +1792,122 @@ async function cancelDesafio(token, body, clientMeta = null) {
 }
 
 /**
+ * Remove fatores MFA não verificados do próprio usuário (service role).
+ * Marker: mfa-clear-pending-v1
+ */
+async function clearPendingMfaFactorsForUser(token) {
+  if (!token) {
+    const err = new Error("Não autorizado");
+    err.status = 401;
+    throw err;
+  }
+  let uid;
+  try {
+    uid = requireUserId(token);
+  } catch {
+    const err = new Error("Não autorizado");
+    err.status = 401;
+    throw err;
+  }
+  if (!SERVICE_KEY) throw new Error("SERVICE_ROLE_KEY ausente");
+
+  const removed = [];
+  const kept = [];
+  // Lista fatores via admin user
+  let factors = [];
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(uid)}`,
+      {
+        headers: {
+          apikey: SERVICE_KEY,
+          Authorization: `Bearer ${SERVICE_KEY}`,
+        },
+      }
+    );
+    if (res.ok) {
+      const u = await res.json();
+      factors = Array.isArray(u?.factors) ? u.factors : [];
+    }
+  } catch {
+    /* */
+  }
+
+  // Fallback: GoTrue factors do próprio user
+  if (!factors.length) {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/auth/v1/factors`, {
+        headers: {
+          apikey: ANON_KEY || SERVICE_KEY,
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        factors = Array.isArray(data) ? data : [];
+      }
+    } catch {
+      /* */
+    }
+  }
+
+  for (const f of factors) {
+    const id = f && f.id;
+    if (!id) continue;
+    const st = String(f.status || "").toLowerCase();
+    if (st === "verified") {
+      kept.push({ id, status: st, friendly_name: f.friendly_name || null });
+      continue;
+    }
+    let ok = false;
+    // Admin delete factor
+    try {
+      const del = await fetch(
+        `${SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(uid)}/factors/${encodeURIComponent(id)}`,
+        {
+          method: "DELETE",
+          headers: {
+            apikey: SERVICE_KEY,
+            Authorization: `Bearer ${SERVICE_KEY}`,
+          },
+        }
+      );
+      ok = del.ok || del.status === 204 || del.status === 404;
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      try {
+        const del2 = await fetch(
+          `${SUPABASE_URL}/auth/v1/factors/${encodeURIComponent(id)}`,
+          {
+            method: "DELETE",
+            headers: {
+              apikey: ANON_KEY || SERVICE_KEY,
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        ok = del2.ok || del2.status === 204 || del2.status === 404;
+      } catch {
+        /* */
+      }
+    }
+    if (ok) removed.push({ id, status: st, friendly_name: f.friendly_name || null });
+    else kept.push({ id, status: st, friendly_name: f.friendly_name || null });
+  }
+
+  return {
+    ok: true,
+    marker: "mfa-clear-pending-v1",
+    userId: uid,
+    removed: removed.length,
+    kept: kept.length,
+    removedIds: removed.map((x) => x.id),
+  };
+}
+
+/**
  * Encerra outras sessões (ou todas) do usuário autenticado.
  * Marker: auth-logout-others-v1
  * scope: "others" (padrão) | "global"
@@ -8916,6 +9032,19 @@ const server = createServer(async (req, res) => {
         body = {};
       }
       return sendJson(res, 200, await logoutAuthSessions(token, body.data || body));
+    } catch (err) {
+      const status = Number(err && err.status) || 400;
+      return sendJson(res, status, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/mfa-clear-pending" && req.method === "POST") {
+    try {
+      const token = bearerFromReq(req);
+      return sendJson(res, 200, await clearPendingMfaFactorsForUser(token));
     } catch (err) {
       const status = Number(err && err.status) || 400;
       return sendJson(res, status, {
