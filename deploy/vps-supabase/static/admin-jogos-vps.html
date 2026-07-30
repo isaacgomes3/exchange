@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <meta name="arbishield-vps-page" content="jogos" />
+  <title>Gestão de Jogos — ArbiShield</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #050505;
+      --panel: #0a0a0a;
+      --border: #1f1f1f;
+      --text: #f5f5f7;
+      --muted: #8a8a8f;
+      --lime: #c9f223;
+      --danger: #ef4444;
+      --amber: #f59e0b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      background: radial-gradient(900px 500px at 0% 0%, rgba(201,242,35,0.07), transparent 50%), var(--bg);
+      color: var(--text);
+    }
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 24px 18px 64px; }
+    header {
+      display: flex; flex-wrap: wrap; gap: 14px;
+      align-items: flex-start; justify-content: space-between;
+      margin-bottom: 22px;
+    }
+    h1 {
+      margin: 0; font-size: clamp(1.5rem, 3vw, 2.1rem);
+      font-weight: 800; letter-spacing: -0.04em; text-transform: uppercase;
+    }
+    h1 span { color: var(--lime); }
+    .sub {
+      margin: 6px 0 0; color: var(--muted); font-size: 0.72rem;
+      letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;
+    }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn {
+      border: 0; border-radius: 12px; padding: 12px 16px;
+      font-weight: 800; font-size: 10px; letter-spacing: 0.12em;
+      text-transform: uppercase; cursor: pointer; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn-primary { background: var(--lime); color: #000; }
+    .btn-ghost {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-sm { padding: 8px 12px; font-size: 9px; }
+    .stats {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+      gap: 10px; margin-bottom: 20px;
+    }
+    .stat {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; padding: 12px 14px;
+    }
+    .stat .l {
+      font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted); font-weight: 700;
+    }
+    .stat .v { font-size: 1.5rem; font-weight: 800; margin-top: 4px; }
+    .stat .v.lime { color: var(--lime); }
+    .stat .v.red { color: var(--danger); }
+    .stat .v.amber { color: var(--amber); }
+    .tabs {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; padding: 6px;
+    }
+    .tab {
+      border: 0; background: transparent; color: var(--muted);
+      border-radius: 10px; padding: 10px 14px;
+      font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
+      text-transform: uppercase; cursor: pointer;
+    }
+    .tab.active { background: var(--lime); color: #000; }
+    .search {
+      width: 100%; max-width: 320px; margin-left: auto;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 12px; padding: 10px 14px; color: var(--text);
+      font-size: 10px; font-weight: 800; letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .toolbar {
+      display: flex; flex-wrap: wrap; gap: 12px;
+      align-items: center; justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .panel {
+      border: 1px solid var(--border); border-radius: 16px;
+      background: var(--panel); overflow: hidden;
+    }
+    .panel-head {
+      padding: 14px 16px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    }
+    .panel-head h2 {
+      margin: 0; font-size: 11px; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--lime);
+    }
+    .panel-head .hint { color: var(--muted); font-size: 11px; }
+    .breadcrumb {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .breadcrumb button {
+      border: 0; background: none; color: var(--lime); cursor: pointer;
+      font: inherit; padding: 0;
+    }
+    .list { display: flex; flex-direction: column; }
+    .row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border);
+      cursor: pointer; transition: background 0.15s;
+    }
+    .row:last-child { border-bottom: 0; }
+    .row:hover { background: rgba(201,242,35,0.04); }
+    .row .teams { font-weight: 800; font-size: 14px; }
+    .row .meta {
+      color: var(--muted); font-size: 10px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase; margin-top: 4px;
+    }
+    .row .time { text-align: right; white-space: nowrap; }
+    .row .time .kick {
+      font-size: 10px; color: var(--lime); font-weight: 800;
+      letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .row .time .when {
+      font-size: 11px; color: var(--muted); margin-top: 4px;
+    }
+    .market-row { cursor: default; flex-direction: column; align-items: stretch; }
+    .market-row:hover { background: transparent; }
+    .market-title {
+      font-weight: 800; font-size: 12px; margin-bottom: 10px;
+      letter-spacing: 0.04em;
+    }
+    .runners { display: flex; flex-wrap: wrap; gap: 8px; }
+    .runner {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border-radius: 12px;
+      border: 1px solid var(--border); background: rgba(255,255,255,0.02);
+    }
+    .runner .name { font-size: 11px; font-weight: 700; }
+    .runner .odd { color: var(--lime); font-weight: 800; font-size: 14px; }
+    .empty, .loading, .error {
+      border: 1px dashed var(--border); border-radius: 16px;
+      padding: 36px 20px; text-align: center; color: var(--muted);
+      margin: 16px;
+    }
+    .error { border-color: rgba(239,68,68,0.4); color: #fca5a5; }
+    .gate {
+      min-height: 60vh; display: grid; place-items: center;
+      color: var(--muted);
+    }
+    .gate.gone { display: none !important; }
+    .auth-banner {
+      display: none;
+      margin-bottom: 16px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(245,158,11,0.35);
+      background: rgba(245,158,11,0.08);
+      color: #fcd34d;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .auth-banner.show { display: block; }
+    .auth-banner a { color: var(--lime); font-weight: 800; }
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+      display: none; align-items: center; justify-content: center;
+      z-index: 50; padding: 20px;
+    }
+    .modal-backdrop.show { display: flex; }
+    .modal {
+      width: min(480px, 100%); background: #0a0a0a;
+      border: 1px solid var(--border); border-radius: 18px; padding: 22px;
+    }
+    .modal h3 {
+      margin: 0 0 8px; font-size: 1rem; text-transform: uppercase;
+      letter-spacing: -0.02em;
+    }
+    .modal p { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 0 0 16px; }
+    .modal .grid {
+      display: grid; gap: 8px; margin-bottom: 18px;
+      font-size: 12px;
+    }
+    .modal .grid div {
+      display: flex; justify-content: space-between; gap: 10px;
+      padding: 8px 0; border-bottom: 1px solid var(--border);
+    }
+    .modal .grid span:first-child { color: var(--muted); text-transform: uppercase; font-size: 10px; font-weight: 700; }
+    .modal .grid span:last-child { font-weight: 700; text-align: right; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+    .platform-list { margin-top: 24px; }
+    .badge {
+      font-size: 9px; font-weight: 800; letter-spacing: 0.08em;
+      text-transform: uppercase; padding: 4px 8px; border-radius: 999px;
+      border: 1px solid var(--border); color: var(--muted);
+    }
+    .badge.pub { color: var(--lime); border-color: rgba(201,242,35,0.35); }
+    .badge.draft { color: var(--amber); border-color: rgba(245,158,11,0.35); }
+    .badge.done { color: #93c5fd; border-color: rgba(59,130,246,0.35); }
+    .badge.live { color: #fca5a5; border-color: rgba(239,68,68,0.4); }
+    .platform-filters {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      padding: 0 16px 12px;
+    }
+    .chip {
+      border: 1px solid var(--border); background: transparent; color: var(--muted);
+      border-radius: 999px; padding: 8px 12px; cursor: pointer;
+      font-size: 10px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+    }
+    .chip.is-on {
+      color: #000; background: var(--lime); border-color: transparent;
+    }
+    .row .entries {
+      margin-top: 6px; font-size: 11px; color: var(--muted);
+    }
+    .drawer-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.72);
+      display: none; z-index: 60; justify-content: flex-end;
+    }
+    .drawer-backdrop.show { display: flex; }
+    .drawer {
+      width: min(640px, 100%); height: 100%; background: #0a0a0a;
+      border-left: 1px solid var(--border); padding: 22px 20px 40px;
+      overflow-y: auto;
+    }
+    .drawer h3 {
+      margin: 0; font-size: 1.35rem; font-weight: 900; font-style: italic;
+      text-transform: uppercase; letter-spacing: -0.03em;
+    }
+    .drawer h3 span { color: var(--lime); }
+    .drawer .hint {
+      margin: 6px 0 18px; color: var(--muted); font-size: 10px;
+      font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+    }
+    .field { display: grid; gap: 6px; margin-bottom: 12px; }
+    .field label {
+      font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .field input, .field select, .field textarea {
+      width: 100%; border-radius: 12px; border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04); color: var(--text);
+      padding: 11px 12px; font: inherit;
+    }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } }
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 12px 14px; border-radius: 14px; margin-bottom: 10px;
+      background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+    }
+    .toggle-row .t { font-size: 12px; font-weight: 800; text-transform: uppercase; }
+    .toggle-row .s { font-size: 10px; color: var(--muted); margin-top: 3px; font-weight: 600; }
+    .switch {
+      width: 44px; height: 26px; border-radius: 999px; border: 0; cursor: pointer;
+      background: #3f3f46; position: relative; flex-shrink: 0;
+    }
+    .switch.on { background: var(--lime); }
+    .switch::after {
+      content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px;
+      border-radius: 50%; background: #fff; transition: transform .15s ease;
+    }
+    .switch.on::after { transform: translateX(18px); background: #000; }
+    .market-card {
+      border: 1px solid var(--border); border-radius: 14px; padding: 12px;
+      background: rgba(255,255,255,0.03); margin-bottom: 10px;
+    }
+    .market-card .mh {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+    }
+    .market-card .mh strong {
+      font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    }
+    .drawer-actions {
+      display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;
+      position: sticky; bottom: 0; padding-top: 12px; background: linear-gradient(transparent, #0a0a0a 30%);
+    }
+    .sec-label {
+      margin: 18px 0 10px; font-size: 11px; font-weight: 900; font-style: italic;
+      letter-spacing: 0.08em; text-transform: uppercase; color: var(--lime);
+    }
+  </style>
+</head>
+<body data-vps-page="jogos">
+  <div class="gate" id="gate">Carregando…</div>
+
+  <div class="wrap" id="app" hidden>
+    <div class="auth-banner" id="authBanner">
+      Sessão admin não detectada.
+      <a id="loginLink" href="/v2/auth.html">Fazer login</a>
+      para criar eventos e ver a lista da plataforma.
+    </div>
+    <header>
+      <div>
+        <h1>Gestão de <span>Jogos</span></h1>
+        <p class="sub">Cockpit de Eventos e Risco</p>
+      </div>
+      <div class="actions">
+        <a class="btn btn-ghost" href="/v2/admin.html">← Hub v2</a>
+        <button class="btn btn-primary" id="btnAddMatch" type="button">+ Lançar jogo</button>
+        <button class="btn btn-ghost" id="btnRefresh" type="button">Atualizar</button>
+      </div>
+    </header>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="toolbar">
+      <input class="search" id="search" type="search" placeholder="Buscar time ou liga…" />
+    </div>
+
+    <section class="panel platform-list" id="platformPanel">
+      <div class="panel-head">
+        <h2>Eventos cadastrados na plataforma</h2>
+        <span class="hint" id="platformMeta">—</span>
+      </div>
+      <div class="platform-filters" id="platformFilters">
+        <button type="button" class="chip is-on" data-pf="fila">Fila (atuais)</button>
+        <button type="button" class="chip" data-pf="draft">Rascunhos</button>
+        <button type="button" class="chip" data-pf="done">Finalizados</button>
+        <button type="button" class="chip" data-pf="all">Todos</button>
+      </div>
+      <div id="platformContent">
+        <div class="loading">Carregando eventos…</div>
+      </div>
+    </section>
+  </div>
+
+  <div class="drawer-backdrop" id="manualDrawer">
+    <div class="drawer">
+      <h3>Lançar evento <span>manual</span></h3>
+      <p class="hint">Formulário para lançar eventos na plataforma ArbiShield. Isto não cria Desafio.</p>
+
+      <div class="toggle-row">
+        <div>
+          <div class="t">Status de publicação</div>
+          <div class="s">Deixe pronto e publique quando desejar</div>
+        </div>
+        <button type="button" class="switch" id="manPublish" aria-pressed="false"></button>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div class="t">Sincronismo API</div>
+          <div class="s">Habilitar atualização automática de placar e logos</div>
+        </div>
+        <button type="button" class="switch" id="manScoreSync" aria-pressed="false"></button>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div class="t">Transmissão ao vivo?</div>
+          <div class="s">Exibe o selo AO VIVO com ícone de play no card do jogo</div>
+        </div>
+        <button type="button" class="switch" id="manLive" aria-pressed="false"></button>
+      </div>
+
+      <div class="sec-label">Partida</div>
+      <div class="field">
+        <label for="manExternalId">ID da partida (API-Football)</label>
+        <input id="manExternalId" placeholder="Ex: 868688" />
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label for="manHome">Time da casa</label>
+          <input id="manHome" required placeholder="Ex: Flamengo" />
+        </div>
+        <div class="field">
+          <label for="manHomeLogo">URL logo casa</label>
+          <input id="manHomeLogo" placeholder="URL Logo" />
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label for="manAway">Time de fora</label>
+          <input id="manAway" required placeholder="Ex: Palmeiras" />
+        </div>
+        <div class="field">
+          <label for="manAwayLogo">URL logo fora</label>
+          <input id="manAwayLogo" placeholder="URL Logo" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="manLeague">Liga / campeonato</label>
+        <input id="manLeague" placeholder="Ex: Brasileirão Série A" />
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label for="manSport">Esporte</label>
+          <select id="manSport">
+            <option value="futebol">Futebol</option>
+            <option value="basquete">Basquete</option>
+            <option value="volei">Vôlei</option>
+            <option value="tenis">Tênis</option>
+            <option value="mma">MMA</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="manStatus">Status do jogo</label>
+          <select id="manStatus">
+            <option value="open">Aberto</option>
+            <option value="live">Ao vivo</option>
+            <option value="suspended">Suspenso</option>
+            <option value="postponed">Adiado</option>
+            <option value="cancelled">Cancelado</option>
+            <option value="review">Em revisão</option>
+            <option value="settled">Encerrado</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="manStarts">Data e horário</label>
+        <input id="manStarts" type="datetime-local" required />
+      </div>
+      <div class="field">
+        <label for="manBetLink">Link da casa de aposta</label>
+        <input id="manBetLink" placeholder="https://www.bet365.com/..." />
+      </div>
+
+      <div class="sec-label" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <span>Mercados de proteção</span>
+        <button type="button" class="btn btn-primary btn-sm" id="btnAddMarket">+ Adicionar mercado</button>
+      </div>
+      <div id="manMarkets"></div>
+
+      <div class="drawer-actions">
+        <button type="button" class="btn btn-ghost" id="btnCancelManual">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btnSaveManual">Lançar evento</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script>
+    (function () {
+      var ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzg0NDc5OTk4LCJleHAiOjE5NDIxNTk5OTh9.mxLqs20sCUNn58jWlsD0sznclCOr8rbksjTEAuQee3s";
+      var STORAGE_KEY = "sb-arbishield-auth-token";
+      var supa = window.supabase.createClient(location.origin, ANON, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: false,
+          storageKey: STORAGE_KEY,
+        },
+      });
+
+      var auth = null;
+      var platformMatches = [];
+      var platformFilter = "fila";
+      var platformLoaded = false;
+      var platformLoading = false;
+      var searchTerm = "";
+
+      var gate = document.getElementById("gate");
+      var app = document.getElementById("app");
+
+      function $(id) { return document.getElementById(id); }
+
+      function money(cents) {
+        if (cents == null) return "—";
+        return (Number(cents) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      }
+
+      function fmtDate(iso) {
+        try {
+          return new Date(iso).toLocaleString("pt-BR", {
+            day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+          });
+        } catch (e) { return iso; }
+      }
+
+      function withTimeout(promise, ms, label) {
+        return Promise.race([
+          promise,
+          new Promise(function (_, reject) {
+            setTimeout(function () {
+              reject(new Error((label || "Operação") + " demorou demais"));
+            }, ms);
+          }),
+        ]);
+      }
+
+      function showAppShell() {
+        document.body.dataset.vpsPage = "jogos";
+        gate.classList.add("gone");
+        gate.hidden = true;
+        app.hidden = false;
+      }
+
+      function showAuthBanner(show) {
+        $("authBanner").classList.toggle("show", !!show);
+      }
+
+      async function rest(path, token, options) {
+        options = options || {};
+        var headers = {
+          apikey: ANON,
+          Authorization: "Bearer " + token,
+          Accept: "application/json",
+        };
+        if (options.body) {
+          headers["Content-Type"] = "application/json";
+          headers.Prefer = "return=representation";
+        }
+        var res = await fetch("/rest/v1/" + path, {
+          method: options.method || "GET",
+          headers: headers,
+          body: options.body ? JSON.stringify(options.body) : undefined,
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          var errText = await res.text().catch(function () { return ""; });
+          throw new Error("REST " + res.status + (errText ? ": " + errText.slice(0, 120) : ""));
+        }
+        if (res.status === 204) return null;
+        return res.json();
+      }
+
+      async function isAdmin(token, userId) {
+        var profile = await rest("profiles?select=is_super_admin&id=eq." + encodeURIComponent(userId), token);
+        if (profile && profile[0] && profile[0].is_super_admin) return true;
+        var roles = await rest("user_roles?select=role&user_id=eq." + encodeURIComponent(userId), token);
+        return (roles || []).some(function (r) {
+          return r.role === "admin" || r.role === "master_admin";
+        });
+      }
+
+      async function resolveAuth(forceRefresh) {
+        try {
+          var session = null;
+          if (forceRefresh) {
+            var refreshed = await withTimeout(supa.auth.refreshSession(), 8000, "Sessão");
+            session = refreshed.data && refreshed.data.session;
+          }
+          if (!session) {
+            var current = await withTimeout(supa.auth.getSession(), 5000, "Sessão");
+            session = current.data && current.data.session;
+          }
+          if (!session || !session.user) return null;
+          var ok = await withTimeout(isAdmin(session.access_token, session.user.id), 8000, "Permissões");
+          if (!ok) return null;
+          return { token: session.access_token, user: session.user };
+        } catch (err) {
+          console.warn("[jogos-vps] auth", err);
+          return null;
+        }
+      }
+
+      async function apiGet(path) {
+        var res = await fetch(path, { cache: "no-store" });
+        var text = await res.text();
+        var data;
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch (e) {
+          if (res.status === 502) {
+            throw new Error("502 — API offline. Rode vps-stabilize-arbishield.sh na VPS.");
+          }
+          throw new Error("Resposta inválida (" + res.status + ")");
+        }
+        if (!res.ok || data.ok === false) {
+          throw new Error(data.error || ("HTTP " + res.status));
+        }
+        return data;
+      }
+
+      async function apiPost(path, body) {
+        var res = await fetch(path, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + auth.token,
+          },
+          body: JSON.stringify(body),
+        });
+        var data = await res.json();
+        if (!res.ok || data.ok === false) {
+          throw new Error(data.error || ("HTTP " + res.status));
+        }
+        return data;
+      }
+
+      function filterText(ev) {
+        if (!searchTerm) return true;
+        var q = searchTerm.toLowerCase();
+        return (
+          (ev.homeTeam || ev.home_team || "").toLowerCase().includes(q) ||
+          (ev.awayTeam || ev.away_team || "").toLowerCase().includes(q) ||
+          (ev.league || "").toLowerCase().includes(q) ||
+          (ev.eventName || "").toLowerCase().includes(q)
+        );
+      }
+
+      function renderStats() {
+        var plat = platformMatches.length;
+        var liq = platformMatches.reduce(function (a, m) {
+          return a + Math.max(0, Number(m.max_protection_cents || 0) - Number(m.used_protection_cents || 0));
+        }, 0);
+        var items = [
+          ["Na plataforma", plat, "lime"],
+          ["Liquidez", money(liq), "lime"],
+        ];
+        $("stats").innerHTML = items.map(function (it) {
+          return '<div class="stat"><div class="l">' + it[0] + '</div><div class="v' +
+            (it[2] ? " " + it[2] : "") + '">' + it[1] + "</div></div>";
+        }).join("");
+      }
+
+      function matchBucket(m) {
+        var st = String(m.status || m.status_v2 || "").toLowerCase();
+        var finished =
+          !!m.final_score ||
+          !!m.settled_at ||
+          ["settled", "finished", "closed", "cancelled", "finalizado"].indexOf(st) >= 0;
+        if (finished) return "done";
+        var start = m.starts_at ? new Date(m.starts_at).getTime() : NaN;
+        if (Number.isFinite(start) && start <= Date.now() - 3 * 60 * 60 * 1000) {
+          // começou há +3h e sem settle marcado → trata como encerrado na fila
+          return "done";
+        }
+        if (!m.is_published) return "draft";
+        if (Number.isFinite(start) && start <= Date.now()) return "live";
+        return "open";
+      }
+
+      function sortPlatform(rows) {
+        var rank = { live: 0, open: 1, draft: 2, done: 3 };
+        return rows.slice().sort(function (a, b) {
+          var ba = matchBucket(a);
+          var bb = matchBucket(b);
+          if (rank[ba] !== rank[bb]) return rank[ba] - rank[bb];
+          var ta = new Date(a.starts_at || 0).getTime();
+          var tb = new Date(b.starts_at || 0).getTime();
+          // atuais/próximos: mais cedo primeiro; finalizados: mais recentes primeiro
+          if (ba === "done" && bb === "done") return tb - ta;
+          return ta - tb;
+        });
+      }
+
+      function renderPlatformList() {
+        var filtered = sortPlatform(
+          platformMatches.filter(function (m) {
+            if (!filterText(m)) return false;
+            var bucket = matchBucket(m);
+            if (platformFilter === "fila") return bucket === "open" || bucket === "live";
+            if (platformFilter === "draft") return bucket === "draft";
+            if (platformFilter === "done") return bucket === "done";
+            return true;
+          })
+        );
+        var counts = { fila: 0, draft: 0, done: 0, all: platformMatches.length };
+        platformMatches.forEach(function (m) {
+          var b = matchBucket(m);
+          if (b === "open" || b === "live") counts.fila += 1;
+          if (b === "draft") counts.draft += 1;
+          if (b === "done") counts.done += 1;
+        });
+        $("platformMeta").textContent =
+          filtered.length +
+          " na vista · fila " +
+          counts.fila +
+          " · rascunhos " +
+          counts.draft +
+          " · finalizados " +
+          counts.done;
+
+        if (!filtered.length) {
+          $("platformContent").innerHTML =
+            '<div class="empty">' +
+            (platformFilter === "fila"
+              ? "Nenhum jogo atual/próximo na fila. Rascunhos e finalizados estão nas outras abas."
+              : "Nenhum jogo encontrado nesta categoria") +
+            "</div>";
+          return;
+        }
+        $("platformContent").innerHTML =
+          '<div class="list">' +
+          filtered
+            .map(function (m) {
+              var bucket = matchBucket(m);
+              var badge =
+                bucket === "live"
+                  ? '<span class="badge live">Ao vivo</span>'
+                  : bucket === "done"
+                    ? '<span class="badge done">Finalizado</span>'
+                    : m.is_published
+                      ? '<span class="badge pub">Na fila</span>'
+                      : '<span class="badge draft">Rascunho</span>';
+              var markets = Array.isArray(m.markets) ? m.markets : [];
+              var names = markets
+                .map(function (x) { return x && x.name; })
+                .filter(Boolean)
+                .slice(0, 3)
+                .join(" · ");
+              var extra =
+                markets.length > 3 ? " + " + (markets.length - 3) + " mais" : "";
+              var publishBtn =
+                bucket === "draft"
+                  ? '<button class="btn btn-primary btn-sm" type="button" data-publish="' +
+                    m.id +
+                    '" style="margin-top:8px">Publicar</button>'
+                  : "";
+              return (
+                '<div class="row" style="cursor:default">' +
+                "<div><div class=\"teams\">" +
+                m.home_team +
+                " vs " +
+                m.away_team +
+                "</div>" +
+                '<div class="meta">' +
+                (m.league || "—") +
+                (names ? " · " + names + extra : "") +
+                "</div>" +
+                '<div class="entries">' +
+                markets.length +
+                " entrada(s) · liquidez " +
+                money(m.max_protection_cents) +
+                "</div>" +
+                publishBtn +
+                "</div>" +
+                '<div class="time">' +
+                badge +
+                '<div class="when">' +
+                fmtDate(m.starts_at) +
+                "</div></div></div>"
+              );
+            })
+            .join("") +
+          "</div>";
+
+        $("platformContent").querySelectorAll("button[data-publish]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            publishMatch(btn.getAttribute("data-publish"), btn);
+          });
+        });
+      }
+
+      async function publishMatch(matchId, btn) {
+        if (!auth) {
+          alert("Faça login admin para publicar.");
+          return;
+        }
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "Publicando…";
+        }
+        try {
+          await rest("matches?id=eq." + encodeURIComponent(matchId), auth.token, {
+            method: "PATCH",
+            body: {
+              is_published: true,
+              updated_at: new Date().toISOString(),
+            },
+          });
+          var row = platformMatches.find(function (m) { return m.id === matchId; });
+          if (row) row.is_published = true;
+          alert("Publicado! O jogo já aparece em Proteger Aposta para o cliente.");
+          renderPlatformList();
+          renderStats();
+        } catch (err) {
+          alert(err.message || "Falha ao publicar");
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Publicar";
+          }
+        }
+      }
+
+      async function loadPlatformMatches(options) {
+        options = options || {};
+        var force = !!options.force;
+        if (platformLoading) return;
+        if (!auth) {
+          platformLoaded = false;
+          platformMatches = [];
+          $("platformContent").innerHTML =
+            '<div class="empty">Login admin necessário para listar eventos da plataforma.</div>';
+          renderStats();
+          return;
+        }
+        if (platformLoaded && !force && platformMatches.length) {
+          renderPlatformList();
+          renderStats();
+          return;
+        }
+        platformLoading = true;
+        if (!platformLoaded || force) {
+          $("platformContent").innerHTML = '<div class="loading">Carregando…</div>';
+        }
+        try {
+          platformMatches = await rest(
+            "matches?deleted_at=is.null&select=id,home_team,away_team,league,starts_at,is_published,status,status_v2,final_score,settled_at,max_protection_cents,used_protection_cents,markets&order=starts_at.asc&limit=200",
+            auth.token
+          );
+          platformLoaded = true;
+          renderPlatformList();
+        } catch (err) {
+          platformLoaded = false;
+          $("platformContent").innerHTML = '<div class="error">' + err.message + "</div>";
+        } finally {
+          platformLoading = false;
+        }
+        renderStats();
+      }
+
+      var manualMarkets = [];
+
+      function bindSwitch(id, onChange) {
+        var el = $(id);
+        if (!el) return;
+        el.addEventListener("click", function () {
+          var on = !el.classList.contains("on");
+          el.classList.toggle("on", on);
+          el.setAttribute("aria-pressed", on ? "true" : "false");
+          if (onChange) onChange(on);
+        });
+      }
+
+      function parseMoneyToNumber(raw) {
+        if (raw == null || raw === "") return null;
+        var s = String(raw).trim();
+        if (!s) return null;
+        // 25.000,00 → 25000.00 · 25000 → 25000
+        if (s.indexOf(",") >= 0) {
+          s = s.replace(/\./g, "").replace(",", ".");
+        } else {
+          s = s.replace(/[^\d.]/g, "");
+        }
+        var n = Number(s);
+        return Number.isFinite(n) ? n : null;
+      }
+
+      function renderManualMarkets() {
+        var host = $("manMarkets");
+        if (!host) return;
+        if (!manualMarkets.length) {
+          host.innerHTML = '<div class="empty" style="margin:0">Nenhum mercado. Clique em Adicionar mercado.</div>';
+          return;
+        }
+        host.innerHTML = manualMarkets
+          .map(function (m, idx) {
+            return (
+              '<div class="market-card" data-idx="' + idx + '">' +
+              '<div class="mh"><strong>Mercado ' + (idx + 1) + "</strong>" +
+              '<button type="button" class="btn btn-ghost btn-sm" data-rm="' + idx + '">Remover</button></div>' +
+              '<div class="grid2">' +
+              '<div class="field"><label>Tipo</label><select data-f="market_type">' +
+              '<option value="LAY"' + (m.market_type === "LAY" ? " selected" : "") + ">LAY</option>" +
+              '<option value="BACK"' + (m.market_type === "BACK" ? " selected" : "") + ">BACK</option>" +
+              "</select></div>" +
+              '<div class="field"><label>Nome do mercado</label>' +
+              '<input data-f="name" value="' + String(m.name || "").replace(/"/g, "&quot;") + '" placeholder="Digite o mercado (ex.: LAY HOME)" /></div>' +
+              '</div><div class="grid2">' +
+              '<div class="field"><label>ID externo</label>' +
+              '<input data-f="external_id" value="' + String(m.external_id || "").replace(/"/g, "&quot;") + '" placeholder="Ex: 1.22456" /></div>' +
+              '<div class="field"><label>Odd</label>' +
+              '<input data-f="odd" value="' + (m.odd != null ? m.odd : "") + '" placeholder="Ex: 2.00" /></div>' +
+              '</div><div class="grid2">' +
+              '<div class="field"><label>Liquidez real (R$)</label>' +
+              '<input data-f="liquidity_brl" value="' + (m.liquidity_brl != null ? m.liquidity_brl : "200") + '" placeholder="Controla a entrada" /></div>' +
+              '<div class="field"><label>Liquidez exibida (R$) — opcional</label>' +
+              '<input data-f="display_brl" value="' + (m.display_brl != null ? m.display_brl : "") + '" placeholder="O que o usuário vê" /></div>' +
+              "</div></div>"
+            );
+          })
+          .join("");
+
+        host.querySelectorAll("[data-rm]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            syncManualMarketsFromDom();
+            manualMarkets.splice(Number(btn.getAttribute("data-rm")), 1);
+            renderManualMarkets();
+          });
+        });
+        host.querySelectorAll("[data-f]").forEach(function (input) {
+          input.addEventListener("change", syncManualMarketsFromDom);
+          input.addEventListener("input", syncManualMarketsFromDom);
+        });
+      }
+
+      function syncManualMarketsFromDom() {
+        var cards = $("manMarkets").querySelectorAll(".market-card");
+        manualMarkets = Array.prototype.map.call(cards, function (card) {
+          var get = function (f) {
+            var el = card.querySelector('[data-f="' + f + '"]');
+            return el ? el.value : "";
+          };
+          return {
+            market_type: get("market_type") || "LAY",
+            name: get("name"),
+            external_id: get("external_id"),
+            odd: get("odd"),
+            liquidity_brl: get("liquidity_brl"),
+            display_brl: get("display_brl"),
+          };
+        });
+      }
+
+      function openManualDrawer() {
+        if (!auth) {
+          alert("Faça login admin para adicionar jogos.");
+          showAuthBanner(true);
+          return;
+        }
+        $("manHome").value = "";
+        $("manAway").value = "";
+        $("manHomeLogo").value = "";
+        $("manAwayLogo").value = "";
+        $("manLeague").value = "";
+        $("manExternalId").value = "";
+        $("manBetLink").value = "";
+        $("manSport").value = "futebol";
+        $("manStatus").value = "open";
+        $("manStarts").value = "";
+        ["manPublish", "manScoreSync", "manLive"].forEach(function (id) {
+          var el = $(id);
+          el.classList.remove("on");
+          el.setAttribute("aria-pressed", "false");
+        });
+        // publicar ligado por padrão (cliente vê)
+        $("manPublish").classList.add("on");
+        $("manPublish").setAttribute("aria-pressed", "true");
+        manualMarkets = [
+          {
+            market_type: "LAY",
+            name: "LAY HOME",
+            external_id: "",
+            odd: "2.00",
+            liquidity_brl: "200",
+            display_brl: "",
+          },
+        ];
+        renderManualMarkets();
+        $("manualDrawer").classList.add("show");
+      }
+
+      function closeManualDrawer() {
+        $("manualDrawer").classList.remove("show");
+      }
+
+      async function saveManualMatch() {
+        if (!auth) {
+          alert("Faça login admin para adicionar jogos.");
+          return;
+        }
+        syncManualMarketsFromDom();
+        var home = $("manHome").value.trim();
+        var away = $("manAway").value.trim();
+        var starts = $("manStarts").value;
+        if (!home || !away) {
+          alert("Informe time da casa e time de fora.");
+          return;
+        }
+        if (!starts) {
+          alert("Informe data e horário.");
+          return;
+        }
+        if (!manualMarkets.length) {
+          alert("Adicione ao menos um mercado de proteção.");
+          return;
+        }
+        var markets = manualMarkets.map(function (m) {
+          var odd = Number(String(m.odd).replace(",", "."));
+          var liqBrl = parseMoneyToNumber(m.liquidity_brl);
+          var dispBrl = parseMoneyToNumber(m.display_brl);
+          return {
+            name: m.name || "LAY HOME",
+            market_type: m.market_type || "LAY",
+            external_id: m.external_id || null,
+            odd: odd,
+            liquidity_brl: liqBrl != null ? liqBrl : 200,
+            display_liquidity: dispBrl != null ? Math.round(dispBrl * 100) : null,
+          };
+        });
+        var btn = $("btnSaveManual");
+        btn.disabled = true;
+        btn.textContent = "Salvando…";
+        try {
+          var result = await apiPost("/api/arbishield/matches", {
+            mode: "manual",
+            home_team: home,
+            away_team: away,
+            home_logo: $("manHomeLogo").value.trim() || null,
+            away_logo: $("manAwayLogo").value.trim() || null,
+            league: $("manLeague").value.trim() || null,
+            external_id: $("manExternalId").value.trim() || null,
+            starts_at: new Date(starts).toISOString(),
+            sport_type: $("manSport").value,
+            status: $("manStatus").value,
+            is_published: $("manPublish").classList.contains("on"),
+            score_sync_enabled: $("manScoreSync").classList.contains("on"),
+            has_live_stream: $("manLive").classList.contains("on"),
+            external_bet_link: $("manBetLink").value.trim() || null,
+            markets: markets,
+          });
+          closeManualDrawer();
+          alert(
+            result.action === "created"
+              ? "Jogo criado com sucesso!" +
+                (result.match && result.match.is_published
+                  ? " Publicado na fila do cliente."
+                  : " Salvo como rascunho.")
+              : "Evento salvo."
+          );
+          platformLoaded = false;
+          await loadPlatformMatches({ force: true });
+          platformFilter = result.match && result.match.is_published ? "fila" : "draft";
+          document.querySelectorAll("#platformFilters .chip").forEach(function (c) {
+            c.classList.toggle("is-on", c.getAttribute("data-pf") === platformFilter);
+          });
+          renderPlatformList();
+        } catch (err) {
+          alert(err.message || "Erro ao criar jogo");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Lançar evento";
+        }
+      }
+
+      async function boot() {
+        showAppShell();
+
+        $("btnRefresh").addEventListener("click", function () {
+          resolveAuth(false).then(function (next) {
+            auth = next;
+            showAuthBanner(!auth);
+            loadPlatformMatches({ force: true });
+          });
+        });
+        $("search").addEventListener("input", function (e) {
+          searchTerm = e.target.value.trim();
+          renderPlatformList();
+        });
+        document.querySelectorAll("#platformFilters .chip").forEach(function (chip) {
+          chip.addEventListener("click", function () {
+            document.querySelectorAll("#platformFilters .chip").forEach(function (c) {
+              c.classList.remove("is-on");
+            });
+            chip.classList.add("is-on");
+            platformFilter = chip.getAttribute("data-pf") || "fila";
+            renderPlatformList();
+          });
+        });
+
+        
+        bindSwitch("manPublish");
+        bindSwitch("manScoreSync");
+        bindSwitch("manLive");
+        $("btnAddMatch").addEventListener("click", openManualDrawer);
+        $("btnCancelManual").addEventListener("click", closeManualDrawer);
+        $("btnSaveManual").addEventListener("click", saveManualMatch);
+        $("btnAddMarket").addEventListener("click", function () {
+          syncManualMarketsFromDom();
+          manualMarkets.push({
+            market_type: "LAY",
+            name: "LAY HOME",
+            external_id: "",
+            odd: "2.00",
+            liquidity_brl: "200",
+            display_brl: "",
+          });
+          renderManualMarkets();
+        });
+        $("manualDrawer").addEventListener("click", function (e) {
+          if (e.target === $("manualDrawer")) closeManualDrawer();
+        });
+
+        auth = await resolveAuth();
+        showAuthBanner(!auth);
+        await loadPlatformMatches();
+      }
+
+      boot().catch(function (err) {
+        showAppShell();
+        $("platformContent").innerHTML = '<div class="error">' + (err.message || "Erro ao iniciar") + "</div>";
+      });
+
+      window.addEventListener("pageshow", function (ev) {
+        if (!ev.persisted) return;
+        resolveAuth(false).then(function (next) {
+          auth = next;
+          showAuthBanner(!auth);
+          if (auth) loadPlatformMatches({ force: true });
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

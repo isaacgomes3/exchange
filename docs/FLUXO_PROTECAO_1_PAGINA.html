@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ArbiShield — Fluxo de Proteção (1 página)</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --card: #121a2b;
+      --line: rgba(201, 242, 35, 0.28);
+      --lime: #c9f223;
+      --text: #e8edf7;
+      --muted: #8b949e;
+      --sky: #7dd3fc;
+      --ok: #34d399;
+      --warn: #fbbf24;
+      --bad: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.35;
+    }
+    .page {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 28px 28px 40px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-end;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 14px;
+      margin-bottom: 18px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 26px;
+      letter-spacing: 0.02em;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 4px;
+    }
+    .badge {
+      background: rgba(201, 242, 35, 0.12);
+      border: 1px solid var(--line);
+      color: var(--lime);
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 8px 10px;
+      border-radius: 10px;
+      white-space: nowrap;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 14px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 14px 16px;
+    }
+    h2 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      color: var(--lime);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    ol, ul { margin: 0; padding-left: 18px; }
+    li { margin: 4px 0; font-size: 13px; }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .step {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 10px;
+      min-height: 110px;
+    }
+    .step .t {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+    }
+    .step .d { font-size: 12px; color: #cbd5e1; }
+    .t-ativar { color: var(--sky); }
+    .t-arbi { color: var(--ok); }
+    .t-ex { color: var(--bad); }
+    .t-emp { color: var(--warn); }
+    .t-can { color: #a78bfa; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    th, td {
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 7px 6px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { color: var(--muted); font-weight: 700; font-size: 11px; text-transform: uppercase; }
+    .mono { font-variant-numeric: tabular-nums; }
+    .note {
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--muted);
+      border-left: 3px solid var(--lime);
+      padding-left: 10px;
+    }
+    .footer {
+      margin-top: 14px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .print {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      background: var(--lime);
+      color: #041a14;
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 16px;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    }
+    @media print {
+      body { background: #fff; color: #111; }
+      .page { max-width: none; padding: 0; }
+      .card, .step { background: #fff; border-color: #ddd; }
+      h2, .badge, .t-ativar, .t-arbi, .t-ex, .t-emp, .t-can { color: #111 !important; }
+      .sub, .note, .footer, td, .step .d { color: #333 !important; }
+      .print { display: none !important; }
+      header { border-color: #ccc; }
+    }
+    @media (max-width: 900px) {
+      .grid, .flow { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <button class="print" type="button" onclick="window.print()">Imprimir / PDF</button>
+  <div class="page">
+    <header>
+      <div>
+        <h1>Fluxo de Proteção — visão do time</h1>
+        <div class="sub">Modelo vigente · stake_lock_v1 · contrato v10 · trava no backend · sem chip Congelado na tela</div>
+      </div>
+      <div class="badge">1 página · ArbiShield</div>
+    </header>
+
+    <div class="flow">
+      <div class="step">
+        <div class="t t-ativar">1. Ativar</div>
+        <div class="d">Trava o stake · máx. 50% do Apostador restante · 1 op/jogo · só antes do kickoff · <b>taxa = R$ 0</b></div>
+      </div>
+      <div class="step">
+        <div class="t t-arbi">2. ArbiShield</div>
+        <div class="d">Destrava · credita stake no <b>Saldo Reembolso</b> · sem taxa</div>
+      </div>
+      <div class="step">
+        <div class="t t-ex">3. Exchange</div>
+        <div class="d">Destrava · devolve stake · cobra só dedução · Reembolso R$ 0</div>
+      </div>
+      <div class="step">
+        <div class="t t-emp">4. Empate</div>
+        <div class="d">Destrava · devolve stake à origem · sem taxa · sem Reembolso</div>
+      </div>
+      <div class="step">
+        <div class="t t-can">5. Cancelar</div>
+        <div class="d">Destrava · devolve stake à origem na hora</div>
+      </div>
+    </div>
+
+    <div class="grid" style="margin-top:14px">
+      <section class="card">
+        <h2>Regras de entrada</h2>
+        <ul>
+          <li><b>LAY</b> = responsabilidade · <b>BACK</b> = stake</li>
+          <li>Teto sucessivo: ex. R$ 1.000 → máx R$ 500; depois R$ 500 → máx R$ 250</li>
+          <li>1 proteção por evento (user + jogo)</li>
+          <li>Sem entrada após o início do jogo</li>
+          <li>Contestação de odd com print (até ~5 min antes)</li>
+          <li>Header do app: Apostador · Afiliado · Desafio · Provedor <b>(sem Congelado)</b></li>
+        </ul>
+        <div class="note">A trava existe no sistema (`locked_balance`), mas o visor Congelado foi removido para evitar anomalia visual.</div>
+      </section>
+
+      <section class="card">
+        <h2>Carteiras</h2>
+        <table>
+          <thead>
+            <tr><th>Bucket</th><th>Uso</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Apostador</td><td>Banca disponível</td></tr>
+            <tr><td>Saldo Reembolso</td><td>Recebe stake se ganhou na Arbi · usável/sacável</td></tr>
+            <tr><td>Desafio</td><td>Carteira separada</td></tr>
+            <tr><td>Trava (backend)</td><td>Segura o valor enquanto a proteção está aberta</td></tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+
+    <section class="card" style="margin-top:14px">
+      <h2>Taxa só no Exchange · fórmula</h2>
+      <p style="margin:0 0 8px;font-size:13px;color:#cbd5e1">
+        Lucro LAY = responsabilidade ÷ (odd − 1) · Lucro BACK = stake × (odd − 1)<br />
+        <b>Taxa ArbiShield</b> = lucro − 4,5% − 1,5% &nbsp;·&nbsp; a fatia 4,5% <b>não</b> debita de novo na carteira
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Bilhete</th>
+            <th>Lucro</th>
+            <th>Taxa</th>
+            <th>Carteira (base 8.067,52)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>LAY R$ 1.000 @ 10</td>
+            <td class="mono">R$ 111,11</td>
+            <td class="mono"><b>R$ 91,11</b></td>
+            <td class="mono">8.067,52 + 1.000 − 91,11 = <b>R$ 8.976,41</b></td>
+          </tr>
+          <tr>
+            <td>LAY R$ 1.000 @ 32</td>
+            <td class="mono">R$ 32,26</td>
+            <td class="mono"><b>R$ 15,81</b></td>
+            <td class="mono">8.067,52 + 1.000 − 15,81 = <b>R$ 9.051,71</b></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card" style="margin-top:14px">
+      <h2>Quem faz o quê</h2>
+      <table>
+        <thead>
+          <tr><th>Papel</th><th>Ação</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Cliente</td><td>Protege / cancela / contesta odd</td></tr>
+          <tr><td>Admin Jogos</td><td>Liquida: ArbiShield · Exchange · Empate Anula</td></tr>
+          <tr><td>Sistema</td><td>Trava/destrava · credita Reembolso ou devolve stake · cobra taxa no Exchange</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <div class="footer">
+      <div>Fonte: protection-flow-contract-v10 · docs/PROTECTION_FLOW_LOCKED.md</div>
+      <div>Imprimir → “Salvar como PDF”</div>
+    </div>
+  </div>
+</body>
+</html>

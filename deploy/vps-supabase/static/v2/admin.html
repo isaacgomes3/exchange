@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Dashboard — ArbiShield v2</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css?v=dash-tx-tipo-pt-1" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/finance-admins.js?v=dash-kpi-2"></script>
+  <script src="/v2.js?v=dash-kpi-2"></script>
+  <script src="/v2-shell.js?v=dash-kpi-2" defer></script>
+  <meta name="arbishield-build" content="dashboard-tx-tipo-pt-v1" />
+</head>
+<body data-shell="admin" data-active="hub">
+  <div class="page-head">
+    <div>
+      <h1>Dash<span>board</span></h1>
+      <p class="sub">Terminal institucional · lucro ≠ depósito · tesouraria + desafio</p>
+    </div>
+    <button type="button" class="btn btn-primary" id="btnRefresh">Atualizar</button>
+  </div>
+
+  <div id="err" class="err"></div>
+
+  <div class="tpl-kpi-row" id="kpis">
+    <div class="tpl-kpi"><div class="l">Banca Usuários</div><div class="v" id="kUsers">—</div><div class="s" id="kUsersSub">—</div></div>
+    <div class="tpl-kpi"><div class="l">Banca Provedor</div><div class="v white" id="kProv">—</div><div class="s">Capital livre + travado</div></div>
+    <div class="tpl-kpi"><div class="l">Lucro Real</div><div class="v lime" id="kProfit">—</div><div class="s" id="kProfitSub">Acumulado − despesas</div></div>
+    <div class="tpl-kpi"><div class="l">Bloqueado</div><div class="v" id="kLocked">—</div><div class="s">Proteções ativas</div></div>
+    <div class="tpl-kpi"><div class="l">Reembolsado</div><div class="v white" id="kRefund">—</div><div class="s" id="kRefundSub">—</div></div>
+    <div class="tpl-kpi"><div class="l">Caixa</div><div class="v lime" id="kCash">—</div><div class="s" id="kCashSub">Tesouraria operacional</div></div>
+  </div>
+
+  <section class="tpl-card">
+    <div class="tpl-card-head"><h2>Indicadores do dia</h2></div>
+    <div class="tpl-day-grid">
+      <div class="tpl-day"><div class="l">Depósitos Hoje</div><div class="v pos" id="dDep">—</div></div>
+      <div class="tpl-day"><div class="l">Receita Líquida Hoje</div><div class="v pos" id="dRev">—</div><div class="s" id="dRevSub" style="font-size:10px;opacity:.7;margin-top:4px">Deduções cobradas + desafio</div></div>
+      <div class="tpl-day"><div class="l">Reembolsos Hoje</div><div class="v neg" id="dRef">—</div></div>
+      <div class="tpl-day"><div class="l">Despesas Hoje</div><div class="v neg" id="dExp">—</div></div>
+      <div class="tpl-day"><div class="l">Lucro Real Hoje</div><div class="v pos" id="dProfit">—</div><div class="s" id="dProfitSub" style="font-size:10px;opacity:.7;margin-top:4px">Receita − despesas</div></div>
+    </div>
+  </section>
+
+  <section class="tpl-card">
+    <div class="tpl-card-head">
+      <h2>Transações em tempo real</h2>
+      <div class="tpl-segments" id="periods">
+        <button type="button" class="tpl-seg is-on" data-p="today">Hoje</button>
+        <button type="button" class="tpl-seg" data-p="7d">7D</button>
+        <button type="button" class="tpl-seg" data-p="30d">30D</button>
+        <button type="button" class="tpl-seg" data-p="month">Mês</button>
+      </div>
+    </div>
+    <div class="tpl-stat-row tpl-stat-row-4" style="margin-bottom: 12px;">
+      <div class="tpl-stat"><div class="l">Movimentações</div><div class="v" id="txCount" style="font-size:1.2rem">0</div></div>
+      <div class="tpl-stat"><div class="l">Entradas</div><div class="v" id="txIn" style="font-size:1.2rem;color:var(--lime)">—</div></div>
+      <div class="tpl-stat"><div class="l">Saídas</div><div class="v" id="txOut" style="font-size:1.2rem;color:var(--danger)">—</div></div>
+      <div class="tpl-stat"><div class="l">Saldo Líquido</div><div class="v" id="txNet" style="font-size:1.2rem">—</div></div>
+    </div>
+    <div class="tpl-table-wrap">
+      <table class="tpl-table">
+        <thead>
+          <tr>
+            <th>Quando</th><th>Nome</th><th>Tipo</th><th>Valor</th><th>Saldo</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="txBody">
+          <tr><td colspan="6" class="tpl-empty">Carregando…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <script>
+    (async function () {
+      var money = ArbiV2.money;
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+      if (!(await ArbiV2.requireAdmin(supa, user))) {
+        var err = document.getElementById("err");
+        err.textContent = "Sem permissão administrativa";
+        err.classList.add("show");
+        return;
+      }
+
+      var FN_DASH =
+        "8867aca1da470aaa83906b6b13bb7e7018c9dea355ae3cff430f0f97ddbb4a62";
+      var period = "today";
+
+      var TX_TYPE_LABELS = {
+        internal_transfer: "Transferência interna",
+        protection_settlement: "Liquidação de proteção",
+        protection_lock: "Travamento de proteção",
+        protection_fee: "Taxa de proteção",
+        exchange_commission: "Comissão Exchange (4,5%)",
+        protection_refund: "Reembolso de proteção",
+        protection_release: "Liberação de proteção",
+        protection_unlock: "Destravamento de proteção",
+        admin_adjustment: "Ajuste administrativo",
+        desafio_deposit: "Depósito Desafio",
+        desafio_cancel_refund: "Estorno cancelamento Desafio",
+        desafio_void_refund: "Estorno empate Desafio",
+        desafio_forfeit_to_provider: "Forfeit Desafio → Provedor",
+        deposit: "Depósito",
+        asaas_deposit: "Depósito Asaas",
+        manual_credit: "Crédito manual",
+        provider_deposit: "Depósito Provedor",
+        withdrawal: "Saque",
+        bonus: "Bônus",
+        refund: "Estorno",
+        profit: "Lucro",
+        coverage_credit: "Crédito de cobertura",
+      };
+
+      function txTypeLabel(row) {
+        var t = String((row && row.type) || "").toLowerCase();
+        if (!t) return "—";
+        var meta = row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+        if (t === "protection_settlement") {
+          var o = String(meta.outcome || "").toLowerCase();
+          if (o === "arbishield" || o === "lost_exchange") return "Liquidação · Bateu ArbiShield";
+          if (o === "exchange" || o === "won_exchange") return "Liquidação · Bateu Exchange";
+          if (o === "void" || o === "empate_anula") return "Liquidação · Empate Anula";
+        }
+        if (t === "exchange_commission") {
+          return meta.label || "Comissão Exchange (4,5% do lucro bruto)";
+        }
+        if (t === "internal_transfer") {
+          var from = meta.from_bucket || meta.from || "";
+          var to = meta.to_bucket || meta.to || "";
+          if (from || to) {
+            var map = {
+              deduction_balance_cents: "Saldo Reembolso",
+              balance_cents: "Saldo Real",
+              desafio_balance_cents: "Carteira Desafio",
+              demo_balance_cents: "Demo",
+              investor_balance_cents: "Investidor",
+            };
+            return (
+              "Transferência " +
+              (map[from] || from || "?") +
+              " → " +
+              (map[to] || to || "?")
+            );
+          }
+        }
+        if (t === "admin_adjustment" && meta.note) return String(meta.note);
+        return TX_TYPE_LABELS[t] || String(row.type).replace(/_/g, " ");
+      }
+
+      function startIso(p) {
+        var d = new Date();
+        if (p === "7d") d.setDate(d.getDate() - 7);
+        else if (p === "30d") d.setDate(d.getDate() - 30);
+        else if (p === "month") d = new Date(d.getFullYear(), d.getMonth(), 1);
+        else d.setHours(0, 0, 0, 0);
+        return d.toISOString();
+      }
+
+      async function token() {
+        var s = await supa.auth.getSession();
+        return (s && s.data && s.data.session && s.data.session.access_token) || null;
+      }
+
+      async function loadStats() {
+        var t = await token();
+        if (!t) throw new Error("Sessão expirada");
+        var res = await fetch("/_serverFn/" + FN_DASH, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-arbishield-plain": "1",
+            Authorization: "Bearer " + t,
+          },
+          body: JSON.stringify({ data: {} }),
+        });
+        var text = await res.text();
+        var data = {};
+        try { data = text ? JSON.parse(text) : {}; } catch (e) {
+          throw new Error("Resposta inválida do dashboard");
+        }
+        if (data && data.result != null && data.error == null) data = data.result;
+        if (data && data.error) {
+          throw new Error(typeof data.error === "string" ? data.error : (data.error.message || "Erro dashboard"));
+        }
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        if (
+          !data ||
+          (data.fix !== "dashboard-kpis-v1" && data.fix !== "dashboard-kpis-v2")
+        ) {
+          // aceita mesmo sem fix se campos novos existirem
+          if (data && data.todayDeposits == null && data.todayRealProfit != null && data.todayEarnings != null) {
+            // legado: lucro hoje = depósitos — rejeita para forçar hotfix do shim
+            throw new Error("Shim do dashboard desatualizado. Rode o hotfix treasury/dashboard na VPS.");
+          }
+        }
+        return data;
+      }
+
+      async function load() {
+        document.getElementById("err").classList.remove("show");
+        try {
+          var d = await loadStats();
+
+          document.getElementById("kUsers").textContent = money(d.totalUserBalance);
+          document.getElementById("kUsersSub").textContent = (d.totalUsers || 0) + " usuários";
+          document.getElementById("kProv").textContent = money(d.totalInvestorBalance);
+          document.getElementById("kProfit").textContent = money(d.realNetProfit);
+          document.getElementById("kProfitSub").textContent =
+            "Prot. " + money(d.profitProtectionsAll || 0) +
+            " · Desafio " + money(d.profitDesafioAll || 0);
+          document.getElementById("kLocked").textContent = money(d.totalBlocked);
+          document.getElementById("kRefund").textContent = money(d.totalRefunded);
+          document.getElementById("kRefundSub").textContent = (d.pendingRefunds || 0) + " pendente(s)";
+          document.getElementById("kCash").textContent = money(d.cashBalance);
+          var cashSub = "Tesouraria operacional";
+          if (d.treasuryUpdatedAt) {
+            cashSub += " · " + new Date(d.treasuryUpdatedAt).toLocaleString("pt-BR");
+          }
+          document.getElementById("kCashSub").textContent = cashSub;
+
+          var dep = d.todayDeposits != null ? d.todayDeposits : d.todayEarnings;
+          document.getElementById("dDep").textContent = money(dep);
+          document.getElementById("dRev").textContent = money(d.todayNetRevenue);
+          var revSub =
+            "Prot. " +
+            money(d.todayProtectionProfit || 0) +
+            " + Desafio " +
+            money(d.todayDesafioProfit || 0);
+          if (d.todayProtectionCharged != null || d.fix === "dashboard-kpis-v2") {
+            revSub +=
+              " · deduções cobradas " +
+              money(d.todayProtectionCharged || 0);
+            if (Number(d.todayProtectionReversed || 0) > 0) {
+              revSub +=
+                " (− estornos " + money(d.todayProtectionReversed) + ")";
+            }
+          }
+          document.getElementById("dRevSub").textContent = revSub;
+          document.getElementById("dRef").textContent = money(d.todayRefundsOut);
+          document.getElementById("dExp").textContent = money(d.todayExpenses);
+          document.getElementById("dProfit").textContent = money(d.todayRealProfit);
+          document.getElementById("dProfitSub").textContent =
+            "Receita − despesas (não é depósito)";
+
+          await loadTx();
+        } catch (ex) {
+          var e = document.getElementById("err");
+          e.textContent = ex.message || "Erro ao carregar dashboard";
+          e.classList.add("show");
+        }
+      }
+
+      async function loadTx() {
+        var from = startIso(period);
+        var tx = await supa
+          .from("wallet_transactions")
+          .select("id,user_id,type,amount_cents,balance_after_cents,created_at,metadata")
+          .gte("created_at", from)
+          .order("created_at", { ascending: false })
+          .limit(80);
+        var list = tx.data || [];
+        var ids = {};
+        list.forEach(function (r) {
+          if (r.user_id) ids[String(r.user_id)] = 1;
+        });
+        var idList = Object.keys(ids);
+        var nameMap = {};
+        for (var i = 0; i < idList.length; i += 80) {
+          var chunk = idList.slice(i, i + 80);
+          var pr = await supa
+            .from("profiles")
+            .select("id,full_name")
+            .in("id", chunk);
+          (pr.data || []).forEach(function (p) {
+            nameMap[String(p.id)] =
+              (p.full_name && String(p.full_name).trim()) || "—";
+          });
+        }
+        var inflowTypes = {
+          deposit: 1, manual_credit: 1, asaas_deposit: 1, desafio_deposit: 1,
+          provider_deposit: 1, protection_unlock: 1, protection_settlement: 1, bonus: 1
+        };
+        // amount_cents de saída pode vir negativo no banco — normaliza p/ magnitudes
+        // e calcula líquido = entradas − saídas (diferença, nunca soma).
+        var inn = 0, out = 0;
+        list.forEach(function (r) {
+          var a = Math.abs(Number(r.amount_cents || 0));
+          if (inflowTypes[r.type]) inn += a;
+          else out += a;
+        });
+        document.getElementById("txCount").textContent = String(list.length);
+        document.getElementById("txIn").textContent = money(inn);
+        document.getElementById("txOut").textContent = money(-out);
+        document.getElementById("txNet").textContent = money(inn - out);
+        var body = document.getElementById("txBody");
+        if (!list.length) {
+          body.innerHTML = '<tr><td colspan="6" class="tpl-empty">Nenhuma transação no período</td></tr>';
+          return;
+        }
+        function esc(s) {
+          return String(s == null ? "" : s)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/"/g, "&quot;");
+        }
+        body.innerHTML = list.map(function (r) {
+          var nome = nameMap[String(r.user_id)] || "—";
+          return "<tr>" +
+            "<td>" + new Date(r.created_at).toLocaleString("pt-BR") + "</td>" +
+            "<td><strong style=\"color:var(--text)\">" + esc(nome) + "</strong></td>" +
+            "<td>" + esc(txTypeLabel(r)) + "</td>" +
+            "<td>" + money(r.amount_cents) + "</td>" +
+            "<td>" + money(r.balance_after_cents) + "</td>" +
+            "<td>ok</td>" +
+            "</tr>";
+        }).join("");
+      }
+
+      document.querySelectorAll("#periods .tpl-seg").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          document.querySelectorAll("#periods .tpl-seg").forEach(function (b) { b.classList.remove("is-on"); });
+          btn.classList.add("is-on");
+          period = btn.getAttribute("data-p");
+          loadTx().catch(function (ex) {
+            document.getElementById("err").textContent = ex.message;
+            document.getElementById("err").classList.add("show");
+          });
+        });
+      });
+      document.getElementById("btnRefresh").onclick = load;
+      await load();
+    })();
+  </script>
+</body>
+</html>
