@@ -243,6 +243,35 @@
         '<div class="field"><label>Nova senha</label><input id="f_newPassword" type="password" maxlength="72" /></div>' +
         '<div class="field"><label>Confirmar senha</label><input id="f_confirmPassword" type="password" maxlength="72" /></div>' +
         '<p class="pf-note">Mínimo 8 caracteres, com letras e números.</p>';
+    } else if (state.modal === "mfa") {
+      // Marker: mfa-totp-enroll-v1
+      title = "Ativar autenticação em 2 fatores";
+      var mfa = state.mfa || {};
+      if (mfa.verified) {
+        body =
+          '<p class="pf-note">2FA já está ativo nesta conta.</p>' +
+          (mfa.friendlyName
+            ? "<p>Fator: <strong>" + esc(mfa.friendlyName) + "</strong></p>"
+            : "");
+      } else if (mfa.factorId && (mfa.qr || mfa.secret)) {
+        body =
+          '<p class="pf-note">Escaneie o QR no Google Authenticator / Authy. Ao confirmar, <strong>outras sessões saem</strong>; a sua continua.</p>' +
+          (mfa.qr
+            ? '<div style="text-align:center;margin:12px 0"><img alt="QR 2FA" width="180" height="180" src="' +
+              esc(mfa.qr) +
+              '" style="background:#fff;border-radius:12px;padding:8px" /></div>'
+            : "") +
+          '<div class="field"><label>Ou digite a chave</label><input id="f_mfa_secret" readonly value="' +
+          esc(mfa.secret || "") +
+          '" /></div>' +
+          '<div class="field"><label>Código de 6 dígitos</label><input id="f_mfa_code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="000000" /></div>';
+      } else {
+        body = '<p class="pf-note">Gerando QR…</p>';
+      }
+    }
+    var saveLabel = "Salvar";
+    if (state.modal === "mfa") {
+      saveLabel = state.mfa && state.mfa.verified ? "Fechar" : "Confirmar código";
     }
     return (
       '<div class="pf-modal-back" id="pfModalBack">' +
@@ -256,7 +285,7 @@
       '<button type="button" class="btn btn-primary btn-sm" id="pfModalSave"' +
       (state.busy ? " disabled" : "") +
       ">" +
-      (state.busy ? "Salvando…" : "Salvar") +
+      (state.busy ? "Salvando…" : saveLabel) +
       "</button></div></div></div>"
     );
   }
@@ -281,8 +310,100 @@
       };
     } else if (kind === "password") {
       state.form = { newPassword: "", confirmPassword: "" };
+    } else if (kind === "mfa") {
+      state.form = {};
+      state.mfa = state.mfa || {};
     }
     paint();
+  }
+
+  async function startMfaEnroll(supa) {
+    state.busy = true;
+    state.modal = "mfa";
+    paint();
+    try {
+      var listed = await supa.auth.mfa.listFactors();
+      if (listed.error) throw listed.error;
+      var verified = (listed.data && listed.data.totp) || [];
+      var active = verified.filter(function (f) {
+        return String(f.status || "").toLowerCase() === "verified";
+      });
+      if (active.length) {
+        state.mfa = {
+          verified: true,
+          friendlyName: active[0].friendly_name || active[0].friendlyName || "Authenticator",
+          factorId: active[0].id,
+        };
+        state.busy = false;
+        paint();
+        return;
+      }
+      var en = await supa.auth.mfa.enroll({
+        factorType: "totp",
+        friendlyName: "ArbiShield",
+        issuer: "ArbiShield",
+      });
+      if (en.error) throw en.error;
+      var totp = (en.data && en.data.totp) || {};
+      state.mfa = {
+        verified: false,
+        factorId: en.data && en.data.id,
+        qr: totp.qr_code || totp.qrCode || "",
+        secret: totp.secret || "",
+        uri: totp.uri || "",
+      };
+      state.busy = false;
+      paint();
+      showOk("Escaneie o QR e digite o código de 6 dígitos.");
+    } catch (ex) {
+      state.busy = false;
+      state.modal = null;
+      paint();
+      showErr((ex && ex.message) || "Falha ao iniciar 2FA. Rode o hotfix MFA na VPS.");
+    }
+  }
+
+  async function confirmMfaEnroll(supa) {
+    var codeEl = document.getElementById("f_mfa_code");
+    var code = codeEl ? String(codeEl.value || "").replace(/\s+/g, "") : "";
+    if (!/^\d{6}$/.test(code)) throw new Error("Digite o código de 6 dígitos do app.");
+    var factorId = state.mfa && state.mfa.factorId;
+    if (!factorId) throw new Error("Fator 2FA ausente — abra Ativar 2FA de novo.");
+    var ch = await supa.auth.mfa.challenge({ factorId: factorId });
+    if (ch.error) throw ch.error;
+    var challengeId = ch.data && ch.data.id;
+    var ver = await supa.auth.mfa.verify({
+      factorId: factorId,
+      challengeId: challengeId,
+      code: code,
+    });
+    if (ver.error) throw ver.error;
+    // Encerra OUTRAS sessões; a atual (já aal2) permanece.
+    try {
+      var sess = await supa.auth.getSession();
+      var tok =
+        sess &&
+        sess.data &&
+        sess.data.session &&
+        sess.data.session.access_token;
+      if (tok) {
+        await fetch("/api/arbishield/auth-logout-others", {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + tok,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ scope: "others" }),
+        });
+      }
+    } catch (eLogout) {
+      /* best-effort — 2FA já está ativo */
+    }
+    state.mfa = { verified: true, factorId: factorId, friendlyName: "ArbiShield" };
+    state.modal = null;
+    showOk(
+      "2FA ativado. Outras sessões foram encerradas; a sua continua. Próximos logins pedem o código."
+    );
   }
 
   function closeModal() {
@@ -431,6 +552,18 @@
         var auth = await supa.auth.updateUser({ password: np });
         if (auth.error) throw auth.error;
         showOk("Senha atualizada.");
+      } else if (state.modal === "mfa") {
+        // Marker: mfa-totp-enroll-v1
+        if (state.mfa && state.mfa.verified) {
+          state.modal = null;
+          state.form = {};
+          paint();
+          return;
+        }
+        await confirmMfaEnroll(supa);
+        state.form = {};
+        paint();
+        return;
       }
       state.modal = null;
       state.form = {};
@@ -512,7 +645,7 @@
     var twofa = document.getElementById("pf2fa");
     if (twofa) {
       twofa.addEventListener("click", function () {
-        showOk("2FA disponível em breve.");
+        startMfaEnroll(supa);
       });
     }
     document.querySelectorAll("[data-pix-type]").forEach(function (btn) {

@@ -8630,7 +8630,8 @@ const server = createServer(async (req, res) => {
         )
       );
     } catch (err) {
-      return sendJson(res, 400, {
+      const status = Number(err && err.status) || 400;
+      return sendJson(res, status, {
         error: err instanceof Error ? err.message : String(err),
       });
     }

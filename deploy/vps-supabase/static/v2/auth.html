@@ -64,6 +64,13 @@
           <input id="password" name="password" type="password" required autocomplete="current-password" minlength="6" />
           <button class="btn btn-primary" type="submit" id="btnSubmit">Entrar</button>
         </form>
+        <!-- Marker: mfa-totp-challenge-v1 -->
+        <form id="mfaForm" style="display:none;margin-top:8px">
+          <p class="sub" id="mfaHint">Digite o código do autenticador (2FA)</p>
+          <label for="mfaCode">Código 2FA</label>
+          <input id="mfaCode" name="mfaCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="000000" />
+          <button class="btn btn-primary" type="submit" id="btnMfa">Confirmar 2FA</button>
+        </form>
         <div class="actions" style="margin-top:16px">
           <a class="btn btn-ghost" href="/app.html">Área do membro</a>
           <a class="btn btn-ghost" href="/admin.html">Admin</a>
@@ -250,11 +257,59 @@
               try { localStorage.removeItem(REF_KEY); } catch (e6) {}
             } catch (e7) {}
           }
+          // Marker: mfa-totp-challenge-v1 — se a conta tem 2FA, pedir código
+          var aal = await supa.auth.mfa.getAuthenticatorAssuranceLevel();
+          var cur = aal.data && aal.data.currentLevel;
+          var next = aal.data && aal.data.nextLevel;
+          if (cur === "aal1" && next === "aal2") {
+            var factors = await supa.auth.mfa.listFactors();
+            var totpFactors = (factors.data && factors.data.totp) || [];
+            var factor = totpFactors.find(function (f) {
+              return String(f.status || "").toLowerCase() === "verified";
+            }) || totpFactors[0];
+            if (factor && factor.id) {
+              window.__mfaFactorId = factor.id;
+              document.getElementById("form").style.display = "none";
+              document.getElementById("mfaForm").style.display = "block";
+              document.getElementById("title").textContent = "Verificação 2FA";
+              document.getElementById("subtitle").textContent =
+                "Conta protegida — informe o código do autenticador";
+              btnSubmit.disabled = false;
+              return;
+            }
+          }
           location.replace("/app.html");
         } catch (ex) {
           err.textContent = mapAuthError(ex, mode);
           err.classList.add("show");
           btnSubmit.disabled = false;
+        }
+      });
+
+      document.getElementById("mfaForm").addEventListener("submit", async function (e) {
+        e.preventDefault();
+        var err = document.getElementById("err");
+        err.classList.remove("show");
+        var btnMfa = document.getElementById("btnMfa");
+        btnMfa.disabled = true;
+        try {
+          var code = String(document.getElementById("mfaCode").value || "").replace(/\s+/g, "");
+          if (!/^\d{6}$/.test(code)) throw new Error("Código 2FA inválido (6 dígitos).");
+          var factorId = window.__mfaFactorId;
+          if (!factorId) throw new Error("Fator 2FA ausente — faça login de novo.");
+          var ch = await supa.auth.mfa.challenge({ factorId: factorId });
+          if (ch.error) throw ch.error;
+          var ver = await supa.auth.mfa.verify({
+            factorId: factorId,
+            challengeId: ch.data.id,
+            code: code,
+          });
+          if (ver.error) throw ver.error;
+          location.replace("/app.html");
+        } catch (ex) {
+          err.textContent = (ex && ex.message) || "Falha no 2FA";
+          err.classList.add("show");
+          btnMfa.disabled = false;
         }
       });
 
