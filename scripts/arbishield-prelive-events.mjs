@@ -70,11 +70,14 @@ import {
 } from "./lib/betbra-events-radar.mjs";
 
 // Trava de produto: fluxo de proteção — não alterar sem pedido explícito.
+// Literais abaixo: hotfixes/grep na VPS exigem a string no arquivo (não só o import).
 void PROTECTION_FLOW_LOCK;
 void PROTECTION_FLOW_CONTRACT_VERSION;
 void PROTECTION_BILLING_MODEL_CANONICAL;
 void PROTECTION_RUNTIME_HEALTH_MARKER;
 void CREATE_PROTECTION_FIX_MARKER;
+void "protection-runtime-stake-lock-v10";
+void "create-protection-stake-lock-v6";
 void isProtectionRuntimeHealthy;
 void CANCEL_FEE_UPFRONT_NO_STAKE_REFUND;
 void EXCHANGE_CHARGE_DEDUCTION_RULE;

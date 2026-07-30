@@ -230,9 +230,12 @@ describe("contrato travado — metadados", () => {
     assert.match(prelive, /PROTECTION_RUNTIME_HEALTH_MARKER/);
     assert.match(prelive, /isProtectionRuntimeHealthy/);
     assert.match(prelive, /runtimeOk \? 200 : 503/);
+    assert.match(prelive, /create-protection-stake-lock-v6/);
+    assert.match(prelive, /protection-runtime-stake-lock-v10/);
     assert.match(shim, /PROTECTION_RUNTIME_HEALTH_MARKER/);
     assert.match(shim, /isProtectionRuntimeHealthy/);
     assert.match(shim, /runtimeOk \? 200 : 503/);
+    assert.match(shim, /create-protection-stake-lock-v6/);
   });
 
   it("anti-regressão ops: fee_upfront prod bloqueado; check pós-deploy; restaurar logo sob v10", () => {
@@ -264,6 +267,10 @@ describe("contrato travado — metadados", () => {
     assert.match(checkJs, /vps-check-pos-deploy-v10/);
     assert.match(checkJs, /isProtectionRuntimeHealthy/);
     assert.match(checkJs, /fee_upfront_v1/);
+    assert.doesNotMatch(
+      checkJs,
+      /select=[^"'`]*market_type/
+    );
     assert.match(logo, /protecao-v10-fonte-verdade-501d/);
     assert.match(logo, /stake_lock_v1/);
     assert.doesNotMatch(logo, /perdeu fee_upfront/);
@@ -271,6 +278,7 @@ describe("contrato travado — metadados", () => {
     assert.match(hotfix, /protection-flow-contract-v10/);
     assert.match(hotfix, /protection-runtime-stake-lock-v10/);
     assert.match(hotfix, /vps-check-pos-deploy-v10/);
+    assert.match(hotfix, /CREATE_PROTECTION_FIX_MARKER/);
   });
 
   it("create-protection e UI: 50% + 1op + antes do kickoff", () => {

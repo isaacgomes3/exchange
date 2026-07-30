@@ -211,10 +211,24 @@ if (!SKIP_DB) {
     console.warn("AVISO: SERVICE_ROLE_KEY ausente — pulando check billing_model (use SKIP_DB=1 para silenciar)");
   } else {
     console.log(`  DB proteções desde ${SINCE}`);
-    const rows = await sb(
-      `/rest/v1/protections?select=id,created_at,status,metadata,amount_cents,odd,market_type&created_at=gte.${encodeURIComponent(SINCE)}&order=created_at.desc&limit=200`
-    );
-    const list = Array.isArray(rows) ? rows : [];
+    let list;
+    try {
+      const rows = await sb(
+        `/rest/v1/protections?select=id,created_at,status,metadata,amount_cents,odd&created_at=gte.${encodeURIComponent(SINCE)}&order=created_at.desc&limit=200`
+      );
+      list = Array.isArray(rows) ? rows : [];
+    } catch (e) {
+      const msg = String(e.message || e);
+      if (/42703|does not exist/i.test(msg)) {
+        console.warn("  AVISO: select com colunas extras falhou, retry mínimo");
+        const rows = await sb(
+          `/rest/v1/protections?select=id,created_at,status,metadata&created_at=gte.${encodeURIComponent(SINCE)}&order=created_at.desc&limit=200`
+        );
+        list = Array.isArray(rows) ? rows : [];
+      } else {
+        throw e;
+      }
+    }
     const byBilling = {};
     for (const r of list) {
       const b = billingOf(r);
