@@ -53,19 +53,20 @@ psql_db() {
 
 EMAIL_SQL="${EMAIL//\'/\'\'}"
 log "localizar usuário $EMAIL"
-UID="$(
+# Não usar UID — no bash é variável readonly (builtin)
+AUTH_UID="$(
   psql_db -At <<SQL
 SELECT id::text FROM auth.users WHERE lower(email)=lower('${EMAIL_SQL}') LIMIT 1;
 SQL
 )"
-[[ -n "$UID" ]] || die "usuário não encontrado: $EMAIL"
-log "user_id=$UID"
+[[ -n "$AUTH_UID" ]] || die "usuário não encontrado: $EMAIL"
+log "user_id=$AUTH_UID"
 
 log "apagar refresh tokens / sessions no banco"
 psql_db <<SQL
 DO \$\$
 DECLARE
-  uid uuid := '${UID}'::uuid;
+  uid uuid := '${AUTH_UID}'::uuid;
   n_rt int := 0;
   n_sess int := 0;
 BEGIN
@@ -94,9 +95,9 @@ END
 
 -- confirma contagem residual
 SELECT
-  (SELECT count(*) FROM auth.refresh_tokens WHERE user_id = '${UID}'::uuid) AS refresh_restantes,
+  (SELECT count(*) FROM auth.refresh_tokens WHERE user_id = '${AUTH_UID}'::uuid) AS refresh_restantes,
   CASE WHEN to_regclass('auth.sessions') IS NOT NULL
-    THEN (SELECT count(*) FROM auth.sessions WHERE user_id = '${UID}'::uuid)
+    THEN (SELECT count(*) FROM auth.sessions WHERE user_id = '${AUTH_UID}'::uuid)
     ELSE 0
   END AS sessions_restantes;
 SQL
@@ -104,13 +105,13 @@ SQL
 # Ban curto via Admin API (reforço: GoTrue rejeita tokens do usuário banido)
 if [[ -n "$SERVICE_KEY" && -n "$SUPABASE_URL" ]]; then
   log "ban curto 8s via Auth Admin (derruba sessões em memória)"
-  export SUPABASE_URL SERVICE_KEY UID NEW_PASSWORD EMAIL
+  export SUPABASE_URL SERVICE_KEY AUTH_UID NEW_PASSWORD EMAIL
   python3 <<'PY'
 import json, os, time, urllib.request, urllib.error
 
 url = os.environ["SUPABASE_URL"].rstrip("/")
 key = os.environ["SERVICE_KEY"]
-uid = os.environ["UID"]
+uid = os.environ["AUTH_UID"]
 new_password = os.environ.get("NEW_PASSWORD") or ""
 
 def put(body):
