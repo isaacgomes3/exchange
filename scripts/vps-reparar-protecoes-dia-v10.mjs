@@ -649,16 +649,30 @@ async function fixVoid(row, prior) {
   if (!p) throw new Error(`perfil ${row.user_id} não encontrado`);
   const now = new Date().toISOString();
   const patch = { updated_at: now };
+  const lockedNow = n(p.locked_balance_cents);
+  const profileShowsLocked = amount > 0 && lockedNow >= amount;
+
   let unlocked = !!prior.unlocked;
   let returned = !!prior.stakeReturned;
 
-  if (amount > 0 && !unlocked) {
-    patch.locked_balance_cents = Math.max(0, n(p.locked_balance_cents) - amount);
+  // 1) Destrava se locked ainda contém este bilhete
+  if (profileShowsLocked) {
+    patch.locked_balance_cents = Math.max(0, lockedNow - amount);
     unlocked = true;
   }
 
-  // stake_lock void → devolve à origem; fee_upfront void → só fee no Reembolso
-  if (!feeUpfront && amount > 0 && !returned) {
+  // 2) Devolver stake quando:
+  //    - stake_lock void (v10), OU
+  //    - locked ainda preso, OU
+  //    - heal anterior destravou SEM devolver (Senilvo)
+  const prevUnlockWithoutReturn =
+    amount > 0 && !!prior.unlocked && !prior.stakeReturned;
+  const shouldReturn =
+    amount > 0 &&
+    !returned &&
+    (!feeUpfront || profileShowsLocked || prevUnlockWithoutReturn);
+
+  if (shouldReturn) {
     const bucket = originBucket(bt);
     if (bucket === "demo_balance_cents") {
       patch.demo_balance_cents = n(p.demo_balance_cents) + amount;
@@ -670,7 +684,12 @@ async function fixVoid(row, prior) {
         n(p.balance_cents) + n(p.reusable_balance_cents) + amount;
     }
     returned = true;
-  } else if (feeUpfront && parts.total > 0 && n(prior.credited || 0) < parts.total) {
+    unlocked = true;
+  } else if (
+    feeUpfront &&
+    parts.total > 0 &&
+    n(prior.credited || 0) < parts.total
+  ) {
     const due = parts.total - n(prior.credited || 0);
     patch.deduction_balance_cents = n(p.deduction_balance_cents) + due;
   }
@@ -679,7 +698,7 @@ async function fixVoid(row, prior) {
   await insertTx({
     user_id: row.user_id,
     type: "protection_settlement",
-    amount_cents: 0,
+    amount_cents: returned ? amount : 0,
     balance_type: bt,
     ref: row.id,
     note: `${TAG}: heal void/Empate Anula v10 (destrava e devolve)`,
@@ -690,11 +709,12 @@ async function fixVoid(row, prior) {
       balance_type: bt,
       unlocked_locked: unlocked,
       stake_returned: returned,
-      returned_stake_cents: !feeUpfront ? amount : 0,
-      unlock_return_to_origin: !feeUpfront,
+      returned_stake_cents: returned ? amount : 0,
+      unlock_return_to_origin: returned,
       protection_id: row.id,
       match_id: row.match_id || null,
       table: row._table,
+      heal_incomplete_unlock: prevUnlockWithoutReturn,
     },
     created_at: now,
   });
@@ -870,9 +890,17 @@ async function main() {
       const prior = await loadExchangePrior(row.id); // reuse unlock/return flags
       const arbiPrior = await loadArbiPrior(row.id);
       const feeUpfront = isFeeUpfrontProtection(row);
-      const needReturn = !feeUpfront && amount > 0 && !prior.stakeReturned;
-      const needUnlock = amount > 0 && !prior.unlocked;
-      if (needReturn || needUnlock) {
+      const prof = await loadProfile(row.user_id);
+      const lockedNow = n(prof?.locked_balance_cents);
+      const profileShowsLocked = amount > 0 && lockedNow >= amount;
+      const prevUnlockWithoutReturn =
+        amount > 0 && !!prior.unlocked && !prior.stakeReturned;
+      const needReturn =
+        amount > 0 &&
+        !prior.stakeReturned &&
+        (!feeUpfront || profileShowsLocked || prevUnlockWithoutReturn);
+      const needUnlock = amount > 0 && (profileShowsLocked || !prior.unlocked);
+      if (needReturn || (needUnlock && profileShowsLocked) || prevUnlockWithoutReturn) {
         issues.push({
           kind: "void",
           row,
@@ -882,8 +910,11 @@ async function main() {
           billing,
           prior: { ...prior, credited: arbiPrior.credited },
           reasons: [
-            needReturn ? "stake_nao_devolvido" : null,
-            needUnlock ? "locked_preso" : null,
+            needReturn || prevUnlockWithoutReturn
+              ? "stake_nao_devolvido"
+              : null,
+            profileShowsLocked ? "locked_preso" : null,
+            prevUnlockWithoutReturn ? "heal_sem_devolucao" : null,
           ].filter(Boolean),
         });
       }
