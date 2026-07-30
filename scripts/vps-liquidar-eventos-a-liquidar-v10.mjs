@@ -33,7 +33,7 @@ const EVENTS = [
     marketHint: /visitante|away/i,
     score: "1-0",
     outcome: "exchange",
-    why: "Kauno 1-0 KÍ · LAY Visitante · dono: bateu Exchange",
+    why: "Kauno 1-0 KÍ · LAY Visitante · visitante não venceu → LAY ganha na casa → Exchange",
   },
   {
     key: "lech",
@@ -41,8 +41,8 @@ const EVENTS = [
     awayHint: "Aarhus",
     marketHint: /3\s*[x×]\s*0|3-0|3×0/i,
     score: "1-4",
-    outcome: "arbishield",
-    why: "Lech 1-4 Aarhus · LAY 3X0 · placar ≠ 3-0 → LAY acerta → ArbiShield",
+    outcome: "exchange",
+    why: "Lech 1-4 Aarhus · LAY 3X0 · placar ≠ 3-0 → LAY ganha na casa → Exchange",
   },
   {
     key: "craiova",
@@ -50,8 +50,8 @@ const EVENTS = [
     awayHint: "Levski",
     marketHint: /2\s*[x×]\s*2|2-2|2×2/i,
     score: "2-2",
-    outcome: "exchange",
-    why: "Craiova 2-2 Levski · LAY 2X2 · placar = 2-2 → casa acerta → Exchange",
+    outcome: "arbishield",
+    why: "Craiova 2-2 Levski · LAY 2X2 · placar = 2-2 → LAY perde na casa → ArbiShield (reembolso)",
   },
   {
     key: "barracas",
@@ -59,8 +59,8 @@ const EVENTS = [
     awayHint: "Aldosivi",
     marketHint: /2\s*[x×]\s*2|2-2|2×2/i,
     score: "1-0",
-    outcome: "arbishield",
-    why: "Barracas 1-0 Aldosivi · LAY 2X2 · placar ≠ 2-2 → LAY acerta → ArbiShield",
+    outcome: "exchange",
+    why: "Barracas 1-0 Aldosivi · LAY 2X2 · placar ≠ 2-2 → LAY ganha na casa → Exchange",
   },
 ];
 
