@@ -134,7 +134,7 @@ log "2/4 reiniciar auth (GoTrue) — sessões atuais NÃO são apagadas por isso
 sleep 2
 
 log "3/4 publicar UI (perfil 2FA + login challenge)"
-download "deploy/vps-supabase/static/v2/v2-perfil.js" "$WEB/v2-perfil.js" "mfa-totp-enroll-v1"
+download "deploy/vps-supabase/static/v2/v2-perfil.js" "$WEB/v2-perfil.js" "mfa-totp-enroll-v2"
 download "deploy/vps-supabase/static/v2/auth.html" "$WEB/auth.html" "mfa-totp-challenge-v1"
 download "deploy/vps-supabase/static/v2/app-perfil.html" "$WEB/app-perfil.html" "v2-perfil.js"
 install -m 0644 "$WEB/v2-perfil.js" "$WEB_ROOT/v2-perfil.js" 2>/dev/null || true

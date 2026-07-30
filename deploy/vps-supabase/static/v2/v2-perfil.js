@@ -322,11 +322,18 @@
     state.modal = "mfa";
     paint();
     try {
+      // Marker: mfa-totp-enroll-v2 — remove fator incompleto e gera QR de novo
       var listed = await supa.auth.mfa.listFactors();
       if (listed.error) throw listed.error;
-      var verified = (listed.data && listed.data.totp) || [];
-      var active = verified.filter(function (f) {
-        return String(f.status || "").toLowerCase() === "verified";
+      var all = (listed.data && listed.data.all) || [];
+      var totpList = (listed.data && listed.data.totp) || [];
+      var factors = all.length ? all : totpList;
+      var active = factors.filter(function (f) {
+        var t = String(f.factor_type || f.factorType || f.type || "totp").toLowerCase();
+        return (
+          (t === "totp" || !f.factor_type) &&
+          String(f.status || "").toLowerCase() === "verified"
+        );
       });
       if (active.length) {
         state.mfa = {
@@ -338,9 +345,24 @@
         paint();
         return;
       }
+      // Fator criado antes sem confirmar — apaga para poder gerar QR novo
+      var pending = factors.filter(function (f) {
+        var st = String(f.status || "").toLowerCase();
+        return st === "unverified" || st === "pending" || !st || st === "";
+      });
+      for (var i = 0; i < pending.length; i++) {
+        if (!pending[i] || !pending[i].id) continue;
+        var un = await supa.auth.mfa.unenroll({ factorId: pending[i].id });
+        if (un.error) {
+          // tenta mesmo assim; enroll pode falhar com nome duplicado
+          console.warn("mfa unenroll", un.error);
+        }
+      }
+      var friendly =
+        "ArbiShield-" + String(Date.now()).slice(-6);
       var en = await supa.auth.mfa.enroll({
         factorType: "totp",
-        friendlyName: "ArbiShield",
+        friendlyName: friendly,
         issuer: "ArbiShield",
       });
       if (en.error) throw en.error;
@@ -351,6 +373,7 @@
         qr: totp.qr_code || totp.qrCode || "",
         secret: totp.secret || "",
         uri: totp.uri || "",
+        friendlyName: friendly,
       };
       state.busy = false;
       paint();
