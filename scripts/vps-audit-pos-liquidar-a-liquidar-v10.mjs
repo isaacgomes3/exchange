@@ -188,18 +188,32 @@ async function loadPrior(protectionId) {
       }
       continue;
     }
-    if (t.type === "protection_fee" && amt < 0) feeCharged += Math.abs(amt);
-    if (t.type === "protection_settlement" && amt < 0) {
+    // Fee Exchange: prefer fee_charged_now (evita double-count com amount negativo)
+    if (t.type === "protection_fee" && amt < 0) {
       feeCharged += Math.abs(amt);
+    } else if (n(m.fee_charged_now_cents) > 0) {
+      feeCharged += n(m.fee_charged_now_cents);
     } else if (
       t.type === "protection_settlement" &&
-      !(amt < 0) &&
-      n(m.fee_charged_now_cents) > 0 &&
-      (m.outcome === "exchange" || m.exchange_no_credit === true)
+      amt < 0 &&
+      (m.outcome === "exchange" ||
+        m.exchange_no_credit === true ||
+        /settle exchange/i.test(String(m.note || "")))
     ) {
-      feeCharged += n(m.fee_charged_now_cents);
+      feeCharged += Math.abs(amt);
     }
-    if (t.type === "protection_refund" && amt > 0) feeCharged -= amt;
+    // Só netar refund explícito de fee/dedução (não refund genérico de cancel/void)
+    if (
+      t.type === "protection_refund" &&
+      amt > 0 &&
+      (m.fee_expected_cents != null ||
+        m.fee_was_cents != null ||
+        /dedu[cç][aã]o|estorna.*fee|fee_refund|fee excedente/i.test(
+          String(m.note || "")
+        ))
+    ) {
+      feeCharged -= amt;
+    }
     if (
       t.type === "protection_settlement" &&
       amt > 0 &&

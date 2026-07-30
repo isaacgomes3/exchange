@@ -185,12 +185,31 @@ function analyzeLedger(txs, amount) {
       if (m.fee_refunded_cents != null) feeCharged -= Math.abs(n(m.fee_refunded_cents));
       continue;
     }
-    if (t.type === "protection_fee" && amt < 0) feeCharged += Math.abs(amt);
-    if (t.type === "protection_settlement" && amt < 0) {
-      negSettlements += 1;
+    if (t.type === "protection_fee" && amt < 0) {
+      feeCharged += Math.abs(amt);
+    } else if (n(m.fee_charged_now_cents) > 0) {
+      feeCharged += n(m.fee_charged_now_cents);
+    } else if (
+      t.type === "protection_settlement" &&
+      amt < 0 &&
+      (m.outcome === "exchange" ||
+        m.exchange_no_credit === true ||
+        /settle exchange/i.test(String(m.note || "")))
+    ) {
       feeCharged += Math.abs(amt);
     }
-    if (t.type === "protection_refund" && amt > 0) feeCharged -= amt;
+    if (t.type === "protection_settlement" && amt < 0) negSettlements += 1;
+    if (
+      t.type === "protection_refund" &&
+      amt > 0 &&
+      (m.fee_expected_cents != null ||
+        m.fee_was_cents != null ||
+        /dedu[cç][aã]o|estorna.*fee|fee_refund|fee excedente/i.test(
+          String(m.note || "")
+        ))
+    ) {
+      feeCharged -= amt;
+    }
     if (
       t.type === "protection_settlement" &&
       amt > 0 &&
