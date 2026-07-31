@@ -2559,10 +2559,19 @@ async function listAdminUsers() {
   // Limite defensivo: lista completa + auth admin paginado congelava o SPA.
   // Marker: admin-users-email-v1 — email vem de auth.users (profiles sem coluna email)
   const MAX_PROFILES = Number(process.env.ADMIN_USERS_MAX || 800);
-  const [profiles, roles, authUsers] = await Promise.all([
-    sb(
+  // Select enxuto + campos de carteira usados na UI; se coluna faltar, tenta select mínimo
+  let profiles;
+  try {
+    profiles = await sb(
       `/rest/v1/profiles?select=id,full_name,cpf,phone,pix_key,location,account_status,balance_cents,demo_balance_cents,demo_balance_provider_cents,investor_balance_cents,reusable_balance_cents,debited_balance_cents,deduction_balance_cents,desafio_balance_cents,pending_balance_cents,locked_balance_cents,total_profit_cents,is_super_admin,is_affiliate,onboarding_completed,created_at,updated_at&order=created_at.desc&limit=${MAX_PROFILES}`
-    ),
+    );
+  } catch (e) {
+    console.warn("[listAdminUsers] select completo falhou, retry mínimo", e);
+    profiles = await sb(
+      `/rest/v1/profiles?select=id,full_name,cpf,phone,pix_key,location,account_status,balance_cents,demo_balance_cents,demo_balance_provider_cents,investor_balance_cents,reusable_balance_cents,debited_balance_cents,locked_balance_cents,total_profit_cents,is_super_admin,is_affiliate,onboarding_completed,created_at,updated_at&order=created_at.desc&limit=${MAX_PROFILES}`
+    );
+  }
+  const [roles, authUsers] = await Promise.all([
     sb("/rest/v1/user_roles?select=user_id,role"),
     listAuthUsersAdmin(),
   ]);

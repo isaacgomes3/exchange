@@ -32,8 +32,9 @@ log "1/3 UI admin-users.html"
 dl "deploy/vps-supabase/static/v2/admin-users.html" "$WEB/admin-users.html"
 chmod 0644 "$WEB/admin-users.html"
 cp -f "$WEB/admin-users.html" "$WEB_ROOT/admin-users.html" 2>/dev/null || true
-grep -q 'admin-users-email-v1' "$WEB/admin-users.html" || die "HTML sem admin-users-email-v1"
+grep -qE 'admin-users-email-v[12]' "$WEB/admin-users.html" || die "HTML sem admin-users-email marker"
 grep -q 'ops-email' "$WEB/admin-users.html" || die "HTML sem ops-email"
+grep -q 'enrichEmails' "$WEB/admin-users.html" || die "HTML sem enrichEmails (lista profiles-first)"
 
 log "2/3 shim admin-users + email"
 dl "scripts/arbishield-serverfn-shim.mjs" "$SHIM_PATH"

@@ -6,12 +6,12 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Usuários — ArbiShield v2</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="admin-users-email-v1" />
-  <link rel="stylesheet" href="/v2.css?v=users-email-1" />
+  <meta name="arbishield-build" content="admin-users-email-v2" />
+  <link rel="stylesheet" href="/v2.css?v=users-email-2" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/finance-admins.js?v=fin-acl-1"></script>
-  <script src="/v2.js?v=users-email-1"></script>
-  <script src="/v2-shell.js?v=users-email-1" defer></script>
+  <script src="/v2.js?v=users-email-2"></script>
+  <script src="/v2-shell.js?v=users-email-2" defer></script>
   <style>
     .ops-wallets {
       display: grid; gap: 2px; font-size: 11px; line-height: 1.35;
@@ -405,28 +405,8 @@
         if (selected) startMirror(selected);
       };
 
-      async function loadFromApi() {
-        var sess = await supa.auth.getSession();
-        var tok =
-          sess && sess.data && sess.data.session && sess.data.session.access_token;
-        if (!tok) throw new Error("Sessão ausente");
-        var res = await fetch("/api/arbishield/admin-users", {
-          headers: { Authorization: "Bearer " + tok },
-        });
-        var data = await res.json().catch(function () {
-          return {};
-        });
-        if (!res.ok) throw new Error(data.error || "Falha ao listar usuários");
-        var items = Array.isArray(data.items)
-          ? data.items
-          : Array.isArray(data)
-            ? data
-            : [];
-        return items;
-      }
-
-      async function loadFromProfilesFallback() {
-        // Fallback sem e-mail (profiles-sem-coluna-email-v1)
+      async function loadProfiles() {
+        // Fonte estável da lista (não depende do shim)
         var res = await supa
           .from("profiles")
           .select(PROFILE_SELECT)
@@ -436,16 +416,55 @@
         return res.data || [];
       }
 
+      async function enrichEmails(list) {
+        // Marker: admin-users-email-v2 — e-mail de auth.users via shim
+        if (!list.length) return list;
+        try {
+          var sess = await supa.auth.getSession();
+          var tok =
+            sess &&
+            sess.data &&
+            sess.data.session &&
+            sess.data.session.access_token;
+          if (!tok) return list;
+          var res = await fetch("/api/arbishield/admin-users", {
+            headers: { Authorization: "Bearer " + tok },
+          });
+          var data = await res.json().catch(function () {
+            return null;
+          });
+          if (!res.ok || !data || data.ok !== true || !Array.isArray(data.items)) {
+            return list;
+          }
+          var byId = {};
+          data.items.forEach(function (it) {
+            if (it && it.id) byId[it.id] = it;
+          });
+          return list.map(function (r) {
+            var extra = byId[r.id];
+            if (!extra) return r;
+            return Object.assign({}, r, {
+              email: extra.email || r.email || null,
+              last_sign_in_at: extra.last_sign_in_at || r.last_sign_in_at || null,
+            });
+          });
+        } catch (e) {
+          console.warn("enrichEmails falhou", e);
+          return list;
+        }
+      }
+
       async function load() {
         document.getElementById("err").classList.remove("show");
-        try {
-          // Marker: admin-users-email-v1
-          rows = await loadFromApi();
-        } catch (apiErr) {
-          console.warn("admin-users API falhou, fallback profiles", apiErr);
-          rows = await loadFromProfilesFallback();
+        // Sempre lista profiles primeiro — evita "sumiram os usuários" se a API falhar
+        var base = await loadProfiles();
+        rows = await enrichEmails(base);
+        var withEmail = rows.filter(function (r) {
+          return !!r.email;
+        }).length;
+        if (base.length && !withEmail) {
           document.getElementById("err").textContent =
-            "Lista sem e-mail (API indisponível). Deploy do shim /api/arbishield/admin-users necessário.";
+            "Usuários ok, mas e-mail indisponível (API /api/arbishield/admin-users). Confira shim + nginx.";
           document.getElementById("err").classList.add("show");
         }
         buildTabs();
