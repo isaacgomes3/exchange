@@ -1392,10 +1392,28 @@ async function listAdminUsers() {
   });
 }
 
+/** Admins autorizados (API). Promoção de role só via VPS/SERVICE_ROLE. */
+const ALLOWED_ADMIN_EMAILS = new Set([
+  "isaacgomes3@gmail.com",
+  "financeiro@arbishield.com",
+  "carlos@arbishield.com",
+  "icaro@arbishield.com",
+]);
+
 async function currentUserIsSuperAdmin(token) {
   const payload = decodeJwtPayload(token);
   const uid = payload?.sub;
   if (!uid) return false;
+  const email = String(
+    payload?.email ||
+      payload?.user_metadata?.email ||
+      payload?.app_metadata?.email ||
+      ""
+  )
+    .trim()
+    .toLowerCase();
+  // Marker: admin-email-allowlist-v1
+  if (!ALLOWED_ADMIN_EMAILS.has(email)) return false;
   const rows = await sb(
     `/rest/v1/profiles?select=is_super_admin&id=eq.${uid}&limit=1`,
     { token: SERVICE_KEY }
@@ -1405,10 +1423,20 @@ async function currentUserIsSuperAdmin(token) {
 }
 
 async function currentUserIsAdmin(token) {
-  if (await currentUserIsSuperAdmin(token)) return true;
   const payload = decodeJwtPayload(token);
   const uid = payload?.sub;
   if (!uid) return false;
+  const email = String(
+    payload?.email ||
+      payload?.user_metadata?.email ||
+      payload?.app_metadata?.email ||
+      ""
+  )
+    .trim()
+    .toLowerCase();
+  // Marker: admin-email-allowlist-v1
+  if (!ALLOWED_ADMIN_EMAILS.has(email)) return false;
+  if (await currentUserIsSuperAdmin(token)) return true;
   const roles = await sb(
     `/rest/v1/user_roles?select=role&user_id=eq.${encodeURIComponent(uid)}`,
     { token: SERVICE_KEY }
