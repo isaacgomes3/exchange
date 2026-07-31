@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <title>ArbiShield — Criar Conta Pro</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/blocked-emails.js?v=1"></script>
+  <script src="/v2.js"></script>
+  <style>
+    :root {
+      --bg: #020806;
+      --panel: #041a14;
+      --field: #06251d;
+      --border: rgba(180, 255, 0, 0.12);
+      --text: #f5f5f7;
+      --muted: #8a9a92;
+      --lime: #d7ff1f;
+      --danger: #f87171;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+    .shell {
+      min-height: 100vh;
+      display: flex;
+      flex-wrap: wrap;
+    }
+    .hero, .panel-wrap { flex: 1 1 340px; padding: 28px 22px; }
+    .hero { display: flex; flex-direction: column; justify-content: space-between; }
+    .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: inherit; }
+    .brand-mark {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: var(--lime); color: #04140f;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 900;
+    }
+    .brand strong { letter-spacing: 0.06em; font-size: 16px; }
+    .brand small { display: block; color: var(--muted); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
+    h1 {
+      margin: 36px 0 12px; font-size: clamp(1.8rem, 4vw, 2.8rem);
+      line-height: 1; text-transform: uppercase; max-width: 14ch;
+    }
+    h1 span { color: var(--lime); }
+    .hero > p { color: var(--muted); max-width: 40ch; line-height: 1.5; font-size: 14px; }
+    .stats { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+    .stat {
+      flex: 1 1 120px; background: var(--panel); border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px; padding: 12px;
+    }
+    .stat b { display: block; font-size: 1.2rem; }
+    .stat span { color: var(--muted); font-size: 12px; }
+    .copy { color: var(--muted); font-size: 12px; margin-top: 24px; }
+    .panel-wrap { display: flex; align-items: center; justify-content: center; }
+    .card {
+      width: min(420px, 100%);
+      background: var(--panel);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 22px;
+      padding: 24px 20px;
+    }
+    .card h2 { margin: 0 0 6px; font-size: 1.55rem; text-transform: uppercase; letter-spacing: 0.02em; }
+    .sub { margin: 0 0 14px; color: var(--muted); font-size: 13px; line-height: 1.4; }
+    .steps {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; margin: 0 0 16px; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
+    }
+    .steps b { color: var(--lime); }
+    .step-dots { display: flex; gap: 6px; }
+    .step-dots i {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: rgba(255,255,255,0.15); display: block;
+    }
+    .step-dots i.on { background: var(--lime); }
+    label {
+      display: block; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      color: var(--muted); margin: 0 0 6px;
+    }
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="tel"] {
+      width: 100%; height: 52px; border-radius: 14px;
+      border: 1px solid var(--border); background: var(--field);
+      color: var(--text); padding: 0 14px; margin-bottom: 12px;
+      font: inherit;
+    }
+    input:focus { outline: 2px solid rgba(215,255,31,0.35); border-color: transparent; }
+    .ref-banner {
+      display: none; margin: 0 0 14px; padding: 10px 12px; border-radius: 12px;
+      border: 1px solid rgba(215,255,31,0.25); background: rgba(215,255,31,0.05);
+      color: #cfe8a8; font-size: 12px; font-weight: 700;
+    }
+    .ref-banner.show { display: block; }
+    .monitor {
+      border: 1px solid rgba(215,255,31,0.25);
+      background: rgba(215,255,31,0.05);
+      border-radius: 12px; padding: 10px 12px;
+      font-size: 11px; color: #cfe8a8; margin: 0 0 14px; line-height: 1.4;
+    }
+    .monitor strong { color: var(--lime); display: block; margin-bottom: 2px; }
+    .tos {
+      display: flex; gap: 10px; align-items: flex-start;
+      margin: 0 0 14px; font-size: 12px; color: var(--muted); line-height: 1.4;
+    }
+    .tos input { margin-top: 2px; }
+    .tos a { color: var(--lime); font-weight: 700; text-decoration: none; }
+    .btn-row { display: flex; gap: 10px; }
+    .btn {
+      width: 100%; height: 52px; border: 0; border-radius: 14px;
+      background: var(--lime); color: #000; font-weight: 800;
+      letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; font-size: 13px;
+    }
+    .btn:disabled { opacity: 0.65; cursor: wait; }
+    .btn-ghost {
+      background: transparent; color: var(--muted);
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .msg { display: none; margin-bottom: 12px; padding: 10px; border-radius: 10px; font-size: 13px; }
+    .msg.show { display: block; }
+    .msg.err { border: 1px solid rgba(248,113,113,0.4); color: var(--danger); background: rgba(248,113,113,0.08); }
+    .foot { margin-top: 16px; text-align: center; font-size: 13px; color: var(--muted); }
+    .foot a { color: var(--lime); font-weight: 700; text-decoration: none; }
+    .back { display: block; margin-top: 10px; text-align: center; color: var(--muted); font-size: 12px; text-decoration: none; }
+    .panel { display: none; }
+    .panel.on { display: block; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <div>
+        <a class="brand" href="/" aria-label="ArbiShield">
+          <div class="brand-mark">A</div>
+          <div>
+            <strong>ARBISHIELD</strong>
+            <small>Líder global em proteção de apostas</small>
+          </div>
+        </a>
+        <h1>Nova credencial de <span>elite</span></h1>
+        <p>Inicie sua blindagem patrimonial em menos de 60 segundos. Mesma conta do terminal legado.</p>
+        <div class="stats">
+          <div class="stat"><b>+15.000</b><span>Operações processadas</span></div>
+          <div class="stat"><b>98,7%</b><span>Taxa de sucesso</span></div>
+          <div class="stat"><b>24h</b><span>Monitoramento</span></div>
+        </div>
+      </div>
+      <div class="copy">© Arbishield · Security Protocol v5</div>
+    </section>
+
+    <section class="panel-wrap">
+      <div class="card">
+        <h2>Criar Conta Pro</h2>
+        <p class="sub">Inicie sua blindagem patrimonial em menos de 60 segundos.</p>
+        <div class="steps">
+          <span>Etapa <b id="stepNum">1</b> de <b>2</b></span>
+          <div class="step-dots" aria-hidden="true">
+            <i class="on" id="dot1"></i>
+            <i id="dot2"></i>
+          </div>
+        </div>
+        <div id="refBanner" class="ref-banner"></div>
+        <div class="msg err" id="err"></div>
+
+        <form id="form" autocomplete="on">
+          <div class="panel on" id="panel1">
+            <label for="fullName">Identificação Completa</label>
+            <input id="fullName" name="fullName" type="text" autocomplete="name" maxlength="120" placeholder="Nome e sobrenome" required />
+
+            <label for="cpf">Registro de Identidade (CPF)</label>
+            <input id="cpf" name="cpf" type="text" inputmode="numeric" autocomplete="off" maxlength="14" placeholder="000.000.000-00" required />
+
+            <label for="phone">Linha de Contato (WhatsApp)</label>
+            <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="(00) 00000-0000" required />
+
+            <label for="location">Geolocalização Operacional</label>
+            <input id="location" name="location" type="text" autocomplete="address-level1" maxlength="120" placeholder="São Paulo, SP" />
+
+            <button class="btn" type="button" id="btnNext">Continuar →</button>
+          </div>
+
+          <div class="panel" id="panel2">
+            <label for="email">E-mail de Acesso</label>
+            <input id="email" name="email" type="email" autocomplete="username" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="seu@email.com" required />
+
+            <label for="password">Chave de Segurança (Senha)</label>
+            <input id="password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="72" placeholder="Mínimo 8 caracteres" required />
+
+            <label for="confirmPassword">Confirmar Senha</label>
+            <input id="confirmPassword" name="confirmPassword" type="password" autocomplete="new-password" minlength="8" maxlength="72" placeholder="Repita a senha" required />
+
+            <div class="monitor">
+              <strong>Cadastro monitorado</strong>
+              Sua conexão está sendo auditada pelo ArbiShield Security Protocol.
+            </div>
+
+            <label class="tos">
+              <input type="checkbox" id="tos" required />
+              <span>Li e aceito os <a href="/termos.html" target="_blank" rel="noopener">Termos de Uso</a> e a política de segurança da plataforma.</span>
+            </label>
+
+            <div class="btn-row">
+              <button class="btn btn-ghost" type="button" id="btnBack">Voltar</button>
+              <button class="btn" type="submit" id="btnSubmit">Criar Conta Pro</button>
+            </div>
+          </div>
+        </form>
+
+        <div class="foot">Já possui credenciais ativas? <a href="/auth.html">Entrar no Terminal</a></div>
+        <a class="back" href="/">Voltar</a>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    (async function () {
+      var REF_KEY = "arbishield_referral_code";
+      var params = new URLSearchParams(location.search);
+      var refCode = String(params.get("ref") || "").trim().toUpperCase();
+      if (refCode) {
+        try { localStorage.setItem(REF_KEY, refCode); } catch (e) {}
+      } else {
+        try { refCode = String(localStorage.getItem(REF_KEY) || "").trim().toUpperCase(); } catch (e) {}
+      }
+
+      var refBanner = document.getElementById("refBanner");
+      if (refCode) {
+        refBanner.textContent = "Indicação ativa · código " + refCode;
+        refBanner.classList.add("show");
+      }
+
+      var step = 1;
+      var errEl = document.getElementById("err");
+      var panel1 = document.getElementById("panel1");
+      var panel2 = document.getElementById("panel2");
+      var stepNum = document.getElementById("stepNum");
+      var dot1 = document.getElementById("dot1");
+      var dot2 = document.getElementById("dot2");
+      var btnSubmit = document.getElementById("btnSubmit");
+
+      function showErr(msg) {
+        errEl.textContent = msg || "";
+        errEl.classList.toggle("show", !!msg);
+      }
+
+      function setStep(n) {
+        step = n;
+        panel1.classList.toggle("on", step === 1);
+        panel2.classList.toggle("on", step === 2);
+        stepNum.textContent = String(step);
+        dot1.classList.toggle("on", step >= 1);
+        dot2.classList.toggle("on", step >= 2);
+        showErr("");
+      }
+
+      function digits(v) {
+        return String(v || "").replace(/\D/g, "");
+      }
+
+      function validCpf(raw) {
+        var t = digits(raw);
+        if (t.length !== 11 || /^(\d)\1+$/.test(t)) return false;
+        var n = 0;
+        for (var a = 1; a <= 9; a++) n += parseInt(t.substring(a - 1, a), 10) * (11 - a);
+        var r = (n * 10) % 11;
+        if (r === 10 || r === 11) r = 0;
+        if (r !== parseInt(t.substring(9, 10), 10)) return false;
+        n = 0;
+        for (a = 1; a <= 10; a++) n += parseInt(t.substring(a - 1, a), 10) * (12 - a);
+        r = (n * 10) % 11;
+        if (r === 10 || r === 11) r = 0;
+        return r === parseInt(t.substring(10, 11), 10);
+      }
+
+      function maskCpf(v) {
+        var d = digits(v).slice(0, 11);
+        return d
+          .replace(/(\d{3})(\d)/, "$1.$2")
+          .replace(/(\d{3})(\d)/, "$1.$2")
+          .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+      }
+
+      function maskPhone(v) {
+        var d = digits(v).slice(0, 11);
+        if (d.length <= 10) {
+          return d
+            .replace(/(\d{2})(\d)/, "($1) $2")
+            .replace(/(\d{4})(\d)/, "$1-$2");
+        }
+        return d
+          .replace(/(\d{2})(\d)/, "($1) $2")
+          .replace(/(\d{5})(\d)/, "$1-$2");
+      }
+
+      document.getElementById("cpf").addEventListener("input", function (e) {
+        e.target.value = maskCpf(e.target.value);
+      });
+      document.getElementById("phone").addEventListener("input", function (e) {
+        e.target.value = maskPhone(e.target.value);
+      });
+
+      function validateStep1() {
+        var name = document.getElementById("fullName").value.trim();
+        var cpf = document.getElementById("cpf").value;
+        var phone = document.getElementById("phone").value;
+        var loc = document.getElementById("location").value.trim();
+        if (!name) return "Informe sua identificação completa.";
+        if (name.length < 3) return "Nome muito curto (mínimo 3 caracteres).";
+        if (name.length > 120) return "Nome muito longo (máx. 120).";
+        if (name.indexOf(" ") < 0) return "Informe nome e sobrenome.";
+        if (!digits(cpf)) return "Informe seu CPF.";
+        if (digits(cpf).length !== 11) return "CPF deve ter 11 dígitos.";
+        if (!validCpf(cpf)) return "CPF inválido. Verifique os dígitos.";
+        var ph = digits(phone);
+        if (!ph) return "Informe seu telefone com DDD.";
+        if (ph.length < 10 || ph.length > 11) return "Telefone inválido. Use DDD + número.";
+        if (loc.length > 120) return "Localização muito longa (máx. 120).";
+        return "";
+      }
+
+      function validateStep2() {
+        var email = document.getElementById("email").value.trim();
+        var password = document.getElementById("password").value;
+        var confirm = document.getElementById("confirmPassword").value;
+        if (!email) return "Informe o e-mail de acesso.";
+        if (password.length < 8) return "A senha precisa ter no mínimo 8 caracteres.";
+        if (password !== confirm) return "As senhas não coincidem.";
+        if (!document.getElementById("tos").checked) {
+          return "Aceite os Termos de Uso para continuar.";
+        }
+        return "";
+      }
+
+      document.getElementById("btnNext").addEventListener("click", function () {
+        var msg = validateStep1();
+        if (msg) {
+          showErr(msg);
+          return;
+        }
+        setStep(2);
+      });
+      document.getElementById("btnBack").addEventListener("click", function () {
+        setStep(1);
+      });
+
+      var supa = ArbiV2.client();
+      try {
+        var session = await supa.auth.getSession();
+        if (session.data.session) {
+          try { await supa.auth.signOut(); } catch (e) {}
+        }
+      } catch (e) {}
+
+      async function applyReferral(token, code) {
+        if (!token || !code) return;
+        var res = await fetch("/api/arbishield/apply-referral", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify({ code: code }),
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok) throw new Error(data.error || "Falha ao vincular indicação");
+        return data;
+      }
+
+      function mapAuthError(ex) {
+        var raw = String((ex && ex.message) || ex || "");
+        var code = String((ex && (ex.code || ex.error_code)) || "").toLowerCase();
+        var low = raw.toLowerCase();
+        if (low.indexOf("user already registered") >= 0 || code === "user_already_exists") {
+          return "Este e-mail já possui uma conta. Faça login para continuar.";
+        }
+        if (low.indexOf("password") >= 0 && low.indexOf("weak") >= 0) {
+          return "Esta senha é muito fácil de adivinhar. Use letras, números e caracteres especiais.";
+        }
+        if (low.indexOf("email not confirmed") >= 0 || code === "email_not_confirmed") {
+          return "Conta criada. Confirme o e-mail (se exigido) e entre no terminal.";
+        }
+        if (low.indexOf("rate") >= 0 || code.indexOf("rate") >= 0) {
+          return "Muitas tentativas. Aguarde um minuto e tente de novo.";
+        }
+        return raw || "Não foi possível concluir a operação. Tente novamente.";
+      }
+
+      document.getElementById("form").addEventListener("submit", async function (e) {
+        e.preventDefault();
+        if (step !== 2) {
+          var s1 = validateStep1();
+          if (s1) {
+            showErr(s1);
+            return;
+          }
+          setStep(2);
+          return;
+        }
+        var s2 = validateStep2();
+        if (s2) {
+          showErr(s2);
+          return;
+        }
+        var s1b = validateStep1();
+        if (s1b) {
+          setStep(1);
+          showErr(s1b);
+          return;
+        }
+
+        var name = document.getElementById("fullName").value.trim();
+        var cpf = digits(document.getElementById("cpf").value);
+        var phone = digits(document.getElementById("phone").value);
+        var loc = document.getElementById("location").value.trim();
+        var email = document.getElementById("email").value.trim();
+        var password = document.getElementById("password").value;
+
+        showErr("");
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = "Criando…";
+        try {
+          if (window.ArbiIsBlockedEmail && ArbiIsBlockedEmail(email)) {
+            throw new Error("Esta conta está bloqueada. Contate o suporte.");
+          }
+          if (ArbiV2.isBlockedEmail(email)) {
+            throw new Error("Esta conta está bloqueada. Contate o suporte.");
+          }
+          var up = await supa.auth.signUp({
+            email: email,
+            password: password,
+            options: {
+              data: {
+                full_name: name,
+                cpf: cpf,
+                phone: phone,
+                location: loc,
+                tos_accepted: true,
+              },
+            },
+          });
+          if (up.error) throw up.error;
+          var sess = up.data.session;
+          if (!sess) {
+            var login = await supa.auth.signInWithPassword({ email: email, password: password });
+            if (login.error) {
+              showErr(
+                "Conta criada. Confirme o e-mail (se exigido) e entre no terminal para continuar."
+              );
+              btnSubmit.disabled = false;
+              btnSubmit.textContent = "Criar Conta Pro";
+              return;
+            }
+            sess = login.data.session;
+          }
+          if (sess && sess.user && ArbiV2.isBlockedEmail(sess.user.email)) {
+            await supa.auth.signOut();
+            throw new Error("Esta conta está bloqueada. Contate o suporte.");
+          }
+          var uid = sess && sess.user && sess.user.id;
+          if (uid) {
+            try {
+              await supa.from("profiles").upsert(
+                {
+                  id: uid,
+                  full_name: name,
+                  cpf: cpf,
+                  phone: phone,
+                  location: loc || null,
+                },
+                { onConflict: "id" }
+              );
+            } catch (e2) {}
+          }
+          var code = refCode;
+          if (!code) {
+            try { code = String(localStorage.getItem(REF_KEY) || "").trim().toUpperCase(); } catch (e3) {}
+          }
+          if (code && sess && sess.access_token) {
+            await applyReferral(sess.access_token, code);
+            try { localStorage.removeItem(REF_KEY); } catch (e4) {}
+          }
+          location.replace("/app.html");
+        } catch (ex) {
+          showErr(mapAuthError(ex));
+          btnSubmit.disabled = false;
+          btnSubmit.textContent = "Criar Conta Pro";
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
