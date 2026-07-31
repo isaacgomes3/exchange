@@ -256,7 +256,7 @@
         var a = Number(layOdd) > 1.01 ? Number(layOdd) : 1.01;
         return a / (a - 1);
       }
-      /** fee_upfront sobre odd BACK efetiva. amount = cobertura (LAY=resp. · BACK=stake). */
+      /** Dedução ArbiShield sobre odd BACK efetiva. amount = cobertura (LAY=resp. · BACK=stake). */
       function calcFeeUpfront(amountCents, odd) {
         var coverage = Math.floor(amountCents);
         var a = odd > 1.01 ? odd : 1.01;
@@ -831,20 +831,13 @@
             );
           }
           closeDrawer();
-          // Toast usa a resposta da API (não o input) — evita mentir se a VPS
-          // ainda estiver em fee_upfront (só debita a dedução ~R$96 em odd 10).
+          // Toast usa a resposta da API (não o input).
           var lockedApi = Number(data.lockedCents);
-          var feeApi = Number(data.feeChargedCents) || 0;
           var billingApi = String(data.billingModel || "");
           var toastMsg;
-          if (
-            billingApi.indexOf("fee_upfront") >= 0 ||
-            (feeApi > 0 && !(lockedApi > 0))
-          ) {
+          if (billingApi && billingApi.indexOf("stake_lock") < 0) {
             toastMsg =
-              "Proteção ativada · cobrada só a dedução " +
-              money(feeApi) +
-              " (API antiga fee_upfront — deploy stake_lock pendente)";
+              "Proteção ativada · API fora do modelo vigente — recarregue e tente de novo";
           } else {
             var lockedShow =
               Number.isFinite(lockedApi) && lockedApi > 0

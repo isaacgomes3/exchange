@@ -34,7 +34,7 @@ import {
   isMatchKickoffPassed,
   isCancelledProtectionStatus,
   cancelRefundCents,
-  CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+  CANCEL_LEGACY_NO_STAKE_OVERCREDIT,
   isExchangeWalletComplete,
   exchangeWalletHealNeeded,
   settlementOutcomeFromProtectionRow,
@@ -79,7 +79,7 @@ void CREATE_PROTECTION_FIX_MARKER;
 void "protection-runtime-stake-lock-v10";
 void "create-protection-stake-lock-v6";
 void isProtectionRuntimeHealthy;
-void CANCEL_FEE_UPFRONT_NO_STAKE_REFUND;
+void CANCEL_LEGACY_NO_STAKE_OVERCREDIT;
 void EXCHANGE_CHARGE_DEDUCTION_RULE;
 void EXCHANGE_INCOMPLETE_HEAL_RULE;
 void SETTLEMENT_ODD_CANONICAL_RULE;
@@ -3035,7 +3035,7 @@ async function creditCancelRefundToWallet(row, {
           fee_cents: feeCents,
           stake_cents: stakeCents,
           balance_type: balanceType,
-          guard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+          guard: CANCEL_LEGACY_NO_STAKE_OVERCREDIT,
           fix: "cancel-stake-lock-devolve-stake-v6",
           ...(audit || {}),
         },
@@ -3061,7 +3061,7 @@ async function refundAndCancelProtection(table, row, audit = {}) {
     String(meta.source || "").includes("stake_lock");
   const feeCents = settlementDeductionCents(row);
   // vigente stake_lock: destrava stake · histórico fee_upfront: estorna só dedução
-  // Guarda cancel-fee-upfront-nao-devolve-stake-v6
+  // Guarda cancel-legacy-no-stake-overcredit-v10
   // Guarda cancel-stake-lock-devolve-stake-v6
   const amount = cancelRefundCents(row);
   const refundFeeOnly =
@@ -3112,7 +3112,7 @@ async function refundAndCancelProtection(table, row, audit = {}) {
     auto: true,
     refund_kind: refundFeeOnly ? "fee" : "stake",
     refund_cents: amount,
-    guard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+    guard: CANCEL_LEGACY_NO_STAKE_OVERCREDIT,
     fix: "cancel-stake-lock-devolve-stake-v6",
   };
   if (audit.reason) {
@@ -4573,7 +4573,7 @@ async function handleApi(req, res) {
       fix: CREATE_PROTECTION_FIX_MARKER,
       protectionRuntime: PROTECTION_RUNTIME_HEALTH_MARKER,
       createProtectionModel: PROTECTION_BILLING_MODEL_CANONICAL,
-      cancelRefundGuard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+      cancelRefundGuard: CANCEL_LEGACY_NO_STAKE_OVERCREDIT,
       exchangeChargeGuard: EXCHANGE_CHARGE_DEDUCTION_RULE,
       protectionFlowContract: PROTECTION_FLOW_CONTRACT_VERSION,
       protectionFlowLock: PROTECTION_FLOW_LOCK,

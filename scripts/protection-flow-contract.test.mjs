@@ -37,6 +37,7 @@ import {
   isVoidSettleOutcome,
   normalizeSettleOutcome,
   cancelRefundCents,
+  CANCEL_LEGACY_NO_STAKE_OVERCREDIT,
   CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
   EXCHANGE_CHARGE_DEDUCTION_RULE,
   EXCHANGE_INCOMPLETE_HEAL_RULE,
@@ -523,12 +524,17 @@ describe("anti-regressão — Exchange nunca Reembolso", () => {
   });
 });
 
-describe("cancel — fee_upfront nunca devolve stake", () => {
-  it("guarda cancel-fee-upfront-nao-devolve-stake-v6", () => {
+describe("cancel — legado nunca devolve stake a mais", () => {
+  it("guarda cancel-legacy-no-stake-overcredit-v10", () => {
+    assert.equal(
+      CANCEL_LEGACY_NO_STAKE_OVERCREDIT,
+      "cancel-legacy-no-stake-overcredit-v10"
+    );
     assert.equal(
       CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
-      "cancel-fee-upfront-nao-devolve-stake-v6"
+      CANCEL_LEGACY_NO_STAKE_OVERCREDIT
     );
+    assert.doesNotMatch(CANCEL_LEGACY_NO_STAKE_OVERCREDIT, /fee_upfront/i);
   });
 
   it("fee_upfront explícito → só dedução (caso Carlos LAY 1000 @10)", () => {
@@ -844,7 +850,7 @@ describe("Exchange/PERDEU — devolve stake · cobra SÓ dedução · R$ 0 Reemb
     assert.match(shim, /prevMeta\.market_odd = approvedOdd/);
     // Modal admin não pode mais prometer 96,11 / comissão extra
     assert.match(admin, /liveExchangeDeductionCents|cobra só a dedução/);
-    assert.match(admin, /stake_lock v9/);
+    assert.match(admin, /Regra stake_lock|stake_lock:/);
     assert.doesNotMatch(admin, /cobra dedução \+ comissão 4,5%/);
     assert.doesNotMatch(admin, /stake_lock v7: Exchange = R\$ 0 Reembolso · destrava e devolve o stake · cobra dedução ArbiShield \+ comissão/);
   });

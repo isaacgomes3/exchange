@@ -312,7 +312,7 @@
         </div>
       </div>
       <div id="panelCancel" style="display:none">
-        <div class="warn">Cancelamento destrava o stake e devolve à carteira de origem na hora (sem aprovação do administrador). No modelo antigo fee_upfront, estorna só a dedução cobrada na ativação.</div>
+        <div class="warn">Cancelamento destrava o stake e devolve à carteira de origem na hora (sem aprovação do administrador).</div>
         <div class="field">
           <label for="reason">Motivo do cancelamento</label>
           <textarea id="reason" placeholder="Descreva por que deseja cancelar a proteção"></textarea>
@@ -400,23 +400,23 @@
         }
         return typeof m === "object" && m ? m : {};
       }
-      /** Alinhado a scripts/lib/protection-flow-contract.mjs → isFeeUpfrontProtection.
-       * NÃO usar "v2_create_protection*" genérico: lock_fee_after / legado também
-       * usam esse prefixo e a UI mostrava REEMBOLSO R$ 0 enquanto o settle
-       * creditava stake no Saldo Reembolso (caso Lucas / PERDEU). */
-      function isFeeUpfront(row) {
+      /** Bilhete vigente = stake_lock. Qualquer outro (taxa cobrada na ativação) = legado. */
+      function isStakeLockRow(row) {
         var meta = metaOf(row);
-        return (
-          meta.billing_model === "fee_upfront_v1" ||
-          meta.fee_upfront === true ||
-          String(meta.source || "").indexOf("fee_upfront") >= 0
-        );
+        return meta.billing_model === "stake_lock_v1" || meta.stake_lock === true;
+      }
+      function isLegacyActivationFee(row) {
+        if (isStakeLockRow(row)) return false;
+        var meta = metaOf(row);
+        if (Number(meta.fee_charged_cents) > 0) return true;
+        var bm = String(meta.billing_model || "");
+        return !!bm && bm !== "stake_lock_v1";
       }
       function deductionCentsOf(row) {
         var meta = metaOf(row);
         // stake_lock ativo: sempre mostra fórmula vigente (lucro − 4,5% − 1,5%)
         // ex.: 1000@10 → 91,11 (não stored 80,50/96,11).
-        if (!isFeeUpfront(row)) {
+        if (!isLegacyActivationFee(row)) {
           var stakeLive = nCents(row.responsibility_cents || row.amount_cents);
           var oddLive = Number(meta.market_odd);
           if (!(oddLive > 1.01)) oddLive = Number(row.odd || 0);
@@ -514,10 +514,10 @@
         var fee = deductionCentsOf(row);
         var won = outcome === "arbishield";
         // stake_lock vigente: Arbi = stake; PERDEU = 0
-        // histórico fee_upfront: Arbi = stake + fee
+        // legado (taxa na ativação): Arbi = stake + fee
         var refund = 0;
         if (won) {
-          refund = isFeeUpfront(row) ? amount + fee : amount;
+          refund = isLegacyActivationFee(row) ? amount + fee : amount;
         }
         return {
           label: won ? "Ganhou" : "Perdeu",

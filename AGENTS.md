@@ -53,7 +53,8 @@ Alterar qualquer item acima exige pedido explícito + atualização dos testes d
 
 ## Anti-regressão runtime (pedido 2026-07-30 / 2026-07-31)
 
-- Health `:3098`/`:3101` deve expor `protectionRuntime=protection-runtime-stake-lock-v10` + `createProtectionModel=stake_lock_v1` (fail-hard → 503 se ≠ `stake_lock_v1`).
+- Health `:3098`/`:3101` deve expor `protectionRuntime=protection-runtime-stake-lock-v10` + `createProtectionModel=stake_lock_v1` + `cancelRefundGuard=cancel-legacy-no-stake-overcredit-v10` (fail-hard → 503 se ≠ `stake_lock_v1` **ou** se o JSON citar modelo antigo).
+- Superfícies de produto (AGENTS/docs/UI) **nunca** citam nomes de modelos antigos — CI: `scripts/protection-cite-ban.test.mjs`.
 - Deploy de modelo antigo permanece **BLOQUEADO** sob v10 (só override explícito do dono).
 - Pós-deploy: `scripts/vps-check-pos-deploy-v10.sh` (health + `billing_model=stake_lock_v1` em proteções novas).
 - Hotfixes / restaurar logos apontam para branch `cursor/protecao-v10-fonte-verdade-501d`.

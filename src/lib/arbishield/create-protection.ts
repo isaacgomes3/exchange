@@ -395,7 +395,6 @@ export async function createProtection(
     source: "v2_create_protection_stake_lock",
     billing_model: "stake_lock_v1",
     stake_lock: true,
-    fee_upfront: false,
     fee_charged_cents: 0,
     platform_deduction_cents: feeCents,
     // LAY = responsabilidade · BACK = stake

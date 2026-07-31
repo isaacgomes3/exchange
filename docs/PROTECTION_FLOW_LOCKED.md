@@ -23,7 +23,8 @@ superfície de deploy.
 
 | Controle | Marker / script |
 |---|---|
-| Health fail-hard | `protection-runtime-stake-lock-v10` + `createProtectionModel=stake_lock_v1` → 503 se ≠ stake_lock |
+| Health fail-hard | `protection-runtime-stake-lock-v10` + `createProtectionModel=stake_lock_v1` + `cancelRefundGuard=cancel-legacy-no-stake-overcredit-v10` → 503 se ≠ stake_lock ou se citar modelo antigo |
+| Cite ban (CI) | `scripts/protection-cite-ban.test.mjs` — AGENTS/docs/UI sem nomes de modelos antigos |
 | Check pós-deploy | `vps-check-pos-deploy-v10.sh` / `.mjs` (health + billing_model) |
 | Hotfix create | `vps-hotfix-create-stake-lock-v6.sh` → branch `protecao-v10-fonte-verdade-501d` |
 | Restaurar logos | `vps-restaurar-api-logo-times.sh` exige stake_lock |

@@ -87,7 +87,9 @@ export function isProtectionRuntimeHealthy(health = {}) {
     health.protectionRuntime || health.fix || ""
   ).trim();
   const blob = JSON.stringify(health);
-  if (/protection-fee-upfront-v\d+/i.test(blob)) return false;
+  // Pedido 2026-07-31: health nunca pode citar modelo antigo
+  if (/fee_upfront/i.test(blob)) return false;
+  if (/locked_margin_v2|lock_fee_after|FLUXO_PROTECAO_V1/i.test(blob)) return false;
   if (/fee_upfront_v1/i.test(model)) return false;
   if (PROTECTION_OBSOLETE_MODELS.includes(model)) return false;
   if (model && model !== PROTECTION_BILLING_MODEL_CANONICAL) return false;
@@ -131,11 +133,19 @@ export const PROTECTION_FLOW_LOCK =
   "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST";
 
 /**
- * Guarda anti-overcredit no cancel: fee_upfront nunca devolve stake.
- * Hotfix / health devem conter esta string.
+ * Guarda anti-overcredit no cancel (pedido 2026-07-31):
+ * health/UI/docs NÃO devem citar nomes de modelos antigos.
+ * Marker público vigente:
+ */
+export const CANCEL_LEGACY_NO_STAKE_OVERCREDIT =
+  "cancel-legacy-no-stake-overcredit-v10";
+
+/**
+ * Alias interno (hotfixes antigos ainda podem greppar o nome da constante).
+ * Valor = marker público novo — nunca reemitir string com nome de modelo antigo.
  */
 export const CANCEL_FEE_UPFRONT_NO_STAKE_REFUND =
-  "cancel-fee-upfront-nao-devolve-stake-v6";
+  CANCEL_LEGACY_NO_STAKE_OVERCREDIT;
 
 /**
  * Snapshot textual das regras vigentes — travado nos testes.

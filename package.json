@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test scripts/protection-flow-contract.test.mjs scripts/ui-markers-contract.test.mjs scripts/wallet-buckets-contract.test.mjs scripts/deploy-surface-contract.test.mjs scripts/admin-ops-contract.test.mjs scripts/admin-ui-layout-contract.test.mjs scripts/admin-session-mode-contract.test.mjs scripts/profiles-db-contract.test.mjs scripts/profiles-schema.test.mjs scripts/betbra-inplay-sync.test.mjs scripts/betbra-events-radar.test.mjs",
+    "test": "node --test scripts/protection-flow-contract.test.mjs scripts/protection-cite-ban.test.mjs scripts/ui-markers-contract.test.mjs scripts/wallet-buckets-contract.test.mjs scripts/deploy-surface-contract.test.mjs scripts/admin-ops-contract.test.mjs scripts/admin-ui-layout-contract.test.mjs scripts/admin-session-mode-contract.test.mjs scripts/profiles-db-contract.test.mjs scripts/profiles-schema.test.mjs scripts/betbra-inplay-sync.test.mjs scripts/betbra-events-radar.test.mjs",
     "arbishield:sync-odds": "node scripts/arbishield-sync-odds.mjs",
     "arbishield:mirror": "node scripts/mirror-arbishield-app.mjs",
     "arbishield:cutover": "bash scripts/arbishield-cutover-frontend.sh",

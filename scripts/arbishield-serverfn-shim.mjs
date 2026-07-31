@@ -42,8 +42,8 @@ let isVoidSettleOutcome;
 let normalizeSettleOutcome;
 let creditBucketForSettlement = () => "deduction_balance_cents";
 let cancelRefundCents;
-let CANCEL_FEE_UPFRONT_NO_STAKE_REFUND =
-  "cancel-fee-upfront-nao-devolve-stake-v6";
+let CANCEL_LEGACY_NO_STAKE_OVERCREDIT =
+  "cancel-legacy-no-stake-overcredit-v10";
 let isExchangeWalletComplete;
 let exchangeWalletHealNeeded;
 let settlementOutcomeFromProtectionRow;
@@ -84,8 +84,10 @@ try {
   normalizeSettleOutcome = mod.normalizeSettleOutcome;
   creditBucketForSettlement = mod.creditBucketForSettlement;
   cancelRefundCents = mod.cancelRefundCents;
-  if (mod.CANCEL_FEE_UPFRONT_NO_STAKE_REFUND) {
-    CANCEL_FEE_UPFRONT_NO_STAKE_REFUND = mod.CANCEL_FEE_UPFRONT_NO_STAKE_REFUND;
+  if (mod.CANCEL_LEGACY_NO_STAKE_OVERCREDIT || mod.CANCEL_FEE_UPFRONT_NO_STAKE_REFUND) {
+    CANCEL_LEGACY_NO_STAKE_OVERCREDIT =
+      mod.CANCEL_LEGACY_NO_STAKE_OVERCREDIT ||
+      mod.CANCEL_FEE_UPFRONT_NO_STAKE_REFUND;
   }
   isExchangeWalletComplete = mod.isExchangeWalletComplete;
   if (typeof mod.exchangeWalletHealNeeded === "function") {
@@ -334,7 +336,7 @@ void PROTECTION_BILLING_MODEL_CANONICAL;
 void PROTECTION_RUNTIME_HEALTH_MARKER;
 void CREATE_PROTECTION_FIX_MARKER;
 void isProtectionRuntimeHealthy;
-void CANCEL_FEE_UPFRONT_NO_STAKE_REFUND;
+void CANCEL_LEGACY_NO_STAKE_OVERCREDIT;
 void EXCHANGE_CHARGE_DEDUCTION_RULE;
 void EXCHANGE_INCOMPLETE_HEAL_RULE;
 void SETTLEMENT_ODD_CANONICAL_RULE;
@@ -5444,7 +5446,7 @@ async function cancelProtectionRefund(token, body) {
       ? settlementDeductionCents(row)
       : 0;
   const stakeCents = n(row.responsibility_cents || row.amount_cents);
-  // Guarda cancel-fee-upfront-nao-devolve-stake-v6
+  // Guarda cancel-legacy-no-stake-overcredit-v10
   const amount =
     typeof cancelRefundCents === "function"
       ? cancelRefundCents(row)
@@ -5490,7 +5492,7 @@ async function cancelProtectionRefund(token, body) {
       extraMeta: {
         marketType,
         cancelled_by_admin: adminId,
-        guard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+        guard: CANCEL_LEGACY_NO_STAKE_OVERCREDIT,
         fix: "cancel-stake-lock-devolve-stake-v6",
         repaired: true,
       },
@@ -5519,7 +5521,7 @@ async function cancelProtectionRefund(token, body) {
         extraMeta: {
           marketType,
           cancelled_by_admin: adminId,
-          guard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+          guard: CANCEL_LEGACY_NO_STAKE_OVERCREDIT,
           fix: "cancel-stake-lock-devolve-stake-v6",
           repaired: true,
         },
@@ -5546,7 +5548,7 @@ async function cancelProtectionRefund(token, body) {
     extraMeta: {
       marketType,
       cancelled_by_admin: adminId,
-      guard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+      guard: CANCEL_LEGACY_NO_STAKE_OVERCREDIT,
       fix: "cancel-stake-lock-devolve-stake-v6",
     },
   });
@@ -6373,7 +6375,7 @@ async function submitContestation(token, body) {
         ? settlementDeductionCents(row)
         : 0;
     const stakeCents = n(row.responsibility_cents || row.amount_cents);
-    // Guarda cancel-fee-upfront-nao-devolve-stake-v6
+    // Guarda cancel-legacy-no-stake-overcredit-v10
     const amount =
       typeof cancelRefundCents === "function"
         ? cancelRefundCents(row)
@@ -6414,7 +6416,7 @@ async function submitContestation(token, body) {
       auto: true,
       refund_kind: refundFeeOnly ? "fee" : "stake",
       refund_cents: amount,
-      guard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+      guard: CANCEL_LEGACY_NO_STAKE_OVERCREDIT,
     };
     // Claim ANTES do crédito — impede F5 / race re-creditar
     const claimed = await claimProtectionCancelled(table, protectionId, {
@@ -6442,7 +6444,7 @@ async function submitContestation(token, body) {
       extraMeta: {
         auto_cancel: true,
         cancelled_by: userId,
-        guard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+        guard: CANCEL_LEGACY_NO_STAKE_OVERCREDIT,
       },
     });
     const marketId =
@@ -9297,7 +9299,7 @@ const server = createServer(async (req, res) => {
       fix: CREATE_PROTECTION_FIX_MARKER,
       protectionRuntime: PROTECTION_RUNTIME_HEALTH_MARKER,
       createProtectionModel: PROTECTION_BILLING_MODEL_CANONICAL,
-      cancelRefundGuard: CANCEL_FEE_UPFRONT_NO_STAKE_REFUND,
+      cancelRefundGuard: CANCEL_LEGACY_NO_STAKE_OVERCREDIT,
       exchangeChargeGuard: EXCHANGE_CHARGE_DEDUCTION_RULE,
       protectionFlowContract: PROTECTION_FLOW_CONTRACT_VERSION,
       env: process.env.ARBISHIELD_ENV || "production",
