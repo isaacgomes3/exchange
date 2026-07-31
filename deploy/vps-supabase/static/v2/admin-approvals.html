@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Aprovações — ArbiShield v2</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css?v=aprovacoes-emphasis-2" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/finance-admins.js?v=fin-acl-2"></script>
+  <script src="/v2.js?v=fin-acl-2"></script>
+  <script src="/v2-pages.js?v=aprovacoes-emphasis-2"></script>
+  <script src="/v2-shell.js?v=fin-acl-2" defer></script>
+  <style>
+    /* NOME (1), CARTEIRA (3), VALOR (4) — branco + negrito, sem depender do v2.css */
+    body[data-active="approvals"] #tableHost .ops-table tbody td:nth-child(1),
+    body[data-active="approvals"] #tableHost .ops-table tbody td:nth-child(3),
+    body[data-active="approvals"] #tableHost .ops-table tbody td:nth-child(4),
+    body[data-active="approvals"] #tableHost .ops-table td.ops-cell-emphasis {
+      color: #ffffff !important;
+      font-weight: 800 !important;
+    }
+  </style>
+</head>
+<body data-shell="admin" data-active="approvals">
+  <div class="page-head">
+    <div>
+      <h1>Gestão de <span>Aprovações</span></h1>
+      <p class="sub">Compliance & Risco · layout Jogos · nativo v2 · sem SPA</p>
+    </div>
+  </div>
+  <div id="err" class="err"></div>
+  <div id="pageBody"><div class="meta">Carregando…</div></div>
+  <script>
+    function carteiraLabel(row) {
+      var t = String((row && row.deposit_type) || "").toLowerCase();
+      if (t === "desafio" || t === "challenge") return "Desafio";
+      if (t === "investor" || t === "provider" || t === "partner") return "Provedor";
+      return "Apostador";
+    }
+
+    ArbiV2Page.mountAdmin({
+      sources: [
+        { table: "manual_deposits", limit: 200 },
+        { table: "withdrawals", limit: 200 },
+      ],
+      cols: ["user_name", "id", "carteira", "amount_cents", "status", "created_at"],
+      enrichUserNames: true,
+      searchPlaceholder: "Buscar por nome, carteira, id, status…",
+      rowMap: function (row) {
+        var copy = Object.assign({}, row);
+        copy.carteira = carteiraLabel(row);
+        return copy;
+      },
+    });
+  </script>
+</body>
+</html>
