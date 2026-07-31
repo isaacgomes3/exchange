@@ -530,6 +530,25 @@ async function deleteDesafio(token, body) {
   const id = String(body?.id || body?.desafioId || body?.desafio_id || "").trim();
   if (!id) throw new Error("id obrigatório");
 
+  const desafioRows = await sb(
+    `/rest/v1/desafios?select=id,title,status,is_active,deleted_at&id=eq.${encodeURIComponent(id)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const desafio = Array.isArray(desafioRows) ? desafioRows[0] : null;
+  if (!desafio?.id) {
+    const err = new Error("Desafio não encontrado");
+    err.status = 404;
+    throw err;
+  }
+  // Marker: block-cancel-delete-andamento-v1
+  if (desafio.is_active && String(desafio.status || "").toLowerCase() !== "cancelled") {
+    const err = new Error(
+      "Não é permitido excluir desafio em andamento (publicado/ativo)."
+    );
+    err.status = 403;
+    throw err;
+  }
+
   const pending = await listPendingDesafioParticipations(id);
   if (pending.length > 0) {
     const err = new Error(
@@ -583,6 +602,14 @@ async function cancelDesafio(token, body) {
   }
   if (String(desafio.status) === "cancelled") {
     throw new Error("Desafio já cancelado");
+  }
+  // Marker: block-cancel-delete-andamento-v1
+  if (desafio.is_active) {
+    const err = new Error(
+      "Não é permitido cancelar desafio em andamento (publicado/ativo)."
+    );
+    err.status = 403;
+    throw err;
   }
 
   const pending = await listPendingDesafioParticipations(id);

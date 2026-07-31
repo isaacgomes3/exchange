@@ -1614,13 +1614,22 @@
             </div>
             <div class="card-quick-actions">
               ${
-                !isDesafioCancelled(d) && !d.deleted_at
+                /* Em andamento (publicado com etapa aberta): sem Cancelar/Excluir */
+                !isDesafioActiveOpen(d) &&
+                !isDesafioCancelled(d) &&
+                !d.deleted_at &&
+                !d.is_active
                   ? `<button class="btn btn-warn" type="button" data-cancel-desafio="${esc(d.id)}">Cancelar · devolver saldo</button>`
                   : ""
               }
               ${
-                !d.deleted_at
+                !isDesafioActiveOpen(d) && !d.is_active && !d.deleted_at
                   ? `<button class="btn btn-danger" type="button" data-delete-desafio="${esc(d.id)}">Excluir</button>`
+                  : ""
+              }
+              ${
+                isDesafioActiveOpen(d) || d.is_active
+                  ? `<span class="meta" style="align-self:center;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;font-weight:800;color:var(--muted)">Em andamento · Cancelar/Excluir bloqueados</span>`
                   : ""
               }
               ${
