@@ -1,29 +1,25 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, Suspense, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-export default function V2AuthPage() {
+function V2AuthForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialForgot = searchParams.get("forgot") === "1";
+  const resetMessage =
+    searchParams.get("reset") === "1"
+      ? "Senha redefinida com sucesso. Entre com a nova senha."
+      : "";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [ok, setOk] = useState("");
+  const [ok, setOk] = useState(resetMessage);
   const [loading, setLoading] = useState(false);
-  const [forgotMode, setForgotMode] = useState(false);
-
-  useEffect(() => {
-    try {
-      const qs = new URLSearchParams(window.location.search);
-      if (qs.get("forgot") === "1") setForgotMode(true);
-      if (qs.get("reset") === "1") {
-        setOk("Senha redefinida com sucesso. Entre com a nova senha.");
-      }
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  const [forgotOverride, setForgotOverride] = useState<boolean | null>(null);
+  const forgotMode = forgotOverride ?? initialForgot;
 
   const redirectTo = useMemo(() => {
     if (typeof window === "undefined") return "/v2/redefinir-senha";
@@ -114,7 +110,7 @@ export default function V2AuthPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setForgotMode(true);
+                  setForgotOverride(true);
                   setError("");
                   setOk("");
                 }}
@@ -152,9 +148,9 @@ export default function V2AuthPage() {
           <button
             type="button"
             onClick={() => {
-              setForgotMode(false);
+              setForgotOverride(false);
               setError("");
-              setOk("");
+              setOk(resetMessage);
             }}
             style={{
               background: "none",
@@ -170,5 +166,20 @@ export default function V2AuthPage() {
         </p>
       ) : null}
     </div>
+  );
+}
+
+export default function V2AuthPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="v2-panel">
+          <h1>Entrar</h1>
+          <p className="sub">Carregando…</p>
+        </div>
+      }
+    >
+      <V2AuthForm />
+    </Suspense>
   );
 }
