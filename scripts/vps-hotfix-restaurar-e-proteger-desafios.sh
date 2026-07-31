@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
-# 1) Restaura os 4 desafios + republica starts_at (apostáveis)
+# Hotfix: restaurar desafios soft-deletados + republicar trava anti-apagão.
+#
+# Causa (2026-07-31 ~18:59 UTC): #50–#59 foram soft-deleted em sequência via
+# POST /api/arbishield/desafio-delete. A UI do cliente filtra deleted_at/status=deleted
+# e is_active → "NENHUM DESAFIO DISPONÍVEL". Produção estava sem o guard
+# protect-desafio-casual-v1 (Excluir visível em ativos; API aceitava só {id}).
+#
+# 1) Restaura os desafios (#50–#59) + desloca starts_at (apostáveis)
 # 2) Publica shim delete-desafio-guard-v3 (bloqueia cancel/delete em protegidos)
-# 3) Publica admin-desafios sem botões Cancelar/Excluir nos protegidos
+# 3) Publica admin-desafios sem botões Cancelar/Excluir nos protegidos/ativos
 #
 # Na VPS (root):
 #   bash <(curl -fsSL -H "Accept: application/vnd.github.raw" \
-#     "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-hotfix-restaurar-e-proteger-desafios.sh?ref=cursor/protecao-v10-fonte-verdade-501d&t=$(date +%s)")
+#     "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-hotfix-restaurar-e-proteger-desafios.sh?ref=cursor/desafios-sumiram-restaurar-a632&t=$(date +%s)")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/protecao-v10-fonte-verdade-501d}"
+REF="${ARBISHIELD_REF:-cursor/desafios-sumiram-restaurar-a632}"
 BUST="$(date +%s)"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"
 JSDELIVR="https://cdn.jsdelivr.net/gh/isaacgomes3/exchange@${REF}"
@@ -17,7 +24,9 @@ WEB="${ARBISHIELD_WEB:-/var/www/arbishield/v2}"
 WEB_ROOT="${ARBISHIELD_WEB_ROOT:-/var/www/arbishield}"
 ENV_FILE="${ARBISHIELD_ENV:-/opt/arbishield/deploy/vps-supabase/.env}"
 SHIFT_MINUTES="${SHIFT_MINUTES:-90}"
-IDS="${IDS:-9dd0901f-a449-47c1-8443-c1b0c66303c4,e502804b-05ca-4c0d-8f69-a3a45d9d18ee,8beb938c-fa29-4bb6-9d97-fd1650bba3c4,b598561a-abe0-41c3-aeaa-5f1bd7c90d52}"
+# #50 Augsburg, #51 Noah, #52 Inter Turku, #53 Hradec, #54 Argeș, #55 Wisla,
+# #56 Oddevold, #57 LASK, #58 CSKA 1948, #59 Briton Ferry — deleted 2026-07-31T18:59Z
+IDS="${IDS:-8beb938c-fa29-4bb6-9d97-fd1650bba3c4,9dd0901f-a449-47c1-8443-c1b0c66303c4,e502804b-05ca-4c0d-8f69-a3a45d9d18ee,b598561a-abe0-41c3-aeaa-5f1bd7c90d52,d13d4386-ec7f-4c9c-ace7-5cf3d59388bd,4952ce60-2cc1-4b5c-8901-a5d7355285f6,04f1bf4d-fd27-475f-89ad-16b707f91ce4,31e1144b-ca41-481c-93eb-4a49ea088cf8,2b6e8331-2040-47ba-9162-be2ca47dccf3,8d66c73f-5c6e-4e52-8b37-6f2e16b4b472}"
 
 die() { echo "ERRO: $*" >&2; exit 1; }
 log() { echo "==> $*"; }
