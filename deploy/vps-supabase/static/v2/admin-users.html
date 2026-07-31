@@ -6,12 +6,12 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Usuários — ArbiShield v2</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="admin-users-reembolso-v1" />
-  <link rel="stylesheet" href="/v2.css?v=users-reembolso-1" />
+  <meta name="arbishield-build" content="admin-users-email-v1" />
+  <link rel="stylesheet" href="/v2.css?v=users-email-1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/finance-admins.js?v=fin-acl-1"></script>
-  <script src="/v2.js?v=users-reembolso-1"></script>
-  <script src="/v2-shell.js?v=users-reembolso-1" defer></script>
+  <script src="/v2.js?v=users-email-1"></script>
+  <script src="/v2-shell.js?v=users-email-1" defer></script>
   <style>
     .ops-wallets {
       display: grid; gap: 2px; font-size: 11px; line-height: 1.35;
@@ -44,8 +44,13 @@
       background: rgba(255,255,255,0.02);
     }
     .ud-item .l { font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-    .ud-item .v { font-size: 13px; font-weight: 800; text-align: right; }
+    .ud-item .v { font-size: 13px; font-weight: 800; text-align: right; word-break: break-all; }
     .ud-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .ops-email {
+      color: var(--lime, #c9f223); font-size: 11px; font-weight: 700;
+      margin-top: 2px; word-break: break-all;
+    }
+    .ops-email.missing { color: var(--muted); font-weight: 600; }
   </style>
 </head>
 <body data-shell="admin" data-active="users">
@@ -61,7 +66,7 @@
     <div class="ops-tabs" id="tabs">
       <button type="button" class="ops-tab active" data-s="all">Todos</button>
     </div>
-    <input class="ops-search" id="q" type="search" placeholder="Buscar nome ou ID…" autocomplete="off" />
+    <input class="ops-search" id="q" type="search" placeholder="Buscar nome, e-mail ou ID…" autocomplete="off" />
     <button type="button" class="btn btn-ghost btn-sm" id="btnRefresh">Atualizar</button>
   </div>
   <div class="meta" id="meta">Carregando…</div>
@@ -200,6 +205,7 @@
         document.getElementById("udHint").textContent =
           (r.full_name || "—") + " · " + r.id;
         document.getElementById("udProfile").innerHTML = [
+          ["E-mail", r.email || "—"],
           ["Status", r.account_status || "—"],
           ["Telefone", r.phone || "—"],
           ["CPF", r.cpf || "—"],
@@ -277,7 +283,16 @@
           if (statusFilter !== "all" && String(r.account_status || "") !== statusFilter) return false;
           if (!parts.length) return true;
           var hay = norm(
-            [r.full_name, r.id, r.account_status, r.phone, r.cpf, r.pix_key, r.location]
+            [
+              r.full_name,
+              r.email,
+              r.id,
+              r.account_status,
+              r.phone,
+              r.cpf,
+              r.pix_key,
+              r.location,
+            ]
               .filter(Boolean)
               .join(" ")
           );
@@ -297,7 +312,11 @@
               esc(r.id) +
               "\"><td><strong>" +
               esc(r.full_name || "—") +
-              '</strong><div class="meta">' +
+              '</strong><div class="ops-email' +
+              (r.email ? "" : " missing") +
+              '">' +
+              esc(r.email || "sem e-mail") +
+              '</div><div class="meta">' +
               String(r.id).slice(0, 8) +
               "…</div></td><td><span class=\"ops-badge " +
               sc +
@@ -386,15 +405,49 @@
         if (selected) startMirror(selected);
       };
 
-      async function load() {
-        document.getElementById("err").classList.remove("show");
+      async function loadFromApi() {
+        var sess = await supa.auth.getSession();
+        var tok =
+          sess && sess.data && sess.data.session && sess.data.session.access_token;
+        if (!tok) throw new Error("Sessão ausente");
+        var res = await fetch("/api/arbishield/admin-users", {
+          headers: { Authorization: "Bearer " + tok },
+        });
+        var data = await res.json().catch(function () {
+          return {};
+        });
+        if (!res.ok) throw new Error(data.error || "Falha ao listar usuários");
+        var items = Array.isArray(data.items)
+          ? data.items
+          : Array.isArray(data)
+            ? data
+            : [];
+        return items;
+      }
+
+      async function loadFromProfilesFallback() {
+        // Fallback sem e-mail (profiles-sem-coluna-email-v1)
         var res = await supa
           .from("profiles")
           .select(PROFILE_SELECT)
           .order("created_at", { ascending: false })
           .limit(500);
         if (res.error) throw res.error;
-        rows = res.data || [];
+        return res.data || [];
+      }
+
+      async function load() {
+        document.getElementById("err").classList.remove("show");
+        try {
+          // Marker: admin-users-email-v1
+          rows = await loadFromApi();
+        } catch (apiErr) {
+          console.warn("admin-users API falhou, fallback profiles", apiErr);
+          rows = await loadFromProfilesFallback();
+          document.getElementById("err").textContent =
+            "Lista sem e-mail (API indisponível). Deploy do shim /api/arbishield/admin-users necessário.";
+          document.getElementById("err").classList.add("show");
+        }
         buildTabs();
         render();
       }

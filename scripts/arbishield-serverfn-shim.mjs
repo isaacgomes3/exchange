@@ -2557,10 +2557,11 @@ async function listAuthUsersAdmin() {
 
 async function listAdminUsers() {
   // Limite defensivo: lista completa + auth admin paginado congelava o SPA.
+  // Marker: admin-users-email-v1 — email vem de auth.users (profiles sem coluna email)
   const MAX_PROFILES = Number(process.env.ADMIN_USERS_MAX || 800);
   const [profiles, roles, authUsers] = await Promise.all([
     sb(
-      `/rest/v1/profiles?select=id,full_name,cpf,phone,pix_key,location,account_status,balance_cents,demo_balance_cents,demo_balance_provider_cents,investor_balance_cents,reusable_balance_cents,debited_balance_cents,locked_balance_cents,total_profit_cents,is_super_admin,is_affiliate,onboarding_completed,created_at,updated_at&order=created_at.desc&limit=${MAX_PROFILES}`
+      `/rest/v1/profiles?select=id,full_name,cpf,phone,pix_key,location,account_status,balance_cents,demo_balance_cents,demo_balance_provider_cents,investor_balance_cents,reusable_balance_cents,debited_balance_cents,deduction_balance_cents,desafio_balance_cents,pending_balance_cents,locked_balance_cents,total_profit_cents,is_super_admin,is_affiliate,onboarding_completed,created_at,updated_at&order=created_at.desc&limit=${MAX_PROFILES}`
     ),
     sb("/rest/v1/user_roles?select=user_id,role"),
     listAuthUsersAdmin(),
@@ -2599,6 +2600,9 @@ async function listAdminUsers() {
       investor_balance_cents: n(p.investor_balance_cents),
       reusable_balance_cents: n(p.reusable_balance_cents),
       debited_balance_cents: n(p.debited_balance_cents),
+      deduction_balance_cents: n(p.deduction_balance_cents),
+      desafio_balance_cents: n(p.desafio_balance_cents),
+      pending_balance_cents: n(p.pending_balance_cents),
       locked_balance_cents: n(p.locked_balance_cents),
       total_profit_cents: n(p.total_profit_cents),
       is_super_admin: !!p.is_super_admin,
@@ -9125,6 +9129,22 @@ const server = createServer(async (req, res) => {
     try {
       const token = bearerFromReq(req);
       return sendJson(res, 200, await listActivePartnerRounds(token));
+    } catch (err) {
+      return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  // Marker: admin-users-email-v1 — lista profiles + email de auth.users
+  if (url.pathname === "/api/arbishield/admin-users" && req.method === "GET") {
+    try {
+      const token = bearerFromReq(req);
+      if (!(await currentUserIsAdmin(token))) {
+        return sendJson(res, 403, { error: "Acesso negado" });
+      }
+      const data = await listAdminUsers();
+      return sendJson(res, 200, { ok: true, items: data });
     } catch (err) {
       return sendJson(res, 400, {
         error: err instanceof Error ? err.message : String(err),
