@@ -53,19 +53,32 @@ fetch() {
 DB="$(docker ps --format '{{.Names}}' | grep -E 'db|postgres' | head -1 || true)"
 [[ -n "$DB" ]] || die "container postgres não encontrado"
 psql_db() {
+  # stdin (heredoc/pipe) ou args (-c "...")
   if docker exec -i "$DB" psql -U postgres -d postgres -v ON_ERROR_STOP=1 "$@"; then
     return 0
   fi
   docker exec -i "$DB" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 "$@"
 }
 
+apply_sql_file() {
+  local host_sql="$1"
+  local cont_sql="/tmp/arbishield-admin-hardening.sql"
+  [[ -s "$host_sql" ]] || die "SQL vazio: $host_sql"
+  docker cp "$host_sql" "${DB}:${cont_sql}"
+  if docker exec "$DB" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$cont_sql"; then
+    return 0
+  fi
+  docker exec "$DB" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -f "$cont_sql"
+}
+
 # ─── 1) SQL hardening ───────────────────────────────────────────────
 log "aplicando SQL admin_hardening_vps_only"
-SQL_TMP="$(mktemp /opt/arbishield/scripts/admin-hardening.XXXXXX.sql)"
+# XXXXXX precisa ser o SUFIXO do template (mktemp); .sql no fim quebra e cai em /tmp
+SQL_TMP="$(mktemp /opt/arbishield/scripts/admin-hardening.XXXXXX)"
 fetch "supabase/migrations/20260731_admin_hardening_vps_only.sql" "$SQL_TMP"
-grep -q 'user_roles_admin_insert' "$SQL_TMP" || die "SQL inválido"
-# docker não enxerga /tmp do host — pipe stdin
-psql_db < "$SQL_TMP"
+grep -q 'user_roles_admin_insert' "$SQL_TMP" || die "SQL inválido ($(wc -c <"$SQL_TMP") bytes)"
+log "SQL host=$SQL_TMP → docker cp → psql -f"
+apply_sql_file "$SQL_TMP"
 rm -f "$SQL_TMP"
 
 log "policies user_roles (mutação autenticada deve sumir)"
