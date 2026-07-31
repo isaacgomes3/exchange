@@ -487,6 +487,8 @@
       <button type="button" class="tab is-on" data-f="active">Ativos</button>
       <button type="button" class="tab" data-f="draft">Rascunhos</button>
       <button type="button" class="tab" data-f="pending">Pendente</button>
+      <button type="button" class="tab" data-f="cancelled">Cancelados</button>
+      <input id="cancelDate" type="date" title="Dia do cancelamento (BRT)" style="display:none;border-radius:12px;border:1px solid var(--border);background:#050505;color:var(--text);padding:10px 12px;font-weight:700" />
       <input id="search" type="search" placeholder="Buscar desafio ou jogo" />
     </div>
     <div class="meta" id="meta">Carregando…</div>
@@ -1480,6 +1482,12 @@
       renderStats(t);
       const filter = window.__desafioFilter || "active";
       const q = (window.__desafioQ || "").trim().toLowerCase();
+      const dateEl = $("cancelDate");
+      if (dateEl) dateEl.style.display = filter === "cancelled" ? "" : "none";
+      if (filter === "cancelled") {
+        renderCancelledReport();
+        return;
+      }
       let visible = rows
         .filter((x) => !x.deleted_at)
         .sort((a, b) => {
@@ -2078,6 +2086,109 @@
       }
     }
 
+    function yesterdayBrInputValue() {
+      try {
+        const fmt = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "America/Sao_Paulo",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        });
+        const today = fmt.format(new Date());
+        const [y, m, d] = today.split("-").map(Number);
+        const dt = new Date(Date.UTC(y, m - 1, d - 1));
+        return (
+          dt.getUTCFullYear() +
+          "-" +
+          String(dt.getUTCMonth() + 1).padStart(2, "0") +
+          "-" +
+          String(dt.getUTCDate()).padStart(2, "0")
+        );
+      } catch {
+        return "";
+      }
+    }
+
+    async function renderCancelledReport() {
+      const dateEl = $("cancelDate");
+      if (dateEl && !dateEl.value) dateEl.value = yesterdayBrInputValue();
+      const day = (dateEl && dateEl.value) || yesterdayBrInputValue();
+      $("meta").textContent = "Carregando cancelados de " + day + "…";
+      $("list").innerHTML = `<div class="loading">Buscando desafios cancelados com clientes ativos…</div>`;
+      try {
+        const headers = await authHeaders();
+        const res = await fetch("/api/arbishield/desafio-cancelled-report", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ date: day, onlyWithClients: true }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Falha no relatório");
+        const sum = data.summary || {};
+        $("meta").textContent =
+          `${sum.desafios || 0} desafio(s) cancelado(s) em ${day} · ` +
+          `${sum.clients || 0} cliente(s) ativo(s) · total ${money(sum.total_cents || 0)}`;
+        const list = Array.isArray(data.desafios) ? data.desafios : [];
+        const q = (window.__desafioQ || "").trim().toLowerCase();
+        const visible = q
+          ? list.filter((d) => {
+              const hay = [
+                d.title,
+                d.number,
+                ...(d.clients || []).map((c) => c.full_name + " " + (c.email || "")),
+              ]
+                .join(" ")
+                .toLowerCase();
+              return hay.includes(q);
+            })
+          : list;
+        if (!visible.length) {
+          $("list").innerHTML = `<div class="empty">Nenhum desafio cancelado com cliente ativo em ${esc(day)}.</div>`;
+          return;
+        }
+        $("list").innerHTML = visible
+          .map((d) => {
+            const when = d.cancelled_at
+              ? new Date(d.cancelled_at).toLocaleString("pt-BR", {
+                  timeZone: "America/Sao_Paulo",
+                })
+              : "—";
+            const rows = (d.clients || [])
+              .map(
+                (c) => `<div class="step-box" style="display:flex;justify-content:space-between;gap:12px;align-items:center">
+                  <div>
+                    <strong>${esc(c.full_name || "(sem nome)")}</strong>
+                    ${c.email ? `<div class="meta">${esc(c.email)}</div>` : ""}
+                    <div class="meta" style="font-size:10px">${esc(String(c.user_id || "").slice(0, 8))}…</div>
+                  </div>
+                  <div class="v lime" style="font-weight:900;font-style:italic;white-space:nowrap">${money(c.amount_cents)}</div>
+                </div>`
+              )
+              .join("");
+            return `<article class="card is-open">
+              <div class="card-top" style="cursor:default">
+                <div class="title-wrap">
+                  <div class="teams">${esc(d.title || "Desafio")} <span class="num">#${String(d.number ?? "—").padStart(3, "0")}</span></div>
+                  <div class="meta">Cancelado em ${esc(when)}</div>
+                  <div class="entries">${d.clients_count || 0} cliente(s) ativo(s) · total ${money(d.total_cents)}</div>
+                </div>
+                <div class="side">
+                  <span class="badge amber">Cancelado</span>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="steps" style="margin-bottom:10px">Clientes que estavam com entrada ativa e tiveram o saldo devolvido:</div>
+                ${rows || '<div class="empty">Sem clientes</div>'}
+              </div>
+            </article>`;
+          })
+          .join("");
+      } catch (err) {
+        $("meta").textContent = "";
+        $("list").innerHTML = `<div class="error">${esc(err.message || String(err))}</div>`;
+      }
+    }
+
     // Abre em Ativos (publicados com etapa em aberto) — não lista encerrados.
     window.__desafioFilter = "active";
     window.__desafioOpenId = "";
@@ -2090,6 +2201,13 @@
         if (window.__desafioRows) render(window.__desafioRows);
       });
     });
+    const cancelDateEl = $("cancelDate");
+    if (cancelDateEl) {
+      cancelDateEl.value = yesterdayBrInputValue();
+      cancelDateEl.addEventListener("change", () => {
+        if (window.__desafioFilter === "cancelled") renderCancelledReport();
+      });
+    }
     const searchEl = $("search");
     if (searchEl) {
       searchEl.addEventListener("input", () => {

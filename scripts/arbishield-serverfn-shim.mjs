@@ -766,6 +766,204 @@ async function listDesafioPendingCounts(token, body) {
   return { counts };
 }
 
+/** YYYY-MM-DD em America/Sao_Paulo (ontem se omitido) */
+function brYmdOrYesterday(raw) {
+  const s = String(raw || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const today = fmt.format(new Date());
+  const [y, m, d] = today.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d - 1));
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+}
+
+function brDayBoundsIso(ymd) {
+  const fromIso = new Date(`${ymd}T00:00:00-03:00`).toISOString();
+  const [y, m, d] = ymd.split("-").map(Number);
+  const next = new Date(Date.UTC(y, m - 1, d + 1));
+  const toYmd = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
+  const toIso = new Date(`${toYmd}T00:00:00-03:00`).toISOString();
+  return { fromIso, toIso, ymd };
+}
+
+/**
+ * Relatório: desafios cancelados no dia (BRT) + clientes ativos reembolsados e valores.
+ * body: { date?: "YYYY-MM-DD", onlyWithClients?: boolean }
+ */
+async function listDesafioCancelledReport(token, body) {
+  if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
+  const ymd = brYmdOrYesterday(body?.date || body?.day || body?.ymd);
+  const { fromIso, toIso } = brDayBoundsIso(ymd);
+  const onlyWithClients = body?.onlyWithClients !== false && body?.only_with_clients !== false;
+
+  const refunds = await sb(
+    `/rest/v1/wallet_transactions?type=eq.desafio_cancel_refund&created_at=gte.${encodeURIComponent(fromIso)}&created_at=lt.${encodeURIComponent(toIso)}&select=id,user_id,amount_cents,metadata,created_at&order=created_at.asc&limit=5000`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  const refundList = Array.isArray(refunds) ? refunds : [];
+
+  const cancelledRows = await sb(
+    `/rest/v1/desafios?status=eq.cancelled&updated_at=gte.${encodeURIComponent(fromIso)}&updated_at=lt.${encodeURIComponent(toIso)}&select=id,number,title,subtitle,status,initial_balance_cents,updated_at,created_at&order=updated_at.desc&limit=500`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  const cancelledList = Array.isArray(cancelledRows) ? cancelledRows : [];
+
+  const desafioIds = new Set(cancelledList.map((d) => d.id).filter(Boolean));
+  for (const tx of refundList) {
+    const mid = tx?.metadata?.desafio_id;
+    if (mid) desafioIds.add(String(mid));
+  }
+  const idList = [...desafioIds];
+  const desafiosById = new Map(cancelledList.map((d) => [d.id, d]));
+
+  for (let i = 0; i < idList.length; i += 80) {
+    const chunk = idList.slice(i, i + 80);
+    if (!chunk.length) continue;
+    const rows = await sb(
+      `/rest/v1/desafios?id=in.(${chunk.join(",")})&select=id,number,title,subtitle,status,initial_balance_cents,updated_at,created_at`,
+      { token: SERVICE_KEY }
+    ).catch(() => []);
+    for (const d of Array.isArray(rows) ? rows : []) desafiosById.set(d.id, d);
+  }
+
+  const partsByDesafio = new Map();
+  for (let i = 0; i < idList.length; i += 40) {
+    const chunk = idList.slice(i, i + 40);
+    if (!chunk.length) continue;
+    const rows = await sb(
+      `/rest/v1/desafio_participations?desafio_id=in.(${chunk.join(",")})&result=eq.cancelled&select=id,user_id,desafio_id,step_id,amount_cents,result,updated_at,created_at&limit=5000`,
+      { token: SERVICE_KEY }
+    ).catch(() => []);
+    for (const p of Array.isArray(rows) ? rows : []) {
+      const did = String(p.desafio_id || "");
+      if (!partsByDesafio.has(did)) partsByDesafio.set(did, []);
+      partsByDesafio.get(did).push(p);
+    }
+  }
+
+  const userIds = new Set();
+  for (const tx of refundList) if (tx.user_id) userIds.add(tx.user_id);
+  for (const list of partsByDesafio.values()) {
+    for (const p of list) if (p.user_id) userIds.add(p.user_id);
+  }
+  const profilesById = new Map();
+  const uids = [...userIds];
+  for (let i = 0; i < uids.length; i += 80) {
+    const chunk = uids.slice(i, i + 80);
+    if (!chunk.length) continue;
+    const rows = await sb(
+      `/rest/v1/profiles?id=in.(${chunk.join(",")})&select=id,full_name,email,account_status`,
+      { token: SERVICE_KEY }
+    ).catch(() => []);
+    for (const p of Array.isArray(rows) ? rows : []) profilesById.set(p.id, p);
+  }
+
+  const refundsByDesafio = new Map();
+  for (const tx of refundList) {
+    const did = String(tx?.metadata?.desafio_id || "").trim();
+    if (!did) continue;
+    if (!refundsByDesafio.has(did)) refundsByDesafio.set(did, []);
+    refundsByDesafio.get(did).push(tx);
+  }
+
+  const desafios = [];
+  for (const did of idList) {
+    const d = desafiosById.get(did) || { id: did, title: "(desafio)", number: null };
+    const txs = refundsByDesafio.get(did) || [];
+    const parts = partsByDesafio.get(did) || [];
+    const clients = new Map();
+
+    for (const tx of txs) {
+      const uid = String(tx.user_id || "");
+      if (!uid) continue;
+      const prof = profilesById.get(uid) || {};
+      const cur = clients.get(uid) || {
+        user_id: uid,
+        full_name: prof.full_name || null,
+        email: prof.email || null,
+        amount_cents: 0,
+        refund_txs: 0,
+      };
+      cur.amount_cents += n(tx.amount_cents);
+      cur.refund_txs += 1;
+      if (!cur.full_name && prof.full_name) cur.full_name = prof.full_name;
+      clients.set(uid, cur);
+    }
+
+    if (!txs.length) {
+      for (const p of parts) {
+        const uid = String(p.user_id || "");
+        if (!uid) continue;
+        const prof = profilesById.get(uid) || {};
+        const cur = clients.get(uid) || {
+          user_id: uid,
+          full_name: prof.full_name || null,
+          email: prof.email || null,
+          amount_cents: 0,
+          refund_txs: 0,
+        };
+        cur.amount_cents += n(p.amount_cents);
+        if (!cur.full_name && prof.full_name) cur.full_name = prof.full_name;
+        clients.set(uid, cur);
+      }
+    }
+
+    const clientList = [...clients.values()]
+      .map((c) => ({
+        user_id: c.user_id,
+        full_name: c.full_name || "(sem nome)",
+        email: c.email || null,
+        amount_cents: c.amount_cents,
+        refund_txs: c.refund_txs,
+      }))
+      .sort(
+        (a, b) =>
+          b.amount_cents - a.amount_cents ||
+          String(a.full_name).localeCompare(String(b.full_name), "pt-BR")
+      );
+
+    if (onlyWithClients && !clientList.length) continue;
+
+    desafios.push({
+      id: d.id,
+      number: d.number,
+      title: d.title || "(sem título)",
+      subtitle: d.subtitle || null,
+      status: d.status || "cancelled",
+      initial_balance_cents: n(d.initial_balance_cents),
+      cancelled_at: d.updated_at || null,
+      clients: clientList,
+      clients_count: clientList.length,
+      total_cents: clientList.reduce((a, c) => a + c.amount_cents, 0),
+    });
+  }
+
+  desafios.sort((a, b) => {
+    const ta = a.cancelled_at ? Date.parse(a.cancelled_at) : 0;
+    const tb = b.cancelled_at ? Date.parse(b.cancelled_at) : 0;
+    return tb - ta;
+  });
+
+  return {
+    ok: true,
+    date: ymd,
+    from: fromIso,
+    to: toIso,
+    summary: {
+      desafios: desafios.length,
+      clients: desafios.reduce((a, d) => a + d.clients_count, 0),
+      total_cents: desafios.reduce((a, d) => a + d.total_cents, 0),
+      refund_txs: refundList.length,
+    },
+    desafios,
+  };
+}
+
 function extractServerFnData(rawBody) {
   if (!rawBody) return {};
   let parsed;
@@ -6029,6 +6227,40 @@ const server = createServer(async (req, res) => {
       );
     } catch (err) {
       return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (
+    (url.pathname === "/api/arbishield/desafio-cancelled-report" ||
+      url.pathname === "/api/arbishield/desafio-cancelados-relatorio") &&
+    (req.method === "POST" || req.method === "GET")
+  ) {
+    try {
+      const token = bearerFromReq(req);
+      let body = {};
+      if (req.method === "GET") {
+        body = {
+          date: url.searchParams.get("date") || url.searchParams.get("day") || "",
+          onlyWithClients: url.searchParams.get("onlyWithClients") !== "0",
+        };
+      } else {
+        const raw = await parseBody(req);
+        try {
+          body = JSON.parse(raw || "{}");
+        } catch {
+          body = {};
+        }
+      }
+      return sendJson(
+        res,
+        200,
+        await listDesafioCancelledReport(token, body.data || body)
+      );
+    } catch (err) {
+      const status = Number(err && err.status) || 400;
+      return sendJson(res, status, {
         error: err instanceof Error ? err.message : String(err),
       });
     }
