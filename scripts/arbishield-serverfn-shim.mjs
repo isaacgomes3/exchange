@@ -5791,6 +5791,219 @@ async function rejectManualDeposit(token, body) {
 }
 
 /** Garante buckets usados pelo app (service role). */
+async function adjustAdminBalance(token, body = {}) {
+  await requireFinanceAdmin(token);
+  const adminId = requireUserId(token);
+  const userId = String(body.userId || body.user_id || body.id || "").trim();
+  if (!userId) throw new Error("userId obrigatório");
+
+  const reason = String(body.reason || body.note || body.motivo || "").trim();
+  if (!reason) throw new Error("Motivo obrigatório para auditoria");
+
+  const walletRaw = String(
+    body.wallet || body.bucket || body.deposit_type || "real"
+  )
+    .trim()
+    .toLowerCase();
+  const WALLET_MAP = {
+    real: "balance_cents",
+    user: "balance_cents",
+    user_balance: "balance_cents",
+    apostador: "balance_cents",
+    desafio: "desafio_balance_cents",
+    challenge: "desafio_balance_cents",
+    investor: "investor_balance_cents",
+    provider: "investor_balance_cents",
+    provedor: "investor_balance_cents",
+    partner: "investor_balance_cents",
+    demo: "demo_balance_cents",
+    virtual: "demo_balance_cents",
+    refund: "deduction_balance_cents",
+    reembolso: "deduction_balance_cents",
+    deduction: "deduction_balance_cents",
+  };
+  const field = WALLET_MAP[walletRaw];
+  if (!field) {
+    throw new Error(
+      "Carteira inválida. Use: real, desafio, investor, demo ou refund"
+    );
+  }
+  const wallet =
+    field === "balance_cents"
+      ? "real"
+      : field === "desafio_balance_cents"
+        ? "desafio"
+        : field === "investor_balance_cents"
+          ? "investor"
+          : field === "demo_balance_cents"
+            ? "demo"
+            : "refund";
+
+  let mode = String(body.mode || body.op || body.action || "set")
+    .trim()
+    .toLowerCase();
+  if (mode === "add" || mode === "insert" || mode === "inserir" || mode === "+") {
+    mode = "credit";
+  } else if (
+    mode === "remove" ||
+    mode === "subtract" ||
+    mode === "remover" ||
+    mode === "-"
+  ) {
+    mode = "debit";
+  } else if (
+    mode === "alterar" ||
+    mode === "update" ||
+    mode === "definir" ||
+    mode === "absolute"
+  ) {
+    mode = "set";
+  }
+  if (mode !== "credit" && mode !== "debit" && mode !== "set") {
+    throw new Error("mode inválido. Use: credit, set ou debit");
+  }
+
+  let amountCents = body.amountCents;
+  if (amountCents == null) amountCents = body.amount_cents;
+  if (amountCents == null && body.amount != null) {
+    let raw = String(body.amount).trim();
+    if (raw.includes(",")) {
+      // BRL: 1.234,56 → 1234.56
+      raw = raw.replace(/\./g, "").replace(",", ".");
+    }
+    const asReais = Number(raw);
+    if (!Number.isFinite(asReais)) throw new Error("Valor inválido");
+    amountCents = Math.round(asReais * 100);
+  }
+  amountCents = Math.round(Number(amountCents));
+  if (!Number.isFinite(amountCents)) throw new Error("Valor inválido");
+  if (mode === "set" && amountCents < 0) throw new Error("Saldo total não pode ser negativo");
+  if ((mode === "credit" || mode === "debit") && !(amountCents > 0)) {
+    throw new Error("Informe um valor maior que zero");
+  }
+
+  const selectFields = [
+    "balance_cents",
+    "desafio_balance_cents",
+    "investor_balance_cents",
+    "demo_balance_cents",
+    "deduction_balance_cents",
+    "full_name",
+  ].join(",");
+  const prof = await sb(
+    `/rest/v1/profiles?select=${selectFields}&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const p = Array.isArray(prof) ? prof[0] : null;
+  if (!p) throw new Error("Perfil do usuário não encontrado");
+
+  const before = Math.max(0, n(p[field]));
+  let after = before;
+  if (mode === "set") after = amountCents;
+  else if (mode === "credit") after = before + amountCents;
+  else after = before - amountCents;
+  if (after < 0) throw new Error("Saldo insuficiente para débito");
+
+  const delta = after - before;
+  if (delta === 0) {
+    return {
+      ok: true,
+      unchanged: true,
+      userId,
+      wallet,
+      mode,
+      beforeCents: before,
+      afterCents: after,
+      deltaCents: 0,
+      reason,
+    };
+  }
+
+  const patch = {
+    [field]: after,
+    updated_at: new Date().toISOString(),
+  };
+  try {
+    await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: patch,
+    });
+  } catch (e) {
+    const slim = { [field]: after };
+    await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: slim,
+    });
+  }
+
+  const txType = delta > 0 ? "admin_adjustment_credit" : "admin_adjustment";
+  try {
+    await sb("/rest/v1/wallet_transactions", {
+      method: "POST",
+      token: SERVICE_KEY,
+      body: {
+        user_id: userId,
+        type: txType,
+        amount_cents: Math.abs(delta),
+        balance_before_cents: before,
+        balance_after_cents: after,
+        metadata: {
+          reason,
+          wallet,
+          field,
+          mode,
+          delta_cents: delta,
+          admin_id: adminId,
+          admin_email: tokenEmail(token),
+          source: "admin_users_adjust_balance_v1",
+        },
+      },
+    });
+  } catch (e) {
+    // fallback sem balance_before/after
+    try {
+      await sb("/rest/v1/wallet_transactions", {
+        method: "POST",
+        token: SERVICE_KEY,
+        body: {
+          user_id: userId,
+          type: "admin_adjustment",
+          amount_cents: delta,
+          metadata: {
+            reason,
+            wallet,
+            field,
+            mode,
+            delta_cents: delta,
+            admin_id: adminId,
+            source: "admin_users_adjust_balance_v1",
+          },
+        },
+      });
+    } catch (e2) {
+      console.warn(
+        "[adjust-balance] wallet_transactions:",
+        e2 instanceof Error ? e2.message : e2
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    userId,
+    fullName: p.full_name || null,
+    wallet,
+    mode,
+    beforeCents: before,
+    afterCents: after,
+    deltaCents: delta,
+    reason,
+    adminId,
+  };
+}
+
 async function ensureStorageBuckets() {
   if (!SERVICE_KEY) return { ok: false, error: "SERVICE_ROLE_KEY ausente" };
   const buckets = [
@@ -9381,6 +9594,31 @@ const server = createServer(async (req, res) => {
         ok: false,
         error: err instanceof Error ? err.message : String(err),
       });
+    }
+  }
+
+
+  if (
+    (url.pathname === "/api/arbishield/adjust-balance" ||
+      url.pathname === "/api/arbishield/admin-adjust-balance") &&
+    req.method === "POST"
+  ) {
+    try {
+      const token = bearerFromReq(req);
+      if (!token) return sendJson(res, 401, { error: "Não autorizado" });
+      const raw = await parseBody(req);
+      let body = {};
+      try {
+        body = raw ? JSON.parse(raw) : {};
+      } catch {
+        return sendJson(res, 400, { error: "JSON inválido" });
+      }
+      const result = await adjustAdminBalance(token, body.data || body);
+      return sendJson(res, 200, result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const status = err && err.status ? Number(err.status) : /permiss/i.test(msg) ? 403 : 400;
+      return sendJson(res, status, { ok: false, error: msg });
     }
   }
 

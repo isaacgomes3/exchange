@@ -6,12 +6,12 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Usuários — ArbiShield v2</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="admin-users-email-v3" />
-  <link rel="stylesheet" href="/v2.css?v=users-email-3" />
+  <meta name="arbishield-build" content="admin-users-email-saldo-v1" />
+  <link rel="stylesheet" href="/v2.css?v=users-email-saldo-1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/finance-admins.js?v=fin-acl-1"></script>
-  <script src="/v2.js?v=users-email-3"></script>
-  <script src="/v2-shell.js?v=users-email-3" defer></script>
+  <script src="/v2.js?v=users-email-saldo-1"></script>
+  <script src="/v2-shell.js?v=users-email-saldo-1" defer></script>
   <style>
     .ops-wallets {
       display: grid; gap: 2px; font-size: 11px; line-height: 1.35;
@@ -28,7 +28,7 @@
     }
     .user-drawer-backdrop.open { display: flex; }
     .user-drawer {
-      width: min(420px, 100%); background: #0a0a0a; border-left: 1px solid #1f1f1f;
+      width: min(440px, 100%); background: #0a0a0a; border-left: 1px solid #1f1f1f;
       padding: 20px 18px 28px; overflow: auto;
     }
     .user-drawer h2 {
@@ -44,13 +44,48 @@
       background: rgba(255,255,255,0.02);
     }
     .ud-item .l { font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-    .ud-item .v { font-size: 13px; font-weight: 800; text-align: right; word-break: break-all; }
+    .ud-item .v { font-size: 13px; font-weight: 800; text-align: right; }
     .ud-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .bal-panel {
+      display: none; margin: 8px 0 16px; padding: 14px;
+      border: 1px solid rgba(201,242,35,0.25); border-radius: 14px;
+      background: rgba(201,242,35,0.04);
+    }
+    .bal-panel.show { display: block; }
+    .bal-panel h3 {
+      margin: 0 0 10px; font-size: 0.85rem; font-weight: 900;
+      font-style: italic; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .bal-panel h3 span { color: var(--lime); }
+    .bal-panel label {
+      display: block; margin: 10px 0 4px;
+      font-size: 10px; font-weight: 800; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .bal-panel select,
+    .bal-panel input {
+      width: 100%; box-sizing: border-box;
+      height: 42px; padding: 0 12px;
+      border-radius: 10px; border: 1px solid #2a2a2a;
+      background: #111; color: #fff; font-weight: 700; font-size: 13px;
+    }
+    .bal-panel .bal-current {
+      margin-top: 8px; font-size: 12px; color: var(--muted);
+    }
+    .bal-panel .bal-current b { color: #fff; }
+    .bal-panel .bal-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+    .bal-panel .bal-msg {
+      display: none; margin-top: 10px; font-size: 12px; font-weight: 700;
+    }
+    .bal-panel .bal-msg.show { display: block; }
+    .bal-panel .bal-msg.ok { color: var(--lime); }
+    .bal-panel .bal-msg.err { color: #ff6b6b; }
     .ops-email {
       color: var(--lime, #c9f223); font-size: 11px; font-weight: 700;
       margin-top: 2px; word-break: break-all;
     }
     .ops-email.missing { color: var(--muted); font-weight: 600; }
+    .ud-item .v { word-break: break-all; }
   </style>
 </head>
 <body data-shell="admin" data-active="users">
@@ -90,6 +125,34 @@
       <div class="ud-grid" id="udProfile"></div>
       <h2 style="font-size:1rem;margin:8px 0 10px">Carteiras</h2>
       <div class="ud-grid" id="udWallets"></div>
+
+      <div class="bal-panel" id="balPanel">
+        <h3>Ajuste de <span>saldo</span></h3>
+        <label for="balWallet">Carteira</label>
+        <select id="balWallet">
+          <option value="real">Saldo Real (apostador)</option>
+          <option value="desafio">Saldo Desafio</option>
+          <option value="investor">Saldo Provedor</option>
+          <option value="refund">Saldo Reembolso</option>
+          <option value="demo">Saldo Demo</option>
+        </select>
+        <label for="balMode">Operação</label>
+        <select id="balMode">
+          <option value="credit">Inserir (crédito)</option>
+          <option value="set">Alterar (definir total)</option>
+          <option value="debit">Remover (débito)</option>
+        </select>
+        <p class="bal-current" id="balCurrent">Saldo atual: <b>—</b></p>
+        <label for="balAmount" id="balAmountLabel">Valor (R$)</label>
+        <input id="balAmount" type="number" step="0.01" min="0" placeholder="0,00" />
+        <label for="balReason">Motivo (auditoria)</label>
+        <input id="balReason" type="text" maxlength="200" placeholder="Ex: depósito PIX manual, ajuste pós-auditoria" />
+        <div class="bal-actions">
+          <button type="button" class="btn btn-primary" id="balSubmit">Confirmar ajuste</button>
+        </div>
+        <div class="bal-msg" id="balMsg"></div>
+      </div>
+
       <div class="ud-actions">
         <button type="button" class="btn btn-primary" id="udMirror">Acessar Conta (Espelho)</button>
         <button type="button" class="btn btn-ghost" id="udClose">Fechar</button>
@@ -116,17 +179,30 @@
         return;
       }
 
+      var canFinance =
+        typeof ArbiV2.canAccessFinance === "function" &&
+        !!ArbiV2.canAccessFinance(user.email);
+
       var rows = [];
       var statusFilter = "all";
       var qDebounced = "";
       var timer = null;
       var selected = null;
+      var balBusy = false;
 
       var PROFILE_SELECT =
         "id,full_name,account_status,phone,cpf,pix_key,location,is_affiliate," +
         "balance_cents,reusable_balance_cents,deduction_balance_cents,demo_balance_cents,locked_balance_cents," +
         "investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents," +
         "pending_balance_cents,total_profit_cents,created_at,updated_at";
+
+      var WALLET_FIELD = {
+        real: "balance_cents",
+        desafio: "desafio_balance_cents",
+        investor: "investor_balance_cents",
+        refund: "deduction_balance_cents",
+        demo: "demo_balance_cents",
+      };
 
       function norm(s) {
         return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -152,7 +228,7 @@
               n(r.deduction_balance_cents),
           },
           { l: "Real", v: n(r.balance_cents), muted: true },
-          { l: "Reembolso", v: n(r.deduction_balance_cents) },
+          { l: "Reembolso", v: n(r.deduction_balance_cents), muted: true },
           { l: "Reutilizável", v: n(r.reusable_balance_cents), muted: true },
           { l: "Desafio", v: n(r.desafio_balance_cents) },
           { l: "Provedor", v: n(r.investor_balance_cents) + n(r.demo_balance_provider_cents) },
@@ -165,8 +241,6 @@
           items = items.filter(function (it) {
             return (
               it.l === "Apostador" ||
-              it.l === "Real" ||
-              it.l === "Reembolso" ||
               it.l === "Desafio" ||
               it.l === "Provedor" ||
               it.l === "Congelado" ||
@@ -200,8 +274,52 @@
           '<div class="ops-stat"><div class="l">Tabela</div><div class="v">profiles</div></div>';
       }
 
-      function openDrawer(r) {
-        selected = r;
+      function currentWalletCents(r) {
+        if (!r) return 0;
+        var field = WALLET_FIELD[document.getElementById("balWallet").value] || "balance_cents";
+        return n(r[field]);
+      }
+
+      function refreshBalCurrent() {
+        var el = document.getElementById("balCurrent");
+        if (!selected) {
+          el.innerHTML = "Saldo atual: <b>—</b>";
+          return;
+        }
+        el.innerHTML =
+          "Saldo atual: <b>" + money(currentWalletCents(selected)) + "</b>";
+        var mode = document.getElementById("balMode").value;
+        document.getElementById("balAmountLabel").textContent =
+          mode === "set" ? "Novo saldo total (R$)" : "Valor (R$)";
+        if (mode === "set") {
+          document.getElementById("balAmount").value = (
+            currentWalletCents(selected) / 100
+          ).toFixed(2);
+        }
+      }
+
+      function showBalMsg(text, ok) {
+        var el = document.getElementById("balMsg");
+        el.textContent = text || "";
+        el.className = "bal-msg show " + (ok ? "ok" : "err");
+      }
+
+      function clearBalMsg() {
+        var el = document.getElementById("balMsg");
+        el.textContent = "";
+        el.className = "bal-msg";
+      }
+
+      function resetBalForm(r) {
+        document.getElementById("balWallet").value = "real";
+        document.getElementById("balMode").value = "credit";
+        document.getElementById("balAmount").value = "";
+        document.getElementById("balReason").value = "";
+        clearBalMsg();
+        refreshBalCurrent();
+      }
+
+      function fillDrawerProfile(r) {
         document.getElementById("udHint").textContent =
           (r.full_name || "—") + " · " + r.id;
         document.getElementById("udProfile").innerHTML = [
@@ -253,6 +371,22 @@
             );
           })
           .join("");
+      }
+
+      function openDrawer(r, opts) {
+        opts = opts || {};
+        selected = r;
+        fillDrawerProfile(r);
+
+        var panel = document.getElementById("balPanel");
+        if (canFinance) {
+          panel.classList.add("show");
+          if (!opts.keepBalForm) resetBalForm(r);
+          else refreshBalCurrent();
+        } else {
+          panel.classList.remove("show");
+        }
+
         var backdrop = document.getElementById("userDrawer");
         backdrop.classList.add("open");
         backdrop.setAttribute("aria-hidden", "false");
@@ -275,6 +409,163 @@
           name: r.full_name || "",
           redirect: "/app-carteira.html",
         });
+      }
+
+      async function accessToken() {
+        var sess = await supa.auth.getSession();
+        return (
+          (sess &&
+            sess.data &&
+            sess.data.session &&
+            sess.data.session.access_token) ||
+          null
+        );
+      }
+
+      async function submitBalanceAdjust() {
+        if (!canFinance) {
+          showBalMsg("Sem permissão financeira", false);
+          return;
+        }
+        if (!selected || !selected.id) {
+          showBalMsg("Selecione um usuário", false);
+          return;
+        }
+        if (balBusy) return;
+
+        var wallet = document.getElementById("balWallet").value;
+        var mode = document.getElementById("balMode").value;
+        var reason = String(document.getElementById("balReason").value || "").trim();
+        var amountRaw = String(document.getElementById("balAmount").value || "").trim();
+        if (!amountRaw) {
+          showBalMsg("Informe o valor", false);
+          return;
+        }
+        var amountReais = Number(amountRaw.replace(",", "."));
+        if (!Number.isFinite(amountReais)) {
+          showBalMsg("Valor inválido", false);
+          return;
+        }
+        var amountCents = Math.round(amountReais * 100);
+        if (mode === "set" && amountCents < 0) {
+          showBalMsg("Saldo total não pode ser negativo", false);
+          return;
+        }
+        if ((mode === "credit" || mode === "debit") && !(amountCents > 0)) {
+          showBalMsg("Informe um valor maior que zero", false);
+          return;
+        }
+        if (!reason) {
+          showBalMsg("Motivo obrigatório para auditoria", false);
+          return;
+        }
+
+        var before = currentWalletCents(selected);
+        var previewAfter =
+          mode === "set"
+            ? amountCents
+            : mode === "credit"
+              ? before + amountCents
+              : before - amountCents;
+        if (previewAfter < 0) {
+          showBalMsg("Saldo insuficiente para débito", false);
+          return;
+        }
+
+        var opLabel =
+          mode === "credit"
+            ? "inserir " + money(amountCents)
+            : mode === "debit"
+              ? "remover " + money(amountCents)
+              : "definir total em " + money(amountCents);
+        if (
+          !window.confirm(
+            "Confirmar " +
+              opLabel +
+              " na carteira " +
+              wallet +
+              " de " +
+              (selected.full_name || selected.id) +
+              "?\nAtual: " +
+              money(before) +
+              " → Novo: " +
+              money(previewAfter)
+          )
+        ) {
+          return;
+        }
+
+        balBusy = true;
+        clearBalMsg();
+        document.getElementById("balSubmit").disabled = true;
+        try {
+          var t = await accessToken();
+          if (!t) throw new Error("Sessão expirada");
+          var res = await fetch("/api/arbishield/adjust-balance", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + t,
+            },
+            body: JSON.stringify({
+              userId: selected.id,
+              wallet: wallet,
+              mode: mode,
+              amountCents: amountCents,
+              reason: reason,
+            }),
+          });
+          var text = await res.text();
+          var data = {};
+          try {
+            data = text ? JSON.parse(text) : {};
+          } catch (e) {
+            var looksHtml = /<\s*html|405\s+Not\s+Allowed|nginx/i.test(text || "");
+            if (res.status === 405 || looksHtml) {
+              data = {
+                error:
+                  "API de ajuste indisponível (HTTP " +
+                  res.status +
+                  "). Proxy Nginx/shim fora do ar — rode o hotfix saldo-adm na VPS.",
+              };
+            } else {
+              data = {
+                error:
+                  "Resposta inválida do servidor (HTTP " +
+                  res.status +
+                  ")",
+              };
+            }
+          }
+          if (!res.ok || data.ok === false) {
+            throw new Error(data.error || data.message || "Falha HTTP " + res.status);
+          }
+
+          var field = WALLET_FIELD[wallet];
+          selected[field] = data.afterCents;
+          var idx = rows.findIndex(function (x) {
+            return x.id === selected.id;
+          });
+          if (idx >= 0) rows[idx][field] = data.afterCents;
+
+          showBalMsg(
+            "OK: " +
+              money(data.beforeCents) +
+              " → " +
+              money(data.afterCents) +
+              (data.unchanged ? " (sem alteração)" : ""),
+            true
+          );
+          document.getElementById("balAmount").value = "";
+          fillDrawerProfile(selected);
+          refreshBalCurrent();
+          render();
+        } catch (ex) {
+          showBalMsg(ex.message || "Erro ao ajustar saldo", false);
+        } finally {
+          balBusy = false;
+          document.getElementById("balSubmit").disabled = false;
+        }
       }
 
       function render() {
@@ -302,7 +593,9 @@
         });
         renderStats(rows.length, filtered.length);
         document.getElementById("meta").textContent =
-          filtered.length + " usuário(s) · carteiras completas";
+          filtered.length +
+          " usuário(s) · carteiras completas" +
+          (canFinance ? " · ajuste de saldo liberado" : "");
         var html = filtered
           .slice(0, 100)
           .map(function (r) {
@@ -328,6 +621,9 @@
               (r.created_at ? new Date(r.created_at).toLocaleString("pt-BR") : "—") +
               '</td><td><div class="ops-actions">' +
               '<button type="button" class="btn btn-ghost btn-sm" data-view="1">Ver dados</button>' +
+              (canFinance
+                ? '<button type="button" class="btn btn-primary btn-sm" data-saldo="1">Saldo</button>'
+                : "") +
               '<button type="button" class="btn btn-primary btn-sm" data-mirror="1">Espelho</button>' +
               "</div></td></tr>"
             );
@@ -344,10 +640,19 @@
           if (!r) return;
           var viewBtn = tr.querySelector("[data-view]");
           var mirBtn = tr.querySelector("[data-mirror]");
+          var saldoBtn = tr.querySelector("[data-saldo]");
           if (viewBtn) {
             viewBtn.addEventListener("click", function (ev) {
               ev.stopPropagation();
               openDrawer(r);
+            });
+          }
+          if (saldoBtn) {
+            saldoBtn.addEventListener("click", function (ev) {
+              ev.stopPropagation();
+              openDrawer(r);
+              var panel = document.getElementById("balPanel");
+              if (panel) panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
             });
           }
           if (mirBtn) {
@@ -404,19 +709,15 @@
       document.getElementById("udMirror").onclick = function () {
         if (selected) startMirror(selected);
       };
+      document.getElementById("balWallet").onchange = refreshBalCurrent;
+      document.getElementById("balMode").onchange = refreshBalCurrent;
+      document.getElementById("balSubmit").onclick = function () {
+        submitBalanceAdjust().catch(function (ex) {
+          showBalMsg(ex.message || "Erro", false);
+        });
+      };
 
-      async function loadProfiles() {
-        // Fonte estável da lista (não depende do shim)
-        var res = await supa
-          .from("profiles")
-          .select(PROFILE_SELECT)
-          .order("created_at", { ascending: false })
-          .limit(500);
-        if (res.error) throw res.error;
-        return res.data || [];
-      }
-
-      // Já proxyado em /_serverFn/ → :3101 (não depende de rota nginx nova)
+      // Marker: admin-users-email-v3 — e-mail via _serverFn (já no nginx)
       var FN_ADMIN_LIST_USERS =
         "fb16933f5d8f0788db13c8b74f3c53149e2989eeae483bd064ab7a9a15432c7a";
 
@@ -434,54 +735,34 @@
         return null;
       }
 
-      async function fetchEmailItems(tok) {
-        // 1) caminho estável: /_serverFn (nginx já aponta para o shim)
-        try {
-          var resFn = await fetch("/_serverFn/" + FN_ADMIN_LIST_USERS, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-arbishield-plain": "1",
-              Authorization: "Bearer " + tok,
-            },
-            body: JSON.stringify({ data: {} }),
-          });
-          var dataFn = await resFn.json().catch(function () {
-            return null;
-          });
-          var itemsFn = parseEmailItems(dataFn);
-          if (resFn.ok && itemsFn) return itemsFn;
-        } catch (e1) {
-          console.warn("enrich via _serverFn falhou", e1);
-        }
-        // 2) rota REST (precisa nginx + shim atualizados)
-        try {
-          var res = await fetch("/api/arbishield/admin-users", {
-            headers: { Authorization: "Bearer " + tok },
-          });
-          var data = await res.json().catch(function () {
-            return null;
-          });
-          var items = parseEmailItems(data);
-          if (res.ok && items) return items;
-        } catch (e2) {
-          console.warn("enrich via /admin-users falhou", e2);
-        }
-        return null;
-      }
-
       async function enrichEmails(list) {
-        // Marker: admin-users-email-v3 — e-mail via _serverFn ou /admin-users
         if (!list.length) return list;
         try {
-          var sess = await supa.auth.getSession();
-          var tok =
-            sess &&
-            sess.data &&
-            sess.data.session &&
-            sess.data.session.access_token;
-          if (!tok) return list;
-          var items = await fetchEmailItems(tok);
+          var t = await accessToken();
+          if (!t) return list;
+          var items = null;
+          try {
+            var resFn = await fetch("/_serverFn/" + FN_ADMIN_LIST_USERS, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-arbishield-plain": "1",
+                Authorization: "Bearer " + t,
+              },
+              body: JSON.stringify({ data: {} }),
+            });
+            var dataFn = await resFn.json().catch(function () { return null; });
+            items = resFn.ok ? parseEmailItems(dataFn) : null;
+          } catch (e1) {}
+          if (!items) {
+            try {
+              var res = await fetch("/api/arbishield/admin-users", {
+                headers: { Authorization: "Bearer " + t },
+              });
+              var data = await res.json().catch(function () { return null; });
+              items = res.ok ? parseEmailItems(data) : null;
+            } catch (e2) {}
+          }
           if (!items) return list;
           var byId = {};
           items.forEach(function (it) {
@@ -496,24 +777,20 @@
             });
           });
         } catch (e) {
-          console.warn("enrichEmails falhou", e);
           return list;
         }
       }
 
       async function load() {
         document.getElementById("err").classList.remove("show");
-        // Sempre lista profiles primeiro — evita "sumiram os usuários" se a API falhar
-        var base = await loadProfiles();
+        var res = await supa
+          .from("profiles")
+          .select(PROFILE_SELECT)
+          .order("created_at", { ascending: false })
+          .limit(500);
+        if (res.error) throw res.error;
+        var base = res.data || [];
         rows = await enrichEmails(base);
-        var withEmail = rows.filter(function (r) {
-          return !!r.email;
-        }).length;
-        if (base.length && !withEmail) {
-          document.getElementById("err").textContent =
-            "Usuários ok, mas e-mail indisponível. Reinicie o shim (arbishield-serverfn-shim) e dê hard refresh.";
-          document.getElementById("err").classList.add("show");
-        }
         buildTabs();
         render();
       }
