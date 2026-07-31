@@ -377,11 +377,40 @@ const SUPABASE_URL = (
   process.env.SUPABASE_PUBLIC_URL ||
   "http://127.0.0.1:8000"
 ).replace(/\/$/, "");
+/** URL pública (browser) — comprovantes não podem usar 127.0.0.1 */
+const PUBLIC_SITE_URL = (
+  process.env.ARBISHIELD_PUBLIC_URL ||
+  process.env.SITE_URL ||
+  process.env.SUPABASE_PUBLIC_URL ||
+  "https://arbishield.app"
+).replace(/\/$/, "");
 const SERVICE_KEY =
   process.env.ARBISHIELD_SERVICE_ROLE_KEY ||
   process.env.SERVICE_ROLE_KEY ||
   process.env.SUPABASE_SERVICE_ROLE_KEY;
 const ANON_KEY = process.env.ANON_KEY || process.env.SUPABASE_ANON_KEY;
+
+/** Marker: deposit-proof-public-url-v1 */
+function toBrowserStorageUrl(url) {
+  let u = String(url || "").trim();
+  if (!u) return u;
+  if (u.startsWith("data:")) return u;
+  // relative signed path from Storage API
+  if (u.startsWith("/")) {
+    return `${PUBLIC_SITE_URL}${u.startsWith("/storage/") ? u : `/storage/v1${u}`}`;
+  }
+  // shim assina com SUPABASE_URL interno → reescreve host para o domínio público
+  u = u.replace(
+    /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/i,
+    PUBLIC_SITE_URL
+  );
+  // se ainda for host interno do compose (supabase-kong etc.)
+  u = u.replace(
+    /^https?:\/\/[^/]*(supabase|kong)[^/]*/i,
+    PUBLIC_SITE_URL
+  );
+  return u;
+}
 
 /** Hashes usados pelo frontend estático na VPS */
 const FN = {
@@ -6185,6 +6214,7 @@ async function uploadDepositProof(token, body) {
     } else if (sj?.data?.signedUrl) {
       signedUrl = sj.data.signedUrl;
     }
+    if (signedUrl) signedUrl = toBrowserStorageUrl(signedUrl);
   } catch {
     /* */
   }
@@ -6237,22 +6267,26 @@ async function uploadDepositProof(token, body) {
 
 /** ADM: URL assinada do comprovante (service role) */
 async function getDepositProofSignedUrl(token, body) {
+  // Marker: deposit-proof-public-url-v1
   if (!(await currentUserIsAdmin(token))) throw new Error("Acesso negado");
   if (!SERVICE_KEY) throw new Error("SERVICE_ROLE_KEY ausente");
   const id = String(body?.id || body?.depositId || "").trim();
   const pathIn = String(body?.path || body?.proof_url || "").trim();
   let path = pathIn;
+  let notesSigned = null;
   if (id && !path) {
     const row = await loadManualDeposit(id);
     path = String(row.proof_url || "").trim();
-    // fallback notes
-    if (!path && row.admin_notes && String(row.admin_notes).startsWith("proof_signed:")) {
-      return { ok: true, url: String(row.admin_notes).slice("proof_signed:".length) };
+    if (row.admin_notes && String(row.admin_notes).startsWith("proof_signed:")) {
+      notesSigned = String(row.admin_notes).slice("proof_signed:".length);
     }
+  }
+  if (!path && notesSigned) {
+    return { ok: true, url: toBrowserStorageUrl(notesSigned) };
   }
   if (!path) throw new Error("Comprovante não encontrado");
   if (/^https?:\/\//i.test(path) || path.startsWith("data:")) {
-    return { ok: true, url: path };
+    return { ok: true, url: toBrowserStorageUrl(path) };
   }
   // remove bucket prefix se veio completo
   path = path.replace(/^deposit-proofs\//, "");
@@ -6272,7 +6306,12 @@ async function getDepositProofSignedUrl(token, body) {
   let url = sj?.signedURL || sj?.data?.signedUrl || null;
   if (!url) throw new Error("Falha ao assinar comprovante (bucket ausente?)");
   if (!String(url).startsWith("http")) {
-    url = `${SUPABASE_URL}/storage/v1${url}`;
+    // path relativo → domínio público (nginx → Kong /storage)
+    url = url.startsWith("/storage/")
+      ? `${PUBLIC_SITE_URL}${url}`
+      : `${PUBLIC_SITE_URL}/storage/v1${url.startsWith("/") ? url : `/${url}`}`;
+  } else {
+    url = toBrowserStorageUrl(url);
   }
   return { ok: true, url, path };
 }

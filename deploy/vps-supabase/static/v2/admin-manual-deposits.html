@@ -4,16 +4,16 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <meta name="arbishield-build" content="admin-deposits-creditar-v1" />
-  <meta name="arbishield-features" content="admin-deposits-creditar-v1 admin-deposits-ja-creditado-sem-saldo" />
+  <meta name="arbishield-build" content="admin-deposits-proof-public-v1" />
+  <meta name="arbishield-features" content="admin-deposits-creditar-v1 deposit-proof-public-url-v1" />
   <title>Depósitos manuais — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css" />
+  <link rel="stylesheet" href="/v2.css?v=proof-public-1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/finance-admins.js?v=fin-acl-2"></script>
-  <script src="/v2.js?v=fin-acl-2"></script>
-  <script src="/v2-shell.js?v=fin-acl-2" defer></script>
+  <script src="/finance-admins.js?v=proof-public-1"></script>
+  <script src="/v2.js?v=proof-public-1"></script>
+  <script src="/v2-shell.js?v=proof-public-1" defer></script>
   <style>
     .d-kpis { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-bottom: 16px; }
     @media (max-width: 800px) { .d-kpis { grid-template-columns: 1fr; } }
@@ -347,6 +347,19 @@
         });
       }
 
+      // Marker: deposit-proof-public-url-v1 — 127.0.0.1 no browser quebra o <img>
+      function isInternalHostUrl(u) {
+        return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/i.test(String(u || ""));
+      }
+      function publicizeStorageUrl(u) {
+        var s = String(u || "").trim();
+        if (!s || s.indexOf("data:") === 0) return s;
+        if (s.charAt(0) === "/") {
+          return location.origin + (s.indexOf("/storage/") === 0 ? s : "/storage/v1" + s);
+        }
+        return s.replace(/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/i, location.origin);
+      }
+
       async function openProof(r) {
         if (!r || !r.proof_url) return;
         document.getElementById("drawerMeta").textContent =
@@ -355,44 +368,77 @@
         media.innerHTML = "<p class=\"muted\">Carregando…</p>";
         drawer.classList.add("show");
         try {
-          var path = String(r.proof_url);
+          var rawPath = String(r.proof_url || "");
+          var path = rawPath.replace(/^deposit-proofs\//, "");
           var url = null;
-          // 1) se já for URL absoluta / data
-          if (/^https?:\/\//i.test(path) || path.indexOf("data:") === 0) {
-            url = path;
+          var isStoragePath =
+            path &&
+            path.indexOf("data:") !== 0 &&
+            !/^https?:\/\//i.test(path);
+
+          // 1) Preferir assinatura fresh via service role (evita proof_signed com 127.0.0.1)
+          if (isStoragePath) {
+            try {
+              var t = await token();
+              var res = await fetch("/_serverFn/" + FN.proofUrl, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-arbishield-plain": "1",
+                  Authorization: "Bearer " + t,
+                },
+                body: JSON.stringify({ data: { id: r.id, path: path } }),
+              });
+              var text = await res.text();
+              var data = {};
+              try { data = text ? JSON.parse(text) : {}; } catch (e) { data = {}; }
+              if (data && data.result != null) data = data.result;
+              if (data && data.url) url = data.url;
+            } catch (eSign) {}
           }
-          // 2) admin_notes com proof_signed
+
+          // 2) URL absoluta já salva
+          if (!url && (/^https?:\/\//i.test(rawPath) || rawPath.indexOf("data:") === 0)) {
+            url = rawPath;
+          }
+          // 3) admin_notes proof_signed (só se não for host interno — senão reescreve)
           if (!url && r.admin_notes && String(r.admin_notes).indexOf("proof_signed:") === 0) {
             url = String(r.admin_notes).slice("proof_signed:".length);
           }
-          // 3) serverFn service role
-          if (!url) {
-            var t = await token();
-            var res = await fetch("/_serverFn/" + FN.proofUrl, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "x-arbishield-plain": "1",
-                Authorization: "Bearer " + t,
-              },
-              body: JSON.stringify({ data: { id: r.id, path: path } }),
-            });
-            var text = await res.text();
-            var data = {};
-            try { data = text ? JSON.parse(text) : {}; } catch (e) { data = {}; }
-            if (data && data.result != null) data = data.result;
-            if (data && data.url) url = data.url;
-          }
-          // 4) supabase client signed url
-          if (!url) {
-            var signed = await supa.storage.from("deposit-proofs").createSignedUrl(path.replace(/^deposit-proofs\//, ""), 3600);
-            if (signed.error || !signed.data || !signed.data.signedUrl) throw signed.error || new Error("Falha ao assinar URL");
+          // 4) client signed url
+          if (!url && isStoragePath) {
+            var signed = await supa.storage
+              .from("deposit-proofs")
+              .createSignedUrl(path, 3600);
+            if (signed.error || !signed.data || !signed.data.signedUrl) {
+              throw signed.error || new Error("Falha ao assinar URL");
+            }
             url = signed.data.signedUrl;
           }
-          if (/\.pdf($|\?)/i.test(path)) {
-            media.innerHTML = '<embed src="' + url + '" type="application/pdf" />';
+          if (!url) throw new Error("URL do comprovante indisponível");
+          url = publicizeStorageUrl(url);
+          if (isInternalHostUrl(url)) {
+            throw new Error(
+              "URL interna (localhost). Reinicie o shim com SITE_URL=https://arbishield.app"
+            );
+          }
+          var escUrl = String(url).replace(/"/g, "&quot;");
+          if (/\.pdf($|\?)/i.test(path) || /\.pdf($|\?)/i.test(url)) {
+            media.innerHTML =
+              '<embed src="' + escUrl + '" type="application/pdf" />' +
+              '<p class="muted" style="margin-top:8px"><a href="' + escUrl + '" target="_blank" rel="noopener">Abrir PDF</a></p>';
           } else {
-            media.innerHTML = '<img src="' + url + '" alt="Comprovante" />';
+            media.innerHTML =
+              '<img src="' + escUrl + '" alt="Comprovante" />' +
+              '<p class="muted" style="margin-top:8px"><a href="' + escUrl + '" target="_blank" rel="noopener">Abrir em nova aba</a></p>';
+            var img = media.querySelector("img");
+            if (img) {
+              img.onerror = function () {
+                media.innerHTML =
+                  '<p class="muted">Não foi possível exibir a imagem. ' +
+                  '<a href="' + escUrl + '" target="_blank" rel="noopener">Abrir URL do comprovante</a></p>';
+              };
+            }
           }
         } catch (ex) {
           media.innerHTML = '<p class="muted">Não foi possível carregar o comprovante. ' +
