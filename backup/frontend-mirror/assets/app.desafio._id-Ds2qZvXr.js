@@ -1,0 +1,1 @@
+import{fG as a,j as r}from"./main-D_khrzRh.js";import{D as s}from"./DesafioOperacao-BQ4KT9fn.js";import"./surebet-validation-CfW6o_lx.js";import"./SurebetBreakdown-C2KFEpcv.js";function m(){const{id:o}=a.useParams();return r.jsx(s,{desafioId:o,base:"app"})}export{m as component};
