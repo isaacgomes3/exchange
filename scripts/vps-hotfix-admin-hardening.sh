@@ -137,14 +137,14 @@ SQL
 # ─── 3) Invalidar sessões ───────────────────────────────────────────
 if [[ "$SKIP_RELOGIN" != "1" ]]; then
   log "invalidando refresh tokens / sessions (admins allowlist + banidos)"
+  # auth.refresh_tokens.user_id é varchar; auth.sessions.user_id é uuid
   psql_db <<SQL
 DO \$\$
 BEGIN
-  -- Contas banidas / incidente + força re-login dos 4 admins
   IF to_regclass('auth.refresh_tokens') IS NOT NULL THEN
     DELETE FROM auth.refresh_tokens
     WHERE user_id IN (
-      SELECT id FROM auth.users
+      SELECT id::text FROM auth.users
       WHERE lower(email) IN (
         'jawadog871@kierko.com',
         'admin.probe.1784500869@arbishield.local',
@@ -152,6 +152,7 @@ BEGIN
       )
       OR banned_until IS NOT NULL
     );
+    RAISE NOTICE 'refresh_tokens removidos';
   END IF;
   IF to_regclass('auth.sessions') IS NOT NULL THEN
     DELETE FROM auth.sessions
@@ -164,6 +165,7 @@ BEGIN
       )
       OR banned_until IS NOT NULL
     );
+    RAISE NOTICE 'sessions removidas';
   END IF;
 END \$\$;
 SQL
