@@ -1,0 +1,1 @@
+import{D as o}from"./DesafioScreen-Clkbz_HB.js";import"./main-D_khrzRh.js";import"./SurebetBreakdown-C2KFEpcv.js";import"./surebet-validation-CfW6o_lx.js";import"./banners.functions-BEHDA4iu.js";import"./trending-down-CmRTojer.js";import"./target-BVeMPDm_.js";import"./circle-play-BeJZUC-O.js";const a=o;export{a as component};

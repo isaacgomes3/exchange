@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Visão Geral — ArbiShield</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js"></script>
+  <script src="/v2-shell.js" defer></script>
+</head>
+<body data-shell="app" data-active="home">
+  <div id="incompleteBanner" class="dash-alert" hidden>
+    <a class="dash-alert-body" href="/app-perfil.html">
+      <span class="dash-alert-ico" aria-hidden="true">!</span>
+      <span>
+        <strong>Cadastro incompleto</strong>
+        <span class="dash-alert-msg">Complete seus dados para receber reembolsos via PIX com segurança · <em id="incompleteFields"></em></span>
+      </span>
+    </a>
+    <button type="button" class="dash-alert-close" id="incompleteDismiss" aria-label="Dispensar">×</button>
+  </div>
+
+  <div class="page-head dash-head">
+    <div>
+      <h1>Visão <span>Geral</span></h1>
+      <p class="sub">Painel operacional · saldos, proteções e oportunidades</p>
+    </div>
+  </div>
+  <div id="err" class="err"></div>
+
+  <div class="dash-promos">
+    <a class="dash-promo dash-promo-provider" href="/app-partners.html">
+      <img src="/brand/banner-provedor.jpg" alt="" aria-hidden="true" loading="lazy" width="1280" height="512" />
+      <div class="dash-promo-shade"></div>
+      <div class="dash-promo-body">
+        <span class="dash-promo-tag">Provedor de Liquidez</span>
+        <h2>Rendimento diário, de <em>segunda a sexta</em></h2>
+        <p>Aloque capital e receba rendimento todos os dias úteis.</p>
+        <span class="dash-promo-cta">Quero ser provedor →</span>
+      </div>
+    </a>
+    <a class="dash-promo dash-promo-affiliate" href="/app-afiliados.html">
+      <img src="/brand/banner-afiliado.jpg" alt="" aria-hidden="true" loading="lazy" width="1280" height="512" />
+      <div class="dash-promo-shade"></div>
+      <div class="dash-promo-body">
+        <span class="dash-promo-tag soft">Programa de Afiliados</span>
+        <h2>Seja afiliado e <em>ganhe por indicação</em></h2>
+        <p>Indique amigos e receba comissões recorrentes.</p>
+        <span class="dash-promo-cta light">Quero ser afiliado →</span>
+      </div>
+    </a>
+  </div>
+
+  <div class="dash-kpis">
+    <article class="dash-kpi">
+      <div class="dash-kpi-top">
+        <span class="l">Saldo Apostador</span>
+        <span class="dash-kpi-ico" aria-hidden="true">◉</span>
+      </div>
+      <div class="v lime" id="kBalApostador">—</div>
+      <p class="h">Disponível para operações</p>
+    </article>
+    <article class="dash-kpi">
+      <div class="dash-kpi-top">
+        <span class="l">Saldo Provedor</span>
+        <span class="dash-kpi-ico" aria-hidden="true">▦</span>
+      </div>
+      <div class="v" id="kBalProvedor">—</div>
+      <p class="h">Capital alocado</p>
+    </article>
+    <article class="dash-kpi">
+      <div class="dash-kpi-top">
+        <span class="l">Proteções Ativas</span>
+        <span class="dash-kpi-ico" aria-hidden="true">⛨</span>
+      </div>
+      <div class="v" id="kProt">—</div>
+      <p class="h">Operações abertas</p>
+    </article>
+    <article class="dash-kpi">
+      <div class="dash-kpi-top">
+        <span class="l">Rentabilidade Mês</span>
+        <span class="dash-kpi-ico" aria-hidden="true">↗</span>
+      </div>
+      <div class="v lime" id="kRent">+0,00%</div>
+      <p class="h">Resultado acumulado</p>
+    </article>
+  </div>
+
+  <div class="dash-bottom">
+    <section class="dash-panel dash-evo">
+      <div class="dash-panel-head">
+        <div>
+          <h3>Evolução Patrimonial</h3>
+          <p>Últimos 30 dias</p>
+        </div>
+        <div class="dash-evo-today">
+          <span class="l">Hoje</span>
+          <strong id="evoToday">R$ 0</strong>
+          <em id="evoPct" class="pos">+0,00%</em>
+        </div>
+      </div>
+      <div class="dash-chart" id="evoChart" aria-hidden="true"></div>
+    </section>
+    <section class="dash-panel dash-ops">
+      <h3>Resumo Operacional</h3>
+      <ul class="dash-ops-list">
+        <li>
+          <span>Taxa de Acerto</span>
+          <strong class="lime" id="opsWin">0,0%</strong>
+        </li>
+        <li>
+          <span>Proteções Liquidadas</span>
+          <strong id="opsSettled">0</strong>
+        </li>
+        <li>
+          <span>Reembolsos</span>
+          <strong id="opsRefunds">0</strong>
+        </li>
+        <li>
+          <span>Capital Movimentado</span>
+          <strong id="opsCapital">R$ 0,00</strong>
+        </li>
+        <li>
+          <span>Lucro na Exchange</span>
+          <strong class="lime" id="opsProfit">R$ 0,00</strong>
+        </li>
+      </ul>
+    </section>
+  </div>
+
+  <script>
+    (async function () {
+      var money = ArbiV2.money;
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+
+      function showErr(msg) {
+        var err = document.getElementById("err");
+        err.textContent = msg || "";
+        err.classList.toggle("show", !!msg);
+      }
+
+      function set(id, text) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = text;
+      }
+
+      function renderChart(points) {
+        var host = document.getElementById("evoChart");
+        if (!host) return;
+        var w = 640;
+        var h = 220;
+        var pad = 12;
+        if (!points.length) points = [{ d: 0, v: 0 }, { d: 1, v: 0 }];
+        var max = Math.max.apply(
+          null,
+          points.map(function (p) {
+            return p.v;
+          }).concat([1])
+        );
+        var min = Math.min.apply(
+          null,
+          points.map(function (p) {
+            return p.v;
+          })
+        );
+        var span = Math.max(max - min, 1);
+        var coords = points.map(function (p, i) {
+          var x = pad + (i / Math.max(points.length - 1, 1)) * (w - pad * 2);
+          var y = h - pad - ((p.v - min) / span) * (h - pad * 2);
+          return x.toFixed(1) + "," + y.toFixed(1);
+        });
+        var poly = coords.join(" ");
+        host.innerHTML =
+          '<svg viewBox="0 0 ' +
+          w +
+          " " +
+          h +
+          '" preserveAspectRatio="none">' +
+          '<defs><linearGradient id="dashLine" x1="0" y1="0" x2="1" y2="0">' +
+          '<stop offset="0%" stop-color="#C6FF00" stop-opacity="0.55"/>' +
+          '<stop offset="100%" stop-color="#C6FF00" stop-opacity="1"/>' +
+          "</linearGradient></defs>" +
+          '<polyline fill="none" stroke="url(#dashLine)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="' +
+          poly +
+          '"/>' +
+          "</svg>";
+      }
+
+      try {
+        var profileRes = await supa
+          .from("profiles")
+          .select(
+            "full_name,balance_cents,reusable_balance_cents,demo_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,cpf,pix_key,pix_priority_type,pix_bank,pix_account,pix_account_holder,phone"
+          )
+          .eq("id", user.id)
+          .maybeSingle();
+        if (profileRes.error) throw profileRes.error;
+        var p = profileRes.data || {};
+
+        var apostador =
+          Number(p.balance_cents || 0) +
+          Number(p.reusable_balance_cents || 0) +
+          Number(p.demo_balance_cents || 0);
+        var provedor =
+          Number(p.investor_balance_cents || 0) +
+          Number(p.demo_balance_provider_cents || 0);
+
+        set("kBalApostador", money(apostador));
+        set("kBalProvedor", money(provedor));
+        set("evoToday", money(apostador + provedor));
+
+        var missing = [];
+        if (!p.full_name) missing.push("Nome completo");
+        if (!p.cpf) missing.push("CPF");
+        if (!p.pix_priority_type || !p.pix_key) missing.push("Chave PIX prioritária");
+        if (!p.pix_bank) missing.push("Banco");
+        if (!p.pix_account) missing.push("Conta");
+        if (!p.pix_account_holder) missing.push("Titular da conta");
+        var banner = document.getElementById("incompleteBanner");
+        var sig = missing.join("|");
+        var dismissed = "";
+        try {
+          dismissed = sessionStorage.getItem("profileCompletenessBanner:dismissedSignature") || "";
+        } catch (e) {}
+        if (missing.length && dismissed !== sig) {
+          banner.hidden = false;
+          document.getElementById("incompleteFields").textContent = missing.join(", ");
+          document.getElementById("incompleteDismiss").addEventListener("click", function () {
+            try {
+              sessionStorage.setItem("profileCompletenessBanner:dismissedSignature", sig);
+            } catch (e2) {}
+            banner.hidden = true;
+          });
+        }
+
+        var protRes = await supa
+          .from("protections")
+          .select("id,status,amount_cents,profit_cents,pnl_cents,created_at")
+          .eq("user_id", user.id)
+          .limit(500);
+        var rows = (protRes.data || []).slice();
+        var active = rows.filter(function (r) {
+          return String(r.status || "").toLowerCase() === "active";
+        }).length;
+        var settledStatuses = /settled|liquidat|won|lost|closed|completed|resolved/i;
+        var settled = rows.filter(function (r) {
+          return settledStatuses.test(String(r.status || ""));
+        });
+        var won = settled.filter(function (r) {
+          return /won|profit|win/i.test(String(r.status || "")) || Number(r.profit_cents || r.pnl_cents || 0) > 0;
+        }).length;
+        var winRate = settled.length ? (won / settled.length) * 100 : 0;
+        var capital = rows.reduce(function (acc, r) {
+          return acc + Number(r.amount_cents || 0);
+        }, 0);
+        var profit = rows.reduce(function (acc, r) {
+          return acc + Number(r.profit_cents || r.pnl_cents || 0);
+        }, 0);
+
+        var refundCount = 0;
+        try {
+          var ref = await supa
+            .from("refunds")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id);
+          refundCount = ref.count || 0;
+        } catch (refErr) {}
+
+        set("kProt", String(active));
+        set("opsWin", winRate.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "%");
+        set("opsSettled", String(settled.length));
+        set("opsRefunds", String(refundCount));
+        set("opsCapital", money(capital));
+        set("opsProfit", money(profit));
+
+        var monthStart = new Date();
+        monthStart.setDate(1);
+        monthStart.setHours(0, 0, 0, 0);
+        var monthProfit = rows
+          .filter(function (r) {
+            return r.created_at && new Date(r.created_at) >= monthStart;
+          })
+          .reduce(function (acc, r) {
+            return acc + Number(r.profit_cents || r.pnl_cents || 0);
+          }, 0);
+        var base = Math.max(apostador + provedor - monthProfit, 1);
+        var rentPct = (monthProfit / base) * 100;
+        var rentEl = document.getElementById("kRent");
+        var evoPct = document.getElementById("evoPct");
+        var rentTxt =
+          (rentPct >= 0 ? "+" : "") +
+          rentPct.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
+          "%";
+        if (rentEl) rentEl.textContent = rentTxt;
+        if (evoPct) {
+          evoPct.textContent = rentTxt;
+          evoPct.className = rentPct >= 0 ? "pos" : "neg";
+        }
+
+        var points = [];
+        var now = Date.now();
+        var totalNow = apostador + provedor;
+        for (var i = 29; i >= 0; i--) {
+          var t = now - i * 86400000;
+          var dayProfit = rows
+            .filter(function (r) {
+              if (!r.created_at) return false;
+              var d = new Date(r.created_at).getTime();
+              return d >= t - 86400000 && d < t;
+            })
+            .reduce(function (acc, r) {
+              return acc + Number(r.profit_cents || r.pnl_cents || 0);
+            }, 0);
+          points.push({ d: 30 - i, v: Math.max(0, totalNow - dayProfit * (i + 1) * 0.02) });
+        }
+        if (totalNow === 0 && !rows.length) {
+          points = Array.from({ length: 30 }, function (_, idx) {
+            return { d: idx, v: 0 };
+          });
+        } else {
+          points[points.length - 1].v = totalNow;
+        }
+        renderChart(points);
+      } catch (ex) {
+        showErr(ex.message || "Erro ao carregar visão geral");
+        renderChart([]);
+      }
+    })();
+  </script>
+</body>
+</html>
