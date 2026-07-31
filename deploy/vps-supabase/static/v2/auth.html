@@ -152,6 +152,10 @@
         okEl.textContent = "Senha redefinida com sucesso. Entre com a nova senha.";
         okEl.classList.add("show");
       }
+      var emailPrefill = String(params.get("email") || "").trim();
+      if (emailPrefill) {
+        document.getElementById("email").value = emailPrefill;
+      }
 
       function setMode(next) {
         if (next === "signup") {

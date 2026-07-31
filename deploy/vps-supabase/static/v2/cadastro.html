@@ -128,6 +128,23 @@
     .msg { display: none; margin-bottom: 12px; padding: 10px; border-radius: 10px; font-size: 13px; }
     .msg.show { display: block; }
     .msg.err { border: 1px solid rgba(248,113,113,0.4); color: var(--danger); background: rgba(248,113,113,0.08); }
+    .msg.err a { color: var(--lime); font-weight: 700; text-decoration: none; }
+    .exist-actions {
+      display: none; gap: 8px; margin: 0 0 14px; flex-wrap: wrap;
+    }
+    .exist-actions.show { display: flex; }
+    .exist-actions a {
+      flex: 1 1 140px; height: 44px; border-radius: 12px; display: flex;
+      align-items: center; justify-content: center; font-size: 12px; font-weight: 800;
+      letter-spacing: 0.06em; text-transform: uppercase; text-decoration: none;
+    }
+    .exist-actions .go-login {
+      background: var(--lime); color: #000;
+    }
+    .exist-actions .go-forgot {
+      background: transparent; color: var(--text);
+      border: 1px solid rgba(255,255,255,0.14);
+    }
     .foot { margin-top: 16px; text-align: center; font-size: 13px; color: var(--muted); }
     .foot a { color: var(--lime); font-weight: 700; text-decoration: none; }
     .back { display: block; margin-top: 10px; text-align: center; color: var(--muted); font-size: 12px; text-decoration: none; }
@@ -170,6 +187,11 @@
         </div>
         <div id="refBanner" class="ref-banner"></div>
         <div class="msg err" id="err"></div>
+        <!-- Marker: forgot-password-v1 — atalho quando e-mail já cadastrado -->
+        <div class="exist-actions" id="existActions">
+          <a class="go-login" id="existLogin" href="/auth.html">Entrar</a>
+          <a class="go-forgot" id="existForgot" href="/auth.html?forgot=1">Esqueci minha senha</a>
+        </div>
 
         <form id="form" autocomplete="on">
           <div class="panel on" id="panel1">
@@ -215,7 +237,12 @@
           </div>
         </form>
 
-        <div class="foot">Já possui credenciais ativas? <a href="/auth.html">Entrar no Terminal</a></div>
+        <div class="foot">
+          Já possui credenciais ativas?
+          <a href="/auth.html">Entrar no Terminal</a>
+          ·
+          <a href="/auth.html?forgot=1">Esqueci minha senha</a>
+        </div>
         <a class="back" href="/">Voltar</a>
       </div>
     </section>
@@ -247,9 +274,40 @@
       var dot2 = document.getElementById("dot2");
       var btnSubmit = document.getElementById("btnSubmit");
 
-      function showErr(msg) {
+      var existActions = document.getElementById("existActions");
+      var existLogin = document.getElementById("existLogin");
+      var existForgot = document.getElementById("existForgot");
+
+      function hideExistActions() {
+        existActions.classList.remove("show");
+      }
+
+      function showExistActions(email) {
+        var q = email ? "?email=" + encodeURIComponent(email) : "";
+        var forgotQ = email
+          ? "?forgot=1&email=" + encodeURIComponent(email)
+          : "?forgot=1";
+        existLogin.href = "/auth.html" + q;
+        existForgot.href = "/auth.html" + forgotQ;
+        existActions.classList.add("show");
+      }
+
+      function showErr(msg, opts) {
+        opts = opts || {};
         errEl.textContent = msg || "";
         errEl.classList.toggle("show", !!msg);
+        if (opts.existingEmail) showExistActions(opts.existingEmail);
+        else hideExistActions();
+      }
+
+      function isExistingEmailError(ex) {
+        var raw = String((ex && ex.message) || ex || "");
+        var code = String((ex && (ex.code || ex.error_code)) || "").toLowerCase();
+        var low = raw.toLowerCase();
+        return (
+          low.indexOf("user already registered") >= 0 ||
+          code === "user_already_exists"
+        );
       }
 
       function setStep(n) {
@@ -380,7 +438,7 @@
         var code = String((ex && (ex.code || ex.error_code)) || "").toLowerCase();
         var low = raw.toLowerCase();
         if (low.indexOf("user already registered") >= 0 || code === "user_already_exists") {
-          return "Este e-mail já possui uma conta. Faça login para continuar.";
+          return "Este e-mail já possui uma conta. Entre ou recupere a senha.";
         }
         if (low.indexOf("password") >= 0 && low.indexOf("weak") >= 0) {
           return "Esta senha é muito fácil de adivinhar. Use letras, números e caracteres especiais.";
@@ -490,7 +548,11 @@
           }
           location.replace("/app.html");
         } catch (ex) {
-          showErr(mapAuthError(ex));
+          if (isExistingEmailError(ex)) {
+            showErr(mapAuthError(ex), { existingEmail: email });
+          } else {
+            showErr(mapAuthError(ex));
+          }
           btnSubmit.disabled = false;
           btnSubmit.textContent = "Criar Conta Pro";
         }
