@@ -12,8 +12,18 @@ BRANCH="${ARBISHIELD_BRANCH:-cursor/relatorio-desafios-cancelados-3e4b}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
-CACHE_V="desafio-cancelados-1"
-NGINX_MAIN="${ARBISHIELD_NGINX_CONF:-/etc/nginx/sites-available/arbishield.app}"
+CACHE_V="desafio-cancelados-2"
+NGINX_MAIN="${ARBISHIELD_NGINX_CONF:-}"
+if [[ -z "$NGINX_MAIN" ]]; then
+  for c in \
+    /etc/nginx/sites-available/arbishield.app \
+    /etc/nginx/sites-enabled/arbishield.app \
+    /etc/nginx/conf.d/arbishield.app.conf \
+    /etc/nginx/conf.d/arbishield.conf; do
+    [[ -f "$c" ]] && NGINX_MAIN="$c" && break
+  done
+  NGINX_MAIN="${NGINX_MAIN:-/etc/nginx/sites-available/arbishield.app}"
+fi
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
