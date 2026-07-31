@@ -109,6 +109,30 @@ async function sb(p) {
 async function resolveUserId() {
   if (USER_ID) return USER_ID;
 
+  // EMAIL tem prioridade sobre defaults de ID_PREFIX/NAME do wrapper shell
+  if (EMAIL) {
+    for (let page = 1; page <= 40; page++) {
+      const res = await fetch(
+        `${SUPABASE_URL}/auth/v1/admin/users?page=${page}&per_page=200`,
+        {
+          headers: {
+            apikey: SERVICE_KEY,
+            Authorization: `Bearer ${SERVICE_KEY}`,
+          },
+        }
+      );
+      const data = await res.json();
+      const users = data?.users || data || [];
+      if (!Array.isArray(users) || !users.length) break;
+      const hit = users.find(
+        (u) => String(u.email || "").toLowerCase() === EMAIL
+      );
+      if (hit) return hit.id;
+      if (users.length < 200) break;
+    }
+    throw new Error(`auth sem email=${EMAIL}`);
+  }
+
   if (ID_PREFIX) {
     const rows = await sb(
       `/rest/v1/profiles?select=id,full_name,balance_cents&order=created_at.desc&limit=5000`
@@ -144,27 +168,7 @@ async function resolveUserId() {
     return list[0].id;
   }
 
-  // EMAIL via auth admin
-  for (let page = 1; page <= 40; page++) {
-    const res = await fetch(
-      `${SUPABASE_URL}/auth/v1/admin/users?page=${page}&per_page=200`,
-      {
-        headers: {
-          apikey: SERVICE_KEY,
-          Authorization: `Bearer ${SERVICE_KEY}`,
-        },
-      }
-    );
-    const data = await res.json();
-    const users = data?.users || data || [];
-    if (!Array.isArray(users) || !users.length) break;
-    const hit = users.find(
-      (u) => String(u.email || "").toLowerCase() === EMAIL
-    );
-    if (hit) return hit.id;
-    if (users.length < 200) break;
-  }
-  throw new Error(`auth sem email=${EMAIL}`);
+  throw new Error("Informe EMAIL / USER_ID / ID_PREFIX / NAME");
 }
 
 const CREDIT_TYPES = new Set([

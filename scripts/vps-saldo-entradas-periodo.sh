@@ -15,12 +15,22 @@ mkdir -p "$SCRIPTS_DIR"
 
 FROM="${FROM:-2026-07-19}"
 TO="${TO:-}"
-NAME="${NAME:-LUIZ PAULO GOMES SILVA DA ORA}"
-ID_PREFIX="${ID_PREFIX:-b6eb155d}"
 EMAIL="${EMAIL:-}"
 USER_ID="${USER_ID:-}"
+# Defaults Luiz Paulo só quando não houver EMAIL/USER_ID
+if [[ -n "$EMAIL" || -n "$USER_ID" ]]; then
+  NAME="${NAME:-}"
+  ID_PREFIX="${ID_PREFIX:-}"
+else
+  NAME="${NAME:-LUIZ PAULO GOMES SILVA DA ORA}"
+  ID_PREFIX="${ID_PREFIX:-b6eb155d}"
+fi
 
-echo "==> baixar script de período"
+BRANCH="${ARBISHIELD_BRANCH:-cursor/investigar-adm-jawadog-3e4b}"
+REF="${ARBISHIELD_REF:-$BRANCH}"
+RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
+
+echo "==> baixar script de período (${REF})"
 curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
   "$RAW/scripts/vps-saldo-entradas-periodo.mjs" \
   -o "$SCRIPTS_DIR/vps-saldo-entradas-periodo.mjs"
@@ -31,9 +41,13 @@ grep -q 'Entradas / movimentações' "$SCRIPTS_DIR/vps-saldo-entradas-periodo.mj
 export FROM TO NAME ID_PREFIX EMAIL USER_ID
 echo "==> período ${FROM} → ${TO:-agora}"
 if [[ -n "$USER_ID" ]]; then
-  USER_ID="$USER_ID" FROM="$FROM" TO="$TO" node "$SCRIPTS_DIR/vps-saldo-entradas-periodo.mjs"
+  echo "==> alvo USER_ID=${USER_ID}"
+  USER_ID="$USER_ID" EMAIL= ID_PREFIX= NAME= FROM="$FROM" TO="$TO" \
+    node "$SCRIPTS_DIR/vps-saldo-entradas-periodo.mjs"
 elif [[ -n "$EMAIL" ]]; then
-  EMAIL="$EMAIL" FROM="$FROM" TO="$TO" node "$SCRIPTS_DIR/vps-saldo-entradas-periodo.mjs"
+  echo "==> alvo EMAIL=${EMAIL}"
+  EMAIL="$EMAIL" USER_ID= ID_PREFIX= NAME= FROM="$FROM" TO="$TO" \
+    node "$SCRIPTS_DIR/vps-saldo-entradas-periodo.mjs"
 else
   # tenta id, senão nome
   if ! ID_PREFIX="$ID_PREFIX" FROM="$FROM" TO="$TO" node "$SCRIPTS_DIR/vps-saldo-entradas-periodo.mjs"; then
