@@ -857,10 +857,24 @@ async function listDesafioCancelledReport(token, body) {
     const chunk = uids.slice(i, i + 80);
     if (!chunk.length) continue;
     const rows = await sb(
-      `/rest/v1/profiles?id=in.(${chunk.join(",")})&select=id,full_name,email,account_status`,
+      `/rest/v1/profiles?id=in.(${chunk.join(",")})&select=id,full_name,account_status`,
       { token: SERVICE_KEY }
     ).catch(() => []);
     for (const p of Array.isArray(rows) ? rows : []) profilesById.set(p.id, p);
+  }
+
+  // e-mail em auth.users (profiles não tem coluna email)
+  const emailById = new Map();
+  for (const uid of uids) {
+    try {
+      const u = await sb(`/auth/v1/admin/users/${encodeURIComponent(uid)}`, {
+        token: SERVICE_KEY,
+      });
+      const email = u?.email || u?.user?.email || null;
+      if (email) emailById.set(uid, email);
+    } catch {
+      /* opcional */
+    }
   }
 
   const refundsByDesafio = new Map();
@@ -885,13 +899,14 @@ async function listDesafioCancelledReport(token, body) {
       const cur = clients.get(uid) || {
         user_id: uid,
         full_name: prof.full_name || null,
-        email: prof.email || null,
+        email: emailById.get(uid) || null,
         amount_cents: 0,
         refund_txs: 0,
       };
       cur.amount_cents += n(tx.amount_cents);
       cur.refund_txs += 1;
       if (!cur.full_name && prof.full_name) cur.full_name = prof.full_name;
+      if (!cur.email && emailById.get(uid)) cur.email = emailById.get(uid);
       clients.set(uid, cur);
     }
 
@@ -903,12 +918,13 @@ async function listDesafioCancelledReport(token, body) {
         const cur = clients.get(uid) || {
           user_id: uid,
           full_name: prof.full_name || null,
-          email: prof.email || null,
+          email: emailById.get(uid) || null,
           amount_cents: 0,
           refund_txs: 0,
         };
         cur.amount_cents += n(p.amount_cents);
         if (!cur.full_name && prof.full_name) cur.full_name = prof.full_name;
+        if (!cur.email && emailById.get(uid)) cur.email = emailById.get(uid);
         clients.set(uid, cur);
       }
     }
@@ -917,7 +933,7 @@ async function listDesafioCancelledReport(token, body) {
       .map((c) => ({
         user_id: c.user_id,
         full_name: c.full_name || "(sem nome)",
-        email: c.email || null,
+        email: c.email || emailById.get(c.user_id) || null,
         amount_cents: c.amount_cents,
         refund_txs: c.refund_txs,
       }))

@@ -189,7 +189,7 @@ async function buildReport({ fromIso, toIso, label }) {
     for (let i = 0; i < idList.length; i += 40) {
       const chunk = idList.slice(i, i + 40);
       const rows = await fetchAll(
-        `/rest/v1/desafio_participations?desafio_id=in.(${chunk.join(",")})&result=eq.cancelled&select=id,user_id,desafio_id,step_id,amount_cents,result,side,updated_at,created_at,profiles(full_name,email)`
+        `/rest/v1/desafio_participations?desafio_id=in.(${chunk.join(",")})&result=eq.cancelled&select=id,user_id,desafio_id,step_id,amount_cents,result,side,updated_at,created_at,profiles(full_name)`
       );
       for (const p of rows) {
         const did = String(p.desafio_id || "");
@@ -209,10 +209,24 @@ async function buildReport({ fromIso, toIso, label }) {
   for (let i = 0; i < uids.length; i += 80) {
     const chunk = uids.slice(i, i + 80);
     const rows = await sb(
-      `/rest/v1/profiles?id=in.(${chunk.join(",")})&select=id,full_name,email,desafio_balance_cents,account_status`
+      `/rest/v1/profiles?id=in.(${chunk.join(",")})&select=id,full_name,desafio_balance_cents,account_status`
     ).catch(() => []);
     for (const p of Array.isArray(rows) ? rows : []) {
       profilesById.set(p.id, p);
+    }
+  }
+
+  // E-mail fica em auth.users (não existe profiles.email neste schema)
+  const emailById = new Map();
+  for (const uid of uids) {
+    try {
+      const u = await sb(`/auth/v1/admin/users/${encodeURIComponent(uid)}`, {
+        okNull: true,
+      });
+      const email = u?.email || u?.user?.email || null;
+      if (email) emailById.set(uid, email);
+    } catch {
+      /* opcional */
     }
   }
 
@@ -241,7 +255,7 @@ async function buildReport({ fromIso, toIso, label }) {
       const cur = clients.get(uid) || {
         user_id: uid,
         full_name: prof.full_name || null,
-        email: prof.email || null,
+        email: emailById.get(uid) || null,
         account_status: prof.account_status || null,
         amount_cents: 0,
         refund_cents: 0,
@@ -254,6 +268,7 @@ async function buildReport({ fromIso, toIso, label }) {
       cur.refund_txs += 1;
       cur.sources.add("refund");
       if (!cur.full_name && prof.full_name) cur.full_name = prof.full_name;
+      if (!cur.email && emailById.get(uid)) cur.email = emailById.get(uid);
       clients.set(uid, cur);
     }
 
@@ -266,7 +281,7 @@ async function buildReport({ fromIso, toIso, label }) {
         const cur = clients.get(uid) || {
           user_id: uid,
           full_name: prof.full_name || null,
-          email: prof.email || null,
+          email: emailById.get(uid) || null,
           account_status: prof.account_status || null,
           amount_cents: 0,
           refund_cents: 0,
@@ -280,6 +295,7 @@ async function buildReport({ fromIso, toIso, label }) {
         if (!cur.full_name) {
           cur.full_name = prof.full_name || p.profiles?.full_name || null;
         }
+        if (!cur.email && emailById.get(uid)) cur.email = emailById.get(uid);
         clients.set(uid, cur);
       }
     } else {
@@ -297,7 +313,7 @@ async function buildReport({ fromIso, toIso, label }) {
       .map((c) => ({
         user_id: c.user_id,
         full_name: c.full_name || "(sem nome)",
-        email: c.email || null,
+        email: c.email || emailById.get(c.user_id) || null,
         account_status: c.account_status || null,
         amount_cents: c.amount_cents,
         refund_cents: c.refund_cents,
@@ -346,6 +362,7 @@ async function buildReport({ fromIso, toIso, label }) {
       id: tx.id,
       user_id: tx.user_id,
       full_name: profilesById.get(tx.user_id)?.full_name || null,
+      email: emailById.get(tx.user_id) || null,
       amount_cents: n(tx.amount_cents),
       created_at: tx.created_at,
       metadata: tx.metadata || null,
