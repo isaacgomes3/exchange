@@ -8,14 +8,15 @@
 # para o shim :3101 (senão cai no try_files estático → 405).
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/ajuste-saldo-405-84e5/scripts/vps-hotfix-saldo-adm-financeiro.sh?v=4")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/ajuste-saldo-405-84e5/scripts/vps-hotfix-saldo-adm-financeiro.sh?v=5")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/ajuste-saldo-405-84e5}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
-CACHE_V="users-saldo-fin-4"
+CACHE_V="users-saldo-fin-5"
+CUTOVER="${ARBISHIELD_NGINX_CONF:-/etc/nginx/conf.d/arbishield-cutover.conf}"
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
@@ -23,6 +24,10 @@ need() { command -v "$1" >/dev/null || die "$1 não encontrado"; }
 need curl
 need python3
 mkdir -p "$WEB" "$SCRIPTS_DIR" "$WEB_ROOT"
+
+is_bak() {
+  [[ "$1" == *".bak"* || "$1" == *~ || "$1" == *.old || "$1" == *.orig ]]
+}
 
 log "resolvendo tip de $BRANCH"
 SHA="$(
@@ -45,9 +50,7 @@ chmod 0644 "$WEB/admin-users.html"
 cp -f "$WEB/admin-users.html" "$WEB_ROOT/admin-users.html" 2>/dev/null || true
 grep -q 'adjust-balance\|Ajuste de' "$WEB/admin-users.html" || die "admin-users sem painel de saldo"
 grep -q 'canAccessFinance' "$WEB/admin-users.html" || die "admin-users sem gate financeiro"
-grep -q 'API de ajuste indisponível' "$WEB/admin-users.html" || log "aviso: UI sem mensagem amigável 405 (ok se tip antigo)"
 
-# cache-bust local
 sed -i -E \
   -e "s|/v2\\.css(\\?[^\"]*)?|/v2.css?v=${CACHE_V}|g" \
   -e "s|/v2\\.js(\\?[^\"]*)?|/v2.js?v=${CACHE_V}|g" \
@@ -77,92 +80,97 @@ grep -q '/api/arbishield/adjust-balance' "$SHIM_PATH" || die "shim sem rota adju
 grep -q 'requireFinanceAdmin' "$SHIM_PATH" || die "shim sem requireFinanceAdmin"
 systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 
-# Nginx — descobrir conf real (na VPS costuma ser conf.d/arbishield-cutover.conf)
-log "Patching nginx: location exact adjust-balance → shim"
-discover_nginx_confs() {
-  local -a candidates=()
-  local f
-  for f in \
-    /etc/nginx/conf.d/arbishield-cutover.conf \
-    /etc/nginx/conf.d/arbishield.app.conf \
-    /etc/nginx/conf.d/arbishield.conf \
-    /etc/nginx/sites-enabled/arbishield.app \
-    /etc/nginx/sites-enabled/arbishield.app.conf \
-    /etc/nginx/sites-enabled/arbishield \
-    /etc/nginx/sites-available/arbishield.app \
-    /etc/nginx/sites-available/arbishield.app.conf \
-    /etc/nginx/sites-available/arbishield \
-    /etc/nginx/sites-enabled/teste.arbishield.app \
-    /etc/nginx/sites-enabled/teste.arbishield.app.conf \
-    /etc/nginx/sites-available/teste.arbishield.app \
-    /etc/nginx/sites-available/teste.arbishield.app.conf \
-    /etc/nginx/conf.d/teste.arbishield.app.conf
-  do
-    [[ -f "$f" ]] && candidates+=("$f")
+# ---------------------------------------------------------------------------
+# Nginx: só confs ATIVOS (nunca .bak). Preferir cutover + o que o nginx -T carrega.
+# ---------------------------------------------------------------------------
+log "nginx: localizar conf ativo de arbishield.app (sem .bak)"
+
+ACTIVE_CONFS=()
+add_conf() {
+  local f="$1"
+  [[ -n "$f" && -f "$f" ]] || return 0
+  is_bak "$f" && return 0
+  # só arquivos “vivos” em conf.d (terminam em .conf) ou sites-*
+  case "$f" in
+    *.conf|*/sites-enabled/*|*/sites-available/*) ;;
+    *) return 0 ;;
+  esac
+  local x
+  for x in "${ACTIVE_CONFS[@]:-}"; do
+    [[ "$x" == "$f" ]] && return 0
   done
-  # procura por conteúdo típico do site (nome do arquivo varia)
-  while IFS= read -r f; do
-    [[ -n "$f" && -f "$f" ]] || continue
-    candidates+=("$f")
-  done < <(
-    grep -RIlE 'server_name[[:space:]]+.*arbishield\.app|root[[:space:]]+/var/www/arbishield|127\.0\.0\.1:3101|desafio-settle' \
-      /etc/nginx 2>/dev/null | head -40 || true
-  )
-  # nginx -T → "# configuration file /path:"
-  if command -v nginx >/dev/null 2>&1; then
-    while IFS= read -r f; do
-      [[ -n "$f" && -f "$f" ]] || continue
-      candidates+=("$f")
-    done < <(
-      nginx -T 2>&1 | sed -n 's/^# configuration file \(.*\):$/\1/p' \
-        | grep -E 'arbishield|cutover|conf\.d|sites-' || true
-    )
-  fi
-  # dedupe
-  printf '%s\n' "${candidates[@]:-}" | awk 'NF && !seen[$0]++'
+  ACTIVE_CONFS+=("$f")
 }
 
-patch_nginx_conf() {
-  local conf="$1"
-  python3 - "$conf" <<'PY'
+add_conf "$CUTOVER"
+add_conf /etc/nginx/conf.d/arbishield.app.conf
+add_conf /etc/nginx/sites-enabled/arbishield.app
+add_conf /etc/nginx/sites-available/arbishield.app
+
+if command -v nginx >/dev/null 2>&1; then
+  while IFS= read -r f; do
+    add_conf "$f"
+  done < <(
+    nginx -T 2>&1 \
+      | sed -n 's/^# configuration file \(.*\):$/\1/p' \
+      | grep -E '/(conf\.d|sites-enabled|sites-available)/' \
+      | grep -Ei 'arbishield|cutover' \
+      || true
+  )
+fi
+
+# se cutover não existe, republicar canônico
+if [[ ! -f "$CUTOVER" ]]; then
+  log "cutover ausente — republicando canônico em $CUTOVER"
+  mkdir -p "$(dirname "$CUTOVER")"
+  tmp="$(mktemp)"
+  fetch "deploy/vps-supabase/nginx-arbishield.app.conf" "$tmp"
+  grep -q 'adjust-balance' "$tmp" || die "conf canônico sem adjust-balance"
+  cp -f "$tmp" "$CUTOVER"
+  rm -f "$tmp"
+  add_conf "$CUTOVER"
+fi
+
+[[ "${#ACTIVE_CONFS[@]}" -gt 0 ]] || die "nenhum conf nginx ativo encontrado"
+
+log "nginx ativos a patchar:"
+for f in "${ACTIVE_CONFS[@]}"; do echo "  - $f"; done
+
+patch_one() {
+  python3 - "$1" <<'PY'
 import re, sys
 path = sys.argv[1]
 text = open(path, encoding="utf-8").read()
 orig = text
 changed = []
 
+# regex shim
 def add_to_regex(m):
     body = m.group(0)
     if "adjust-balance" in body:
         return body
-    for needle in (
-        "contestations/pending-count",
-        "match-settle",
-        "desafio-settle",
-    ):
+    for needle in ("contestations/pending-count", "match-settle", "desafio-settle"):
         if needle in body:
             return body.replace(needle, needle + "|adjust-balance|admin-adjust-balance", 1)
-    # fallback: antes do )$
     return re.sub(r"\)\$", "|adjust-balance|admin-adjust-balance)$", body, count=1)
 
 new_text, n = re.subn(
     r"location\s+~\s+\^/api/arbishield/\([^)]+\)\$\s*\{",
     add_to_regex,
     text,
-    count=1,
+    count=0,  # todas as ocorrências (vários server blocks)
 )
 if n and new_text != text:
     text = new_text
-    changed.append("regex")
+    changed.append("regexx%d" % n)
 
-if "location = /api/arbishield/adjust-balance" not in text:
-    port = "3201" if ("teste" in path or ":3201" in text) else "3101"
-    # se o conf já aponta 3101/3201 no proxy do shim, preferir essa porta
-    if "127.0.0.1:3201" in text and "127.0.0.1:3101" not in text:
-        port = "3201"
-    elif "127.0.0.1:3101" in text:
-        port = "3101"
-    block = """
+port = "3101"
+if "127.0.0.1:3201" in text and "teste" in path:
+    port = "3201"
+elif "127.0.0.1:3101" in text:
+    port = "3101"
+
+block = """
     # Ajuste de saldo (adm financeiro) → shim :%(port)s (exact match evita try_files / 405)
     location = /api/arbishield/adjust-balance {
         proxy_pass http://127.0.0.1:%(port)s;
@@ -181,130 +189,245 @@ if "location = /api/arbishield/adjust-balance" not in text:
         proxy_read_timeout 120s;
     }
 """ % {"port": port}
+
+def insert_into_ssl_server(src):
+    """Insere location = no server{ listen 443; server_name ...arbishield.app }."""
+    if "location = /api/arbishield/adjust-balance" in src:
+        return src, False
+
+    # achar server blocks
+    parts = []
+    i = 0
     inserted = False
+    while True:
+        m = re.search(r"\bserver\s*\{", src[i:])
+        if not m:
+            parts.append(src[i:])
+            break
+        start = i + m.start()
+        parts.append(src[i:start])
+        # scan braces
+        j = i + m.end() - 1  # at '{'
+        depth = 0
+        k = j
+        while k < len(src):
+            if src[k] == "{":
+                depth += 1
+            elif src[k] == "}":
+                depth -= 1
+                if depth == 0:
+                    k += 1
+                    break
+            k += 1
+        block_text = src[start:k]
+        i = k
+
+        is_ssl = bool(re.search(r"listen\s+[^;]*443", block_text))
+        is_main = bool(re.search(r"server_name[^;]*\barbishield\.app\b", block_text))
+        is_teste = bool(re.search(r"server_name[^;]*teste\.arbishield\.app", block_text))
+        # legado/botshield não
+        is_legado = bool(re.search(r"server_name[^;]*legado\.arbishield", block_text))
+        is_bot = bool(re.search(r"server_name[^;]*botshield", block_text))
+
+        if (is_ssl and (is_main or is_teste) and not is_legado and not is_bot
+                and "location = /api/arbishield/adjust-balance" not in block_text):
+            # inserir após root ou após ssl_dhparam / client_max_body_size
+            for pat in (
+                r"(root\s+/var/www/arbishield/v2\s*;)",
+                r"(client_max_body_size\s+[^;]+;)",
+                r"(ssl_dhparam\s+[^;]+;)",
+            ):
+                mm = re.search(pat, block_text)
+                if mm:
+                    pos = mm.end()
+                    block_text = block_text[:pos] + "\n" + block + block_text[pos:]
+                    inserted = True
+                    break
+            if not inserted:
+                # após { do server
+                mm = re.search(r"server\s*\{", block_text)
+                if mm:
+                    pos = mm.end()
+                    block_text = block_text[:pos] + "\n" + block + block_text[pos:]
+                    inserted = True
+        parts.append(block_text)
+
+    return "".join(parts), inserted
+
+text2, did = insert_into_ssl_server(text)
+if did:
+    text = text2
+    changed.append("exact@ssl-server")
+
+# fallback: se ainda não tem exact em lugar nenhum, âncora clássica
+if "location = /api/arbishield/adjust-balance" not in text:
     for anchor in (
         "location = /api/arbishield/match-settle",
         "location = /api/arbishield/dashboard-stats",
         "location ^~ /api/arbishield/contestations",
         "location ^~ /_serverFn/",
-        "location /api/arbishield/",
     ):
         idx = text.find(anchor)
         if idx < 0:
             continue
         text = text[:idx] + block + "\n    " + text[idx:]
-        changed.append("exact@" + anchor.split("/")[-1].rstrip("{").strip())
-        inserted = True
+        changed.append("exact@anchor")
         break
-    if not inserted:
-        m = re.search(r"\n\s*location / \{", text)
-        if m:
-            text = text[: m.start()] + "\n" + block + text[m.start() :]
-            changed.append("exact@location/")
-        else:
-            print("FAIL: sem âncora para inserir location exact")
-            sys.exit(2)
 
 if text != orig:
     open(path, "w", encoding="utf-8").write(text)
     print("patched:" + ",".join(changed) if changed else "patched")
 else:
-    if "location = /api/arbishield/adjust-balance" in text or "adjust-balance" in text:
+    if "adjust-balance" in text:
         print("ok-already")
     else:
-        print("FAIL: adjust-balance ausente após patch")
+        print("FAIL: adjust-balance ausente")
         sys.exit(3)
 PY
 }
 
-mapfile -t NGINX_CONFS < <(discover_nginx_confs)
-if [[ "${#NGINX_CONFS[@]}" -eq 0 ]]; then
-  log "diagnóstico /etc/nginx:"
-  ls -la /etc/nginx /etc/nginx/conf.d /etc/nginx/sites-enabled /etc/nginx/sites-available 2>/dev/null || true
-  # republicar canônico no path padrão da VPS
-  CUTOVER="/etc/nginx/conf.d/arbishield-cutover.conf"
-  mkdir -p /etc/nginx/conf.d
-  tmp="$(mktemp)"
-  fetch "deploy/vps-supabase/nginx-arbishield.app.conf" "$tmp"
-  grep -q 'adjust-balance' "$tmp" || die "conf canônico sem adjust-balance"
-  if [[ -f "$CUTOVER" ]]; then
-    cp -a "$CUTOVER" "${CUTOVER}.bak-adjust-balance-$(date +%s)"
-  fi
-  cp -f "$tmp" "$CUTOVER"
-  rm -f "$tmp"
-  log "republicado conf canônico → $CUTOVER"
-  NGINX_CONFS=("$CUTOVER")
-fi
-
-NGINX_PATCHED=0
-for conf in "${NGINX_CONFS[@]}"; do
-  [[ -f "$conf" ]] || continue
-  # só patchar confs que parecem ser o site arbishield (evita botshield etc.)
-  if ! grep -qE 'arbishield\.app|/var/www/arbishield|desafio-settle|127\.0\.0\.1:3101|127\.0\.0\.1:3201' "$conf"; then
-    log "nginx skip (não parece arbishield): $conf"
+for conf in "${ACTIVE_CONFS[@]}"; do
+  # pular legado/botshield/teste-localhost se server_name não for prod
+  if grep -qE 'server_name[^;]*(legado|botshield)' "$conf" \
+    && ! grep -qE 'server_name[^;]*[^.]arbishield\.app|server_name[^;]*[[:space:]]arbishield\.app' "$conf"; then
+    log "nginx skip: $conf"
     continue
   fi
-  log "nginx: $conf"
+  log "nginx patch: $conf"
   cp -a "$conf" "${conf}.bak-adjust-balance-$(date +%s)" 2>/dev/null || true
-  OUT="$(patch_nginx_conf "$conf")" || die "falha ao patchar $conf"
+  OUT="$(patch_one "$conf")" || die "falha ao patchar $conf → $OUT"
   log "  $OUT"
-  NGINX_PATCHED=1
-  grep -qE 'adjust-balance' "$conf" \
-    || die "nginx $conf ainda sem adjust-balance"
+  grep -q 'location = /api/arbishield/adjust-balance' "$conf" \
+    || die "ainda sem location = adjust-balance em $conf"
 done
 
-if [[ "$NGINX_PATCHED" -eq 0 ]]; then
-  log "diagnóstico /etc/nginx:"
-  ls -la /etc/nginx/conf.d /etc/nginx/sites-enabled /etc/nginx/sites-available 2>/dev/null || true
-  grep -RIl '3101\|arbishield.app' /etc/nginx 2>/dev/null | head -20 || true
-  die "nenhum conf nginx do arbishield encontrado/patchado"
+# Garantia: cutover DEVE ter exact location
+if [[ -f "$CUTOVER" ]] && ! grep -q 'location = /api/arbishield/adjust-balance' "$CUTOVER"; then
+  log "cutover sem exact — forçando patch"
+  OUT="$(patch_one "$CUTOVER")" || die "falha cutover"
+  log "  $OUT"
 fi
 
-if command -v nginx >/dev/null; then
-  nginx -t && systemctl reload nginx || die "nginx -t / reload falhou"
-  log "nginx reload ok"
+# Verificar o que o nginx realmente carrega
+log "nginx -T: locations adjust-balance carregadas"
+DUMP="$(nginx -T 2>&1 || true)"
+echo "$DUMP" | grep -n 'adjust-balance' | head -40 || true
+if ! echo "$DUMP" | grep -q 'location = /api/arbishield/adjust-balance'; then
+  log "emergency: republicar cutover canônico preservando SSL do live"
+  tmp_new="$(mktemp)"
+  tmp_live="$(mktemp)"
+  fetch "deploy/vps-supabase/nginx-arbishield.app.conf" "$tmp_new"
+  if [[ -f "$CUTOVER" ]]; then
+    cp -a "$CUTOVER" "${CUTOVER}.bak-adjust-balance-emerg-$(date +%s)"
+    cp -f "$CUTOVER" "$tmp_live"
+  fi
+  python3 - "$tmp_new" "$tmp_live" "$CUTOVER" <<'PY'
+import re, sys
+from pathlib import Path
+new = Path(sys.argv[1]).read_text(encoding="utf-8")
+live_path = Path(sys.argv[2])
+dest = Path(sys.argv[3])
+live = live_path.read_text(encoding="utf-8") if live_path.is_file() else ""
+# preservar linhas ssl_* / include letsencrypt do live se existirem
+ssl_lines = []
+for line in live.splitlines():
+    if re.search(r"ssl_certificate|ssl_dhparam|include /etc/letsencrypt", line):
+        ssl_lines.append(line)
+if ssl_lines and "ssl_certificate" in new:
+    # trocar bloco ssl do new pelos do live (mantém paths reais)
+    def repl_ssl(src: str) -> str:
+        # remove ssl_certificate* e ssl_dhparam e include options do new no server 443
+        out = []
+        for line in src.splitlines():
+            if re.search(r"^\s*ssl_certificate|^\s*ssl_dhparam|^\s*include /etc/letsencrypt", line):
+                continue
+            out.append(line)
+            if re.search(r"server_name[^;]*arbishield\.app", line) and "ssl_certificate" not in "\n".join(out[-5:]):
+                # after server_name in 443 block — inject preserved ssl once later
+                pass
+        text = "\n".join(out)
+        # inject after first server_name arbishield in listen 443 server
+        m = re.search(r"(listen\s+[^;]*443[^;]*;[\s\S]*?server_name[^;]*arbishield\.app[^;]*;)", text)
+        if m:
+            inject = m.group(1) + "\n" + "\n".join(ssl_lines)
+            text = text[: m.start()] + inject + text[m.end() :]
+        return text
+    new = repl_ssl(new)
+if "adjust-balance" not in new:
+    raise SystemExit("canônico sem adjust-balance")
+dest.write_text(new, encoding="utf-8")
+print("rewrote", dest)
+PY
+  rm -f "$tmp_new" "$tmp_live"
+  DUMP="$(nginx -T 2>&1 || true)"
+  echo "$DUMP" | grep -n 'adjust-balance' | head -40 || true
+  echo "$DUMP" | grep -q 'location = /api/arbishield/adjust-balance' \
+    || die "nginx -T ainda sem location = adjust-balance após emergency"
 fi
 
-# Smoke shim com retry (restart pode demorar)
+nginx -t && systemctl reload nginx || die "nginx -t / reload falhou"
+log "nginx reload ok"
+
+# Smoke shim
 log "Smoke :3101 adjust-balance (sem token → Não autorizado)"
 SMOKE=""
 for i in 1 2 3 4 5 6 7 8; do
   SMOKE="$(curl -sS -m 3 -X POST http://127.0.0.1:3101/api/arbishield/adjust-balance \
     -H 'Content-Type: application/json' -d '{}' 2>/dev/null || true)"
   if echo "$SMOKE" | grep -Eqi 'Não autorizado|Unauthorized|token|negado|permiss'; then
-    log "smoke ok (tentativa $i): $SMOKE"
+    log "smoke shim ok (tentativa $i): $SMOKE"
     break
   fi
-  if echo "$SMOKE" | grep -q 'not_found'; then
-    die "shim ainda responde not_found — rota adjust-balance ausente no processo"
-  fi
+  echo "$SMOKE" | grep -q 'not_found' && die "shim responde not_found"
   sleep 1
 done
-if ! echo "$SMOKE" | grep -Eqi 'Não autorizado|Unauthorized|token|negado|permiss'; then
-  systemctl is-active arbishield-serverfn-shim.service >/dev/null 2>&1 \
-    || die "shim inativo (systemctl). status: $(systemctl is-active arbishield-serverfn-shim.service 2>/dev/null || echo unknown)"
-  die "smoke falhou após retries. resposta: ${SMOKE:-<vazio/conexão recusada>}"
+echo "$SMOKE" | grep -Eqi 'Não autorizado|Unauthorized|token|negado|permiss' \
+  || die "smoke shim falhou: ${SMOKE:-<vazio>}"
+
+# Smoke nginx LOCAL primeiro (--resolve evita CDN/DNS externo)
+log "Smoke nginx local (--resolve arbishield.app → 127.0.0.1)"
+CODE="$(curl -sS -m 8 -o /tmp/adj-bal-nginx.json -w '%{http_code}' \
+  --resolve arbishield.app:443:127.0.0.1 \
+  -X POST 'https://arbishield.app/api/arbishield/adjust-balance' \
+  -H 'Content-Type: application/json' \
+  -d '{}' -k 2>/dev/null || true)"
+BODY="$(head -c 220 /tmp/adj-bal-nginx.json 2>/dev/null || true)"
+log "  local → HTTP $CODE $BODY"
+
+if [[ "$CODE" == "405" ]]; then
+  log "diagnóstico 405 local:"
+  echo "$DUMP" | grep -nE 'server_name|listen |adjust-balance|try_files|location = /api' | head -80 || true
+  curl -sS -m 8 -D - -o /tmp/adj-bal-hdr.txt \
+    --resolve arbishield.app:443:127.0.0.1 \
+    -X POST 'https://arbishield.app/api/arbishield/adjust-balance' \
+    -H 'Content-Type: application/json' -d '{}' -k 2>&1 | head -40 || true
+  die "nginx LOCAL ainda 405 — location não está no server block ativo de :443"
 fi
 
-# Smoke via nginx local (se possível) — confirma que não é mais 405
-if command -v nginx >/dev/null; then
-  for host in arbishield.app 127.0.0.1; do
-    CODE="$(curl -sS -m 5 -o /tmp/adj-bal-nginx.json -w '%{http_code}' \
-      -X POST "https://${host}/api/arbishield/adjust-balance" \
-      -H 'Content-Type: application/json' -H "Host: arbishield.app" \
-      -d '{}' -k 2>/dev/null || true)"
-    BODY="$(head -c 180 /tmp/adj-bal-nginx.json 2>/dev/null || true)"
-    if [[ "$CODE" == "405" ]]; then
-      die "nginx ainda retorna 405 em POST /api/arbishield/adjust-balance (host=$host). Confira location exact no conf ativo."
-    fi
-    if [[ -n "$CODE" && "$CODE" != "000" ]]; then
-      log "smoke nginx $host → HTTP $CODE ${BODY}"
-      break
-    fi
-  done
+# 401/403/400 = chegou no shim (sucesso de proxy)
+if [[ "$CODE" =~ ^(401|403|400|200)$ ]]; then
+  log "proxy ok (HTTP $CODE) — rota alcança o shim"
+elif [[ -z "$CODE" || "$CODE" == "000" ]]; then
+  log "aviso: curl local falhou (TLS/porta?) — tentando HTTP :80"
+  CODE80="$(curl -sS -m 5 -o /tmp/adj-bal-80.json -w '%{http_code}' \
+    --resolve arbishield.app:80:127.0.0.1 \
+    -X POST 'http://arbishield.app/api/arbishield/adjust-balance' \
+    -H 'Content-Type: application/json' -d '{}' 2>/dev/null || true)"
+  log "  :80 → HTTP $CODE80 $(head -c 120 /tmp/adj-bal-80.json 2>/dev/null || true)"
 fi
 
-log "OK — saldo adm financeiro (hotfix 405)"
+# Público (não bloqueia se local ok — pode ser CDN)
+PUB="$(curl -sS -m 8 -o /tmp/adj-bal-pub.json -w '%{http_code}' \
+  -X POST 'https://arbishield.app/api/arbishield/adjust-balance' \
+  -H 'Content-Type: application/json' -d '{}' -k 2>/dev/null || true)"
+log "smoke público → HTTP $PUB $(head -c 120 /tmp/adj-bal-pub.json 2>/dev/null || true)"
+if [[ "$PUB" == "405" && "$CODE" =~ ^(401|403|400|200)$ ]]; then
+  log "AVISO: público 405 mas local ok — cache/CDN ou DNS. Teste UI com Ctrl+F5."
+elif [[ "$PUB" == "405" ]]; then
+  die "público e local com problema de proxy (405)"
+fi
+
+log "OK — saldo adm financeiro (hotfix 405 v5)"
 log "  UI: /admin-users.html (Ctrl+F5)"
 log "  API: POST /api/arbishield/adjust-balance → shim :3101"
 log "  liberados: isaacgomes3@gmail.com, financeiro@arbishield.com"
