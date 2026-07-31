@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Exclui conta Auth (GoTrue) e libera o e-mail para novo cadastro.
+# Limpa FKs (ex.: affiliate_stats → profiles) antes do DELETE no Auth.
 #
 # Na VPS (root):
 #   EMAIL='danilomc1@live.com' CONFIRM=EXCLUIR \
@@ -22,6 +23,7 @@ log() { echo "==> $*"; }
 [[ -n "$EMAIL" ]] || die "defina EMAIL='usuario@dominio.com'"
 [[ "$CONFIRM" == "EXCLUIR" ]] || die "defina CONFIRM=EXCLUIR para confirmar a exclusão permanente"
 command -v python3 >/dev/null || die "python3"
+command -v docker >/dev/null || die "docker"
 
 load_env() {
   local f="$1"
@@ -44,16 +46,70 @@ SERVICE_KEY="${ARBISHIELD_SERVICE_ROLE_KEY:-${SERVICE_ROLE_KEY:-${SUPABASE_SERVI
 [[ -n "$SERVICE_KEY" ]] || die "SERVICE_ROLE_KEY ausente em $ENV_FILE"
 [[ -n "$SUPABASE_URL" ]] || die "SUPABASE_URL ausente"
 
-export SUPABASE_URL SERVICE_KEY EMAIL KEEP_PROFILE
-log "excluir Auth de $EMAIL (CONFIRM=EXCLUIR)"
+DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E 'db|postgres' | head -1 || true)"
+[[ -n "$DB_CONTAINER" ]] || die "container Postgres não encontrado"
+
+psql_db() {
+  if docker exec -i "$DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 "$@" 2>/tmp/psql-del-user.err; then
+    return 0
+  fi
+  docker exec -i "$DB_CONTAINER" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 "$@"
+}
+
+EMAIL_SQL="${EMAIL//\'/\'\'}"
+log "localizar $EMAIL"
+AUTH_UID="$(
+  psql_db -At <<SQL
+SELECT id::text FROM auth.users WHERE lower(email)=lower('${EMAIL_SQL}') LIMIT 1;
+SQL
+)"
+[[ -n "$AUTH_UID" ]] || die "usuário não encontrado: $EMAIL"
+log "user_id=$AUTH_UID"
+
+log "resumo da conta"
+psql_db <<SQL
+SELECT id, email, created_at, last_sign_in_at, email_confirmed_at
+FROM auth.users
+WHERE id = '${AUTH_UID}'::uuid;
+SELECT id, full_name, balance_cents, locked_balance_cents, deduction_balance_cents
+FROM public.profiles
+WHERE id = '${AUTH_UID}'::uuid;
+SQL
+
+export SUPABASE_URL SERVICE_KEY EMAIL KEEP_PROFILE AUTH_UID DB_CONTAINER
+log "limpar FKs que apontam para profiles/user e excluir Auth"
 
 python3 <<'PY'
-import json, os, urllib.request, urllib.error, urllib.parse, subprocess, shutil
+import json, os, subprocess, urllib.request, urllib.error
 
 url = os.environ["SUPABASE_URL"].rstrip("/")
 key = os.environ["SERVICE_KEY"]
 email = os.environ["EMAIL"].strip().lower()
+uid = os.environ["AUTH_UID"].strip()
 keep_profile = os.environ.get("KEEP_PROFILE", "0") == "1"
+db = os.environ["DB_CONTAINER"]
+
+def psql(sql, tuples_only=False):
+    cmd = [
+        "docker", "exec", "-i", db,
+        "psql", "-U", "postgres", "-d", "postgres",
+        "-v", "ON_ERROR_STOP=1",
+    ]
+    if tuples_only:
+        cmd.append("-At")
+    try:
+        return subprocess.check_output(cmd, input=sql, text=True)
+    except subprocess.CalledProcessError:
+        cmd[cmd.index("postgres")] = "supabase_admin"
+        # rebuild: replace -U postgres with supabase_admin
+        cmd = [
+            "docker", "exec", "-i", db,
+            "psql", "-U", "supabase_admin", "-d", "postgres",
+            "-v", "ON_ERROR_STOP=1",
+        ]
+        if tuples_only:
+            cmd.append("-At")
+        return subprocess.check_output(cmd, input=sql, text=True)
 
 def req(method, path, body=None):
     data = None if body is None else json.dumps(body).encode()
@@ -74,101 +130,137 @@ def req(method, path, body=None):
     except urllib.error.HTTPError as e:
         raw = e.read().decode(errors="replace")
         try:
-            data = json.loads(raw) if raw else {}
+            payload = json.loads(raw) if raw else {}
         except Exception:
-            data = {"error": raw[:400]}
-        raise SystemExit(f"HTTP {e.code} {path}: {data}")
+            payload = {"error": raw[:400]}
+        raise RuntimeError(f"HTTP {e.code} {path}: {payload}")
 
-def list_users():
-    found = None
-    page = 1
-    while page <= 40:
-        status, listing = req("GET", f"/auth/v1/admin/users?page={page}&per_page=200")
-        batch = listing.get("users") if isinstance(listing, dict) else listing
-        batch = batch or []
-        if not batch:
-            break
-        for u in batch:
-            if str(u.get("email") or "").lower() == email:
-                found = u
-                break
-        if found:
-            break
-        page += 1
-    return found
+email_sql = email.replace("'", "''")
 
-user = list_users()
-if not user:
-    raise SystemExit(f"Usuário não encontrado em auth.users: {email}")
+# 1) Apaga linhas que referenciam public.profiles(id) (resolve 23503 affiliate_stats etc.)
+fk_sql = f"""
+SELECT format(
+  'DELETE FROM %s WHERE %I = %L::uuid;',
+  c.conrelid::regclass::text,
+  a.attname,
+  '{uid}'
+)
+FROM pg_constraint c
+JOIN pg_attribute a
+  ON a.attrelid = c.conrelid
+ AND a.attnum = c.conkey[1]
+ AND NOT a.attisdropped
+WHERE c.contype = 'f'
+  AND c.confrelid = 'public.profiles'::regclass
+  AND array_length(c.conkey, 1) = 1
+ORDER BY 1;
+"""
+print("==> FKs → public.profiles")
+deletes = [ln.strip() for ln in psql(fk_sql, tuples_only=True).splitlines() if ln.strip()]
+for d in deletes:
+    print(d)
+    print(psql(d).strip() or "DELETE ok")
 
-uid = user["id"]
-print(f"user_id:     {uid}")
-print(f"email:       {user.get('email')}")
-print(f"created_at:  {user.get('created_at')}")
-print(f"last_sign:   {user.get('last_sign_in_at')}")
-print(f"confirmed:   {user.get('email_confirmed_at')}")
+# 2) Tabelas comuns com user_id / profile_id (best-effort, ignora se não existir)
+extra_tables = [
+    ("public.user_roles", "user_id"),
+    ("public.notifications", "user_id"),
+    ("public.wallet_transactions", "user_id"),
+    ("public.protections", "user_id"),
+    ("public.refund_requests", "user_id"),
+    ("public.back_refund_requests", "user_id"),
+    ("public.withdrawals", "user_id"),
+    ("public.manual_deposits", "user_id"),
+    ("public.asaas_payments", "user_id"),
+    ("public.odd_contestations", "user_id"),
+    ("public.back_protections", "user_id"),
+    ("public.desafios", "user_id"),
+    ("public.desafio_steps", "user_id"),
+    ("public.affiliate_stats", "profile_id"),
+]
+print("==> limpeza best-effort user_id/profile_id")
+for table, col in extra_tables:
+    sql = f"""
+DO $$
+BEGIN
+  IF to_regclass('{table}') IS NOT NULL THEN
+    EXECUTE format('DELETE FROM {table} WHERE {col} = %L::uuid', '{uid}');
+  END IF;
+EXCEPTION WHEN undefined_column THEN
+  NULL;
+END $$;
+"""
+    try:
+        psql(sql)
+        print(f"ok {table}.{col}")
+    except Exception as e:
+        print(f"(aviso {table}.{col}: {e})")
 
-# Hard delete — libera o e-mail para novo signUp
-try:
-    status, _ = req(
-        "DELETE",
-        f"/auth/v1/admin/users/{uid}?should_soft_delete=false",
-    )
-    print(f"DELETE admin/users (hard) HTTP {status}")
-except SystemExit as e:
-    print(f"(aviso hard delete: {e})")
-    status, _ = req("DELETE", f"/auth/v1/admin/users/{uid}")
-    print(f"DELETE admin/users HTTP {status}")
-
-# Confirma que o e-mail sumiu
-again = list_users()
-if again:
-    raise SystemExit(
-        f"FALHA: e-mail ainda existe após delete (id={again.get('id')}). "
-        "Verifique soft-delete / identities."
-    )
-print("OK — e-mail liberado em auth.users")
-
-# Best-effort: remove profile do mesmo id (não tem coluna email)
+# 3) Profile (se cascade do Auth falhar depois, já está limpo)
 if keep_profile:
     print("KEEP_PROFILE=1 — profile preservado")
 else:
-    try:
-        status, _ = req("DELETE", f"/rest/v1/profiles?id=eq.{uid}")
-        print(f"profiles DELETE HTTP {status}")
-    except SystemExit as e:
-        print(f"(aviso profiles: {e})")
+    print("==> DELETE profiles")
+    print(psql(f"DELETE FROM public.profiles WHERE id = '{uid}'::uuid;").strip() or "ok")
 
-# Best-effort SQL: limpa identities órfãs / soft-delete residual se docker disponível
-if shutil.which("docker"):
-    try:
-        names = subprocess.check_output(
-            ["docker", "ps", "--format", "{{.Names}}"], text=True
-        )
-        db = next(
-            (n for n in names.splitlines() if "db" in n or "postgres" in n),
-            None,
-        )
-        if db:
-            email_sql = email.replace("'", "''")
-            sql = f"""
-SELECT count(*) AS still_auth FROM auth.users WHERE lower(email)=lower('{email_sql}');
-SELECT count(*) AS still_ident
-FROM auth.identities
-WHERE lower(coalesce(identity_data->>'email',''))=lower('{email_sql}');
+# 4) Auth leftovers + user (SQL é mais confiável que admin API com FKs de app)
+print("==> limpar auth.* e auth.users")
+auth_sql = f"""
+DELETE FROM auth.mfa_challenges
+WHERE factor_id IN (SELECT id FROM auth.mfa_factors WHERE user_id = '{uid}'::uuid);
+DELETE FROM auth.mfa_factors WHERE user_id = '{uid}'::uuid;
+DELETE FROM auth.refresh_tokens WHERE user_id = '{uid}'::uuid;
+DELETE FROM auth.sessions WHERE user_id = '{uid}'::uuid;
+DELETE FROM auth.identities WHERE user_id = '{uid}'::uuid;
+DELETE FROM auth.one_time_tokens WHERE user_id = '{uid}'::uuid;
+DELETE FROM auth.users WHERE id = '{uid}'::uuid;
 """
-            out = subprocess.check_output(
-                [
-                    "docker", "exec", "-i", db,
-                    "psql", "-U", "postgres", "-d", "postgres", "-At",
-                ],
-                input=sql,
-                text=True,
-            )
-            print("SQL check:")
-            print(out.strip() or "(vazio)")
-    except Exception as e:
-        print(f"(aviso sql check: {e})")
+try:
+    print(psql(auth_sql))
+except Exception as e:
+    print(f"(aviso sql auth delete: {e})")
+    # Fallback API
+    try:
+        status, _ = req(
+            "DELETE",
+            f"/auth/v1/admin/users/{uid}?should_soft_delete=false",
+        )
+        print(f"DELETE admin/users HTTP {status}")
+    except Exception as e2:
+        # Último recurso: renomear e-mail para liberar cadastro
+        tomb = f"deleted+{uid[:8]}@deleted.invalid"
+        print(f"(aviso API delete: {e2})")
+        print(f"==> fallback: renomear e-mail para {tomb}")
+        psql(
+            f"UPDATE auth.users SET email = '{tomb}', "
+            f"email_change = NULL, email_change_token_new = '', "
+            f"email_change_token_current = '' "
+            f"WHERE id = '{uid}'::uuid;"
+        )
+        psql(
+            f"UPDATE auth.identities "
+            f"SET identity_data = jsonb_set("
+            f"coalesce(identity_data,'{{}}'::jsonb), '{{email}}', to_jsonb('{tomb}'::text), true"
+            f"), provider_id = '{tomb}' "
+            f"WHERE user_id = '{uid}'::uuid;"
+        )
 
-print("Pronto. O e-mail pode ser usado em /cadastro.html")
+still = psql(
+    f"SELECT count(*) FROM auth.users WHERE lower(email)=lower('{email_sql}');",
+    tuples_only=True,
+).strip()
+print(f"auth.users com este e-mail: {still}")
+if still not in ("0",):
+    raise SystemExit("FALHA: e-mail ainda ocupado em auth.users")
+
+ident = psql(
+    f"SELECT count(*) FROM auth.identities "
+    f"WHERE lower(coalesce(identity_data->>'email',''))=lower('{email_sql}');",
+    tuples_only=True,
+).strip()
+print(f"auth.identities com este e-mail: {ident}")
+if ident not in ("0",):
+    raise SystemExit("FALHA: e-mail ainda em auth.identities")
+
+print("OK — e-mail liberado. Pode cadastrar de novo em /cadastro.html")
 PY
