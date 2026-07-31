@@ -29,6 +29,16 @@
     .ref-banner.show { display: block; }
     #signupExtra { display: none; }
     #signupExtra.show { display: block; }
+    .auth-forgot-row {
+      display: flex; justify-content: flex-end; margin: -4px 0 14px;
+    }
+    .auth-forgot-row a {
+      color: var(--muted, #8a9a92); font-size: 13px; text-decoration: none;
+    }
+    .auth-forgot-row a:hover { color: var(--lime, #c9f223); }
+    #forgotPanel { display: none; }
+    #forgotPanel.show { display: block; }
+    #loginFields.hide { display: none; }
   </style>
 </head>
 <body>
@@ -53,6 +63,7 @@
         <p class="sub" id="subtitle">Use e-mail e senha da plataforma</p>
         <div id="refBanner" class="ref-banner"></div>
         <div id="err" class="err"></div>
+        <div id="ok" class="ok-msg"></div>
         <form id="form">
           <div id="signupExtra">
             <label for="fullName">Nome completo</label>
@@ -60,10 +71,22 @@
           </div>
           <label for="email">E-mail</label>
           <input id="email" name="email" type="email" required autocomplete="username" />
-          <label for="password">Senha</label>
-          <input id="password" name="password" type="password" required autocomplete="current-password" minlength="6" />
-          <button class="btn btn-primary" type="submit" id="btnSubmit">Entrar</button>
+          <div id="loginFields">
+            <label for="password">Senha</label>
+            <input id="password" name="password" type="password" required autocomplete="current-password" minlength="6" />
+            <div class="auth-forgot-row">
+              <a href="#esqueci" id="forgotLink">Esqueci minha senha</a>
+            </div>
+            <button class="btn btn-primary" type="submit" id="btnSubmit">Entrar</button>
+          </div>
         </form>
+        <!-- Marker: forgot-password-v1 -->
+        <div id="forgotPanel">
+          <button class="btn btn-primary" type="button" id="btnForgot">Enviar link de recuperação</button>
+          <div class="actions" style="margin-top:12px">
+            <a class="btn btn-ghost" href="#entrar" id="backToLogin">Voltar ao login</a>
+          </div>
+        </div>
         <!-- Marker: mfa-totp-challenge-v1 -->
         <form id="mfaForm" style="display:none;margin-top:8px">
           <p class="sub" id="mfaHint">Digite o código do autenticador (2FA)</p>
@@ -114,9 +137,20 @@
       var fullName = document.getElementById("fullName");
       var refBanner = document.getElementById("refBanner");
       var errEl = document.getElementById("err");
+      var okEl = document.getElementById("ok");
+      var loginFields = document.getElementById("loginFields");
+      var forgotPanel = document.getElementById("forgotPanel");
+      var passwordInput = document.getElementById("password");
+      var forgotMode = false;
+      var resetOkPending = params.get("reset") === "1";
+
       if (params.get("blocked") === "1") {
         errEl.textContent = "Esta conta está bloqueada. Contate o suporte.";
         errEl.classList.add("show");
+      }
+      if (resetOkPending) {
+        okEl.textContent = "Senha redefinida com sucesso. Entre com a nova senha.";
+        okEl.classList.add("show");
       }
 
       function setMode(next) {
@@ -133,7 +167,7 @@
         signupExtra.classList.remove("show");
         fullName.required = false;
         btnSubmit.textContent = "Entrar";
-        document.getElementById("password").autocomplete = "current-password";
+        passwordInput.autocomplete = "current-password";
         refBanner.classList.remove("show");
       }
 
@@ -143,6 +177,51 @@
         });
       });
       setMode("login");
+
+      function clearMsgs() {
+        errEl.classList.remove("show");
+        errEl.textContent = "";
+        okEl.classList.remove("show");
+        okEl.textContent = "";
+      }
+
+      function setForgotMode(on) {
+        forgotMode = !!on;
+        clearMsgs();
+        if (forgotMode) {
+          title.textContent = "Esqueci minha senha";
+          subtitle.textContent =
+            "Informe o e-mail da conta. Se existir, enviamos um link para redefinir.";
+          loginFields.classList.add("hide");
+          forgotPanel.classList.add("show");
+          passwordInput.required = false;
+          document.getElementById("modeTabs").style.display = "none";
+          document.getElementById("email").focus();
+        } else {
+          title.textContent = "Entrar";
+          subtitle.textContent = "Use e-mail e senha da plataforma";
+          loginFields.classList.remove("hide");
+          forgotPanel.classList.remove("show");
+          passwordInput.required = true;
+          document.getElementById("modeTabs").style.display = "";
+          if (resetOkPending) {
+            okEl.textContent = "Senha redefinida com sucesso. Entre com a nova senha.";
+            okEl.classList.add("show");
+          }
+        }
+      }
+
+      document.getElementById("forgotLink").addEventListener("click", function (e) {
+        e.preventDefault();
+        setForgotMode(true);
+      });
+      document.getElementById("backToLogin").addEventListener("click", function (e) {
+        e.preventDefault();
+        setForgotMode(false);
+      });
+      if (String(params.get("forgot") || "") === "1" || location.hash === "#esqueci") {
+        setForgotMode(true);
+      }
 
       var supa = ArbiV2.client();
       var session = await supa.auth.getSession();
@@ -221,10 +300,54 @@
         return data;
       }
 
+      async function sendPasswordRecovery() {
+        clearMsgs();
+        var email = document.getElementById("email").value.trim();
+        var btnForgot = document.getElementById("btnForgot");
+        if (!email) {
+          errEl.textContent = "Informe o e-mail para recuperar a senha.";
+          errEl.classList.add("show");
+          return;
+        }
+        if (window.ArbiIsBlockedEmail && ArbiIsBlockedEmail(email)) {
+          errEl.textContent = "Esta conta está bloqueada. Contate o suporte.";
+          errEl.classList.add("show");
+          return;
+        }
+        if (ArbiV2.isBlockedEmail(email)) {
+          errEl.textContent = "Esta conta está bloqueada. Contate o suporte.";
+          errEl.classList.add("show");
+          return;
+        }
+        btnForgot.disabled = true;
+        try {
+          var redirectTo = location.origin + "/redefinir-senha.html";
+          var rec = await supa.auth.resetPasswordForEmail(email, { redirectTo: redirectTo });
+          if (rec.error) throw rec.error;
+          okEl.textContent =
+            "Se o e-mail existir, enviamos o link de recuperação. Confira a caixa de entrada e o spam.";
+          okEl.classList.add("show");
+        } catch (ex) {
+          errEl.textContent = mapAuthError(ex, "forgot");
+          errEl.classList.add("show");
+        } finally {
+          btnForgot.disabled = false;
+        }
+      }
+
+      document.getElementById("btnForgot").addEventListener("click", function () {
+        sendPasswordRecovery();
+      });
+
       document.getElementById("form").addEventListener("submit", async function (e) {
         e.preventDefault();
+        if (forgotMode) {
+          sendPasswordRecovery();
+          return;
+        }
         var err = document.getElementById("err");
         err.classList.remove("show");
+        okEl.classList.remove("show");
         var email = document.getElementById("email").value.trim();
         var password = document.getElementById("password").value;
         var name = fullName.value.trim();
@@ -402,8 +525,26 @@
             "pode falhar — peça ao admin para confirmar sua conta."
           );
         }
-        if (currentMode === "signup" && (low.indexOf("rate") >= 0 || code.indexOf("rate") >= 0)) {
-          return "Muitas tentativas. Aguarde um minuto e tente de novo.";
+        if (
+          currentMode === "signup" ||
+          currentMode === "forgot"
+        ) {
+          if (low.indexOf("rate") >= 0 || code.indexOf("rate") >= 0) {
+            return "Muitas tentativas. Aguarde um minuto e tente de novo.";
+          }
+        }
+        if (currentMode === "forgot") {
+          if (
+            low.indexOf("smtp") >= 0 ||
+            low.indexOf("mail") >= 0 ||
+            low.indexOf("500") >= 0
+          ) {
+            return (
+              "Não foi possível enviar o e-mail de recuperação (SMTP). " +
+              "Tente mais tarde ou peça ao admin para redefinir a senha."
+            );
+          }
+          return raw || "Falha ao enviar recuperação";
         }
         return raw || "Falha na autenticação";
       }

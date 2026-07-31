@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>ArbiShield — Redefinir senha</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/v2.js"></script>
+  <style>
+    .auth-card .hint {
+      margin: 0 0 14px; color: var(--muted, #8a9a92); font-size: 12px; line-height: 1.45;
+    }
+  </style>
+</head>
+<body>
+  <div class="auth-shell">
+    <section class="auth-hero">
+      <a class="brand" href="/" aria-label="ArbiShield">
+        <img class="brand-logo lg" src="/brand/logo.png" srcset="/brand/logo.png 1x, /brand/logo@2x.png 2x" width="180" height="42" alt="ArbiShield" decoding="async" />
+      </a>
+      <div>
+        <h1>Nova <span>senha</span></h1>
+        <p>Use o link enviado por e-mail para definir uma nova senha com segurança.</p>
+      </div>
+      <p class="meta" style="margin:0">Recuperação de acesso · ArbiShield</p>
+    </section>
+    <section class="auth-panel">
+      <div class="auth-card">
+        <h2>Redefinir senha</h2>
+        <p class="sub" id="subtitle">Aguarde a validação do link…</p>
+        <div id="err" class="err"></div>
+        <div id="ok" class="ok-msg"></div>
+        <!-- Marker: forgot-password-v1 -->
+        <form id="form" style="display:none">
+          <p class="hint">Mínimo 8 caracteres, com letras e números.</p>
+          <label for="password">Nova senha</label>
+          <input id="password" name="password" type="password" required autocomplete="new-password" minlength="8" maxlength="72" />
+          <label for="confirm">Confirmar senha</label>
+          <input id="confirm" name="confirm" type="password" required autocomplete="new-password" minlength="8" maxlength="72" />
+          <button class="btn btn-primary" type="submit" id="btnSubmit">Salvar nova senha</button>
+        </form>
+        <div class="actions" style="margin-top:16px">
+          <a class="btn btn-ghost" href="/auth.html">Voltar ao login</a>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+    (async function () {
+      var errEl = document.getElementById("err");
+      var okEl = document.getElementById("ok");
+      var form = document.getElementById("form");
+      var subtitle = document.getElementById("subtitle");
+      var btnSubmit = document.getElementById("btnSubmit");
+      var ready = false;
+
+      function showErr(msg) {
+        okEl.classList.remove("show");
+        errEl.textContent = msg || "Falha na recuperação";
+        errEl.classList.add("show");
+      }
+
+      function showOk(msg) {
+        errEl.classList.remove("show");
+        okEl.textContent = msg;
+        okEl.classList.add("show");
+      }
+
+      function unlockForm() {
+        ready = true;
+        form.style.display = "block";
+        subtitle.textContent = "Defina a nova senha da sua conta";
+      }
+
+      function lockMissingLink() {
+        ready = false;
+        form.style.display = "none";
+        subtitle.textContent = "Link inválido ou expirado";
+        showErr(
+          "Abra o link do e-mail de recuperação (válido por tempo limitado) ou solicite um novo em Esqueci minha senha."
+        );
+      }
+
+      var supa = ArbiV2.client();
+
+      // Hash/query do GoTrue: type=recovery + tokens → detectSessionInUrl cria sessão
+      var hash = String(location.hash || "").replace(/^#/, "");
+      var hashParams = new URLSearchParams(hash);
+      var queryParams = new URLSearchParams(location.search || "");
+      var recoveryType =
+        hashParams.get("type") ||
+        queryParams.get("type") ||
+        "";
+
+      var sessionRes = await supa.auth.getSession();
+      var hasSession = !!(sessionRes.data && sessionRes.data.session);
+
+      if (recoveryType === "recovery" || hasSession) {
+        unlockForm();
+      } else {
+        // Aguarda um tick: supabase-js pode ainda estar processando o hash
+        await new Promise(function (r) { setTimeout(r, 400); });
+        sessionRes = await supa.auth.getSession();
+        hasSession = !!(sessionRes.data && sessionRes.data.session);
+        if (hasSession) unlockForm();
+        else lockMissingLink();
+      }
+
+      supa.auth.onAuthStateChange(function (event, session) {
+        if (event === "PASSWORD_RECOVERY" || (event === "SIGNED_IN" && session)) {
+          unlockForm();
+        }
+      });
+
+      form.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        if (!ready) return;
+        errEl.classList.remove("show");
+        okEl.classList.remove("show");
+        var np = String(document.getElementById("password").value || "");
+        var cp = String(document.getElementById("confirm").value || "");
+        btnSubmit.disabled = true;
+        try {
+          if (np.length < 8) throw new Error("Senha mínima: 8 caracteres.");
+          if (!/[A-Za-z]/.test(np) || !/\d/.test(np)) {
+            throw new Error("Senha precisa ter letras e números.");
+          }
+          if (np !== cp) throw new Error("Confirmação de senha não confere.");
+          var auth = await supa.auth.updateUser({ password: np });
+          if (auth.error) throw auth.error;
+          showOk("Senha atualizada. Redirecionando para o login…");
+          form.style.display = "none";
+          try { await supa.auth.signOut(); } catch (e2) {}
+          setTimeout(function () {
+            location.replace("/auth.html?reset=1");
+          }, 1200);
+        } catch (ex) {
+          showErr((ex && ex.message) || String(ex));
+          btnSubmit.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -280,7 +280,10 @@
             Authorization: "Bearer " + ANON,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ email: email }),
+          body: JSON.stringify({
+            email: email,
+            redirect_to: location.origin + "/redefinir-senha.html",
+          }),
         }).then(function (res) {
           if (!res.ok) throw new Error("Falha ao enviar recuperação");
           show(okEl, "Se o e-mail existir, enviamos o link de recuperação.");
