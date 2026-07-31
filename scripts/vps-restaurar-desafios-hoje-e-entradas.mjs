@@ -262,7 +262,7 @@ async function reativarHoje(nowIso, newStarts) {
         },
       });
       const steps = await sb(
-        `/rest/v1/desafio_steps?desafio_id=eq.${encodeURIComponent(id)}&select=id,match_label,used_liquidity_cents,status,starts_at`
+        `/rest/v1/desafio_steps?desafio_id=eq.${encodeURIComponent(id)}&select=id,match_label,status,starts_at`
       );
       for (const s of Array.isArray(steps) ? steps : []) {
         await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(s.id)}`, {
@@ -371,22 +371,7 @@ async function refazerEntradasCanceladas(nowIso) {
           updated_at: nowIso,
         },
       });
-      if (p.step_id && take > 0) {
-        const stepRows = await sb(
-          `/rest/v1/desafio_steps?select=id,used_liquidity_cents&id=eq.${encodeURIComponent(p.step_id)}&limit=1`,
-          { okNull: true }
-        );
-        const step = Array.isArray(stepRows) ? stepRows[0] : null;
-        if (step) {
-          await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(step.id)}`, {
-            method: "PATCH",
-            body: {
-              used_liquidity_cents: n(step.used_liquidity_cents) + take,
-              updated_at: nowIso,
-            },
-          }).catch(() => null);
-        }
-      }
+      // Nota: produção não tem desafio_steps.used_liquidity_cents — não atualizar liquidez aqui.
       await sb("/rest/v1/wallet_transactions", {
         method: "POST",
         body: {
@@ -451,7 +436,7 @@ async function main() {
   await reativarHoje(nowIso, newStarts);
   await refazerEntradasCanceladas(nowIso);
 
-  console.log("\n═".repeat(1) + "═".repeat(71));
+  console.log("\n" + "═".repeat(72));
   if (!FIX) {
     console.log("Simulação OK. Para aplicar:");
     console.log(
