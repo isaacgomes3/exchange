@@ -61,10 +61,11 @@ psql_db() {
 
 # ─── 1) SQL hardening ───────────────────────────────────────────────
 log "aplicando SQL admin_hardening_vps_only"
-SQL_TMP="$(mktemp)"
+SQL_TMP="$(mktemp /opt/arbishield/scripts/admin-hardening.XXXXXX.sql)"
 fetch "supabase/migrations/20260731_admin_hardening_vps_only.sql" "$SQL_TMP"
 grep -q 'user_roles_admin_insert' "$SQL_TMP" || die "SQL inválido"
-psql_db -f "$SQL_TMP"
+# docker não enxerga /tmp do host — pipe stdin
+psql_db < "$SQL_TMP"
 rm -f "$SQL_TMP"
 
 log "policies user_roles (mutação autenticada deve sumir)"

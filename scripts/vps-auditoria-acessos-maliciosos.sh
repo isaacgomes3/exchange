@@ -28,26 +28,26 @@ echo
 echo "######## B) Hardening aplicado? (policies/grants) ########"
 DB="$(docker ps --format '{{.Names}}' | grep -E 'db|postgres' | head -1 || true)"
 if [[ -n "$DB" ]]; then
-  docker exec -i "$DB" psql -U postgres -d postgres -v ON_ERROR_STOP=0 <<'SQL' || \
-  docker exec -i "$DB" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=0 <<'SQL'
-SELECT 'user_roles policies' AS what, policyname, cmd
-FROM pg_policies WHERE tablename='user_roles' ORDER BY 2;
-
-SELECT 'is_super_admin grants' AS what, grantee, privilege_type
+  SQL_B='
+SELECT '\''user_roles policies'\'' AS what, policyname, cmd::text
+FROM pg_policies WHERE tablename='\''user_roles'\'' ORDER BY 2;
+SELECT '\''is_super_admin grants'\'' AS what, grantee, privilege_type
 FROM information_schema.role_column_grants
-WHERE table_schema='public' AND table_name='profiles'
-  AND column_name='is_super_admin'
-  AND grantee IN ('anon','authenticated')
+WHERE table_schema='\''public'\'' AND table_name='\''profiles'\''
+  AND column_name='\''is_super_admin'\''
+  AND grantee IN ('\''anon'\'','\''authenticated'\'')
 ORDER BY 2,3;
-
-SELECT 'shim allowlist file' AS what, 'check node marker below' AS detail;
-SQL
+'
+  if ! docker exec -i "$DB" psql -U postgres -d postgres -v ON_ERROR_STOP=0 -c "$SQL_B"; then
+    docker exec -i "$DB" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=0 -c "$SQL_B" || true
+  fi
 else
   echo "(sem container postgres)"
 fi
 
 if grep -q 'admin-email-allowlist-v1' /opt/arbishield/scripts/arbishield-serverfn-shim.mjs 2>/dev/null \
-  || grep -q 'admin-email-allowlist-v1' /var/www/arbishield/v2/v2.js 2>/dev/null; then
+  || grep -q 'admin-email-allowlist-v1' /var/www/arbishield/v2/v2.js 2>/dev/null \
+  || grep -q 'admin-email-allowlist-v1' /var/www/arbishield/v2.js 2>/dev/null; then
   echo "  allowlist no código: SIM"
 else
   echo "  allowlist no código: NÃO — rode vps-hotfix-admin-hardening.sh"
