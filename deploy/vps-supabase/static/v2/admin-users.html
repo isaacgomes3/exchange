@@ -6,12 +6,12 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Usuários — ArbiShield v2</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="admin-users-email-v2" />
-  <link rel="stylesheet" href="/v2.css?v=users-email-2" />
+  <meta name="arbishield-build" content="admin-users-email-v3" />
+  <link rel="stylesheet" href="/v2.css?v=users-email-3" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/finance-admins.js?v=fin-acl-1"></script>
-  <script src="/v2.js?v=users-email-2"></script>
-  <script src="/v2-shell.js?v=users-email-2" defer></script>
+  <script src="/v2.js?v=users-email-3"></script>
+  <script src="/v2-shell.js?v=users-email-3" defer></script>
   <style>
     .ops-wallets {
       display: grid; gap: 2px; font-size: 11px; line-height: 1.35;
@@ -416,8 +416,62 @@
         return res.data || [];
       }
 
+      // Já proxyado em /_serverFn/ → :3101 (não depende de rota nginx nova)
+      var FN_ADMIN_LIST_USERS =
+        "fb16933f5d8f0788db13c8b74f3c53149e2989eeae483bd064ab7a9a15432c7a";
+
+      function parseEmailItems(data) {
+        if (!data) return null;
+        if (data.ok === true && Array.isArray(data.items)) return data.items;
+        if (Array.isArray(data.items)) return data.items;
+        if (Array.isArray(data)) return data;
+        if (data.result != null) {
+          var r = data.result;
+          if (r && r.ok === true && Array.isArray(r.items)) return r.items;
+          if (Array.isArray(r)) return r;
+          if (r && Array.isArray(r.items)) return r.items;
+        }
+        return null;
+      }
+
+      async function fetchEmailItems(tok) {
+        // 1) caminho estável: /_serverFn (nginx já aponta para o shim)
+        try {
+          var resFn = await fetch("/_serverFn/" + FN_ADMIN_LIST_USERS, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-arbishield-plain": "1",
+              Authorization: "Bearer " + tok,
+            },
+            body: JSON.stringify({ data: {} }),
+          });
+          var dataFn = await resFn.json().catch(function () {
+            return null;
+          });
+          var itemsFn = parseEmailItems(dataFn);
+          if (resFn.ok && itemsFn) return itemsFn;
+        } catch (e1) {
+          console.warn("enrich via _serverFn falhou", e1);
+        }
+        // 2) rota REST (precisa nginx + shim atualizados)
+        try {
+          var res = await fetch("/api/arbishield/admin-users", {
+            headers: { Authorization: "Bearer " + tok },
+          });
+          var data = await res.json().catch(function () {
+            return null;
+          });
+          var items = parseEmailItems(data);
+          if (res.ok && items) return items;
+        } catch (e2) {
+          console.warn("enrich via /admin-users falhou", e2);
+        }
+        return null;
+      }
+
       async function enrichEmails(list) {
-        // Marker: admin-users-email-v2 — e-mail de auth.users via shim
+        // Marker: admin-users-email-v3 — e-mail via _serverFn ou /admin-users
         if (!list.length) return list;
         try {
           var sess = await supa.auth.getSession();
@@ -427,17 +481,10 @@
             sess.data.session &&
             sess.data.session.access_token;
           if (!tok) return list;
-          var res = await fetch("/api/arbishield/admin-users", {
-            headers: { Authorization: "Bearer " + tok },
-          });
-          var data = await res.json().catch(function () {
-            return null;
-          });
-          if (!res.ok || !data || data.ok !== true || !Array.isArray(data.items)) {
-            return list;
-          }
+          var items = await fetchEmailItems(tok);
+          if (!items) return list;
           var byId = {};
-          data.items.forEach(function (it) {
+          items.forEach(function (it) {
             if (it && it.id) byId[it.id] = it;
           });
           return list.map(function (r) {
@@ -464,7 +511,7 @@
         }).length;
         if (base.length && !withEmail) {
           document.getElementById("err").textContent =
-            "Usuários ok, mas e-mail indisponível (API /api/arbishield/admin-users). Confira shim + nginx.";
+            "Usuários ok, mas e-mail indisponível. Reinicie o shim (arbishield-serverfn-shim) e dê hard refresh.";
           document.getElementById("err").classList.add("show");
         }
         buildTabs();

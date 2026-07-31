@@ -8589,11 +8589,16 @@ async function handleServerFn(req, res, id, rawBody = "") {
   if (id === FN.ADMIN_LIST_USERS) {
     console.log("[serverfn-shim] ADMIN_LIST_USERS");
     try {
+      if (!(await currentUserIsAdmin(token))) {
+        return replyFnError(req, res, "Acesso negado");
+      }
+      // Marker: admin-users-email-v1 — plain JSON com x-arbishield-plain
       const data = await listAdminUsers();
-      return sendTsrOk(res, data);
+      return replyFnOk(req, res, { ok: true, items: data });
     } catch (err) {
       console.error("[serverfn-shim] ADMIN_LIST_USERS error", err);
-      return sendTsrError(
+      return replyFnError(
+        req,
         res,
         err instanceof Error ? err.message : String(err)
       );
