@@ -10,9 +10,9 @@
  *
  * Versão: protection-flow-contract-v10 (2026-07-27)
  *   Pedido explícito (2026-07-30): v10 é a ÚNICA fonte de verdade.
- *   Qualquer outro modelo/versão de proteção está OBSOLETO e pode ser excluído
- *   (fee_upfront_v1, lock_fee_after_v1, locked_margin_v2, FLUXO_PROTECAO_V1,
- *   contracts v1–v9 como “vigente”). Não reintroduzir.
+ *   Pedido explícito (2026-07-31): NEVER_CITE_OBSOLETE_PROTECTION_MODELS —
+ *   respostas/PRs/docs de produto citam SOMENTE stake_lock_v1. Não nomear
+ *   modelos antigos nem como “legado/histórico/obsoleto”.
  *
  *   Regra vigente (stake_lock_v1):
  *     - Ativação → trava stake; máx. 50% do Apostador RESTANTE naquele momento
@@ -32,11 +32,6 @@
  *       ex.: 1000@10 → lucro 111,11 → Exchange 5 · cliente 15 · ArbiShield 91,11
  *       carteira: 8.067,52 + 1.000 − 91,11 = 8.976,41
  *       ex.: 1000@32 → lucro 32,26 → fee 15,81 → 8.067,52+1.000−15,81=9.051,71
- *
- *   Histórico fee_upfront_v1 (linhas antigas no banco): só settle/cancel de
- *   proteções JÁ criadas. Novas proteções = sempre stake_lock_v1.
- *   Cancel fee_upfront → estorna SÓ a dedução (nunca o stake).
- *   Guarda: cancel-fee-upfront-nao-devolve-stake-v6
  * ============================================================================
  */
 
@@ -47,8 +42,15 @@ export const PROTECTION_FLOW_CONTRACT_VERSION =
 export const PROTECTION_BILLING_MODEL_CANONICAL = "stake_lock_v1";
 
 /**
+ * Pedido explícito (2026-07-31): agentes/docs NÃO devem citar modelos antigos
+ * ao descrever o fluxo — só stake_lock_v1.
+ */
+export const NEVER_CITE_OBSOLETE_PROTECTION_MODELS =
+  "NEVER_CITE_OBSOLETE_PROTECTION_MODELS";
+
+/**
  * Marker obrigatório em GET /health (prelive :3098 + shim :3101).
- * Pós-deploy e hotfixes falham se ausente ou se health ainda citar fee_upfront.
+ * Pós-deploy e hotfixes falham se ausente ou se health ≠ stake_lock_v1.
  * Pedido explícito (anti-regressão 2026-07-30): fail-hard sob v10.
  */
 export const PROTECTION_RUNTIME_HEALTH_MARKER =
@@ -59,8 +61,8 @@ export const CREATE_PROTECTION_FIX_MARKER =
   "create-protection-stake-lock-v6";
 
 /**
- * Modelos/versões obsoletos — NÃO usar como vigente; NÃO reintroduzir.
- * Pedido explícito: v10 é fonte de verdade; qualquer outra versão pode excluir.
+ * Blocklist INTERNA de runtime/health — não usar estes nomes em respostas
+ * de produto (ver NEVER_CITE_OBSOLETE_PROTECTION_MODELS).
  */
 export const PROTECTION_OBSOLETE_MODELS = Object.freeze([
   "fee_upfront_v1",
@@ -72,7 +74,7 @@ export const PROTECTION_OBSOLETE_MODELS = Object.freeze([
 
 /**
  * Health runtime: só OK se o processo vigente for stake_lock_v1 / v10.
- * Qualquer createProtectionModel obsoleto (ex. fee_upfront) → fail-hard (503).
+ * Qualquer createProtectionModel fora do canônico → fail-hard (503).
  */
 export function isProtectionRuntimeHealthy(health = {}) {
   const model = String(
@@ -143,6 +145,7 @@ export const PROTECTION_FLOW_SPEC = Object.freeze({
   version: PROTECTION_FLOW_CONTRACT_VERSION,
   model: PROTECTION_BILLING_MODEL_CANONICAL,
   soleSourceOfTruth: true,
+  neverCiteObsoleteModels: NEVER_CITE_OBSOLETE_PROTECTION_MODELS,
   obsoleteModels: PROTECTION_OBSOLETE_MODELS,
   lock: PROTECTION_FLOW_LOCK,
   runtimeHealthMarker: PROTECTION_RUNTIME_HEALTH_MARKER,

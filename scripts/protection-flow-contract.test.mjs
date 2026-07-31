@@ -10,6 +10,7 @@ import { describe, it } from "node:test";
 import {
   PROTECTION_FLOW_CONTRACT_VERSION,
   PROTECTION_FLOW_LOCK,
+  NEVER_CITE_OBSOLETE_PROTECTION_MODELS,
   PROTECTION_FLOW_SPEC,
   PROTECTION_BILLING_MODEL_CANONICAL,
   PROTECTION_OBSOLETE_MODELS,
@@ -86,6 +87,14 @@ describe("contrato travado — metadados", () => {
       "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST"
     );
     assert.equal(
+      NEVER_CITE_OBSOLETE_PROTECTION_MODELS,
+      "NEVER_CITE_OBSOLETE_PROTECTION_MODELS"
+    );
+    assert.equal(
+      PROTECTION_FLOW_SPEC.neverCiteObsoleteModels,
+      "NEVER_CITE_OBSOLETE_PROTECTION_MODELS"
+    );
+    assert.equal(
       EXCHANGE_INCOMPLETE_HEAL_RULE,
       "settle-exchange-heal-incompleto-v10"
     );
@@ -152,15 +161,20 @@ describe("contrato travado — metadados", () => {
     assert.match(agents, /8\.976,?41|91,?11|settle-exchange-cobra-so-deducao-v9/);
     assert.match(agents, /settle-exchange-heal-incompleto-v10|9\.051,?71|15,?81/);
     assert.match(agents, /ÚNICA fonte de verdade|unica fonte de verdade/i);
-    assert.match(agents, /obsoleto|pode ser excluíd/i);
-    assert.match(agents, /fee_upfront_v1/);
-    assert.match(agents, /locked_margin_v2|lock_fee_after_v1|FLUXO_PROTECAO_V1/);
+    assert.match(agents, /NEVER_CITE_OBSOLETE_PROTECTION_MODELS/);
     assert.match(agents, /Anti-regressão runtime|protection-runtime-stake-lock-v10/);
-    assert.match(agents, /ALLOW_FEE_UPFRONT_DEPLOY|vps-check-pos-deploy-v10/);
+    assert.match(agents, /vps-check-pos-deploy-v10/);
+    // Bloco de produto: proibido citar modelos antigos (pedido 2026-07-31)
+    const lockBlock = agents.match(
+      /BEGIN:protection-flow-lock -->([\s\S]*?)<!-- END:protection-flow-lock/
+    );
+    assert.ok(lockBlock, "AGENTS.md protection-flow-lock block");
+    assert.doesNotMatch(lockBlock[1], /fee_upfront/i);
+    assert.doesNotMatch(lockBlock[1], /locked_margin_v2|lock_fee_after_v1|FLUXO_PROTECAO_V1/);
     assert.match(lockedDoc, /ÚNICA fonte de verdade|unica fonte de verdade/i);
-    assert.match(lockedDoc, /obsoleto|pode ser excluíd/i);
-    assert.match(lockedDoc, /fee_upfront_v1/);
-    assert.match(lockedDoc, /locked_margin_v2/);
+    assert.match(lockedDoc, /NEVER_CITE_OBSOLETE_PROTECTION_MODELS/);
+    assert.doesNotMatch(lockedDoc, /fee_upfront/i);
+    assert.doesNotMatch(lockedDoc, /locked_margin_v2/);
     assert.match(lockedDoc, /DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST/);
     assert.match(lockedDoc, /protection-flow-contract-v10/);
     assert.match(lockedDoc, /LOCKED/);

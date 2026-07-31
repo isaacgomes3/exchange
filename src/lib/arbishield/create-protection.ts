@@ -112,7 +112,7 @@ export function calcLay(amountCents: number, odd: number, _lockRatio = 0.9073) {
   };
 }
 
-/** BACK — amountCents = stake da casa; fee_upfront direto na odd do mercado. */
+/** BACK — amountCents = stake da casa; fee sobre odd do mercado (cálculo interno). */
 export function calcBack(amountCents: number, odd: number) {
   return {
     ...calcFeeUpfront(amountCents, odd),

@@ -9,17 +9,18 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 **Status:** LOCKED — alterar **somente** com solicitação explícita do dono do produto  
 **Marker:** `DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST`  
+**Citação:** `NEVER_CITE_OBSOLETE_PROTECTION_MODELS`  
 **Versão:** `protection-flow-contract-v10` — **ÚNICA fonte de verdade**  
-**Modelo vigente:** `stake_lock_v1`  
+**Modelo (único):** `stake_lock_v1`  
 **Fonte da verdade:** `scripts/lib/protection-flow-contract.mjs`  
 **Doc espelho:** `docs/PROTECTION_FLOW_LOCKED.md`  
 **Testes CI:** `npm test` → `scripts/protection-flow-contract.test.mjs`
 
-**Pedido explícito (2026-07-30):** v10 é a fonte de verdade. Qualquer outra
-versão/modelo de proteção está **obsoleto e pode ser excluído** —
-`fee_upfront_v1`, `lock_fee_after_v1`, `locked_margin_v2`, `FLUXO_PROTECAO_V1`,
-contracts v1–v9 como “vigente”. Agentes **não** devem basear PRs nesses modelos
-nem reintroduzi-los.
+**Pedido explícito (2026-07-31):** ao descrever o fluxo de proteção (resposta,
+PR, commit, UI copy, runbook), citar **somente** `stake_lock_v1` / contrato v10.
+**Proibido** nomear, resumir ou contrastar com qualquer modelo antigo — mesmo
+como “obsoleto”, “histórico” ou “legado”. Se outro nome aparecer em branch
+desatualizada ou comentário antigo, **ignorar** e usar só as regras abaixo.
 
 ## Regra para agentes / PRs
 
@@ -50,12 +51,12 @@ Arquivos cobertos (lista mínima):
 
 Alterar qualquer item acima exige pedido explícito + atualização dos testes do contrato.
 
-## Anti-regressão runtime (pedido 2026-07-30)
+## Anti-regressão runtime (pedido 2026-07-30 / 2026-07-31)
 
-- Health `:3098`/`:3101` deve expor `protectionRuntime=protection-runtime-stake-lock-v10` + `createProtectionModel=stake_lock_v1` (fail-hard → 503 se fee_upfront).
-- `scripts/vps-atualizar-protecao-fee-upfront-prod.sh` está **BLOQUEADO** sob v10 (só `ALLOW_FEE_UPFRONT_DEPLOY=1` com pedido explícito).
-- Pós-deploy: `scripts/vps-check-pos-deploy-v10.sh` (health + billing_model de proteções novas).
-- Hotfix stake_lock / restaurar logos apontam para branch `cursor/protecao-v10-fonte-verdade-501d` (não `protecao-fee-upfront-3cf9`).
+- Health `:3098`/`:3101` deve expor `protectionRuntime=protection-runtime-stake-lock-v10` + `createProtectionModel=stake_lock_v1` (fail-hard → 503 se ≠ `stake_lock_v1`).
+- Deploy de modelo antigo permanece **BLOQUEADO** sob v10 (só override explícito do dono).
+- Pós-deploy: `scripts/vps-check-pos-deploy-v10.sh` (health + `billing_model=stake_lock_v1` em proteções novas).
+- Hotfixes / restaurar logos apontam para branch `cursor/protecao-v10-fonte-verdade-501d`.
 <!-- END:protection-flow-lock -->
 
 <!-- BEGIN:profiles-schema-lock -->
@@ -84,11 +85,11 @@ Alterar qualquer item acima exige pedido explícito + atualização dos testes d
 **Doc:** `docs/SYSTEM_NON_REGRESSION.md`  
 **CI:** `npm test` → contratos UI / wallet / deploy / DB / admin-ops / admin-ui-layout / admin-session-mode + proteção v10
 
-**Pedido explícito (2026-07-30):** travar o sistema inteiro contra regressão
-(API, UI, schema). Não reintroduzir `fee_upfront` como vigente, não remover
-rotas/logos, não renomear buckets de carteira, não SELECT `profiles.email`.
-Não reverter menu admin accordion nem cards do Monitor de Desafios.
-Não reverter **Modo usuário / Modo ADM** nem **espelho de conta**.
+**Pedido explícito (2026-07-30 / 2026-07-31):** travar o sistema inteiro contra
+regressão (API, UI, schema). Proteção = só `stake_lock_v1` (nunca citar outro
+modelo). Não remover rotas/logos, não renomear buckets de carteira, não SELECT
+`profiles.email`. Não reverter menu admin accordion nem cards do Monitor de
+Desafios. Não reverter **Modo usuário / Modo ADM** nem **espelho de conta**.
 
 ## Camadas (não remover do CI)
 

@@ -20,7 +20,7 @@ do dono + bump de versão + sync docs/testes.
 | Layout (UI) | `ui-markers-contract` | metas `arbishield-build`/`features` + textos críticos |
 | Carteira | `wallet-buckets-contract-v1` | colunas + label **Saldo Reembolso** |
 | Schema DB | `profiles-db-contract-v1` + `profiles-sem-coluna-email-v1` | migrations/RPC; sem `profiles.email` |
-| Deploy/API | `deploy-surface-contract-v1` | football-teams, fee_upfront bloqueado, path shim |
+| Deploy/API | `deploy-surface-contract-v1` | football-teams, só stake_lock, path shim |
 | Admin ops | `admin-ops-contract-v1` | **Lançar saldo** (depósitos) + **Lançar jogos** |
 | Admin UI layout | `admin-ui-layout-contract-v1` | **Menu accordion** + **Monitor Desafios cards** |
 | Admin session | `admin-session-mode-contract-v1` | **Modo usuário/ADM** + **Espelho de conta** |
