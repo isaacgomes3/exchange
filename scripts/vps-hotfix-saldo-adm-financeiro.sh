@@ -73,6 +73,18 @@ grep -q '/api/arbishield/adjust-balance' "$SHIM_PATH" || die "shim sem rota adju
 grep -q 'requireFinanceAdmin' "$SHIM_PATH" || die "shim sem requireFinanceAdmin"
 systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 
+# Nginx
+log "Patching nginx conf para incluir adjust-balance"
+for conf in /etc/nginx/sites-available/arbishield.app.conf /etc/nginx/sites-available/teste.arbishield.app.conf /etc/nginx/conf.d/arbishield.app.conf /etc/nginx/conf.d/teste.arbishield.app.conf /etc/nginx/sites-enabled/arbishield.app.conf /etc/nginx/sites-enabled/teste.arbishield.app.conf; do
+  if [[ -f "$conf" ]]; then
+    sed -i -E 's/(desafio-register.*contestations\/pending-count)(|\|dashboard-stats)\)\$/\1|adjust-balance|admin-adjust-balance\2)$/g' "$conf"
+    log "Patched $conf"
+  fi
+done
+if command -v nginx >/dev/null; then
+  nginx -t && systemctl reload nginx || log "Aviso: falha ao recarregar nginx"
+fi
+
 log "Smoke :3101 adjust-balance (sem token → unauthorized)"
 SMOKE="$(curl -sS -X POST http://127.0.0.1:3101/api/arbishield/adjust-balance -H 'Content-Type: application/json' -d '{}' || true)"
 echo "$SMOKE" | grep -q 'not_found' && die "shim ainda responde not_found"
