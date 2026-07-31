@@ -220,42 +220,34 @@ async function buildReport({ fromIso, toIso, label }) {
     `/rest/v1/wallet_transactions?type=eq.protection_refund&created_at=gte.${encodeURIComponent(fromIso)}&created_at=lt.${encodeURIComponent(toIso)}&select=id,user_id,amount_cents,ref,metadata,created_at&order=created_at.asc`
   );
 
-  // 2) Proteções canceladas (settled_at no período) — schema pode não ter updated_at
-  const selectProt =
-    "id,user_id,match_id,status,result,amount_cents,responsibility_cents,user_profit_cents,odd,side,market_category,market_id,metadata,settled_at,created_at";
-  const selectBack =
-    "id,user_id,match_id,status,result,amount_cents,user_profit_cents,odd,metadata,settled_at,created_at";
-
-  let cancelledLay = await fetchAll(
-    `/rest/v1/protections?status=eq.cancelled&settled_at=gte.${encodeURIComponent(fromIso)}&settled_at=lt.${encodeURIComponent(toIso)}&select=${selectProt}&order=settled_at.desc`
-  ).catch(() => []);
-  if (!cancelledLay.length) {
-    // fallback: created_at window + filter status (settled_at nulo em schemas antigos)
-    const recent = await fetchAll(
-      `/rest/v1/protections?status=eq.cancelled&created_at=gte.${encodeURIComponent(fromIso)}&select=${selectProt}&order=created_at.desc`
+  // 2) Proteções canceladas — select=* (schema VPS varia; colunas extras quebram o GET)
+  async function loadCancelled(table) {
+    // preferir settled_at; se coluna não existir, PostgREST falha → fallback created_at
+    let rows = await fetchAll(
+      `/rest/v1/${table}?status=eq.cancelled&settled_at=gte.${encodeURIComponent(fromIso)}&settled_at=lt.${encodeURIComponent(toIso)}&select=*&order=settled_at.desc`
+    );
+    if (!rows.length) {
+      const recent = await fetchAll(
+        `/rest/v1/${table}?status=eq.cancelled&created_at=gte.${encodeURIComponent(fromIso)}&select=*&order=created_at.desc`
+      );
+      rows = recent.filter((r) => {
+        const t = r.settled_at || r.created_at;
+        if (!t) return true; // sem timestamp → inclui p/ não perder
+        const ms = Date.parse(t);
+        return ms >= Date.parse(fromIso) && ms < Date.parse(toIso);
+      });
+    }
+    // também result=cancelled_refund (status às vezes diverge)
+    const byResult = await fetchAll(
+      `/rest/v1/${table}?result=eq.cancelled_refund&settled_at=gte.${encodeURIComponent(fromIso)}&settled_at=lt.${encodeURIComponent(toIso)}&select=*`
     ).catch(() => []);
-    cancelledLay = recent.filter((r) => {
-      const t = r.settled_at || r.created_at;
-      if (!t) return false;
-      const ms = Date.parse(t);
-      return ms >= Date.parse(fromIso) && ms < Date.parse(toIso);
-    });
+    const map = new Map(rows.map((r) => [String(r.id), r]));
+    for (const r of byResult) map.set(String(r.id), r);
+    return [...map.values()];
   }
 
-  let cancelledBack = await fetchAll(
-    `/rest/v1/back_protections?status=eq.cancelled&settled_at=gte.${encodeURIComponent(fromIso)}&settled_at=lt.${encodeURIComponent(toIso)}&select=${selectBack}&order=settled_at.desc`
-  ).catch(() => []);
-  if (!cancelledBack.length) {
-    const recent = await fetchAll(
-      `/rest/v1/back_protections?status=eq.cancelled&created_at=gte.${encodeURIComponent(fromIso)}&select=${selectBack}&order=created_at.desc`
-    ).catch(() => []);
-    cancelledBack = recent.filter((r) => {
-      const t = r.settled_at || r.created_at;
-      if (!t) return false;
-      const ms = Date.parse(t);
-      return ms >= Date.parse(fromIso) && ms < Date.parse(toIso);
-    });
-  }
+  const cancelledLay = await loadCancelled("protections");
+  const cancelledBack = await loadCancelled("back_protections");
 
   const cancelled = [
     ...cancelledLay.map((r) => ({ ...r, _table: "protections", market: "LAY" })),
@@ -279,14 +271,14 @@ async function buildReport({ fromIso, toIso, label }) {
   for (let i = 0; i < missingIds.length; i += 40) {
     const chunk = missingIds.slice(i, i + 40);
     const lays = await sb(
-      `/rest/v1/protections?id=in.(${chunk.join(",")})&select=${selectProt}`,
+      `/rest/v1/protections?id=in.(${chunk.join(",")})&select=*`,
       { okNull: true }
     ).catch(() => []);
     for (const r of Array.isArray(lays) ? lays : []) {
       cancelled.push({ ...r, _table: "protections", market: "LAY" });
     }
     const backs = await sb(
-      `/rest/v1/back_protections?id=in.(${chunk.join(",")})&select=${selectBack}`,
+      `/rest/v1/back_protections?id=in.(${chunk.join(",")})&select=*`,
       { okNull: true }
     ).catch(() => []);
     for (const r of Array.isArray(backs) ? backs : []) {
@@ -301,14 +293,21 @@ async function buildReport({ fromIso, toIso, label }) {
 
   // 3) Jogos cancelados / excluídos no período
   const matchesCancelled = await fetchAll(
-    `/rest/v1/matches?status=eq.cancelled&updated_at=gte.${encodeURIComponent(fromIso)}&updated_at=lt.${encodeURIComponent(toIso)}&select=id,home_team,away_team,league,starts_at,status,status_v2,deleted_at,updated_at,created_at,used_protection_cents,max_protection_cents,metadata&order=updated_at.desc`
+    `/rest/v1/matches?status=eq.cancelled&or=(updated_at.gte.${encodeURIComponent(fromIso)},created_at.gte.${encodeURIComponent(fromIso)})&select=*&order=created_at.desc`
   ).catch(() => []);
   const matchesDeleted = await fetchAll(
-    `/rest/v1/matches?deleted_at=gte.${encodeURIComponent(fromIso)}&deleted_at=lt.${encodeURIComponent(toIso)}&select=id,home_team,away_team,league,starts_at,status,status_v2,deleted_at,updated_at,created_at,used_protection_cents,max_protection_cents,metadata&order=deleted_at.desc`
+    `/rest/v1/matches?deleted_at=gte.${encodeURIComponent(fromIso)}&deleted_at=lt.${encodeURIComponent(toIso)}&select=*&order=deleted_at.desc`
   ).catch(() => []);
 
   const matchIds = new Set();
-  for (const m of matchesCancelled) matchIds.add(String(m.id));
+  for (const m of matchesCancelled) {
+    const t = m.updated_at || m.deleted_at || m.created_at;
+    if (t) {
+      const ms = Date.parse(t);
+      if (ms < Date.parse(fromIso) || ms >= Date.parse(toIso)) continue;
+    }
+    matchIds.add(String(m.id));
+  }
   for (const m of matchesDeleted) matchIds.add(String(m.id));
   for (const p of protections) if (p.match_id) matchIds.add(String(p.match_id));
 
@@ -320,7 +319,7 @@ async function buildReport({ fromIso, toIso, label }) {
   for (let i = 0; i < needMatch.length; i += 40) {
     const chunk = needMatch.slice(i, i + 40);
     const rows = await sb(
-      `/rest/v1/matches?id=in.(${chunk.join(",")})&select=id,home_team,away_team,league,starts_at,status,status_v2,deleted_at,updated_at,created_at,used_protection_cents,max_protection_cents,metadata`,
+      `/rest/v1/matches?id=in.(${chunk.join(",")})&select=*`,
       { okNull: true }
     ).catch(() => []);
     for (const m of Array.isArray(rows) ? rows : []) {
@@ -479,6 +478,33 @@ async function buildReport({ fromIso, toIso, label }) {
     return !pid || !byId.has(pid);
   });
 
+  const refundsDetail = refunds.map((tx) => {
+    const pid = String(tx.ref || tx?.metadata?.protection_id || "").trim();
+    const prot = pid ? byId.get(pid) : null;
+    const match = prot?.match_id
+      ? matchesById.get(String(prot.match_id))
+      : null;
+    const prof = profilesById.get(String(tx.user_id)) || {};
+    const meta =
+      tx.metadata && typeof tx.metadata === "object" ? tx.metadata : {};
+    return {
+      id: tx.id,
+      user_id: tx.user_id,
+      full_name: prof.full_name || null,
+      email: emailById.get(String(tx.user_id)) || null,
+      amount_cents: n(tx.amount_cents),
+      created_at: tx.created_at,
+      ref: tx.ref || null,
+      protection_id: pid || null,
+      protection_status: prot?.status || null,
+      protection_result: prot?.result || null,
+      match_id: prot?.match_id || null,
+      match_label: matchLabel(match),
+      auto_cancel: !!(meta.auto_cancel || prot?.metadata?.auto_cancel),
+      metadata: meta,
+    };
+  });
+
   const totalRefund = refunds.reduce((a, t) => a + n(t.amount_cents), 0);
   const bySource = { admin: 0, client_auto: 0, admin_close: 0, unknown: 0 };
   for (const g of gameList) {
@@ -503,6 +529,7 @@ async function buildReport({ fromIso, toIso, label }) {
       orphan_refund_txs: orphanRefunds.length,
     },
     games: gameList,
+    refunds_detail: refundsDetail,
     admin_audits: audits.map((a) => ({
       id: a.id,
       action: a.action,
@@ -528,7 +555,8 @@ async function buildReport({ fromIso, toIso, label }) {
 }
 
 function printReport(report) {
-  const { period, summary, games, admin_audits, orphan_refunds } = report;
+  const { period, summary, games, admin_audits, orphan_refunds, refunds_detail } =
+    report;
   console.log("═".repeat(72));
   console.log("RELATÓRIO · Jogos / proteções canceladas");
   console.log(`Período (BRT): ${period.label}`);
@@ -538,7 +566,7 @@ function printReport(report) {
     `Jogos: ${summary.games} (${summary.games_with_protections} com proteção · ${summary.games_match_cancelled} cancelados/excluídos)`
   );
   console.log(
-    `Proteções canceladas: ${summary.protections} · Estornos: ${summary.refund_txs} · Total: ${money(summary.refund_cents)}`
+    `Proteções canceladas: ${summary.protections} · Estornos: ${summary.refund_txs} · Total: ${money(summary.refund_cents)} · Órfãos: ${summary.orphan_refund_txs}`
   );
   console.log(
     `Origem cancel: admin=${summary.by_source.admin || 0} · cliente(auto)=${summary.by_source.client_auto || 0} · close_sem_estorno=${summary.by_source.admin_close || 0} · ?=${summary.by_source.unknown || 0}`
@@ -546,8 +574,32 @@ function printReport(report) {
   console.log(`Audit admin (cancel/close): ${summary.admin_audits}`);
   console.log("═".repeat(72));
 
+  // Sempre listar estornos do período (mesmo sem proteção resolvida)
+  if (refunds_detail?.length) {
+    console.log("\n── Estornos protection_refund (período) ──");
+    for (const t of refunds_detail) {
+      console.log(
+        `  · ${fmtBr(t.created_at)}  ${money(t.amount_cents)}  ${t.full_name || "(sem nome)"}  ${t.email || t.user_id?.slice(0, 8) || "—"}`
+      );
+      console.log(
+        `    ref=${t.ref || "—"}  prot_status=${t.protection_status || "não achou"}  jogo=${t.match_label || "—"}  auto=${t.auto_cancel ? "sim" : "não"}`
+      );
+      if (t.metadata && Object.keys(t.metadata).length) {
+        console.log(`    meta=${JSON.stringify(t.metadata).slice(0, 180)}`);
+      }
+    }
+  }
+
   if (!games.length) {
-    console.log("\nNenhuma proteção cancelada nem jogo cancelado/excluído neste período.\n");
+    console.log(
+      "\nNenhuma proteção cancelada nem jogo cancelado/excluído ligado neste período."
+    );
+    if (orphan_refunds?.length) {
+      console.log(
+        `\n⚠ ${orphan_refunds.length} estorno(s) sem proteção resolvida (detalhe acima).`
+      );
+    }
+    console.log("");
     return;
   }
 
