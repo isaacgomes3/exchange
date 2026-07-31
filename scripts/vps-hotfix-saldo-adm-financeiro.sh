@@ -8,14 +8,14 @@
 # para o shim :3101 (senão cai no try_files estático → 405).
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/ajuste-saldo-405-84e5/scripts/vps-hotfix-saldo-adm-financeiro.sh?v=3")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/ajuste-saldo-405-84e5/scripts/vps-hotfix-saldo-adm-financeiro.sh?v=4")
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/ajuste-saldo-405-84e5}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
-CACHE_V="users-saldo-fin-3"
+CACHE_V="users-saldo-fin-4"
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
@@ -77,41 +77,73 @@ grep -q '/api/arbishield/adjust-balance' "$SHIM_PATH" || die "shim sem rota adju
 grep -q 'requireFinanceAdmin' "$SHIM_PATH" || die "shim sem requireFinanceAdmin"
 systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 
-# Nginx — location = exact (evita 405) + regex shim
+# Nginx — descobrir conf real (na VPS costuma ser conf.d/arbishield-cutover.conf)
 log "Patching nginx: location exact adjust-balance → shim"
-NGINX_PATCHED=0
-for conf in \
-  /etc/nginx/sites-enabled/arbishield.app \
-  /etc/nginx/sites-enabled/arbishield.app.conf \
-  /etc/nginx/sites-available/arbishield.app \
-  /etc/nginx/sites-available/arbishield.app.conf \
-  /etc/nginx/conf.d/arbishield.app.conf \
-  /etc/nginx/sites-enabled/teste.arbishield.app \
-  /etc/nginx/sites-enabled/teste.arbishield.app.conf \
-  /etc/nginx/sites-available/teste.arbishield.app \
-  /etc/nginx/sites-available/teste.arbishield.app.conf \
-  /etc/nginx/conf.d/teste.arbishield.app.conf
-do
-  [[ -f "$conf" ]] || continue
-  log "nginx: $conf"
-  OUT="$(
-    python3 - "$conf" <<'PY'
+discover_nginx_confs() {
+  local -a candidates=()
+  local f
+  for f in \
+    /etc/nginx/conf.d/arbishield-cutover.conf \
+    /etc/nginx/conf.d/arbishield.app.conf \
+    /etc/nginx/conf.d/arbishield.conf \
+    /etc/nginx/sites-enabled/arbishield.app \
+    /etc/nginx/sites-enabled/arbishield.app.conf \
+    /etc/nginx/sites-enabled/arbishield \
+    /etc/nginx/sites-available/arbishield.app \
+    /etc/nginx/sites-available/arbishield.app.conf \
+    /etc/nginx/sites-available/arbishield \
+    /etc/nginx/sites-enabled/teste.arbishield.app \
+    /etc/nginx/sites-enabled/teste.arbishield.app.conf \
+    /etc/nginx/sites-available/teste.arbishield.app \
+    /etc/nginx/sites-available/teste.arbishield.app.conf \
+    /etc/nginx/conf.d/teste.arbishield.app.conf
+  do
+    [[ -f "$f" ]] && candidates+=("$f")
+  done
+  # procura por conteúdo típico do site (nome do arquivo varia)
+  while IFS= read -r f; do
+    [[ -n "$f" && -f "$f" ]] || continue
+    candidates+=("$f")
+  done < <(
+    grep -RIlE 'server_name[[:space:]]+.*arbishield\.app|root[[:space:]]+/var/www/arbishield|127\.0\.0\.1:3101|desafio-settle' \
+      /etc/nginx 2>/dev/null | head -40 || true
+  )
+  # nginx -T → "# configuration file /path:"
+  if command -v nginx >/dev/null 2>&1; then
+    while IFS= read -r f; do
+      [[ -n "$f" && -f "$f" ]] || continue
+      candidates+=("$f")
+    done < <(
+      nginx -T 2>&1 | sed -n 's/^# configuration file \(.*\):$/\1/p' \
+        | grep -E 'arbishield|cutover|conf\.d|sites-' || true
+    )
+  fi
+  # dedupe
+  printf '%s\n' "${candidates[@]:-}" | awk 'NF && !seen[$0]++'
+}
+
+patch_nginx_conf() {
+  local conf="$1"
+  python3 - "$conf" <<'PY'
 import re, sys
 path = sys.argv[1]
 text = open(path, encoding="utf-8").read()
 orig = text
 changed = []
 
-# 1) Garantir adjust-balance|admin-adjust-balance na regex do shim
 def add_to_regex(m):
     body = m.group(0)
     if "adjust-balance" in body:
         return body
-    return body.replace(
+    for needle in (
         "contestations/pending-count",
-        "contestations/pending-count|adjust-balance|admin-adjust-balance",
-        1,
-    )
+        "match-settle",
+        "desafio-settle",
+    ):
+        if needle in body:
+            return body.replace(needle, needle + "|adjust-balance|admin-adjust-balance", 1)
+    # fallback: antes do )$
+    return re.sub(r"\)\$", "|adjust-balance|admin-adjust-balance)$", body, count=1)
 
 new_text, n = re.subn(
     r"location\s+~\s+\^/api/arbishield/\([^)]+\)\$\s*\{",
@@ -123,10 +155,13 @@ if n and new_text != text:
     text = new_text
     changed.append("regex")
 
-# 2) Inserir location = exact (prioridade alta; evita try_files → 405)
 if "location = /api/arbishield/adjust-balance" not in text:
-    # porta do shim no conf (prod 3101 / teste 3201)
-    port = "3201" if "teste" in path or ":3201" in text else "3101"
+    port = "3201" if ("teste" in path or ":3201" in text) else "3101"
+    # se o conf já aponta 3101/3201 no proxy do shim, preferir essa porta
+    if "127.0.0.1:3201" in text and "127.0.0.1:3101" not in text:
+        port = "3201"
+    elif "127.0.0.1:3101" in text:
+        port = "3101"
     block = """
     # Ajuste de saldo (adm financeiro) → shim :%(port)s (exact match evita try_files / 405)
     location = /api/arbishield/adjust-balance {
@@ -152,18 +187,17 @@ if "location = /api/arbishield/adjust-balance" not in text:
         "location = /api/arbishield/dashboard-stats",
         "location ^~ /api/arbishield/contestations",
         "location ^~ /_serverFn/",
+        "location /api/arbishield/",
     ):
         idx = text.find(anchor)
         if idx < 0:
             continue
-        # inserir ANTES do anchor
         text = text[:idx] + block + "\n    " + text[idx:]
-        changed.append("exact@" + anchor.split("/")[-1])
+        changed.append("exact@" + anchor.split("/")[-1].rstrip("{").strip())
         inserted = True
         break
     if not inserted:
-        # fallback: antes do location /
-        m = re.search(r"\n    location / \{", text)
+        m = re.search(r"\n\s*location / \{", text)
         if m:
             text = text[: m.start()] + "\n" + block + text[m.start() :]
             changed.append("exact@location/")
@@ -175,26 +209,60 @@ if text != orig:
     open(path, "w", encoding="utf-8").write(text)
     print("patched:" + ",".join(changed) if changed else "patched")
 else:
-    if "location = /api/arbishield/adjust-balance" in text:
+    if "location = /api/arbishield/adjust-balance" in text or "adjust-balance" in text:
         print("ok-already")
     else:
         print("FAIL: adjust-balance ausente após patch")
         sys.exit(3)
 PY
-  )" || die "falha ao patchar $conf"
+}
+
+mapfile -t NGINX_CONFS < <(discover_nginx_confs)
+if [[ "${#NGINX_CONFS[@]}" -eq 0 ]]; then
+  log "diagnóstico /etc/nginx:"
+  ls -la /etc/nginx /etc/nginx/conf.d /etc/nginx/sites-enabled /etc/nginx/sites-available 2>/dev/null || true
+  # republicar canônico no path padrão da VPS
+  CUTOVER="/etc/nginx/conf.d/arbishield-cutover.conf"
+  mkdir -p /etc/nginx/conf.d
+  tmp="$(mktemp)"
+  fetch "deploy/vps-supabase/nginx-arbishield.app.conf" "$tmp"
+  grep -q 'adjust-balance' "$tmp" || die "conf canônico sem adjust-balance"
+  if [[ -f "$CUTOVER" ]]; then
+    cp -a "$CUTOVER" "${CUTOVER}.bak-adjust-balance-$(date +%s)"
+  fi
+  cp -f "$tmp" "$CUTOVER"
+  rm -f "$tmp"
+  log "republicado conf canônico → $CUTOVER"
+  NGINX_CONFS=("$CUTOVER")
+fi
+
+NGINX_PATCHED=0
+for conf in "${NGINX_CONFS[@]}"; do
+  [[ -f "$conf" ]] || continue
+  # só patchar confs que parecem ser o site arbishield (evita botshield etc.)
+  if ! grep -qE 'arbishield\.app|/var/www/arbishield|desafio-settle|127\.0\.0\.1:3101|127\.0\.0\.1:3201' "$conf"; then
+    log "nginx skip (não parece arbishield): $conf"
+    continue
+  fi
+  log "nginx: $conf"
+  cp -a "$conf" "${conf}.bak-adjust-balance-$(date +%s)" 2>/dev/null || true
+  OUT="$(patch_nginx_conf "$conf")" || die "falha ao patchar $conf"
   log "  $OUT"
   NGINX_PATCHED=1
-  grep -q 'location = /api/arbishield/adjust-balance' "$conf" \
-    || die "nginx $conf ainda sem location = adjust-balance"
+  grep -qE 'adjust-balance' "$conf" \
+    || die "nginx $conf ainda sem adjust-balance"
 done
 
 if [[ "$NGINX_PATCHED" -eq 0 ]]; then
-  log "AVISO: nenhum conf nginx conhecido encontrado — confira paths em /etc/nginx"
-else
-  if command -v nginx >/dev/null; then
-    nginx -t && systemctl reload nginx || die "nginx -t / reload falhou"
-    log "nginx reload ok"
-  fi
+  log "diagnóstico /etc/nginx:"
+  ls -la /etc/nginx/conf.d /etc/nginx/sites-enabled /etc/nginx/sites-available 2>/dev/null || true
+  grep -RIl '3101\|arbishield.app' /etc/nginx 2>/dev/null | head -20 || true
+  die "nenhum conf nginx do arbishield encontrado/patchado"
+fi
+
+if command -v nginx >/dev/null; then
+  nginx -t && systemctl reload nginx || die "nginx -t / reload falhou"
+  log "nginx reload ok"
 fi
 
 # Smoke shim com retry (restart pode demorar)
