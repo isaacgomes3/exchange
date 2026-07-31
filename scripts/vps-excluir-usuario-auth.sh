@@ -90,26 +90,20 @@ keep_profile = os.environ.get("KEEP_PROFILE", "0") == "1"
 db = os.environ["DB_CONTAINER"]
 
 def psql(sql, tuples_only=False):
-    cmd = [
-        "docker", "exec", "-i", db,
-        "psql", "-U", "postgres", "-d", "postgres",
-        "-v", "ON_ERROR_STOP=1",
-    ]
-    if tuples_only:
-        cmd.append("-At")
-    try:
-        return subprocess.check_output(cmd, input=sql, text=True)
-    except subprocess.CalledProcessError:
-        cmd[cmd.index("postgres")] = "supabase_admin"
-        # rebuild: replace -U postgres with supabase_admin
+    def run(user):
         cmd = [
             "docker", "exec", "-i", db,
-            "psql", "-U", "supabase_admin", "-d", "postgres",
+            "psql", "-U", user, "-d", "postgres",
             "-v", "ON_ERROR_STOP=1",
         ]
         if tuples_only:
             cmd.append("-At")
         return subprocess.check_output(cmd, input=sql, text=True)
+
+    try:
+        return run("postgres")
+    except subprocess.CalledProcessError:
+        return run("supabase_admin")
 
 def req(method, path, body=None):
     data = None if body is None else json.dumps(body).encode()
