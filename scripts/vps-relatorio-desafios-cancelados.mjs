@@ -183,6 +183,22 @@ async function buildReport({ fromIso, toIso, label }) {
     }
   }
 
+  // Etapas / eventos (partida) de cada desafio
+  const stepsByDesafio = new Map();
+  if (idList.length) {
+    for (let i = 0; i < idList.length; i += 40) {
+      const chunk = idList.slice(i, i + 40);
+      const rows = await fetchAll(
+        `/rest/v1/desafio_steps?desafio_id=in.(${chunk.join(",")})&select=id,desafio_id,step_index,match_label,home_team,away_team,league_name,starts_at,market_name_casa,market_name_arbishield,status,result&order=step_index.asc`
+      );
+      for (const s of rows) {
+        const did = String(s.desafio_id || "");
+        if (!stepsByDesafio.has(did)) stepsByDesafio.set(did, []);
+        stepsByDesafio.get(did).push(s);
+      }
+    }
+  }
+
   // Participações canceladas ligadas a esses desafios (fallback se não houver tx)
   const partsByDesafio = new Map();
   if (idList.length) {
@@ -325,6 +341,34 @@ async function buildReport({ fromIso, toIso, label }) {
 
     if (ONLY_WITH_CLIENTS && !clientList.length) continue;
 
+    const steps = (stepsByDesafio.get(did) || [])
+      .slice()
+      .sort((a, b) => n(a.step_index) - n(b.step_index));
+    const events = steps.map((s) => {
+      const match =
+        s.match_label ||
+        [s.home_team, s.away_team].filter(Boolean).join(" x ") ||
+        null;
+      return {
+        step_id: s.id,
+        step_index: s.step_index,
+        match_label: match,
+        home_team: s.home_team || null,
+        away_team: s.away_team || null,
+        league_name: s.league_name || null,
+        starts_at: s.starts_at || null,
+        market_casa: s.market_name_casa || null,
+        market_arbi: s.market_name_arbishield || null,
+        status: s.status || null,
+        result: s.result || null,
+      };
+    });
+    const eventLabel =
+      events
+        .map((e) => e.match_label)
+        .filter(Boolean)
+        .join(" · ") || null;
+
     const totalCents = clientList.reduce((a, c) => a + c.amount_cents, 0);
     desafios.push({
       id: d.id,
@@ -334,6 +378,8 @@ async function buildReport({ fromIso, toIso, label }) {
       status: d.status || "cancelled",
       initial_balance_cents: n(d.initial_balance_cents),
       cancelled_at: d.updated_at || null,
+      event: eventLabel,
+      events,
       clients: clientList,
       clients_count: clientList.length,
       total_cents: totalCents,
@@ -393,6 +439,22 @@ function printReport(report) {
     console.log(
       `▶ ${num} ${d.title}  ·  ${d.clients_count} cliente(s)  ·  ${money(d.total_cents)}`
     );
+    if (d.event) {
+      console.log(`  Evento: ${d.event}`);
+    } else if (Array.isArray(d.events) && d.events.length) {
+      for (const e of d.events) {
+        const when = e.starts_at
+          ? new Date(e.starts_at).toLocaleString("pt-BR", {
+              timeZone: "America/Sao_Paulo",
+            })
+          : "";
+        console.log(
+          `  Evento etapa ${e.step_index}: ${e.match_label || "—"}${when ? " · " + when : ""}`
+        );
+      }
+    } else {
+      console.log("  Evento: (não encontrado)");
+    }
     if (d.cancelled_at) {
       console.log(
         `  Cancelado em: ${new Date(d.cancelled_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}`

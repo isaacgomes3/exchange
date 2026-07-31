@@ -12,7 +12,7 @@ BRANCH="${ARBISHIELD_BRANCH:-cursor/relatorio-desafios-cancelados-3e4b}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
-CACHE_V="desafio-cancelados-2"
+CACHE_V="desafio-cancelados-3"
 NGINX_MAIN="${ARBISHIELD_NGINX_CONF:-}"
 if [[ -z "$NGINX_MAIN" ]]; then
   for c in \

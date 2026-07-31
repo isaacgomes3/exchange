@@ -2165,10 +2165,17 @@
                 </div>`
               )
               .join("");
+            const eventTxt = d.event ||
+              ((d.events || []).map((e) => e.match_label).filter(Boolean).join(" · ")) ||
+              "Evento não encontrado";
+            const eventWhen = (d.events && d.events[0] && d.events[0].starts_at)
+              ? new Date(d.events[0].starts_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })
+              : "";
             return `<article class="card is-open">
               <div class="card-top" style="cursor:default">
                 <div class="title-wrap">
                   <div class="teams">${esc(d.title || "Desafio")} <span class="num">#${String(d.number ?? "—").padStart(3, "0")}</span></div>
+                  <div class="meta">Evento: ${esc(eventTxt)}${eventWhen ? " · " + esc(eventWhen) : ""}</div>
                   <div class="meta">Cancelado em ${esc(when)}</div>
                   <div class="entries">${d.clients_count || 0} cliente(s) ativo(s) · total ${money(d.total_cents)}</div>
                 </div>
