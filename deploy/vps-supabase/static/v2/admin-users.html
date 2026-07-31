@@ -513,7 +513,22 @@
           try {
             data = text ? JSON.parse(text) : {};
           } catch (e) {
-            data = { error: text.slice(0, 160) };
+            var looksHtml = /<\s*html|405\s+Not\s+Allowed|nginx/i.test(text || "");
+            if (res.status === 405 || looksHtml) {
+              data = {
+                error:
+                  "API de ajuste indisponível (HTTP " +
+                  res.status +
+                  "). Proxy Nginx/shim fora do ar — rode o hotfix saldo-adm na VPS.",
+              };
+            } else {
+              data = {
+                error:
+                  "Resposta inválida do servidor (HTTP " +
+                  res.status +
+                  ")",
+              };
+            }
           }
           if (!res.ok || data.ok === false) {
             throw new Error(data.error || data.message || "Falha HTTP " + res.status);

@@ -4,15 +4,18 @@
 # Liberado apenas para a allowlist Financeiro (isaac + financeiro@).
 # Demais admins continuam sem o painel/API de ajuste.
 #
+# Corrige 405 Not Allowed: Nginx precisa proxyar POST /api/arbishield/adjust-balance
+# para o shim :3101 (senão cai no try_files estático → 405).
+#
 # Na VPS:
-#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/saldo-adm-financeiro-2406/scripts/vps-hotfix-saldo-adm-financeiro.sh?v=1")
+#   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/ajuste-saldo-405-84e5/scripts/vps-hotfix-saldo-adm-financeiro.sh?v=3")
 set -euo pipefail
 
-BRANCH="${ARBISHIELD_BRANCH:-cursor/saldo-adm-financeiro-2406}"
+BRANCH="${ARBISHIELD_BRANCH:-cursor/ajuste-saldo-405-84e5}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
-CACHE_V="users-saldo-fin-1"
+CACHE_V="users-saldo-fin-3"
 
 log() { echo "==> $*"; }
 die() { echo "ERRO: $*" >&2; exit 1; }
@@ -42,6 +45,7 @@ chmod 0644 "$WEB/admin-users.html"
 cp -f "$WEB/admin-users.html" "$WEB_ROOT/admin-users.html" 2>/dev/null || true
 grep -q 'adjust-balance\|Ajuste de' "$WEB/admin-users.html" || die "admin-users sem painel de saldo"
 grep -q 'canAccessFinance' "$WEB/admin-users.html" || die "admin-users sem gate financeiro"
+grep -q 'API de ajuste indisponível' "$WEB/admin-users.html" || log "aviso: UI sem mensagem amigável 405 (ok se tip antigo)"
 
 # cache-bust local
 sed -i -E \
@@ -73,26 +77,166 @@ grep -q '/api/arbishield/adjust-balance' "$SHIM_PATH" || die "shim sem rota adju
 grep -q 'requireFinanceAdmin' "$SHIM_PATH" || die "shim sem requireFinanceAdmin"
 systemctl restart arbishield-serverfn-shim.service 2>/dev/null || true
 
-# Nginx
-log "Patching nginx conf para incluir adjust-balance"
-for conf in /etc/nginx/sites-available/arbishield.app.conf /etc/nginx/sites-available/teste.arbishield.app.conf /etc/nginx/conf.d/arbishield.app.conf /etc/nginx/conf.d/teste.arbishield.app.conf /etc/nginx/sites-enabled/arbishield.app.conf /etc/nginx/sites-enabled/teste.arbishield.app.conf; do
-  if [[ -f "$conf" ]]; then
-    sed -i -E 's/(desafio-register.*contestations\/pending-count)(|\|dashboard-stats)\)\$/\1|adjust-balance|admin-adjust-balance\2)$/g' "$conf"
-    log "Patched $conf"
-  fi
+# Nginx — location = exact (evita 405) + regex shim
+log "Patching nginx: location exact adjust-balance → shim"
+NGINX_PATCHED=0
+for conf in \
+  /etc/nginx/sites-enabled/arbishield.app \
+  /etc/nginx/sites-enabled/arbishield.app.conf \
+  /etc/nginx/sites-available/arbishield.app \
+  /etc/nginx/sites-available/arbishield.app.conf \
+  /etc/nginx/conf.d/arbishield.app.conf \
+  /etc/nginx/sites-enabled/teste.arbishield.app \
+  /etc/nginx/sites-enabled/teste.arbishield.app.conf \
+  /etc/nginx/sites-available/teste.arbishield.app \
+  /etc/nginx/sites-available/teste.arbishield.app.conf \
+  /etc/nginx/conf.d/teste.arbishield.app.conf
+do
+  [[ -f "$conf" ]] || continue
+  log "nginx: $conf"
+  OUT="$(
+    python3 - "$conf" <<'PY'
+import re, sys
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+orig = text
+changed = []
+
+# 1) Garantir adjust-balance|admin-adjust-balance na regex do shim
+def add_to_regex(m):
+    body = m.group(0)
+    if "adjust-balance" in body:
+        return body
+    return body.replace(
+        "contestations/pending-count",
+        "contestations/pending-count|adjust-balance|admin-adjust-balance",
+        1,
+    )
+
+new_text, n = re.subn(
+    r"location\s+~\s+\^/api/arbishield/\([^)]+\)\$\s*\{",
+    add_to_regex,
+    text,
+    count=1,
+)
+if n and new_text != text:
+    text = new_text
+    changed.append("regex")
+
+# 2) Inserir location = exact (prioridade alta; evita try_files → 405)
+if "location = /api/arbishield/adjust-balance" not in text:
+    # porta do shim no conf (prod 3101 / teste 3201)
+    port = "3201" if "teste" in path or ":3201" in text else "3101"
+    block = """
+    # Ajuste de saldo (adm financeiro) → shim :%(port)s (exact match evita try_files / 405)
+    location = /api/arbishield/adjust-balance {
+        proxy_pass http://127.0.0.1:%(port)s;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Authorization $http_authorization;
+        proxy_pass_request_headers on;
+        proxy_read_timeout 120s;
+    }
+    location = /api/arbishield/admin-adjust-balance {
+        proxy_pass http://127.0.0.1:%(port)s;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Authorization $http_authorization;
+        proxy_pass_request_headers on;
+        proxy_read_timeout 120s;
+    }
+""" % {"port": port}
+    inserted = False
+    for anchor in (
+        "location = /api/arbishield/match-settle",
+        "location = /api/arbishield/dashboard-stats",
+        "location ^~ /api/arbishield/contestations",
+        "location ^~ /_serverFn/",
+    ):
+        idx = text.find(anchor)
+        if idx < 0:
+            continue
+        # inserir ANTES do anchor
+        text = text[:idx] + block + "\n    " + text[idx:]
+        changed.append("exact@" + anchor.split("/")[-1])
+        inserted = True
+        break
+    if not inserted:
+        # fallback: antes do location /
+        m = re.search(r"\n    location / \{", text)
+        if m:
+            text = text[: m.start()] + "\n" + block + text[m.start() :]
+            changed.append("exact@location/")
+        else:
+            print("FAIL: sem âncora para inserir location exact")
+            sys.exit(2)
+
+if text != orig:
+    open(path, "w", encoding="utf-8").write(text)
+    print("patched:" + ",".join(changed) if changed else "patched")
+else:
+    if "location = /api/arbishield/adjust-balance" in text:
+        print("ok-already")
+    else:
+        print("FAIL: adjust-balance ausente após patch")
+        sys.exit(3)
+PY
+  )" || die "falha ao patchar $conf"
+  log "  $OUT"
+  NGINX_PATCHED=1
+  grep -q 'location = /api/arbishield/adjust-balance' "$conf" \
+    || die "nginx $conf ainda sem location = adjust-balance"
 done
-if command -v nginx >/dev/null; then
-  nginx -t && systemctl reload nginx || log "Aviso: falha ao recarregar nginx"
+
+if [[ "$NGINX_PATCHED" -eq 0 ]]; then
+  log "AVISO: nenhum conf nginx conhecido encontrado — confira paths em /etc/nginx"
+else
+  if command -v nginx >/dev/null; then
+    nginx -t && systemctl reload nginx || die "nginx -t / reload falhou"
+    log "nginx reload ok"
+  fi
 fi
 
-log "Smoke :3101 adjust-balance (sem token → unauthorized)"
-SMOKE="$(curl -sS -X POST http://127.0.0.1:3101/api/arbishield/adjust-balance -H 'Content-Type: application/json' -d '{}' || true)"
-echo "$SMOKE" | grep -q 'not_found' && die "shim ainda responde not_found"
-echo "$SMOKE" | grep -Eqi 'Não autorizado|Unauthorized|token|negado|permiss' \
-  || log "resposta smoke: $SMOKE"
+# Smoke shim com retry (restart pode demorar)
+log "Smoke :3101 adjust-balance (sem token → Não autorizado)"
+SMOKE=""
+for i in 1 2 3 4 5 6 7 8; do
+  SMOKE="$(curl -sS -m 3 -X POST http://127.0.0.1:3101/api/arbishield/adjust-balance \
+    -H 'Content-Type: application/json' -d '{}' 2>/dev/null || true)"
+  if echo "$SMOKE" | grep -Eqi 'Não autorizado|Unauthorized|token|negado|permiss'; then
+    log "smoke ok (tentativa $i): $SMOKE"
+    break
+  fi
+  if echo "$SMOKE" | grep -q 'not_found'; then
+    die "shim ainda responde not_found — rota adjust-balance ausente no processo"
+  fi
+  sleep 1
+done
+if ! echo "$SMOKE" | grep -Eqi 'Não autorizado|Unauthorized|token|negado|permiss'; then
+  systemctl is-active arbishield-serverfn-shim.service >/dev/null 2>&1 \
+    || die "shim inativo (systemctl). status: $(systemctl is-active arbishield-serverfn-shim.service 2>/dev/null || echo unknown)"
+  die "smoke falhou após retries. resposta: ${SMOKE:-<vazio/conexão recusada>}"
+fi
 
-log "OK — saldo adm financeiro"
-log "  UI: /admin-users.html (botão Saldo / painel no drawer)"
-log "  API: POST /api/arbishield/adjust-balance"
+# Smoke via nginx local (se possível) — confirma que não é mais 405
+if command -v nginx >/dev/null; then
+  for host in arbishield.app 127.0.0.1; do
+    CODE="$(curl -sS -m 5 -o /tmp/adj-bal-nginx.json -w '%{http_code}' \
+      -X POST "https://${host}/api/arbishield/adjust-balance" \
+      -H 'Content-Type: application/json' -H "Host: arbishield.app" \
+      -d '{}' -k 2>/dev/null || true)"
+    BODY="$(head -c 180 /tmp/adj-bal-nginx.json 2>/dev/null || true)"
+    if [[ "$CODE" == "405" ]]; then
+      die "nginx ainda retorna 405 em POST /api/arbishield/adjust-balance (host=$host). Confira location exact no conf ativo."
+    fi
+    if [[ -n "$CODE" && "$CODE" != "000" ]]; then
+      log "smoke nginx $host → HTTP $CODE ${BODY}"
+      break
+    fi
+  done
+fi
+
+log "OK — saldo adm financeiro (hotfix 405)"
+log "  UI: /admin-users.html (Ctrl+F5)"
+log "  API: POST /api/arbishield/adjust-balance → shim :3101"
 log "  liberados: isaacgomes3@gmail.com, financeiro@arbishield.com"
-log "  Ctrl+F5 em /admin-users.html"
