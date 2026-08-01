@@ -84,6 +84,16 @@ Marker session admin: `DO_NOT_CHANGE_ADMIN_SESSION_MODE_WITHOUT_EXPLICIT_REQUEST
 - A trava nasceu numa linhagem e faltava na outra; publicar a linhagem sem ela
   devolveu o botão. Não remover de nenhum dos dois lados.
 
+### Desafio — editar lançado sem retirar (anti-regressão)
+
+- Marker `admin-desafios-edit-preserva-publicacao-v1` · teste `scripts/desafio-edit-preserva.test.mjs`
+- UI `admin-desafios.html`: botão **Editar** no card (ativo/publicado); drawer com ids;
+  **Salvar alterações** envia `edit_only` + step `id`s
+- Edição **não** mexe em `is_active` / `status` / `published_at` (não retira da grade)
+- API: `POST /api/arbishield/desafios` com `id` + `steps` → `upsertDesafio`
+- Liquidez não pode cair abaixo de `used_liquidity_cents`; etapas encerradas
+  preservam `status`
+
 ### Modo usuário / Modo ADM (anti-regressão)
 
 - `v2-shell.js` + `v2.css`: `#v2ModeSwitch` / `.v2-mode-switch`

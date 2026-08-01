@@ -4,6 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Gestão de Desafios — ArbiShield v2</title>
+  <meta name="arbishield-build" content="admin-desafios-edit-preserva-publicacao-v1" />
+  <meta name="arbishield-features" content="admin-desafios-edit-preserva-publicacao-v1" />
   <link rel="stylesheet" href="/v2.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/v2.js"></script>
@@ -538,10 +540,10 @@
       <label for="fBalance">Saldo inicial ArbiShield (R$)</label>
       <input id="fBalance" type="text" inputmode="decimal" placeholder="Ex.: 200,00" />
     </div>
-    <div class="toggle-row">
+    <div class="toggle-row" id="publishToggleRow">
       <div>
-        <strong>Publicar ao salvar</strong>
-        <span>Se desligado, grava como rascunho</span>
+        <strong id="publishToggleLabel">Publicar ao salvar</strong>
+        <span id="publishToggleHint">Se desligado, grava como rascunho</span>
       </div>
       <input id="fActive" type="checkbox" checked />
     </div>
@@ -1253,7 +1255,37 @@
     function openDrawer(prefill) {
       draft = prefill ? structuredClone(prefill) : emptyDraft();
       if (!draft.steps || !draft.steps.length) draft.steps = [emptyStep(1)];
-      $("drawerTitle").innerHTML = "Lançar Novo <span>Desafio</span>";
+      const editing = Boolean(draft.id);
+      // Marker: admin-desafios-edit-preserva-publicacao-v1
+      $("drawerTitle").innerHTML = editing
+        ? 'Editar <span>Desafio</span>'
+        : "Lançar Novo <span>Desafio</span>";
+      const sub = document.querySelector("#drawer .drawer-sub");
+      if (sub) {
+        sub.textContent = editing
+          ? "Altera dados do desafio já lançado · mantém publicação e entradas."
+          : "Página completa · busca de time com logo · autocomplete de mercados.";
+      }
+      const saveBtn = $("btnSaveDraft");
+      if (saveBtn) saveBtn.textContent = editing ? "Salvar alterações" : "Salvar e Liberar";
+      const toggleLabel = $("publishToggleLabel");
+      const toggleHint = $("publishToggleHint");
+      const fActive = $("fActive");
+      if (editing) {
+        if (toggleLabel) toggleLabel.textContent = "Publicação";
+        if (toggleHint) {
+          toggleHint.textContent =
+            "Edição não retira o desafio da grade — status de publicação permanece.";
+        }
+        if (fActive) {
+          fActive.checked = Boolean(draft.is_active);
+          fActive.disabled = true;
+        }
+      } else {
+        if (toggleLabel) toggleLabel.textContent = "Publicar ao salvar";
+        if (toggleHint) toggleHint.textContent = "Se desligado, grava como rascunho";
+        if (fActive) fActive.disabled = false;
+      }
       setFormError("");
       fillHeaderFields();
       renderStepsEditor();
@@ -1266,6 +1298,70 @@
       window.scrollTo(0, 0);
     }
 
+    /** Converte linha da API em rascunho de edição (preserva ids). */
+    function rowToEditDraft(row) {
+      const steps = (row.desafio_steps || [])
+        .slice()
+        .sort((a, b) => a.step_index - b.step_index)
+        .map((s, i) => ({
+          ...emptyStep(i + 1),
+          id: s.id,
+          match_label: s.match_label || "",
+          league_name: s.league_name || "",
+          home_team: s.home_team || "",
+          away_team: s.away_team || "",
+          home_logo:
+            s.home_logo ||
+            s.home_logo_url ||
+            (s.casa_team_name && s.casa_team_name === s.home_team
+              ? s.casa_team_logo_url
+              : "") ||
+            (s.arbi_team_name && s.arbi_team_name === s.home_team
+              ? s.arbi_team_logo_url
+              : "") ||
+            "",
+          away_logo:
+            s.away_logo ||
+            s.away_logo_url ||
+            (s.casa_team_name && s.casa_team_name === s.away_team
+              ? s.casa_team_logo_url
+              : "") ||
+            (s.arbi_team_name && s.arbi_team_name === s.away_team
+              ? s.arbi_team_logo_url
+              : "") ||
+            "",
+          arbi_team_name: s.arbi_team_name || s.market_name_arbishield || "",
+          arbi_odd: s.arbi_odd != null ? String(s.arbi_odd) : "",
+          market_name_arbishield: s.market_name_arbishield || "",
+          arbi_commission_pct:
+            s.arbi_commission_pct != null ? String(s.arbi_commission_pct) : "0",
+          casa_team_name: s.casa_team_name || s.market_name_casa || "",
+          casa_odd: s.casa_odd != null ? String(s.casa_odd) : "",
+          market_name_casa: s.market_name_casa || "",
+          casa_commission_pct:
+            s.casa_commission_pct != null ? String(s.casa_commission_pct) : "0",
+          casa_stake_cents: centsToReaisInput(s.casa_stake_cents),
+          external_bet_link: s.external_bet_link || "",
+          liquidity_cents: centsToReaisInput(s.liquidity_cents),
+          display_liquidity_cents: centsToReaisInput(
+            s.display_liquidity_cents ?? s.liquidity_cents
+          ),
+          starts_at: toLocalInput(s.starts_at),
+          release_minutes_before: s.release_minutes_before ?? 60,
+          status: s.status || "pending",
+        }));
+      return {
+        id: row.id,
+        number: row.number != null ? String(row.number) : "",
+        title: row.title || "DESAFIO",
+        subtitle: row.subtitle || "",
+        initial_balance_reais: centsToReaisInput(row.initial_balance_cents || 20000),
+        is_active: Boolean(row.is_active),
+        status: row.status || (row.is_active ? "active" : "draft"),
+        steps: steps.length ? steps : [emptyStep(1)],
+      };
+    }
+
     function closeDrawer() {
       document.body.classList.remove("desafio-launch-open");
       $("drawer").classList.remove("open");
@@ -1273,6 +1369,8 @@
       $("drawer").setAttribute("aria-hidden", "true");
       $("drawerBackdrop").setAttribute("aria-hidden", "true");
       document.body.style.overflow = "";
+      const fActive = $("fActive");
+      if (fActive) fActive.disabled = false;
       setFormError("");
     }
 
@@ -1365,7 +1463,8 @@
       }
 
       const initialCents = reaisToCents(draft.initial_balance_reais);
-      return {
+      const editing = Boolean(draft.id);
+      const payload = {
         number: draft.number ? Number(draft.number) : undefined,
         title: draft.title,
         subtitle: draft.subtitle || null,
@@ -1378,7 +1477,7 @@
         steps: draft.steps.map((a) => {
           const arbiOdd = Number(String(a.arbi_odd).replace(",", "."));
           const casaOdd = Number(String(a.casa_odd).replace(",", "."));
-          return {
+          const stepPayload = {
             step_index: a.step_index,
             match_label: a.match_label,
             league_name: a.league_name || null,
@@ -1428,8 +1527,16 @@
             status: a.status || "pending",
             is_published: Boolean(draft.is_active),
           };
+          if (a.id) stepPayload.id = a.id;
+          return stepPayload;
         }),
       };
+      // Marker: admin-desafios-edit-preserva-publicacao-v1
+      if (editing) {
+        payload.id = draft.id;
+        payload.edit_only = true;
+      }
+      return payload;
     }
 
     async function authHeaders() {
@@ -1479,6 +1586,7 @@
       const btn = $("btnSaveDraft");
       btn.disabled = true;
       const prevLabel = btn.textContent;
+      const editing = Boolean(draft && draft.id);
       btn.textContent = "Buscando logos…";
       try {
         await fillMissingStepLogos();
@@ -1486,7 +1594,7 @@
       } catch (err) {
         setFormError(err.message || String(err));
         btn.disabled = false;
-        btn.textContent = prevLabel || "Salvar e Liberar";
+        btn.textContent = prevLabel || (editing ? "Salvar alterações" : "Salvar e Liberar");
         return;
       }
       btn.textContent = "Salvando…";
@@ -1498,23 +1606,36 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data.ok === false) {
-          throw new Error((data && data.error) || "Falha ao criar desafio (HTTP " + res.status + ")");
+          throw new Error(
+            (data && data.error) ||
+              (editing
+                ? "Falha ao salvar alterações (HTTP " + res.status + ")"
+                : "Falha ao criar desafio (HTTP " + res.status + ")")
+          );
         }
         localStorage.removeItem("arbishield_desafio_suggestion");
         localStorage.removeItem("arbishield_desafio_suggestion_at");
         closeDrawer();
         renderSuggestion();
         await load();
-        alert(
-          "Desafio criado" +
-            (data.desafio && data.desafio.number != null ? " #" + data.desafio.number : "") +
-            "!"
-        );
+        if (editing) {
+          alert(
+            "Desafio atualizado" +
+              (data.desafio && data.desafio.number != null ? " #" + data.desafio.number : "") +
+              " — publicação mantida."
+          );
+        } else {
+          alert(
+            "Desafio criado" +
+              (data.desafio && data.desafio.number != null ? " #" + data.desafio.number : "") +
+              "!"
+          );
+        }
       } catch (err) {
         setFormError(err.message || String(err));
       } finally {
         btn.disabled = false;
-        btn.textContent = "Salvar e Liberar";
+        btn.textContent = editing ? "Salvar alterações" : "Salvar e Liberar";
       }
     }
 
@@ -1751,6 +1872,12 @@
                 d.deleted_at || d.is_active || isDesafioClosed(d)
                   ? ""
                   : `<button class="btn btn-primary" type="button" data-publish="${esc(d.id)}">Publicar</button>`
+              }
+              ${
+                // Marker: admin-desafios-edit-preserva-publicacao-v1
+                !d.deleted_at
+                  ? `<button class="btn btn-primary" type="button" data-edit="${esc(d.id)}">Editar</button>`
+                  : ""
               }
               <button class="btn btn-ghost" type="button" data-clone="${esc(d.id)}">Usar como base</button>
             </div>
@@ -2065,6 +2192,15 @@
             alert(err.message || "Erro ao cancelar");
             btn.disabled = false;
           }
+        });
+      });
+
+      $("list").querySelectorAll("[data-edit]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const id = btn.getAttribute("data-edit");
+          const row = (window.__desafioRows || []).find((x) => String(x.id) === String(id));
+          if (!row) return;
+          openDrawer(rowToEditDraft(row));
         });
       });
 

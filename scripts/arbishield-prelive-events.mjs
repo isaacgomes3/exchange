@@ -1311,6 +1311,121 @@ async function createDesafio(body, token) {
   return { ...desafio, desafio_steps: stepsOut.filter(Boolean) };
 }
 
+/**
+ * Edita desafio lançado sem retirar da grade.
+ * Marker: admin-desafios-edit-preserva-publicacao-v1
+ */
+async function upsertDesafio(body, token) {
+  const auth = token || SERVICE_KEY;
+  if (!body?.id) return createDesafio(body, token);
+
+  const editOnly =
+    body.edit_only === true ||
+    body.editOnly === true ||
+    String(body.mode || "").toLowerCase() === "edit_only";
+
+  const id = String(body.id).trim();
+  const existingRows = await sb(
+    `/rest/v1/desafios?select=id,number,is_active,status,published_at,deleted_at&id=eq.${encodeURIComponent(id)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+  if (!existing) {
+    const err = new Error("Desafio não encontrado");
+    err.status = 404;
+    throw err;
+  }
+  if (existing.deleted_at) {
+    const err = new Error("Desafio excluído — restaure antes de editar.");
+    err.status = 409;
+    throw err;
+  }
+
+  const desafioRow = buildDesafioRow(body);
+  delete desafioRow.number;
+  if (body.number != null && Number(body.number) > 0) {
+    desafioRow.number = Number(body.number);
+  }
+  if (editOnly) {
+    delete desafioRow.is_active;
+    delete desafioRow.status;
+    delete desafioRow.published_at;
+  } else if (existing.is_active && desafioRow.is_active) {
+    delete desafioRow.published_at;
+  }
+
+  await sb(`/rest/v1/desafios?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    token: auth,
+    body: { ...desafioRow, updated_at: new Date().toISOString() },
+  });
+
+  const publishFlag = editOnly
+    ? Boolean(existing.is_active)
+    : Boolean(desafioRow.is_active);
+
+  const stepsOut = [];
+  for (const step of body.steps || []) {
+    const stepRow = buildStepRow(id, step, publishFlag);
+    if (step.id) {
+      const curSteps = await sb(
+        `/rest/v1/desafio_steps?select=id,status,settled_at,is_published,used_liquidity_cents,liquidity_cents,metadata&id=eq.${encodeURIComponent(step.id)}&limit=1`,
+        { token: SERVICE_KEY }
+      );
+      const cur = Array.isArray(curSteps) ? curSteps[0] : null;
+      if (!cur) {
+        const err = new Error(`Etapa ${step.id} não encontrada`);
+        err.status = 404;
+        throw err;
+      }
+      const used = Math.max(0, Number(cur.used_liquidity_cents) || 0);
+      const nextLiq = Number(stepRow.liquidity_cents);
+      if (Number.isFinite(nextLiq) && nextLiq < used) {
+        const err = new Error(
+          `Liquidez da etapa não pode ser menor que o já utilizado (R$ ${(used / 100).toFixed(2).replace(".", ",")}).`
+        );
+        err.status = 409;
+        throw err;
+      }
+      const st = String(cur.status || "").toLowerCase();
+      const terminal =
+        ["done", "settled", "closed", "cancelled"].includes(st) ||
+        Boolean(cur.settled_at);
+      if (editOnly) stepRow.is_published = cur.is_published;
+      if (terminal) stepRow.status = cur.status;
+      if (cur.metadata && typeof cur.metadata === "object") {
+        stepRow.metadata = {
+          ...cur.metadata,
+          ...(stepRow.metadata && typeof stepRow.metadata === "object"
+            ? stepRow.metadata
+            : {}),
+        };
+      }
+      const { desafio_id: _d, ...patch } = stepRow;
+      const updated = await sb(
+        `/rest/v1/desafio_steps?id=eq.${encodeURIComponent(step.id)}`,
+        { method: "PATCH", token: auth, body: patch }
+      );
+      stepsOut.push(Array.isArray(updated) ? updated[0] : updated);
+    } else if (step && (step.match_label || step.home_team || step.market_name_casa)) {
+      const inserted = await sb("/rest/v1/desafio_steps", {
+        method: "POST",
+        token: auth,
+        body: stepRow,
+      });
+      stepsOut.push(Array.isArray(inserted) ? inserted[0] : inserted);
+    }
+  }
+
+  const rows = await sb(
+    `/rest/v1/desafios?select=*,desafio_steps(*)&id=eq.${encodeURIComponent(id)}&limit=1`,
+    { token: auth }
+  );
+  return Array.isArray(rows) && rows[0]
+    ? rows[0]
+    : { id, desafio_steps: stepsOut };
+}
+
 function nCents(v) {
   const x = Number(v);
   return Number.isFinite(x) ? x : 0;
@@ -4661,6 +4776,18 @@ async function handleApi(req, res) {
     try {
       const body = await parseBody(req);
       const token = bearerFromReq(req);
+      // admin-desafios-edit-preserva-publicacao-v1
+      const wantsEdit =
+        body?.id &&
+        !body.publish_only &&
+        (body.edit_only === true ||
+          body.editOnly === true ||
+          String(body.mode || "").toLowerCase() === "edit_only" ||
+          (Array.isArray(body.steps) && body.steps.length > 0));
+      if (wantsEdit) {
+        const updated = await upsertDesafio({ ...body, edit_only: true }, token);
+        return sendJson(res, 200, { ok: true, desafio: updated });
+      }
       const created = await createDesafio(body, token);
       return sendJson(res, 201, { ok: true, desafio: created });
     } catch (err) {

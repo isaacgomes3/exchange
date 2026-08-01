@@ -1171,6 +1171,27 @@ async function insertDesafioRow(auth, desafioRow) {
 
 async function createDesafio(token, body) {
   const auth = token || SERVICE_KEY;
+  // Publicar desafio existente (área do cliente) — espelha prelive
+  if (
+    body?.id &&
+    (body.publish_only || (body.is_active && !body.steps && !body.step))
+  ) {
+    const patched = await sb(
+      `/rest/v1/desafios?id=eq.${encodeURIComponent(body.id)}`,
+      {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          is_active: true,
+          status: "active",
+          published_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      }
+    );
+    const row = Array.isArray(patched) ? patched[0] : patched;
+    return row || { id: body.id, is_active: true };
+  }
   const stepIn = body.step || (body.steps && body.steps[0]) || {};
   const desafioRow = buildDesafioRow(body);
   if (desafioRow.number == null) {
@@ -1220,22 +1241,105 @@ async function createDesafio(token, body) {
   return { ...desafio, desafio_steps: stepsOut.filter(Boolean) };
 }
 
+/**
+ * Atualiza desafio existente (etapas + metadados).
+ * Marker: admin-desafios-edit-preserva-publicacao-v1
+ * Com edit_only: NÃO mexe em is_active / status / published_at
+ * (editar sem retirar da grade).
+ */
 async function upsertDesafio(token, body) {
   const auth = token || SERVICE_KEY;
-  if (!body?.id) return createDesafio(auth, body);
+  if (!body?.id) return createDesafio(token, body);
+
+  const editOnly =
+    body.edit_only === true ||
+    body.editOnly === true ||
+    String(body.mode || "").toLowerCase() === "edit_only";
+
+  const id = String(body.id).trim();
+  const existingRows = await sb(
+    `/rest/v1/desafios?select=id,number,is_active,status,published_at,deleted_at&id=eq.${encodeURIComponent(id)}&limit=1`,
+    { token: SERVICE_KEY }
+  );
+  const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+  if (!existing) {
+    const err = new Error("Desafio não encontrado");
+    err.status = 404;
+    throw err;
+  }
+  if (existing.deleted_at) {
+    const err = new Error("Desafio excluído — restaure antes de editar.");
+    err.status = 409;
+    throw err;
+  }
 
   const desafioRow = buildDesafioRow(body);
   delete desafioRow.number;
-  await sb(`/rest/v1/desafios?id=eq.${encodeURIComponent(body.id)}`, {
+  if (body.number != null && Number(body.number) > 0) {
+    desafioRow.number = Number(body.number);
+  }
+
+  // admin-desafios-edit-preserva-publicacao-v1
+  if (editOnly) {
+    delete desafioRow.is_active;
+    delete desafioRow.status;
+    delete desafioRow.published_at;
+  } else if (existing.is_active && desafioRow.is_active) {
+    // re-save de ativo: não sobrescreve published_at
+    delete desafioRow.published_at;
+  }
+
+  await sb(`/rest/v1/desafios?id=eq.${encodeURIComponent(id)}`, {
     method: "PATCH",
     token: auth,
-    body: desafioRow,
+    body: { ...desafioRow, updated_at: new Date().toISOString() },
   });
+
+  const publishFlag = editOnly
+    ? Boolean(existing.is_active)
+    : Boolean(desafioRow.is_active);
 
   const stepsOut = [];
   for (const step of body.steps || []) {
-    const stepRow = buildStepRow(body.id, step, desafioRow.is_active);
+    const stepRow = buildStepRow(id, step, publishFlag);
     if (step.id) {
+      const curSteps = await sb(
+        `/rest/v1/desafio_steps?select=id,status,settled_at,is_published,used_liquidity_cents,liquidity_cents,metadata&id=eq.${encodeURIComponent(step.id)}&limit=1`,
+        { token: SERVICE_KEY }
+      );
+      const cur = Array.isArray(curSteps) ? curSteps[0] : null;
+      if (!cur) {
+        const err = new Error(`Etapa ${step.id} não encontrada`);
+        err.status = 404;
+        throw err;
+      }
+      const used = Math.max(0, Number(cur.used_liquidity_cents) || 0);
+      const nextLiq = Number(stepRow.liquidity_cents);
+      if (Number.isFinite(nextLiq) && nextLiq < used) {
+        const err = new Error(
+          `Liquidez da etapa não pode ser menor que o já utilizado (R$ ${(used / 100).toFixed(2).replace(".", ",")}).`
+        );
+        err.status = 409;
+        throw err;
+      }
+      const st = String(cur.status || "").toLowerCase();
+      const terminal =
+        ["done", "settled", "closed", "cancelled"].includes(st) ||
+        Boolean(cur.settled_at);
+      if (editOnly) {
+        stepRow.is_published = cur.is_published;
+      }
+      if (terminal) {
+        stepRow.status = cur.status;
+      }
+      if (cur.metadata && typeof cur.metadata === "object") {
+        stepRow.metadata = {
+          ...cur.metadata,
+          ...(stepRow.metadata && typeof stepRow.metadata === "object"
+            ? stepRow.metadata
+            : {}),
+        };
+      }
       const { desafio_id: _d, ...patch } = stepRow;
       const updated = await sb(
         `/rest/v1/desafio_steps?id=eq.${encodeURIComponent(step.id)}`,
@@ -1253,10 +1357,12 @@ async function upsertDesafio(token, body) {
   }
 
   const rows = await sb(
-    `/rest/v1/desafios?select=*,desafio_steps(*)&id=eq.${encodeURIComponent(body.id)}&limit=1`,
+    `/rest/v1/desafios?select=*,desafio_steps(*)&id=eq.${encodeURIComponent(id)}&limit=1`,
     { token: auth }
   );
-  return Array.isArray(rows) && rows[0] ? rows[0] : { id: body.id, desafio_steps: stepsOut };
+  return Array.isArray(rows) && rows[0]
+    ? rows[0]
+    : { id, desafio_steps: stepsOut };
 }
 
 async function listPendingDesafioParticipations(desafioId) {
@@ -9096,12 +9202,28 @@ const server = createServer(async (req, res) => {
         } catch {
           return sendJson(res, 400, { error: "JSON inválido" });
         }
+        // admin-desafios-edit-preserva-publicacao-v1 — id + steps → upsert
+        const wantsEdit =
+          body?.id &&
+          (body.edit_only === true ||
+            body.editOnly === true ||
+            String(body.mode || "").toLowerCase() === "edit_only" ||
+            (Array.isArray(body.steps) && body.steps.length > 0));
+        if (wantsEdit && !body.publish_only) {
+          // HTTP com id+steps = editar in-place (nunca despublica)
+          const updated = await upsertDesafio(token, {
+            ...body,
+            edit_only: true,
+          });
+          return sendJson(res, 200, { ok: true, desafio: updated });
+        }
         const created = await createDesafio(token, body);
         return sendJson(res, 201, { ok: true, desafio: created });
       }
       return sendJson(res, 405, { error: "method_not_allowed" });
     } catch (err) {
-      return sendJson(res, 500, {
+      const status = Number(err?.status) || 500;
+      return sendJson(res, status, {
         error: err instanceof Error ? err.message : String(err),
       });
     }
