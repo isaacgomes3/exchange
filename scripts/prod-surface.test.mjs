@@ -96,10 +96,24 @@ describe("tamanho do desvio", () => {
 });
 
 describe("o auditor documenta o próprio uso", () => {
-  it("explica variáveis e código de saída", () => {
-    const src = readFileSync(resolve(root, "scripts/audit-prod-drift.mjs"), "utf8");
+  const src = readFileSync(resolve(root, "scripts/audit-prod-drift.mjs"), "utf8");
+
+  it("explica as variáveis de ambiente", () => {
     assert.match(src, /ARBISHIELD_MAINLINE_REF/);
     assert.match(src, /ARBISHIELD_ORIGIN/);
-    assert.match(src, /process\.exit\(bad\.length \? 1 : 0\)/);
+    assert.match(src, /ARBISHIELD_AUDIT_ALLOW_BEHIND/);
+  });
+
+  it("o código de saída olha o que é alarme, não todo problema", () => {
+    assert.match(src, /process\.exit\(alarming\.length \? 1 : 0\)/);
+  });
+
+  it("ALLOW_BEHIND tolera só atraso — nunca arquivo sem commit", () => {
+    const from = src.indexOf("const alarming");
+    assert.ok(from > 0, "expressão alarming não encontrada");
+    const block = src.slice(from, src.indexOf("console.log", from));
+    assert.match(block, /"ATRASADO"/);
+    assert.match(block, /"SEM FONTE"/);
+    assert.doesNotMatch(block, /"DESVIO"/, "DESVIO nunca pode ser tolerado");
   });
 });
