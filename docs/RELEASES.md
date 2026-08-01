@@ -37,6 +37,7 @@ troca o symlink → retenção → reload do nginx → confirma pelo `/__version
 | `--dry-run` | baixa, monta e valida sem instalar nem trocar |
 | `--adopt-webroot` | **primeira vez:** guarda o `v2` atual e o troca por symlink |
 | `--rollback` | volta para a release anterior do `.history` |
+| `--list` | lista as releases instaladas e marca a que está no ar |
 | `--force` | publica mesmo sendo anterior/divergente (última instância) |
 
 Variáveis: `ARBISHIELD_WEB` (default `/var/www/arbishield`), `ARBISHIELD_ORIGIN`,

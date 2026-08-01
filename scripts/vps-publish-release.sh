@@ -17,6 +17,7 @@
 #   --dry-run               baixa, monta e valida sem trocar nada
 #   --adopt-webroot         primeira vez: troca o diretório v2 por symlink de release
 #   --rollback              volta para a release anterior
+#   --list                  mostra as releases instaladas e qual está no ar
 #   --force                 publica mesmo sendo anterior/divergente (última instância)
 set -euo pipefail
 
@@ -33,6 +34,7 @@ REF="main"
 DRY_RUN=0
 ADOPT=0
 ROLLBACK=0
+LIST=0
 FORCE=0
 
 log() { echo "==> $*"; }
@@ -47,6 +49,7 @@ while [[ $# -gt 0 ]]; do
     --dry-run) DRY_RUN=1; shift ;;
     --adopt-webroot) ADOPT=1; shift ;;
     --rollback) ROLLBACK=1; shift ;;
+    --list) LIST=1; shift ;;
     --force) FORCE=1; shift ;;
     *) die "opcao desconhecida: $1" ;;
   esac
@@ -120,6 +123,29 @@ confirm_live() {
     warn "no ar respondeu '${got:0:12}' (esperado ${expected:0:12}) — confira o root do nginx"
   fi
 }
+
+# -------------------------------------------------------------------- list ----
+if [[ "$LIST" == "1" ]]; then
+  live=""
+  [[ -L "$LIVE_DIR" ]] && live="$(basename "$(readlink -f "$LIVE_DIR")")"
+  log "releases em $RELEASES"
+  found=0
+  for dir in "$RELEASES"/*; do
+    [[ -d "$dir" ]] || continue
+    name="$(basename "$dir")"
+    marker="  "
+    [[ "$name" == "$live" ]] && marker="->"
+    built=""
+    [[ -f "$dir/__version.json" ]] && built="$(json_field "$dir/__version.json" builtAt)"
+    printf '  %s %s  %s\n' "$marker" "${name:0:12}" "$built"
+    found=1
+  done
+  [[ "$found" == "1" ]] || echo "  (nenhuma)"
+  if [[ -z "$live" ]]; then
+    warn "$LIVE_DIR nao e symlink de release — publicacao por arquivo ainda em uso"
+  fi
+  exit 0
+fi
 
 # ---------------------------------------------------------------- rollback ----
 if [[ "$ROLLBACK" == "1" ]]; then
