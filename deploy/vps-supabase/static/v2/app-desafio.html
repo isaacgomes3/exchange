@@ -7,8 +7,11 @@
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <meta name="arbishield-build" content="desafio-sem-radar-v1" />
-  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1" />
-  <link rel="stylesheet" href="/v2.css?v=desafio-sem-radar-1" />
+  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-dnb-flag-v1 desafio-painel-lado-time-v1 desafio-casa-logo-v1" />
+  <!-- desafio-dnb-flag-v1: Empate Anula marca V/× pelo time nomeado; empate = E (estorno) -->
+  <!-- desafio-painel-lado-time-v1: cada quadro embaixo do time em que aposta -->
+  <!-- desafio-casa-logo-v1: logo da casa de aposta no topo do quadro -->
+  <link rel="stylesheet" href="/v2.css?v=desafio-painel-lado-time-1" />
   <style>
     /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
     .dz-sb-market {
@@ -59,6 +62,21 @@
       background: #dc2626 !important;
       border-color: rgba(248, 113, 113, 0.65) !important;
       box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.25) !important;
+    }
+    .dz-mkt-flag.is-void {
+      color: #08140a !important;
+      background: #fbbf24 !important;
+      border-color: rgba(251, 191, 36, 0.85) !important;
+      box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.25) !important;
+      font-size: 10px !important;
+    }
+    /* Cada quadro embaixo do time em que aposta: mandante à esquerda. */
+    .dz-v2-compare.is-swapped .dz-v2-panel.casa { order: 1 !important; }
+    .dz-v2-compare.is-swapped .dz-v2-panel.arbi { order: 2 !important; }
+    /* Empilhado (1 coluna) não tem lado — ArbiShield volta a vir primeiro. */
+    @media (max-width: 720px) {
+      .dz-v2-compare.is-swapped .dz-v2-panel.arbi,
+      .dz-v2-compare.is-swapped .dz-v2-panel.casa { order: 0 !important; }
     }
     .dz-v2-score {
       font-size: clamp(1.8rem, 4vw, 2.6rem);
@@ -526,6 +544,17 @@
         if (u.indexOf("bet365") >= 0) return "Bet365";
         if (u.indexOf("betano") >= 0) return "Betano";
         return "Casa externa";
+      }
+
+      var CASA_LOGOS = { betbra: "/brand/houses/betbra.png" };
+      var CASA_LOGO_FALLBACK = "/brand/houses/casa.svg";
+
+      /** Logo da casa de aposta — sempre devolve algo (fallback genérico). */
+      function casaBrandLogo(brand) {
+        var key = String(brand || "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, "");
+        return CASA_LOGOS[key] || CASA_LOGO_FALLBACK;
       }
 
       /** Extrai eventId Soft2Bet/BetBra do link da casa. */
@@ -1246,12 +1275,69 @@
           .trim();
       }
 
+      var DNB_RE = /\bempate\s*anula(?:do|da)?\b|\bdraw\s*no\s*bet\b|\bdnb\b/;
+
+      /** Tokens úteis do nome do time (ignora sufixos genéricos tipo FC/SC). */
+      function teamNameTokens(s) {
+        return normMarketLabel(s)
+          .replace(/[^a-z0-9\s]/g, " ")
+          .split(/\s+/)
+          .filter(function (t) {
+            return (
+              t.length >= 3 &&
+              !/^(fc|sc|ac|cf|the|de|do|da|dos|das|del|la|el|club)$/.test(t)
+            );
+          });
+      }
+
+      /** Nomes se sobrepõem (ex.: "LASK LINZ" ↔ "LASK", "MEDELIN" ↔ "Medellín"). */
+      function namesOverlap(a, b) {
+        var ta = teamNameTokens(a);
+        var tb = teamNameTokens(b);
+        for (var i = 0; i < ta.length; i++) {
+          for (var j = 0; j < tb.length; j++) {
+            var x = ta[i];
+            var y = tb[j];
+            if (x === y) return true;
+            if (
+              x.length >= 4 &&
+              y.length >= 4 &&
+              (x.indexOf(y) >= 0 || y.indexOf(x) >= 0)
+            ) {
+              return true;
+            }
+            if (x.length >= 5 && y.length >= 5) {
+              var pref = 0;
+              while (pref < x.length && pref < y.length && x[pref] === y[pref]) {
+                pref += 1;
+              }
+              if (pref >= 5) return true;
+            }
+          }
+        }
+        return false;
+      }
+
+      /**
+       * Em qual time do jogo o mercado aposta.
+       * Retorno: "home" | "away" | null (indefinido / mercado sem time)
+       */
+      function marketTeamSide(name, teams) {
+        var pick = normMarketLabel(name).replace(DNB_RE, " ").trim();
+        if (!pick) return null;
+        var onHome = namesOverlap(pick, (teams && teams.homeTeam) || "");
+        var onAway = namesOverlap(pick, (teams && teams.awayTeam) || "");
+        if (onHome === onAway) return null;
+        return onHome ? "home" : "away";
+      }
+
       /**
        * Resultado só quando já está decidido (não “provisório”).
        * Ex. BTTS Não ao vivo 0-1 → pending; se o outro marcar → lose (×) na hora.
-       * Retorno: "win" | "lose" | "pending" | null
+       * Empate Anula (DNB) resolve pelo time nomeado — não é aposta no empate.
+       * Retorno: "win" | "lose" | "void" | "pending" | null
        */
-      function marketDecidedStatus(name, home, away, finished) {
+      function marketDecidedStatus(name, home, away, finished, teams) {
         if (!Number.isFinite(home) || !Number.isFinite(away)) return null;
         var n = normMarketLabel(name);
         if (!n) return null;
@@ -1272,6 +1358,17 @@
           }
           if (done) return isNo ? "win" : "lose";
           return "pending";
+        }
+
+        // Empate Anula / Draw No Bet: aposta no time, com estorno se der empate.
+        if (DNB_RE.test(n)) {
+          if (!done) return "pending";
+          if (home === away) return "void";
+          var side = marketTeamSide(n, teams);
+          // Sem saber qual time foi escolhido, não marca nada (melhor que marcar errado).
+          if (!side) return null;
+          if (side === "home") return home > away ? "win" : "lose";
+          return away > home ? "win" : "lose";
         }
 
         var total = home + away;
@@ -1334,19 +1431,25 @@
         };
       }
 
-      function marketFlagHtml(name, liveInfo) {
+      function marketFlagHtml(name, liveInfo, teams) {
         if (!liveInfo) return "";
         var sc = scoresFromLiveInfo(liveInfo);
         var status = marketDecidedStatus(
           name,
           sc.home,
           sc.away,
-          !!liveInfo.finished
+          !!liveInfo.finished,
+          teams || null
         );
         if (status == null) return "";
         if (status === "pending") {
           return (
             '<span class="dz-mkt-flag is-pending" title="Aguardando resultado" aria-label="Aguardando resultado"></span>'
+          );
+        }
+        if (status === "void") {
+          return (
+            '<span class="dz-mkt-flag is-void" title="Empate anula — valor estornado" aria-label="Empate anula — valor estornado">E</span>'
           );
         }
         var win = status === "win";
@@ -1364,10 +1467,10 @@
         );
       }
 
-      function marketLineHtml(name, liveInfo) {
+      function marketLineHtml(name, liveInfo, teams) {
         var flag = "";
         if (liveInfo && (liveInfo.live || liveInfo.finished || liveInfo.score)) {
-          flag = marketFlagHtml(name, liveInfo);
+          flag = marketFlagHtml(name, liveInfo, teams);
         }
         return (
           '<div class="dz-sb-market">' +
@@ -1526,6 +1629,13 @@
 
         var defaultStake = item.entradaCents || MIN_ACCESS_CENTS;
         var sides = calcSides(item, defaultStake);
+        var teams = { homeTeam: item.homeTeam, awayTeam: item.awayTeam };
+        // Cada quadro fica embaixo do time em que aposta (mandante à esquerda).
+        var arbiSide = marketTeamSide(item.marketArbi, teams);
+        var casaSide = marketTeamSide(item.marketCasa, teams);
+        var swapPanels = arbiSide
+          ? arbiSide === "away"
+          : casaSide === "home";
 
         var liq = phase !== "live" && phase !== "done" ? liquidityShown(item, now) : null;
         var liqHtml = "";
@@ -1626,11 +1736,13 @@
           "</div>" +
           teamBlock(item.awayTeam, item.awayLogo, "is-away") +
           "</div>" +
-          '<div class="dz-v2-compare">' +
+          '<div class="dz-v2-compare' +
+          (swapPanels ? " is-swapped" : "") +
+          '">' +
           '<div class="dz-v2-panel arbi" data-side="arbi">' +
           '<div class="dz-v2-panel-top"><div class="dz-v2-panel-brand"><img src="/brand/favicon-192.png" alt="" width="20" height="20" />ArbiShield</div>' +
           '<span class="dz-v2-chip arbi">Maior retorno</span></div>' +
-          marketLineHtml(item.marketArbi, item.liveInfo) +
+          marketLineHtml(item.marketArbi, item.liveInfo, teams) +
           '<div class="dz-sb-field"><span class="l">Odd</span><strong class="dz-sb-odd arbi" data-arbi-odd>' +
           esc(fmtOdd(item.arbiOdd)) +
           "</strong></div>" +
@@ -1651,10 +1763,14 @@
           arbiCta +
           "</div>" +
           '<div class="dz-v2-panel casa" data-side="casa">' +
-          '<div class="dz-v2-panel-top"><div class="dz-v2-panel-brand">' +
+          '<div class="dz-v2-panel-top"><div class="dz-v2-panel-brand"><img src="' +
+          esc(casaBrandLogo(item.casaBrand)) +
+          '" alt="" width="20" height="20" onerror="this.onerror=null;this.src=\'' +
+          CASA_LOGO_FALLBACK +
+          '\'" />' +
           esc(item.casaBrand) +
           '</div><span class="dz-v2-chip casa">Casa de aposta</span></div>' +
-          marketLineHtml(item.marketCasa, item.liveInfo) +
+          marketLineHtml(item.marketCasa, item.liveInfo, teams) +
           '<div class="dz-sb-field"><span class="l">Odd</span><strong class="dz-sb-odd casa">' +
           esc(fmtOdd(item.casaOdd)) +
           "</strong></div>" +
