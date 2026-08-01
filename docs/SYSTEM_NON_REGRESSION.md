@@ -134,25 +134,24 @@ indicação perde. O termo sai da **indicação**, igual em todas as telas:
 
 | Outcome (interno) | Termo | O que acontece |
 |---|---|---|
-| `exchange` | **Ganho** | indicação bateu na casa externa → devolve o stake à origem, cobra só a dedução |
-| `arbishield` | **Reembolso** | indicação perdeu → destrava o stake e credita no **Saldo Reembolso** |
-| `void` / `empate_anula` | **Anula** | destrava o stake e devolve à origem |
+| `exchange` | **Ganho** | indicação bateu → congelado volta ao Apostador **com dedução** |
+| `arbishield` | **Reembolso** | indicação perdeu → congelado volta **integral** + seguro SEPARADO no **Saldo Reembolso** |
+| `void` / `empate_anula` | **Anula** | congelado volta **integral** ao Apostador |
 
-Efeito na carteira (`PROTECTION_RESULT_WALLET_EFFECT`), com Apostador 1000 e stake
-travado 500:
+**Congelado ≠ crédito** (`locked-always-returns-apostador-v1`): só defesa para não
+gastar acima do disponível. Em todas as etapas congela; ao final **sempre** volta
+ao Apostador. Única diferença: Ganho com dedução; demais integral.
+
+Após ativação (Apostador 1000 → trava 500): Apostador 500 · Travado 500
 
 | Termo | Apostador | Travado | Saldo Reembolso |
 |---|---|---|---|
-| Reembolso | 1000 | 0 | **500** |
-| Ganho | **1500** | 0 | 0 (menos a dedução) |
-| Anula | **1500** | 0 | 0 |
+| Reembolso | **1000** | 0 | **500** (seguro à parte) |
+| Ganho | **1000−dedução** | 0 | 0 |
+| Anula | **1000** | 0 | 0 |
 
-No **Reembolso** o stake **não volta ao Apostador** — vai para o Saldo Reembolso. O
-teste proíbe o rótulo desse caso dizer «à origem».
-
-A direção confere com a carteira: é no `arbishield` que o **Saldo Reembolso** é
-creditado, porque aquilo é o reembolso. O teste trava isso — `arbishield` nunca
-pode ser chamado de Ganho.
+O Saldo Reembolso no outcome `arbishield` é o **seguro**, não o congelado “virando”
+crédito. O teste trava isso — `arbishield` nunca pode ser chamado de Ganho.
 
 - Fonte: `PROTECTION_RESULT_TERMS` em `scripts/lib/protection-flow-contract.mjs`,
   espelhada em `ArbiV2.protectionResultTerm` (`v2.js`) para as telas estáticas

@@ -2,10 +2,14 @@
  * Cria proteção LAY/BACK no mesmo schema do SPA (sem RPC legado).
  *
  * TRAVADO — DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST
- * Fonte da verdade: scripts/lib/protection-flow-contract.mjs (v6 stake_lock_v1)
- * Ativação trava stake (máx. 50% restante · 1 op/evento · só antes do kickoff) ·
- * Ganhou Arbi credita stake · Ganhou Exchange R$ 0 cobra dedução ·
- * Empate Anula / Cancelar destravam.
+ * Fonte da verdade: scripts/lib/protection-flow-contract.mjs (stake_lock_v1)
+ *
+ * Ativação: CONGELA o stake (Travado) — defesa para o usuário não gastar acima
+ * do disponível. NÃO é crédito. Em todo desfecho o congelado VOLTA AO APOSTADOR
+ * (locked-always-returns-apostador-v1): Ganho com dedução; demais integral.
+ * Reembolso ainda credita seguro SEPARADO no Saldo Reembolso.
+ *
+ * Teto: máx. 50% restante · 1 op/evento · só antes do kickoff.
  */
 
 export type BalanceType = "REAL" | "DEMO" | "INVESTOR";
@@ -377,7 +381,7 @@ export async function createProtection(
     patch = { ...patch, [field]: cur - lockCents };
     balanceAfter = cur - lockCents;
   }
-  // stake_lock_v1: trava stake; dedução só no PERDEU
+  // stake_lock_v1: congela stake (defesa, não crédito); dedução só no Ganho.
 
   const { error: debitErr } = await admin
     .from("profiles")

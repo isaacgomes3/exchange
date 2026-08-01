@@ -15,19 +15,23 @@
  *   modelos antigos nem como “legado/histórico/obsoleto”.
  *
  *   Regra vigente (stake_lock_v1):
- *     - Ativação → trava stake; máx. 50% do Apostador RESTANTE naquele momento
+ *     - Ativação → CONGELA stake no Travado (defesa: impede gastar acima do
+ *       disponível). NÃO é crédito. Máx. 50% do Apostador RESTANTE naquele momento
  *       (evento 1: 50% da banca; evento 2: 50% do que sobrou; e assim por diante)
+ *     - Em TODAS as etapas o valor congela; ao final SEMPRE VOLTA AO APOSTADOR
+ *       (marker: locked-always-returns-apostador-v1).
+ *       · Ganho (exchange)     → volta COM dedução
+ *       · Reembolso/Anula/Cancel → volta INTEGRAL
  *     - 1 operação por evento (user + match): não cria 2ª proteção no mesmo jogo
  *     - Entradas só ANTES do início (starts_at); após kickoff recusa
- *     - Ganhou na ArbiShield → credita stake (Saldo Reembolso) e destrava
- *     - Ganhou na Exchange → R$ 0 Reembolso; destrava e DEVOLVE o stake à origem;
- *       cobra SÓ a dedução ArbiShield da ODD CANÔNICA do bilhete
- *       (ex.: 1000@10 → R$ 91,11 · 1000@32 → R$ 15,81).
+ *     - Reembolso (arbishield) → volta INTEGRAL ao Apostador + crédito SEPARADO
+ *       (seguro) no Saldo Reembolso — o congelado NÃO “vira” esse crédito
+ *     - Ganho (exchange) → R$ 0 Reembolso; volta ao Apostador COM dedução
+ *       da ODD CANÔNICA do bilhete (ex.: 1000@10 → R$ 91,11 · 1000@32 → R$ 15,81).
  *       A fatia Exchange 4,5% já entra no cálculo da dedução — NÃO debita de novo.
  *     - Heal: won_exchange com tx zerada/incompleta NÃO conta como creditado;
  *       reprocessa até isExchangeWalletComplete.
- *     - Empate Anula → destrava stake (devolve à origem)
- *     - Cancelar → destrava stake (devolve à origem)
+ *     - Empate Anula / Cancelar → volta INTEGRAL ao Apostador
  *     - LAY lucro fee = responsabilidade × (odd/(odd−1) − 1)
  *       ex.: 1000@10 → lucro 111,11 → Exchange 5 · cliente 15 · ArbiShield 91,11
  *       carteira: 8.067,52 + 1.000 − 91,11 = 8.976,41
@@ -138,50 +142,105 @@ export const EXCHANGE_NO_DOUBLE_COMMISSION_RULE =
  *   - indicação **perde** (ArbiShield cobre)      → **Reembolso** (`arbishield`)
  *   - empate anula                                → **Anula**     (`void`)
  *
- * Confere com a carteira: é no `arbishield` que o **Saldo Reembolso** é creditado,
- * porque aquilo é o reembolso. Só nomenclatura — os valores internos
- * (`arbishield` / `exchange` / `void`) e as regras de crédito seguem as mesmas.
+ * Congelado (Travado): SEMPRE volta ao Apostador — não é crédito, só defesa.
+ * No Reembolso há um crédito SEPARADO (seguro) no Saldo Reembolso.
  * Antes disso, o cliente lia "Ganhou" justamente quando havia sido reembolsado.
  */
 export const PROTECTION_RESULT_TERMS_VERSION = "protection-result-terms-v1";
+
+/**
+ * Pedido explícito (2026-08-01): o congelado do Apostador NÃO é crédito.
+ * Em toda ativação congela; em todo desfecho VOLTA AO APOSTADOR.
+ * Única diferença: Ganho volta com dedução; demais situações voltam integral.
+ * Marker exigido em testes / health / settle — não renomear.
+ */
+export const LOCKED_ALWAYS_RETURNS_APOSTADOR_RULE =
+  "locked-always-returns-apostador-v1";
 
 export const PROTECTION_RESULT_TERMS = Object.freeze({
   arbishield: Object.freeze({
     term: "Reembolso",
     kind: "reembolso",
-    // O stake sai de travado e ArbiShield o credita no Saldo Reembolso — não
-    // volta ao Apostador. Ver PROTECTION_RESULT_WALLET_EFFECT.
-    hint: "Indicação perdeu — destrava o stake e ArbiShield credita no Saldo Reembolso",
+    // Congelado volta INTEGRAL ao Apostador; o Saldo Reembolso é seguro à parte.
+    hint: "Indicação perdeu — congelado volta integral ao Apostador; ArbiShield credita o seguro no Saldo Reembolso",
   }),
   exchange: Object.freeze({
     term: "Ganho",
     kind: "ganho",
-    hint: "Indicação bateu na casa externa — devolve o stake à origem e cobra só a dedução",
+    hint: "Indicação bateu na casa externa — congelado volta ao Apostador com dedução",
   }),
   void: Object.freeze({
     term: "Anula",
     kind: "anula",
-    hint: "Empate anula — destrava o stake e devolve à origem",
+    hint: "Empate anula — congelado volta integral ao Apostador",
   }),
 });
 
 /**
- * Para onde o stake vai em cada resultado — o que os rótulos descrevem.
- * Marker: `protection-result-terms-v1`
+ * Para onde o CONGELADO e o seguro vão em cada resultado.
+ * Marker: `protection-result-terms-v1` · `locked-always-returns-apostador-v1`
  *
- * Exemplo com Apostador 1000 e stake travado 500:
+ * Após ativação (Apostador 1000 → trava 500): Apostador 500 · Travado 500
  *   Reembolso → Apostador 1000 · Travado 0 · Saldo Reembolso 500
- *   Ganho     → Apostador 1500 · Travado 0 · Saldo Reembolso 0   (menos a dedução)
- *   Anula     → Apostador 1500 · Travado 0 · Saldo Reembolso 0
+ *               (volta integral + seguro SEPARADO — congelado ≠ crédito)
+ *   Ganho     → Apostador 1000−dedução · Travado 0 · Saldo Reembolso 0
+ *   Anula     → Apostador 1000 · Travado 0 · Saldo Reembolso 0
  *
- * Ou seja: no **Reembolso** o stake destrava e vai para o **Saldo Reembolso**;
- * é só no Ganho e no Anula que ele volta para a carteira de origem.
+ * Em TODOS os casos o Travado volta ao Apostador. Só no Ganho há dedução
+ * nessa volta. No Reembolso o Saldo Reembolso é crédito de seguro à parte.
  */
 export const PROTECTION_RESULT_WALLET_EFFECT = Object.freeze({
-  arbishield: "destrava o stake e credita o mesmo valor no Saldo Reembolso",
-  exchange: "destrava e devolve o stake à origem, cobrando só a dedução",
-  void: "destrava e devolve o stake à origem",
+  arbishield:
+    "congelado volta INTEGRAL ao Apostador; credita seguro (mesmo valor) no Saldo Reembolso — congelado não é esse crédito",
+  exchange:
+    "congelado volta ao Apostador COM dedução; R$ 0 no Saldo Reembolso",
+  void: "congelado volta INTEGRAL ao Apostador",
 });
+
+/**
+ * Efeito do valor CONGELADO (Travado) no settle — defesa, nunca crédito.
+ * Pedido explícito: em todas as etapas congela; ao final sempre volta ao Apostador.
+ * Ganho → com dedução; demais → integral. Seguro Reembolso é campo separado.
+ */
+export function lockedStakeSettleEffect(row, outcome) {
+  const o = normalizeSettleOutcome(outcome);
+  const stake = n(row?.responsibility_cents || row?.amount_cents);
+  const fee = settlementDeductionCents(row);
+  if (isFeeUpfrontProtection(row)) {
+    return Object.freeze({
+      rule: LOCKED_ALWAYS_RETURNS_APOSTADOR_RULE,
+      applies: false,
+      unlockLockedCents: 0,
+      returnToApostadorCents: 0,
+      chargeDeductionCents: 0,
+      creditReembolsoInsuranceCents: 0,
+      returnsIntegral: false,
+    });
+  }
+  if (!o || stake <= 0) {
+    return Object.freeze({
+      rule: LOCKED_ALWAYS_RETURNS_APOSTADOR_RULE,
+      applies: true,
+      unlockLockedCents: 0,
+      returnToApostadorCents: 0,
+      chargeDeductionCents: 0,
+      creditReembolsoInsuranceCents: 0,
+      returnsIntegral: true,
+    });
+  }
+  return Object.freeze({
+    rule: LOCKED_ALWAYS_RETURNS_APOSTADOR_RULE,
+    applies: true,
+    unlockLockedCents: stake,
+    /** Sempre: Travado → Apostador. */
+    returnToApostadorCents: stake,
+    /** Só no Ganho: cobra dedução DEPOIS da volta. */
+    chargeDeductionCents: o === "exchange" ? fee : 0,
+    /** Só no Reembolso: seguro SEPARADO (não é o congelado). */
+    creditReembolsoInsuranceCents: o === "arbishield" ? stake : 0,
+    returnsIntegral: o !== "exchange",
+  });
+}
 
 /** Termo canônico de um outcome; "" quando ainda não há resultado. */
 export function protectionResultTerm(outcome) {
@@ -242,28 +301,36 @@ export const PROTECTION_FLOW_SPEC = Object.freeze({
   }),
   outcomes: Object.freeze({
     arbishield: Object.freeze({
+      /** Seguro SEPARADO no Saldo Reembolso — não é o congelado. */
       creditStakeToReembolso: true,
       unlock: true,
+      /** Congelado sempre volta ao Apostador (integral). */
+      unlockReturnToOrigin: true,
+      returnsIntegral: true,
       chargeDeduction: false,
     }),
     exchange: Object.freeze({
       creditReembolso: false,
       creditTotal: 0,
       chargeDeductionOnly: true,
-      /** Pedido explícito 2026-07-27: destrava E devolve o stake à origem. */
+      /** Congelado volta ao Apostador COM dedução. */
       unlockWithoutReturn: false,
       unlockReturnToOrigin: true,
+      returnsIntegral: false,
       /** 4,5% já líquido na dedução — não debita de novo na carteira. */
       chargeExchangeCommission: false,
     }),
     void: Object.freeze({
       unlockReturnToOrigin: true,
+      returnsIntegral: true,
       creditReembolso: false,
     }),
     cancel: Object.freeze({
       unlockReturnToOrigin: true,
+      returnsIntegral: true,
     }),
   }),
+  lockedAlwaysReturnsApostador: LOCKED_ALWAYS_RETURNS_APOSTADOR_RULE,
 });
 
 /** Marker da regra vigente. */
@@ -664,22 +731,23 @@ export function settlementDeductionCents(row) {
 }
 
 /**
- * Regras de crédito no settle (TRAVADAS) — stake_lock_v1:
+ * Partes do CRÉDITO DE SEGURO / devolução via bucket no settle — stake_lock_v1.
  *
- *   - Ganhou na ArbiShield → stake (Saldo Reembolso) + destrava
- *   - Ganhou na Exchange   → 0 Reembolso; destrava e DEVOLVE stake à origem;
- *     cobra SÓ dedução (caller NÃO debita comissão 4,5% de novo)
- *   - Empate Anula / void → stake (caller destrava/devolve à origem — NÃO Reembolso)
+ * O CONGELADO é outra coisa (ver lockedStakeSettleEffect):
+ *   sempre volta ao Apostador; Ganho com dedução; demais integral.
  *
- * Ativação: trava stake; máx. 50% do Apostador restante naquele momento
- * (recalcula a cada evento sobre o que sobrou após travas anteriores).
+ * Este helper descreve o valor que o caller credita no bucket de settle:
+ *   - Reembolso (arbishield) → stake no Saldo Reembolso (seguro SEPARADO;
+ *     o caller TAMBÉM devolve o congelado ao Apostador)
+ *   - Ganho (exchange)      → 0 (só volta congelado − dedução, no caller)
+ *   - Anula (void)          → stake na origem (= a própria volta do congelado)
  *
  * Histórico fee_upfront_v1 (só linhas antigas):
  *   - ArbiShield → stake + dedução (Reembolso)
  *   - Exchange   → 0
  *   - void → só dedução (Reembolso)
  *
- * Marker: settle-exchange-nunca-reembolso-v1 · settle-exchange-devolve-cobra-v7 · stake-lock-v1
+ * Marker: settle-exchange-nunca-reembolso-v1 · locked-always-returns-apostador-v1 · stake-lock-v1
  */
 export function settlementCreditParts(row, outcome) {
   const amount = n(row?.responsibility_cents || row?.amount_cents);
@@ -708,9 +776,10 @@ export function settlementCreditCents(row, outcome) {
 }
 
 /**
- * Bucket de crédito após settle:
- * - ArbiShield → sempre Saldo Reembolso
- * - void stake_lock → carteira de origem (balance); fee_upfront void → Reembolso
+ * Bucket do crédito de settle (seguro / devolução via credit parts):
+ * - ArbiShield → Saldo Reembolso (seguro; congelado volta à origem no caller)
+ * - void stake_lock → carteira de origem (= volta do congelado)
+ * - fee_upfront void → Reembolso
  */
 export function creditBucketForSettlement(_balanceType, row, outcome) {
   const o = normalizeSettleOutcome(outcome);

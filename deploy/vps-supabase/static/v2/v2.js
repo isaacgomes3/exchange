@@ -402,23 +402,27 @@
    * Espelha scripts/lib/protection-flow-contract.mjs — se divergir, o CI acusa.
    * A ArbiShield não é casa de aposta: não gera ganho, só reembolsa quando a
    * indicação perde. Indicação ganha (bateu na casa) = Ganho; indicação perde =
-   * Reembolso; empate anula = Anula. Só nomenclatura.
+   * Reembolso; empate anula = Anula.
+   *
+   * Congelado (Travado): SEMPRE volta ao Apostador — não é crédito, só defesa
+   * (locked-always-returns-apostador-v1). Ganho volta com dedução; demais integral.
+   * No Reembolso o Saldo Reembolso é seguro SEPARADO (não é o congelado).
    */
   var PROTECTION_RESULT_TERMS = {
     arbishield: {
       term: "Reembolso",
       kind: "reembolso",
-      hint: "Indicação perdeu — destrava o stake e ArbiShield credita no Saldo Reembolso",
+      hint: "Indicação perdeu — congelado volta integral ao Apostador; ArbiShield credita o seguro no Saldo Reembolso",
     },
     exchange: {
       term: "Ganho",
       kind: "ganho",
-      hint: "Indicação bateu na casa externa — devolve o stake à origem e cobra só a dedução",
+      hint: "Indicação bateu na casa externa — congelado volta ao Apostador com dedução",
     },
     void: {
       term: "Anula",
       kind: "anula",
-      hint: "Empate anula — destrava o stake e devolve à origem",
+      hint: "Empate anula — congelado volta integral ao Apostador",
     },
   };
 

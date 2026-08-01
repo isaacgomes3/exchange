@@ -39,23 +39,23 @@ Arquivos cobertos (lista mínima):
 
 ## Regras de produto vigentes (`stake_lock_v1`)
 
-1. **Ativação:** **trava o stake** (`locked_balance_cents`). Em **cada** evento o usuário pode apostar **no máximo 50% do saldo Apostador restante naquele momento** (`maxStakeLockCents(disponível)`). Após travar, o disponível cai; no próximo evento o teto é de novo **50% do que sobrou**, e assim sucessivamente (ex.: R$ 1000 → máx R$ 500; após usar R$ 500 resta R$ 500 → máx R$ 250). Não cobra dedução na entrada.
-2. **Uma operação por evento:** o cliente só pode ter **uma** proteção por jogo (`user` + `match`). Proteção cancelada/estornada não conta (pode tentar de novo).
-3. **Sem entrada após o início:** não aceita ativação se `now >= starts_at` (kickoff). Grade e API recusam jogos já iniciados.
-4. **LAY** = responsabilidade; **BACK** = stake.
-5. **Ganhou na ArbiShield** (`outcome: arbishield` → `lost_exchange`): **credita o stake** no Saldo Reembolso (`deduction_balance_cents`) e **destrava**.
-6. **Ganhou na Exchange** (`outcome: exchange` → `won_exchange`): **R$ 0** (não credita Reembolso); **destrava e devolve** o stake à origem; **cobra só a dedução ArbiShield da odd canônica** (ex. LAY 1000@10 → R$ 91,11 · **1000@32 → R$ 15,81**). A fatia Exchange 4,5% já entra no cálculo da dedução — **não** debita de novo. **Heal:** `won_exchange` com tx zerada/incompleta **reprocessa** até `isExchangeWalletComplete` (marker `settle-exchange-heal-incompleto-v10`). Nunca marcar terminal sem carteira completa; nunca fee hardcoded 91,11 sem odd do bilhete.
-7. **Empate Anula / void:** **destrava o stake** (devolve à origem — Real/Demo/Investidor).
-8. **Cancelar proteção:** **destrava o stake** (devolve à origem).
+1. **Ativação:** **congela o stake** (`locked_balance_cents`) — **defesa** para o usuário não gastar acima do disponível; **não é crédito**. Em **cada** evento o teto é **50% do Apostador restante** (`maxStakeLockCents(disponível)`); após congelar o disponível cai e o próximo evento recalcula (ex.: R$ 1000 → máx R$ 500; após R$ 500 resta R$ 500 → máx R$ 250). Não cobra dedução na entrada.
+2. **Congelado sempre volta ao Apostador** (`locked-always-returns-apostador-v1`): em todas as etapas congela; ao final **sempre** volta. **Ganho** → volta **com dedução**; **Reembolso / Anula / Cancelar** → volta **integral**.
+3. **Uma operação por evento:** o cliente só pode ter **uma** proteção por jogo (`user` + `match`). Proteção cancelada/estornada não conta (pode tentar de novo).
+4. **Sem entrada após o início:** não aceita ativação se `now >= starts_at` (kickoff). Grade e API recusam jogos já iniciados.
+5. **LAY** = responsabilidade; **BACK** = stake.
+6. **Reembolso** (`outcome: arbishield` → `lost_exchange`): congelado volta **integral** ao Apostador; **além disso** credita seguro SEPARADO no Saldo Reembolso (`deduction_balance_cents`) — o congelado **não** “vira” esse crédito.
+7. **Ganho** (`outcome: exchange` → `won_exchange`): **R$ 0** Reembolso; congelado volta ao Apostador **com dedução** da odd canônica (ex. LAY 1000@10 → R$ 91,11 · **1000@32 → R$ 15,81**). A fatia Exchange 4,5% já entra no cálculo — **não** debita de novo. **Heal:** `won_exchange` com tx zerada/incompleta **reprocessa** até `isExchangeWalletComplete` (marker `settle-exchange-heal-incompleto-v10`).
+8. **Empate Anula / void / Cancelar:** congelado volta **integral** ao Apostador.
 9. **LAY lucro (fees):** `resp/(odd−1)` — ex. R$1000 @10 = R$111,11 → fee **91,11** → carteira `8.067,52+1.000−91,11=**8.976,41**`; R$1000 @32 → fee **15,81** → `8.067,52+1.000−15,81=**9.051,71**`. Odd canônica: `approved_odd` > `calculations.marketOdd` > `metadata.market_odd` > `row.odd` (`settlement-odd-canonico-v10`). Marker settle: `settle-exchange-cobra-so-deducao-v9`. Helper anti-duplo: `settlementExchangeCommissionWalletCents()` sempre **0**.
 
-10. **Termo do resultado (`protection-result-terms-v1`) — pedido explícito 2026-08-01:** a ArbiShield **não é casa de aposta**, não gera ganho, só reembolsa quando a indicação perde. O nome sai da **indicação**: bateu na casa externa → **Ganho** (`exchange`); perdeu → **Reembolso** (`arbishield`); empate anula → **Anula** (`void`). Confere com a carteira — o Saldo Reembolso é creditado no `arbishield`. Fonte: `PROTECTION_RESULT_TERMS` no contrato, espelhado em `ArbiV2.protectionResultTerm`. **Proibido** «Bateu ArbiShield» / «Bateu Casa Externa» / «Ganhou» / «Perdeu», e **proibido** chamar `arbishield` de Ganho. Valores enviados ao settle seguem `arbishield` / `exchange` / `empate_anula`. Teste: `protection-result-terms.test.mjs`.
+10. **Termo do resultado (`protection-result-terms-v1`) — pedido explícito 2026-08-01:** a ArbiShield **não é casa de aposta**, não gera ganho, só reembolsa quando a indicação perde. O nome sai da **indicação**: bateu na casa externa → **Ganho** (`exchange`); perdeu → **Reembolso** (`arbishield`); empate anula → **Anula** (`void`). Congelado sempre volta ao Apostador; o Saldo Reembolso no `arbishield` é seguro à parte. Fonte: `PROTECTION_RESULT_TERMS` / `lockedStakeSettleEffect` no contrato, espelhado em `ArbiV2.protectionResultTerm`. **Proibido** «Bateu ArbiShield» / «Bateu Casa Externa» / «Ganhou» / «Perdeu», e **proibido** chamar `arbishield` de Ganho. Valores enviados ao settle seguem `arbishield` / `exchange` / `empate_anula`. Teste: `protection-result-terms.test.mjs`.
 
 Alterar qualquer item acima exige pedido explícito + atualização dos testes do contrato.
 
 ## Anti-regressão runtime (pedido 2026-07-30 / 2026-07-31)
 
-- Health `:3098`/`:3101` deve expor `protectionRuntime=protection-runtime-stake-lock-v10` + `createProtectionModel=stake_lock_v1` + `cancelRefundGuard=cancel-legacy-no-stake-overcredit-v10` (fail-hard → 503 se ≠ `stake_lock_v1` **ou** se o JSON citar modelo antigo).
+- Health `:3098`/`:3101` deve expor `protectionRuntime=protection-runtime-stake-lock-v10` + `createProtectionModel=stake_lock_v1` + `cancelRefundGuard=cancel-legacy-no-stake-overcredit-v10` + `lockedReturnsApostador=locked-always-returns-apostador-v1` (fail-hard → 503 se ≠ `stake_lock_v1` **ou** se o JSON citar modelo antigo).
 - Superfícies de produto (AGENTS/docs/UI) **nunca** citam nomes de modelos antigos — CI: `scripts/protection-cite-ban.test.mjs`.
 - Deploy de modelo antigo permanece **BLOQUEADO** sob v10 (só override explícito do dono).
 - Pós-deploy: `scripts/vps-check-pos-deploy-v10.sh` (health + `billing_model=stake_lock_v1` em proteções novas).

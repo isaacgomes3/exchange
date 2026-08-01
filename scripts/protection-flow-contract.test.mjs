@@ -128,14 +128,22 @@ describe("contrato travado — metadados", () => {
     assert.equal(PROTECTION_FLOW_SPEC.activation.oneOperationPerEvent, true);
     assert.equal(PROTECTION_FLOW_SPEC.activation.entryOnlyBeforeKickoff, true);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.arbishield.creditStakeToReembolso, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.arbishield.unlockReturnToOrigin, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.arbishield.returnsIntegral, true);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.creditReembolso, false);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.creditTotal, 0);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.chargeDeductionOnly, true);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.unlockWithoutReturn, false);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.unlockReturnToOrigin, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.returnsIntegral, false);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.exchange.chargeExchangeCommission, false);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.void.unlockReturnToOrigin, true);
+    assert.equal(PROTECTION_FLOW_SPEC.outcomes.void.returnsIntegral, true);
     assert.equal(PROTECTION_FLOW_SPEC.outcomes.cancel.unlockReturnToOrigin, true);
+    assert.equal(
+      PROTECTION_FLOW_SPEC.lockedAlwaysReturnsApostador,
+      "locked-always-returns-apostador-v1"
+    );
   });
 
   it("AGENTS.md e docs/PROTECTION_FLOW_LOCKED.md travam o fluxo", () => {
@@ -150,14 +158,16 @@ describe("contrato travado — metadados", () => {
     assert.match(agents, /solicitação explícita/);
     assert.match(agents, /docs\/PROTECTION_FLOW_LOCKED\.md/);
     assert.match(agents, /stake_lock_v1/);
-    assert.match(agents, /trava o stake/);
+    assert.match(agents, /congela o stake|congelado sempre volta/i);
+    assert.match(agents, /locked-always-returns-apostador-v1/);
+    assert.match(agents, /não é crédito/i);
     assert.match(agents, /50%/);
     assert.match(agents, /Uma operação por evento/);
     assert.match(agents, /Sem entrada após o início/);
     assert.match(agents, /Saldo Reembolso/);
-    assert.match(agents, /Ganhou na ArbiShield/);
-    assert.match(agents, /Ganhou na Exchange/);
-    assert.match(agents, /destrava e devolve/);
+    assert.match(agents, /\*\*Reembolso\*\*|outcome: arbishield/);
+    assert.match(agents, /\*\*Ganho\*\*|outcome: exchange/);
+    assert.match(agents, /volta \*\*com dedução\*\*|com dedução/i);
     assert.match(agents, /Empate Anula/);
     assert.match(agents, /8\.976,?41|91,?11|settle-exchange-cobra-so-deducao-v9/);
     assert.match(agents, /settle-exchange-heal-incompleto-v10|9\.051,?71|15,?81/);
@@ -184,7 +194,8 @@ describe("contrato travado — metadados", () => {
     assert.match(lockedDoc, /antes do início|antes do kickoff/i);
     assert.match(lockedDoc, /settle-exchange-cobra-so-deducao-v9/);
     assert.match(lockedDoc, /settle-exchange-heal-incompleto-v10|settlement-odd-canonico-v10/);
-    assert.match(lockedDoc, /Destrava e DEVOLVE|destrava e DEVOLVE|destrava e devolve/i);
+    assert.match(lockedDoc, /locked-always-returns-apostador-v1/);
+    assert.match(lockedDoc, /volta INTEGRAL|COM dedução|sempre volta ao Apostador/i);
     assert.match(lockedDoc, /8\.976,?41|91,?11/);
     assert.match(lockedDoc, /9\.051,?71|15,?81/);
   });
@@ -360,8 +371,8 @@ describe("ativação — teto 50% Apostador", () => {
 
   it("AGENTS.md descreve o teto sucessivo sobre o restante", () => {
     const agents = readFileSync(resolve(root, "AGENTS.md"), "utf8");
-    assert.match(agents, /sucessivamente/);
-    assert.match(agents, /50% do que sobrou/);
+    assert.match(agents, /recalcula|próximo evento/i);
+    assert.match(agents, /50% do Apostador restante|máx R\$ 250|resta R\$ 500/i);
   });
 });
 

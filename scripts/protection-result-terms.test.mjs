@@ -4,11 +4,10 @@
  * Pedido explícito (2026-08-01): a ArbiShield **não é casa de aposta** — não gera
  * ganho, só reembolsa quando a indicação perde. Então o nome sai da indicação:
  * bateu na casa = Ganho (`exchange`); perdeu = Reembolso (`arbishield`); empate
- * anula = Anula (`void`). Confere com a carteira: o Saldo Reembolso é creditado
- * justamente no `arbishield`.
+ * anula = Anula (`void`).
  *
- * Antes, o cliente lia "Ganhou" quando havia sido reembolsado — este teste trava
- * a direção para não inverter de novo.
+ * Congelado: sempre volta ao Apostador (defesa, não crédito). Ganho com dedução;
+ * demais integral. No Reembolso o Saldo Reembolso é seguro SEPARADO.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -16,10 +15,12 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import {
+  LOCKED_ALWAYS_RETURNS_APOSTADOR_RULE,
   PROTECTION_RESULT_TERMS,
   PROTECTION_RESULT_TERMS_VERSION,
   PROTECTION_RESULT_WALLET_EFFECT,
   creditBucketForSettlement,
+  lockedStakeSettleEffect,
   protectionResultHint,
   protectionResultKind,
   protectionResultTerm,
@@ -141,7 +142,7 @@ describe("as telas usam o termo único", () => {
 describe("a direção do termo casa com a carteira", () => {
   const stakeLock = { amount_cents: 100000, metadata: { billing_model: "stake_lock_v1" } };
 
-  it("Reembolso é o outcome que credita — não pode ser chamado de Ganho", () => {
+  it("Reembolso é o outcome que credita o seguro — não pode ser chamado de Ganho", () => {
     assert.equal(settlementCreditParts(stakeLock, "arbishield").total, 100000);
     assert.equal(protectionResultTerm("arbishield"), "Reembolso");
   });
@@ -161,19 +162,41 @@ describe("a direção do termo casa com a carteira", () => {
     assert.notEqual(protectionResultTerm("lost_exchange"), "Ganho");
   });
 
-  it("no Reembolso o stake vai para o Saldo Reembolso, não para a origem", () => {
+  it("congelado sempre volta ao Apostador; seguro Reembolso é separado", () => {
+    assert.equal(
+      LOCKED_ALWAYS_RETURNS_APOSTADOR_RULE,
+      "locked-always-returns-apostador-v1"
+    );
+    const reembolso = lockedStakeSettleEffect(stakeLock, "arbishield");
+    assert.equal(reembolso.returnToApostadorCents, 100000);
+    assert.equal(reembolso.creditReembolsoInsuranceCents, 100000);
+    assert.equal(reembolso.chargeDeductionCents, 0);
+    assert.equal(reembolso.returnsIntegral, true);
+
+    const ganho = lockedStakeSettleEffect(stakeLock, "exchange");
+    assert.equal(ganho.returnToApostadorCents, 100000);
+    assert.equal(ganho.creditReembolsoInsuranceCents, 0);
+    assert.equal(ganho.returnsIntegral, false);
+
+    const anula = lockedStakeSettleEffect(stakeLock, "void");
+    assert.equal(anula.returnToApostadorCents, 100000);
+    assert.equal(anula.creditReembolsoInsuranceCents, 0);
+    assert.equal(anula.returnsIntegral, true);
+
     assert.equal(
       creditBucketForSettlement("REAL", stakeLock, "arbishield"),
       "deduction_balance_cents"
     );
     assert.match(PROTECTION_RESULT_WALLET_EFFECT.arbishield, /Saldo Reembolso/);
-    // O texto do rótulo não pode prometer devolução à origem nesse caso.
-    assert.doesNotMatch(protectionResultHint("arbishield"), /à origem/);
+    assert.match(protectionResultHint("arbishield"), /Apostador/);
+    assert.match(PROTECTION_RESULT_WALLET_EFFECT.arbishield, /congelado/i);
   });
 
-  it("Ganho e Anula devolvem à carteira de origem", () => {
+  it("Ganho e Anula devolvem ao Apostador (Ganho com dedução)", () => {
     assert.equal(creditBucketForSettlement("REAL", stakeLock, "void"), "balance_cents");
-    assert.match(PROTECTION_RESULT_WALLET_EFFECT.exchange, /à origem/);
-    assert.match(PROTECTION_RESULT_WALLET_EFFECT.void, /à origem/);
+    assert.match(PROTECTION_RESULT_WALLET_EFFECT.exchange, /Apostador/);
+    assert.match(PROTECTION_RESULT_WALLET_EFFECT.void, /Apostador/);
+    assert.match(PROTECTION_RESULT_WALLET_EFFECT.exchange, /dedução/);
+    assert.match(PROTECTION_RESULT_WALLET_EFFECT.void, /INTEGRAL/);
   });
 });
