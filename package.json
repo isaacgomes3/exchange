@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test scripts/protection-flow-contract.test.mjs scripts/protection-cite-ban.test.mjs scripts/ui-markers-contract.test.mjs scripts/desafio-market-flag.test.mjs scripts/wallet-buckets-contract.test.mjs scripts/deploy-surface-contract.test.mjs scripts/admin-ops-contract.test.mjs scripts/admin-ui-layout-contract.test.mjs scripts/admin-session-mode-contract.test.mjs scripts/profiles-db-contract.test.mjs scripts/profiles-schema.test.mjs scripts/betbra-inplay-sync.test.mjs scripts/betbra-events-radar.test.mjs scripts/prod-surface.test.mjs scripts/release-manifest.test.mjs scripts/desafio-ops-guard.test.mjs scripts/shim-release.test.mjs scripts/admin-allowlist.test.mjs scripts/deploy-ref-main.test.mjs",
+    "test": "node --test scripts/protection-flow-contract.test.mjs scripts/protection-cite-ban.test.mjs scripts/ui-markers-contract.test.mjs scripts/desafio-market-flag.test.mjs scripts/desafio-reentry-contract.test.mjs scripts/wallet-buckets-contract.test.mjs scripts/deploy-surface-contract.test.mjs scripts/admin-ops-contract.test.mjs scripts/admin-ui-layout-contract.test.mjs scripts/admin-session-mode-contract.test.mjs scripts/profiles-db-contract.test.mjs scripts/profiles-schema.test.mjs scripts/betbra-inplay-sync.test.mjs scripts/betbra-events-radar.test.mjs scripts/prod-surface.test.mjs scripts/release-manifest.test.mjs scripts/desafio-ops-guard.test.mjs scripts/shim-release.test.mjs scripts/admin-allowlist.test.mjs scripts/deploy-ref-main.test.mjs",
     "audit:prod": "node scripts/audit-prod-drift.mjs",
     "release:build": "node scripts/build-release.mjs",
     "arbishield:sync-odds": "node scripts/arbishield-sync-odds.mjs",

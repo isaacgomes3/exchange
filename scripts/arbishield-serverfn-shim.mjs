@@ -68,6 +68,93 @@ let settlementExchangeCommissionCents;
 let settlementExchangeCommissionWalletCents = () => 0;
 let EXCHANGE_COMMISSION_RATE = 0.045;
 
+// Marker: desafio-reentrada-apos-cancelar-v1
+let DESAFIO_REENTRY_CONTRACT_VERSION = "desafio-reentrada-apos-cancelar-v1";
+let isCancelledDesafioParticipationResult = (result) => {
+  const r = String(result || "")
+    .toLowerCase()
+    .trim();
+  return (
+    r === "cancelled" ||
+    r === "canceled" ||
+    r === "refunded" ||
+    r === "void_cancel"
+  );
+};
+let hasBlockingDesafioParticipationOnStep = (rows = []) =>
+  (Array.isArray(rows) ? rows : []).some(
+    (row) => row && !isCancelledDesafioParticipationResult(row.result)
+  );
+let countDesafioEntriesPlayed = (participations = []) =>
+  (Array.isArray(participations) ? participations : []).filter(
+    (p) => !isCancelledDesafioParticipationResult(p?.result)
+  ).length;
+let isDesafioStepOpenForEntry = (step, nowMs = Date.now()) => {
+  if (!step) return false;
+  const st = String(step.status || "").toLowerCase();
+  if (
+    ["done", "settled", "closed", "cancelled", "canceled"].includes(st)
+  ) {
+    return false;
+  }
+  if (step.settled_at) return false;
+  const res = String(step.result || "").toLowerCase();
+  if (
+    ["win", "zebra_protected", "lost", "void", "empate_anula"].includes(res)
+  ) {
+    return false;
+  }
+  if (["live", "in_play", "inplay", "ao_vivo"].includes(st)) return false;
+  const startsMs = step.starts_at ? new Date(step.starts_at).getTime() : NaN;
+  if (Number.isFinite(startsMs) && nowMs >= startsMs) return false;
+  return true;
+};
+let isDesafioOpenForClientEntry = (desafio) => {
+  if (!desafio || desafio.deleted_at || desafio.is_active !== true) return false;
+  const st = String(desafio.status || "").toLowerCase();
+  if (
+    ["completed", "cancelled", "canceled", "done", "finished", "deleted"].includes(
+      st
+    )
+  ) {
+    return false;
+  }
+  return true;
+};
+
+try {
+  const reentryMod = await import(
+    pathToFileURL(
+      resolve(
+        dirname(fileURLToPath(import.meta.url)),
+        "lib/desafio-reentry-contract.mjs"
+      )
+    ).href
+  );
+  if (reentryMod.DESAFIO_REENTRY_CONTRACT_VERSION) {
+    DESAFIO_REENTRY_CONTRACT_VERSION = reentryMod.DESAFIO_REENTRY_CONTRACT_VERSION;
+  }
+  if (typeof reentryMod.isCancelledDesafioParticipationResult === "function") {
+    isCancelledDesafioParticipationResult =
+      reentryMod.isCancelledDesafioParticipationResult;
+  }
+  if (typeof reentryMod.hasBlockingDesafioParticipationOnStep === "function") {
+    hasBlockingDesafioParticipationOnStep =
+      reentryMod.hasBlockingDesafioParticipationOnStep;
+  }
+  if (typeof reentryMod.countDesafioEntriesPlayed === "function") {
+    countDesafioEntriesPlayed = reentryMod.countDesafioEntriesPlayed;
+  }
+  if (typeof reentryMod.isDesafioStepOpenForEntry === "function") {
+    isDesafioStepOpenForEntry = reentryMod.isDesafioStepOpenForEntry;
+  }
+  if (typeof reentryMod.isDesafioOpenForClientEntry === "function") {
+    isDesafioOpenForClientEntry = reentryMod.isDesafioOpenForClientEntry;
+  }
+} catch {
+  /* fallback inline acima */
+}
+
 try {
   const mod = await import(
     pathToFileURL(
@@ -3753,7 +3840,12 @@ async function getDesafioCircuitForUser(desafioId, userId) {
     `/rest/v1/desafio_participations?select=id,step_id,side,result,amount_cents,profit_cents,created_at&user_id=eq.${encodeURIComponent(userId)}&desafio_id=eq.${encodeURIComponent(desafioId)}&side=eq.arbishield&order=created_at.asc&limit=50`,
     { token: SERVICE_KEY }
   ).catch(() => []);
-  const list = Array.isArray(parts) ? parts : [];
+  const all = Array.isArray(parts) ? parts : [];
+  // Pedido explícito: canceladas não consomem ciclo / não bloqueiam reentrada
+  // Marker: desafio-reentrada-apos-cancelar-v1
+  const list = all.filter(
+    (p) => !isCancelledDesafioParticipationResult(p?.result)
+  );
   const maxEntries = Math.min(5, Math.max(1, n(desafio.total_steps) || 5));
   const pending = list.find((p) => String(p.result || "").toLowerCase() === "pending");
   const won = list.filter((p) => String(p.result || "").toLowerCase() === "won");
@@ -3764,7 +3856,8 @@ async function getDesafioCircuitForUser(desafioId, userId) {
   const cycleEndedSuccess = lastResult === "lost";
   // 5 zebras won without casa → circuit exhausted (forfeit path)
   const cycleEndedMax = won.length >= maxEntries && !pending;
-  const entryIndex = list.length + (pending ? 0 : 1);
+  const entriesPlayed = countDesafioEntriesPlayed(all);
+  const entryIndex = entriesPlayed + (pending ? 0 : 1);
   // Último retorno da zebra (stake+lucro) — só sugestão de stake; NÃO é saldo travado.
   let lastPayoutCents = 0;
   if (won.length) {
@@ -3783,8 +3876,9 @@ async function getDesafioCircuitForUser(desafioId, userId) {
     cycleEndedSuccess,
     cycleEndedMax,
     targetProfitPct: Number(desafio.target_profit_pct) || 5,
-    entriesPlayed: list.length,
+    entriesPlayed,
     saldoMode: "desafio-saldo-reutilizavel-v1",
+    reentry: DESAFIO_REENTRY_CONTRACT_VERSION,
   };
 }
 
@@ -4533,13 +4627,28 @@ async function registerDesafioEntry(token, body) {
   );
   const step = Array.isArray(stepRows) ? stepRows[0] : null;
   if (!step) throw new Error("Etapa não encontrada");
-  if (String(step.status) === "done") throw new Error("Etapa já encerrada");
-  if (String(step.status) === "live") {
-    throw new Error("Jogo ao vivo — entradas encerradas");
-  }
 
-  const desafioId = step.desafio_id || step.desafios?.id;
+  const desafioMeta = step.desafios || {};
+  const desafioId = step.desafio_id || desafioMeta.id;
   if (!desafioId) throw new Error("Desafio inválido");
+
+  // Pedido explícito: reentrada só com desafio ativo e etapa ainda aberta
+  // (não em andamento / não finalizada). Marker: desafio-reentrada-apos-cancelar-v1
+  if (!isDesafioOpenForClientEntry({ ...desafioMeta, id: desafioId })) {
+    throw new Error(
+      "Desafio não disponível para entrada (inativo ou finalizado)"
+    );
+  }
+  if (!isDesafioStepOpenForEntry(step, Date.now())) {
+    const st = String(step.status || "").toLowerCase();
+    if (st === "live" || st === "in_play" || st === "inplay" || st === "ao_vivo") {
+      throw new Error("Jogo ao vivo — entradas encerradas");
+    }
+    if (String(step.status) === "done" || step.settled_at) {
+      throw new Error("Etapa já encerrada");
+    }
+    throw new Error("Etapa em andamento ou finalizada — entradas encerradas");
+  }
 
   const circuit = await getDesafioCircuitForUser(desafioId, userId);
   if (!circuit) throw new Error("Desafio não encontrado");
@@ -4568,16 +4677,18 @@ async function registerDesafioEntry(token, body) {
     amountCents =
       n(circuit.lastPayoutCents) ||
       n(circuit.retainedCents) ||
+      n(desafioMeta.initial_balance_cents) ||
       n(step.desafios?.initial_balance_cents) ||
       0;
   }
   if (!(amountCents > 0)) throw new Error("Informe o valor da aposta na zebra");
 
+  // Canceladas NÃO bloqueiam a mesma etapa (desafio-reentrada-apos-cancelar-v1)
   const existing = await sb(
-    `/rest/v1/desafio_participations?select=id&user_id=eq.${userId}&step_id=eq.${encodeURIComponent(stepId)}&side=eq.${side}&limit=1`,
+    `/rest/v1/desafio_participations?select=id,result&user_id=eq.${userId}&step_id=eq.${encodeURIComponent(stepId)}&side=eq.${side}&limit=20`,
     { token: SERVICE_KEY }
   ).catch(() => []);
-  if (Array.isArray(existing) && existing[0]) {
+  if (hasBlockingDesafioParticipationOnStep(existing)) {
     throw new Error("already registered");
   }
 

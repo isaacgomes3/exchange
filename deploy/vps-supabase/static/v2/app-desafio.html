@@ -1949,7 +1949,12 @@
               if (!res.ok) {
                 var msg = data.error || "Falha ao apostar";
                 if (String(msg).indexOf("already registered") >= 0) {
-                  msg = "Você já registrou entrada nesta etapa.";
+                  msg =
+                    "Você já tem entrada ativa nesta etapa. Se cancelou, pode tentar de novo enquanto a etapa estiver aberta.";
+                } else if (String(msg).indexOf("Etapa em andamento") >= 0) {
+                  msg = "Etapa em andamento ou finalizada — não dá para entrar.";
+                } else if (String(msg).indexOf("Desafio não disponível") >= 0) {
+                  msg = "Este desafio não está disponível para entrada agora.";
                 } else if (String(msg).indexOf("insufficient") >= 0) {
                   msg = "Saldo do Desafio insuficiente. Deposite via PIX na barra acima.";
                 } else if (String(msg).indexOf("Sem saldo retido") >= 0) {
