@@ -85,19 +85,46 @@ const money = (c) =>
   (Number(c || 0) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const metaOf = (r) => (r && r.metadata && typeof r.metadata === "object" ? r.metadata : {});
 
+/**
+ * `id` é uuid: PostgREST não aceita `like` nele, então prefixo é filtrado aqui.
+ * E o erro NÃO é engolido — antes, qualquer falha virava "não encontrada".
+ */
 async function acha(table, kind) {
-  const filtro = ID.length >= 32 ? `id=eq.${ID}` : `id=like.${ID}*`;
-  try {
-    const rows = await sb(`/rest/v1/${table}?select=*&${filtro}&limit=5`);
-    return (Array.isArray(rows) ? rows : []).map((r) => ({ ...r, _kind: kind, _table: table }));
-  } catch {
-    return [];
+  const marca = (rows) =>
+    (Array.isArray(rows) ? rows : []).map((r) => ({ ...r, _kind: kind, _table: table }));
+  if (ID.length >= 32) {
+    return marca(await sb(`/rest/v1/${table}?select=*&id=eq.${encodeURIComponent(ID)}&limit=2`));
   }
+  const alvo = ID.toLowerCase();
+  const rows = await sb(
+    `/rest/v1/${table}?select=*&order=settled_at.desc.nullslast&limit=1000`
+  );
+  return marca((Array.isArray(rows) ? rows : []).filter((r) =>
+    String(r.id || "").toLowerCase().startsWith(alvo)
+  ));
 }
 
-const achados = [...(await acha("protections", "LAY")), ...(await acha("back_protections", "BACK"))];
+const achados = [];
+const falhas = [];
+for (const [table, kind] of [
+  ["protections", "LAY"],
+  ["back_protections", "BACK"],
+]) {
+  try {
+    achados.push(...(await acha(table, kind)));
+  } catch (err) {
+    falhas.push(`${table}: ${err.message}`);
+  }
+}
 if (!achados.length) {
   console.error(`Proteção ${ID} não encontrada.`);
+  if (falhas.length) {
+    console.error("Falhas ao consultar (não é 'não existe', é erro de leitura):");
+    for (const f of falhas) console.error("  " + f);
+  } else {
+    console.error("As duas tabelas responderam e nenhum id começa com esse prefixo.");
+    console.error("Confira o id completo na tela ou no relatório de proteções.");
+  }
   process.exit(3);
 }
 if (achados.length > 1) {
