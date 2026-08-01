@@ -129,12 +129,9 @@
     },
   ];
 
+  // Aba Academia oculta no menu do cliente (pedido 2026-08-01).
+  // Marker: hide-app-academia-nav-v1 — rota /app-academia.html permanece.
   var APP_SECTIONS = [
-    {
-      title: "Aprenda",
-      color: "#9ca36a",
-      items: [p("academia", "Academia", "/app-academia.html", { badge: "Novo", glow: true })],
-    },
     {
       title: "Operações",
       color: "#9ca36a",
