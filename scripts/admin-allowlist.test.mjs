@@ -81,3 +81,31 @@ describe("frontend: a mesma lista", () => {
     }
   });
 });
+
+describe("financeiro: Ajuste de saldo (Carlos liberado)", () => {
+  const FINANCE = [
+    "isaacgomes3@gmail.com",
+    "financeiro@arbishield.com",
+    "carlos@arbishield.com",
+  ];
+  const FIN = read("deploy/vps-supabase/static/finance-admins.js");
+
+  it("shim, v2.js e finance-admins.js incluem Carlos", () => {
+    const block = SHIM.slice(
+      SHIM.indexOf("const FINANCE_ADMIN_EMAILS = new Set(["),
+      SHIM.indexOf("function tokenEmail(token)")
+    );
+    for (const email of FINANCE) {
+      assert.ok(block.includes(`"${email}"`), `shim sem ${email}`);
+      assert.ok(V2.includes(`"${email}": 1`), `v2.js sem ${email}`);
+      assert.ok(FIN.includes(`"${email}": 1`), `finance-admins.js sem ${email}`);
+    }
+  });
+
+  it("adjustAdminBalance exige finance admin", () => {
+    const start = SHIM.indexOf("async function adjustAdminBalance(");
+    assert.ok(start > 0);
+    const body = SHIM.slice(start, start + 400);
+    assert.match(body, /await requireFinanceAdmin\(token\)/);
+  });
+});

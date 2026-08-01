@@ -6,6 +6,7 @@
   var ALLOW = {
     "isaacgomes3@gmail.com": 1,
     "financeiro@arbishield.com": 1,
+    "carlos@arbishield.com": 1,
   };
   global.ArbiCanAccessFinance = function (email) {
     email = String(email || "")

@@ -2927,10 +2927,11 @@ async function requireAdminMfa(token) {
   return true;
 }
 
-/** Só estes e-mails acessam APIs da área Financeiro. */
+/** Só estes e-mails acessam APIs da área Financeiro (inclui Ajuste de saldo). */
 const FINANCE_ADMIN_EMAILS = new Set([
   "isaacgomes3@gmail.com",
   "financeiro@arbishield.com",
+  "carlos@arbishield.com",
 ]);
 
 function tokenEmail(token) {

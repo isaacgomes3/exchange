@@ -25,10 +25,11 @@
     "icaro@arbishield.com": 1,
   };
 
-  /** Só estes e-mails veem o menu/páginas Financeiro no admin */
+  /** Só estes e-mails veem o menu/páginas Financeiro no admin (e Ajuste de saldo). */
   var FINANCE_ADMIN_EMAILS = {
     "isaacgomes3@gmail.com": 1,
     "financeiro@arbishield.com": 1,
+    "carlos@arbishield.com": 1,
   };
 
   var FINANCE_PAGE_IDS = {

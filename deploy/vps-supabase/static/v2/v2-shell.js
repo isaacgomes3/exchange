@@ -298,7 +298,7 @@
         ? "Admin · v2"
         : "Líder global em proteção de apostas";
 
-    // Área Financeiro: só isaacgomes3@gmail.com e financeiro@arbishield.com
+    // Área Financeiro: isaac / financeiro / carlos (finance-admins.js + FINANCE_ADMIN_EMAILS)
     // Marker: admin-mfa-required-v1 — admin sem 2FA não entra no painel
     var canFinance = false;
     if (shell === "admin" && global.ArbiV2 && global.ArbiV2.client) {
