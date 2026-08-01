@@ -125,9 +125,15 @@ export function marketStatus(name, home, away, finished, teams) {
 /**
  * Outcome sugerido para uma proteção.
  *
- * BACK cobre quando o mercado acontece; LAY, quando não acontece. Se a proteção
- * pagou, a indicação perdeu na casa → `arbishield` (**Reembolso**). Se não pagou,
- * a indicação bateu → `exchange` (**Ganho**).
+ * A indicação **ganha** quando o mercado apostado se confirma: BACK ganha se o
+ * mercado acontece, LAY ganha se **não** acontece (ex.: LAY de placar exato ganha
+ * quando aquele placar não sai).
+ *
+ *   indicação ganhou  → `exchange`   → **Ganho**     (bateu na casa externa)
+ *   indicação perdeu  → `arbishield` → **Reembolso** (ArbiShield cobre a perda)
+ *   empate anula      → `void`       → **Anula**
+ *
+ * A ArbiShield reembolsa quando a indicação **perde** — é seguro, não aposta.
  *
  * `kind`: "BACK" | "LAY" · `marketName`: rótulo do mercado · `home`/`away`: placar.
  */
@@ -169,17 +175,20 @@ export function suggestProtectionOutcome({
     };
   }
   const aconteceu = st === "win";
-  const protecaoPagou = String(kind).toUpperCase() === "BACK" ? aconteceu : !aconteceu;
-  return protecaoPagou
+  // BACK ganha se o mercado acontece; LAY ganha se não acontece.
+  const indicacaoGanhou =
+    String(kind).toUpperCase() === "BACK" ? aconteceu : !aconteceu;
+  const mercado = `${kind} · mercado ${aconteceu ? "aconteceu" : "não aconteceu"}`;
+  return indicacaoGanhou
     ? {
-        outcome: "arbishield",
-        label: "Reembolso",
-        reason: `${kind} · mercado ${aconteceu ? "aconteceu" : "não aconteceu"} → indicação perdeu → destrava o stake e credita no Saldo Reembolso`,
-      }
-    : {
         outcome: "exchange",
         label: "Ganho",
-        reason: `${kind} · mercado ${aconteceu ? "aconteceu" : "não aconteceu"} → indicação bateu na casa → devolve o stake e cobra só a dedução`,
+        reason: `${mercado} → indicação ganhou → devolve o stake à origem e cobra só a dedução`,
+      }
+    : {
+        outcome: "arbishield",
+        label: "Reembolso",
+        reason: `${mercado} → indicação perdeu → ArbiShield credita no Saldo Reembolso`,
       };
 }
 

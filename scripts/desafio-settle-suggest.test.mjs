@@ -164,13 +164,15 @@ describe("placar exato (proteções LAY de correct score)", () => {
 describe("outcome da proteção: BACK e LAY invertem", () => {
   const base = { home: 2, away: 0, finished: true, homeTeam: "LASK", awayTeam: "Nice" };
 
-  it("LAY de placar exato que não saiu → Reembolso", () => {
+  // Regra do dono: LAY de placar que GANHA (o placar não saiu) é Ganho, não
+  // Reembolso. A ArbiShield reembolsa quando a indicação PERDE.
+  it("LAY de placar exato que não saiu → Ganho", () => {
     const r = suggestProtectionOutcome({ ...base, kind: "LAY", marketName: "Lay 0x1" });
-    assert.equal(r.outcome, "arbishield");
-    assert.equal(r.label, "Reembolso");
+    assert.equal(r.outcome, "exchange");
+    assert.equal(r.label, "Ganho");
   });
 
-  it("LAY de placar exato que saiu → Ganho", () => {
+  it("LAY de placar exato que saiu → Reembolso", () => {
     const r = suggestProtectionOutcome({
       ...base,
       home: 0,
@@ -178,16 +180,28 @@ describe("outcome da proteção: BACK e LAY invertem", () => {
       kind: "LAY",
       marketName: "Lay 0x1",
     });
-    assert.equal(r.outcome, "exchange");
-    assert.equal(r.label, "Ganho");
+    assert.equal(r.outcome, "arbishield");
+    assert.equal(r.label, "Reembolso");
   });
 
   it("BACK é o espelho do LAY no mesmo mercado e placar", () => {
     const lay = suggestProtectionOutcome({ ...base, kind: "LAY", marketName: "Mandante" });
     const back = suggestProtectionOutcome({ ...base, kind: "BACK", marketName: "Mandante" });
     assert.notEqual(lay.outcome, back.outcome);
-    assert.equal(back.outcome, "arbishield");
-    assert.equal(lay.outcome, "exchange");
+    // Mandante aconteceu (2-0): BACK ganhou → Ganho; LAY perdeu → Reembolso
+    assert.equal(back.outcome, "exchange");
+    assert.equal(lay.outcome, "arbishield");
+  });
+
+  it("Reembolso só quando a indicação perde — nunca quando ganha", () => {
+    const ganhou = suggestProtectionOutcome({ ...base, kind: "LAY", marketName: "Lay 0x1" });
+    assert.notEqual(
+      ganhou.label,
+      "Reembolso",
+      "indicação que ganha não pode virar Reembolso"
+    );
+    const perdeu = suggestProtectionOutcome({ ...base, kind: "BACK", marketName: "Lay 0x1" });
+    assert.equal(perdeu.label, "Reembolso");
   });
 
   it("empate em Empate Anula → Anula, para os dois lados", () => {
