@@ -22,6 +22,7 @@ import {
   PROD_ORIGIN,
   PROD_SURFACE,
   isTextContentType,
+  lineDelta,
   normalizeDeployedAsset,
 } from "./lib/prod-surface.mjs";
 
@@ -118,8 +119,30 @@ for (const [urlPath, repoPath] of PROD_SURFACE) {
     row.status = "OK";
     row.detail = "igual a " + mainlineRef;
   } else if (matches.length === 0) {
+    // Dizer o tamanho do desvio e de onde ele mais se aproxima — sem isso, o
+    // operador não sabe se são 2 linhas ou um arquivo inteiro.
+    let closest = null;
+    let closestDelta = Infinity;
+    for (const branch of branches) {
+      const blob = gitShow(branch, repoPath);
+      if (blob == null) continue;
+      const delta = lineDelta(blob, deployed.body);
+      if (delta < closestDelta) {
+        closestDelta = delta;
+        closest = branch;
+      }
+    }
     row.status = "DESVIO";
-    row.detail = "conteudo no ar nao existe em nenhuma branch";
+    const pieces = ["conteudo no ar nao existe em nenhuma branch"];
+    if (closest) {
+      pieces.push(
+        `+/- ${closestDelta} linha(s) de ${closest} (${branchDate.get(closest) || "?"})`
+      );
+    }
+    if (mainlineBlob != null) {
+      pieces.push(`+/- ${lineDelta(mainlineBlob, deployed.body)} linha(s) de ${mainlineRef}`);
+    }
+    row.detail = pieces.join(" · ");
     row.bad = true;
   } else if (mainlineHash == null) {
     row.status = "SEM FONTE";

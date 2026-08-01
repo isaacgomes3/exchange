@@ -45,3 +45,26 @@ export function normalizeDeployedAsset(text) {
 export function isTextContentType(contentType) {
   return /(?:html|javascript|json|css|text)/i.test(String(contentType || ""));
 }
+
+/**
+ * Quantas linhas não batem entre dois conteúdos (diferença simétrica de
+ * multiconjunto). Não é um diff exato — é uma medida rápida do tamanho do
+ * desvio, para dizer "difere em 2 linhas" em vez de só "não existe no git".
+ */
+export function lineDelta(a, b) {
+  const count = (text) => {
+    const map = new Map();
+    for (const line of normalizeDeployedAsset(text).split("\n")) {
+      const key = line.trim();
+      if (!key) continue;
+      map.set(key, (map.get(key) || 0) + 1);
+    }
+    return map;
+  };
+  const left = count(a);
+  const right = count(b);
+  let delta = 0;
+  for (const [line, n] of left) delta += Math.max(0, n - (right.get(line) || 0));
+  for (const [line, n] of right) delta += Math.max(0, n - (left.get(line) || 0));
+  return delta;
+}
