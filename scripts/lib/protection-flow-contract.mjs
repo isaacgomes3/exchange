@@ -792,3 +792,56 @@ export function calcLay(amountCents, odd) {
 export function calcBack(amountCents, odd) {
   return { ...calcFeeUpfront(amountCents, odd), input_mode: "stake" };
 }
+
+/**
+ * Vocabulário único do resultado (marker: `protection-result-terms-v1`).
+ * Espelhado em `deploy/vps-supabase/static/v2/v2.js` → ArbiV2.protectionResultTerm.
+ *
+ * Só nomenclatura — não muda crédito/destravamento do `stake_lock_v1`:
+ *   - indicação perde  → Reembolso (`arbishield`)
+ *   - indicação ganha  → Ganho     (`exchange`)
+ *   - empate anula     → Anula     (`void`)
+ */
+export const PROTECTION_RESULT_TERMS_VERSION = "protection-result-terms-v1";
+
+export const PROTECTION_RESULT_TERMS = Object.freeze({
+  arbishield: Object.freeze({
+    term: "Reembolso",
+    kind: "reembolso",
+    hint: "Indicação perdeu — destrava o stake e ArbiShield credita no Saldo Reembolso",
+  }),
+  exchange: Object.freeze({
+    term: "Ganho",
+    kind: "ganho",
+    hint: "Indicação bateu na casa externa — devolve o stake à origem e cobra só a dedução",
+  }),
+  void: Object.freeze({
+    term: "Anula",
+    kind: "anula",
+    hint: "Empate anula — destrava o stake e devolve à origem",
+  }),
+});
+
+/** Normaliza outcome para chave de PROTECTION_RESULT_TERMS (inclui status legado). */
+export function normalizeProtectionResultOutcome(outcome) {
+  const o = String(outcome == null ? "" : outcome)
+    .toLowerCase()
+    .trim()
+    .replace(/[\s-]+/g, "_");
+  if (o === "arbishield" || o === "lost_exchange") return "arbishield";
+  if (o === "exchange" || o === "won_exchange") return "exchange";
+  if (isVoidSettleOutcome(o)) return "void";
+  return "";
+}
+
+export function protectionResultTerm(outcome) {
+  return PROTECTION_RESULT_TERMS[normalizeProtectionResultOutcome(outcome)]?.term || "";
+}
+
+export function protectionResultKind(outcome) {
+  return PROTECTION_RESULT_TERMS[normalizeProtectionResultOutcome(outcome)]?.kind || "";
+}
+
+export function protectionResultHint(outcome) {
+  return PROTECTION_RESULT_TERMS[normalizeProtectionResultOutcome(outcome)]?.hint || "";
+}
