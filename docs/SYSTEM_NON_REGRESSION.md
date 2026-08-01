@@ -127,6 +127,20 @@ contrato: `scripts/lib/release-manifest.mjs` · teste: `release-manifest.test.mj
 - Cache-bust sai do build (`applyCacheBust()` → commit curto). **Proibido** `sed` de
   `?v=` no HTML publicado e escrita com `find /var/www -name` (atinge backups)
 
+## Backend versionado (`shim-release-v1`)
+
+Publicador: `scripts/vps-publish-shim.sh` · diagnóstico: `vps-diag-shim-versao.sh` ·
+teste: `shim-release.test.mjs` · runbook: `docs/RELEASES.md`.
+
+- Publica em **`/opt/arbishield/scripts/`** — é o que o `systemd` executa. Cópia na
+  raiz ficava mais nova sem estar rodando; o publicador sincroniza as duas
+- `.shim-release.json` + campo `release` no `/health` → o commit do backend passa a
+  ser consultável
+- Guarda contra publicar commit anterior/divergente (código 3), `node --check` antes
+  da troca, backup de shim+lib e **rollback automático** se o `/health` não voltar
+  com `ok=true` + `createProtectionModel=stake_lock_v1` (código 7)
+- **Proibido** voltar a publicar shim copiando arquivo por hotfix
+
 ## Auditoria de desvio (produção × git)
 
 `npm run audit:prod` — compara cada arquivo servido em produção com o conteúdo de

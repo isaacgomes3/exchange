@@ -11,6 +11,20 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 
+// Marker: shim-release-v1 — commit publicado, gravado pelo vps-publish-shim.sh.
+// Sem isso não há como saber por HTTP qual versão do backend está no ar.
+let SHIM_RELEASE = null;
+try {
+  SHIM_RELEASE = JSON.parse(
+    readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), ".shim-release.json"),
+      "utf8"
+    )
+  );
+} catch {
+  /* publicação antiga, sem sidecar */
+}
+
 // Contrato travado — import opcional (se lib faltar na VPS, usa fallback inline
 // para o shim não cair e a rota de saque continuar disponível).
 let PROTECTION_FLOW_LOCK = "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST";
@@ -9611,6 +9625,8 @@ const server = createServer(async (req, res) => {
       cancelRefundGuard: CANCEL_LEGACY_NO_STAKE_OVERCREDIT,
       exchangeChargeGuard: EXCHANGE_CHARGE_DEDUCTION_RULE,
       protectionFlowContract: PROTECTION_FLOW_CONTRACT_VERSION,
+      // Marker: shim-release-v1
+      release: SHIM_RELEASE || null,
       env: process.env.ARBISHIELD_ENV || "production",
       listen: LISTEN,
     };

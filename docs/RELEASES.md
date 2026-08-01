@@ -96,6 +96,58 @@ Gerado no build: `applyCacheBust()` reescreve os `?v=` de js/css para o commit c
 **Nunca** rodar `sed` no HTML publicado — era o que fazia o arquivo no ar não
 corresponder a commit nenhum e o desvio ficar invisível.
 
+## Backend (shim :3101) — `shim-release-v1`
+
+Publicador: `scripts/vps-publish-shim.sh` · teste: `scripts/shim-release.test.mjs`
+
+O shim era publicado por dezenas de hotfixes que gravavam em caminhos diferentes.
+O systemd executa `/opt/arbishield/scripts/arbishield-serverfn-shim.mjs`, mas havia
+cópia **mais nova e diferente** na raiz `/opt/arbishield/` — então "atualizar o
+backend" às vezes não mudava nada do que rodava, e `grep` na cópia errada dava
+resposta errada.
+
+```bash
+bash <(curl -fsSL "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-publish-shim.sh?ref=main&t=$(date +%s%N)" \
+  -H "Accept: application/vnd.github.raw" -H "User-Agent: arbishield-publish") -- --ref main
+```
+
+Etapas: resolve o ref → lê o commit no ar (`.shim-release.json`) → **guarda de
+regressão** (código 3) → `node --check` no shim e em cada lib → **backup** de
+shim+lib → instala em `scripts/` e sincroniza as cópias paralelas → grava o
+sidecar → restart → **valida `/health`** e, se não ficar saudável, **volta sozinho
+para o backup** (código 7).
+
+`/health` só é aceito com `ok=true`, `createProtectionModel=stake_lock_v1` e
+`protectionFlowContract` presente — e passa a expor `release.commit`, então dá
+para responder por HTTP qual backend está no ar.
+
+| Opção | Para quê |
+|---|---|
+| `--ref <branch\|tag\|sha>` | o que publicar (default `main`) |
+| `--dry-run` | baixa e checa sintaxe sem instalar nem reiniciar |
+| `--rollback` | volta para o backup mais recente e revalida o health |
+| `--list` | commit no ar, sha256 do arquivo em execução e backups |
+| `--force` | publica commit anterior/divergente (última instância) |
+
+### Expor o /health para a auditoria
+
+O `/health` responde em `127.0.0.1:3101` mas não sai pelo nginx, então a auditoria
+não alcança. Para expor apenas leitura:
+
+```nginx
+location = /__shim-health {
+    proxy_pass http://127.0.0.1:3101/health;
+    proxy_set_header Host $host;
+}
+```
+
+### Diagnóstico
+
+`scripts/vps-diag-shim-versao.sh` (só leitura) mostra o `ExecStart` do systemd, o
+arquivo que cada processo vivo carregou, todas as cópias no disco com sha256 e
+data, a matriz de capacidades por cópia e o health das portas. O sha256 identifica
+o commit exato comparando contra as branches.
+
 ## Conferir e reverter
 
 ```bash
