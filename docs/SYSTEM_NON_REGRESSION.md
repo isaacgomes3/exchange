@@ -72,6 +72,14 @@ Marker session admin: `DO_NOT_CHANGE_ADMIN_SESSION_MODE_WITHOUT_EXPLICIT_REQUEST
   fallback `/brand/houses/casa.svg` (sempre tem logo); não remover os assets
 - Teste: `scripts/desafio-market-flag.test.mjs` · Hotfix: `scripts/vps-hotfix-desafio-dnb-flag.sh`
 
+### Desafio — etapas liquidadas na grade (anti-regressão)
+
+- UI: `app-desafio.html` (`desafio-etapas-liquidadas-visiveis-v1`)
+- Etapas liquidadas **permanecem** na lista do cliente (não somem após settle)
+- Card mostra outcome: **Bateu Arbi** / **Bateu Casa** / **Empate Anula**; CTA desabilitado
+- Desafios `completed` do dia também entram na grade
+- Teste: `scripts/desafio-etapas-liquidadas.test.mjs`
+
 ### Desafio em andamento — liquidar, não cancelar (anti-regressão)
 
 - Marker `block-cancel-delete-andamento-v1` · teste `scripts/desafio-ops-guard.test.mjs`
