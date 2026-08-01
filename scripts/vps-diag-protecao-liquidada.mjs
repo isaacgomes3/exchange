@@ -180,12 +180,24 @@ console.log(`    Saldo Reembolso  ${money(prof?.deduction_balance_cents)}`);
 
 console.log(`\n  transações ligadas (${txs.length})`);
 for (const t of txs) {
+  const after =
+    t.balance_after_cents != null ? ` · saldo depois ${money(t.balance_after_cents)}` : "";
   console.log(
     `    ${String(t.created_at || "").slice(0, 19)}  ${String(t.type).padEnd(24)} ` +
-      `${money(t.amount_cents)}  ${metaOf(t).outcome || ""} ${metaOf(t).bucket || ""}`
+      `${money(t.amount_cents)}  ${metaOf(t).outcome || ""} ${metaOf(t).bucket || ""}${after}`
   );
 }
 if (!txs.length) console.log("    (nenhuma — ou a tabela usa outro nome/ref)");
+
+// Campos crus das transações: é aqui que se resolve "o destravamento voltou
+// para o Apostador ou não?", sem depender de leitura de código.
+for (const t of txs) {
+  const campos = Object.entries(t)
+    .filter(([k, v]) => v != null && k !== "metadata" && !/^(id|user_id|ref)$/.test(k))
+    .map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`);
+  console.log(`\n    [cru] ${String(t.type)}`);
+  console.log("      " + campos.join(" · "));
+}
 
 console.log(`\n  o que foi aplicado (${protectionResultTerm(outcomeAtual) || outcomeAtual})`);
 console.log(`    creditado ${money(atual.total)} em ${bucketAtual}`);
@@ -202,18 +214,48 @@ const lockTx = (Array.isArray(txs) ? txs : []).find((t) =>
 );
 if (lockTx) {
   const lockCents = Math.abs(Number(lockTx.amount_cents || 0));
-  const preProtecao = Number(prof?.balance_cents || 0) + lockCents;
-  console.log("\n  razão do stake (de onde saiu e onde está)");
-  console.log(`    ativação      Apostador −${money(lockCents)} · Travado +${money(lockCents)}`);
+  const hoje = Number(prof?.balance_cents || 0);
+  const apósLock = lockTx.balance_after_cents;
+
+  console.log("\n  QUAL LEITURA ESTÁ CERTA? (decide R$ " + (lockCents / 100).toFixed(2) + ")");
   console.log(
-    `    liquidação    Travado −${money(lockCents)} · ${bucketAtual} +${money(atual.total)}` +
-      "  (Apostador NÃO recebeu de volta)"
+    `    A) destravar NÃO creditou o Apostador → depois da ativação ele ficou com ${money(hoje)}`
   );
-  console.log(`    Apostador antes da proteção: ${money(preProtecao)}`);
-  if (PARA === "exchange") {
+  console.log(
+    `       (Apostador hoje ${money(hoje)} · antes de proteger ${money(hoje + lockCents)})`
+  );
+  console.log(
+    `    B) destravar CREDITOU o Apostador    → depois da ativação ele ficou com ${money(hoje - lockCents)}`
+  );
+  console.log(
+    `       (o settle devolveu ${money(lockCents)} e o levou de volta a ${money(hoje)})`
+  );
+  if (apósLock != null) {
+    const bateA = Number(apósLock) === hoje;
+    const bateB = Number(apósLock) === hoje - lockCents;
     console.log(
-      `    após a correção esperado:    ${money(preProtecao - feeCents)}` +
-        `  (= antes da proteção − dedução ${money(feeCents)})`
+      `\n    saldo registrado logo após a ativação: ${money(apósLock)} → ` +
+        (bateA ? "confirma A" : bateB ? "confirma B" : "não bate com nenhuma — investigar")
+    );
+    if (bateB) {
+      console.log(
+        `    Então a correção é: retirar ${money(atual.total)} do Reembolso e cobrar só a dedução ` +
+          `${money(feeCents)} do Apostador → ${money(hoje - feeCents)}`
+      );
+    } else if (bateA && PARA === "exchange") {
+      console.log(
+        `    Então a correção é: retirar ${money(atual.total)} do Reembolso, devolver o stake ao ` +
+          `Apostador e cobrar a dedução → ${money(hoje + lockCents - feeCents)}`
+      );
+    }
+  } else {
+    console.log(
+      "\n    a transação de trava não guarda saldo posterior — sem isso não se decide pelo log."
+    );
+    console.log(
+      "    Conferir no extrato do cliente qual era o Apostador em " +
+        String(lockTx.created_at || "").slice(0, 19) +
+        " e comparar com as duas hipóteses acima."
     );
   }
 }
