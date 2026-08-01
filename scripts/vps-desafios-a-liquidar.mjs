@@ -94,11 +94,17 @@ function stepSettled(step) {
 }
 
 /**
- * O sync grava final_score_* a cada gol, **durante** o jogo — placar presente não
- * quer dizer encerrado. Usa a mesma inferência do sync (≥105 min do início com
- * placar, ou 90'+ com ≥100 min) para não sugerir liquidar jogo em andamento.
+ * Sinal de "encerrado", em ordem de confiança:
+ *   1. `metadata.live.finished` — o próprio feed dizendo fim de jogo. Vem da API
+ *      `/api/arbishield/desafios`, que enriquece as etapas com o cache ao vivo
+ *      (a coluna `metadata` não existe no banco, então direto do Postgres isso
+ *      nunca aparece);
+ *   2. `status = done`;
+ *   3. inferência por tempo — **só serve se `starts_at` for o kickoff real**. Em
+ *      desafios lançados em lote o `starts_at` é o horário do lançamento, e aí a
+ *      inferência não vale nada; o relatório avisa quando detecta isso.
  */
-function scoreOf(step, nowMs) {
+function scoreOf(step, nowMs, trustStartsAt = true) {
   const meta = step.metadata && typeof step.metadata === "object" ? step.metadata : {};
   const live = meta.live && typeof meta.live === "object" ? meta.live : null;
   const home =
@@ -117,18 +123,22 @@ function scoreOf(step, nowMs) {
   const status = String(step.status || "").toLowerCase();
   let finished = false;
   let why = "";
-  if (status === "done") {
+  if (live && live.finished) {
+    finished = true;
+    why = "feed marcou fim de jogo" + (live.elapsed ? ` (${live.elapsed})` : "");
+  } else if (status === "done") {
     finished = true;
     why = "etapa marcada como done";
-  } else if (live && live.finished) {
-    finished = true;
-    why = "feed marcou fim de jogo";
-  } else if (inferMatchFinished(step, null, nowMs)) {
+  } else if (live && live.live) {
+    why = `ainda ao vivo${live.elapsed ? ` (${live.elapsed})` : ""}`;
+  } else if (trustStartsAt && inferMatchFinished(step, null, nowMs)) {
     finished = true;
     const mins = step.starts_at
       ? Math.floor((nowMs - new Date(step.starts_at).getTime()) / 60000)
       : null;
     why = mins != null ? `${mins} min desde o início` : "inferido pelo horário";
+  } else if (!trustStartsAt) {
+    why = "feed não confirmou e o horário de início não é confiável";
   } else {
     why = status === "live" ? "ainda ao vivo" : "sem sinal de encerramento";
   }
@@ -141,9 +151,42 @@ function scoreOf(step, nowMs) {
   };
 }
 
-const desafios = await sb(
-  "/rest/v1/desafios?select=*&deleted_at=is.null&is_active=eq.true&order=number.asc"
+const PRELIVE = (process.env.ARBISHIELD_PRELIVE || "http://127.0.0.1:3098").replace(
+  /\/$/,
+  ""
 );
+
+/**
+ * A API enriquece as etapas com o cache ao vivo (placar + fim de jogo do feed),
+ * que é o mesmo que o card do cliente mostra. Sem ela, sobra só o banco — onde
+ * `metadata` não existe e o fim de jogo não aparece.
+ */
+async function fetchFromApi() {
+  const res = await fetch(`${PRELIVE}/api/arbishield/desafios`, {
+    headers: { accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`API ${res.status}`);
+  const data = await res.json();
+  const rows = Array.isArray(data) ? data : data?.items || data?.desafios || [];
+  if (!Array.isArray(rows)) throw new Error("resposta inesperada da API");
+  return rows;
+}
+
+let apiRows = null;
+let liveSource = "banco (sem fim de jogo do feed)";
+try {
+  apiRows = await fetchFromApi();
+  liveSource = `API ${PRELIVE}/api/arbishield/desafios`;
+} catch (err) {
+  console.warn(`aviso: API de desafios indisponível (${err.message}) — usando só o banco`);
+}
+
+const desafios = apiRows
+  ? apiRows.filter((d) => d && d.is_active && !d.deleted_at)
+  : await sb(
+      "/rest/v1/desafios?select=*&deleted_at=is.null&is_active=eq.true&order=number.asc"
+    );
+desafios.sort((a, b) => Number(a.number || 0) - Number(b.number || 0));
 
 if (!desafios.length) {
   console.log("\nNenhum desafio publicado/ativo.\n");
@@ -154,12 +197,26 @@ const ids = desafios.map((d) => d.id);
 const inList = `(${ids.map((i) => `"${i}"`).join(",")})`;
 // select=* de propósito: as tabelas nasceram fora das migrations e o conjunto de
 // colunas varia entre bancos (desafio_steps.metadata, por exemplo, não existe).
-const steps = await sb(
-  `/rest/v1/desafio_steps?select=*&desafio_id=in.${inList}&order=step_index.asc`
-);
+const steps = apiRows
+  ? desafios.flatMap((d) =>
+      (Array.isArray(d.desafio_steps) ? d.desafio_steps : []).map((s) => ({
+        ...s,
+        desafio_id: s.desafio_id || d.id,
+      }))
+    )
+  : await sb(
+      `/rest/v1/desafio_steps?select=*&desafio_id=in.${inList}&order=step_index.asc`
+    );
 const parts = await sb(
   `/rest/v1/desafio_participations?select=*&desafio_id=in.${inList}`
 );
+
+// starts_at igual em etapas de jogos diferentes = horário do lançamento, não
+// kickoff. Nesse caso a inferência por tempo não vale e o relatório avisa.
+const kickoffs = new Set(
+  steps.filter((s) => !stepSettled(s) && !s.deleted_at).map((s) => String(s.starts_at || ""))
+);
+const trustStartsAt = kickoffs.size !== 1 || steps.length <= 1;
 
 if (process.env.DEBUG_COLUNAS === "1" && steps[0]) {
   console.log("\ncolunas de desafio_steps:", Object.keys(steps[0]).sort().join(", "));
@@ -176,7 +233,17 @@ for (const s of steps) {
   openByDesafio.get(s.desafio_id).push(s);
 }
 
-console.log(`\nDesafios a liquidar · ${SETTLE_SUGGEST_VERSION} · SÓ LEITURA\n`);
+console.log(`\nDesafios a liquidar · ${SETTLE_SUGGEST_VERSION} · SÓ LEITURA`);
+console.log(`fonte do placar: ${liveSource}\n`);
+if (!trustStartsAt) {
+  console.log(
+    "ATENÇÃO: todas as etapas abertas têm o MESMO starts_at " +
+      `(${[...kickoffs][0] || "?"}) — é o horário do lançamento, não o kickoff real.`
+  );
+  console.log(
+    "         Sem confirmação do feed, nenhuma etapa é dada como encerrada.\n"
+  );
+}
 
 let totalOpen = 0;
 let readyToSettle = 0;
@@ -194,7 +261,7 @@ for (const d of desafios) {
       homeTeam: s.home_team || "",
       awayTeam: s.away_team || "",
     };
-    const sc = scoreOf(s, Date.now());
+    const sc = scoreOf(s, Date.now(), trustStartsAt);
     const marketArbi = s.market_name_arbishield || s.market_name || "";
     const marketCasa = s.market_name_casa || s.market_name || "";
     const sug = suggestSettle({
