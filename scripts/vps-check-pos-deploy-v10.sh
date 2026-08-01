@@ -8,7 +8,7 @@
 #   SINCE=2026-07-30T12:00:00.000Z SKIP_DB=1 bash ...
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/protecao-v10-fonte-verdade-501d}"
+REF="${ARBISHIELD_REF:-main}"
 BUST="${ARBISHIELD_BUST:-$(date +%s%N)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"

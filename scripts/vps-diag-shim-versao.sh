@@ -4,7 +4,7 @@
 # Só leitura: nada é alterado, nenhum serviço reinicia.
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-diag-shim-versao.sh?ref=cursor/consolidar-publicavel-4759&t=$(date +%s%N)" \
+#   bash <(curl -fsSL "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-diag-shim-versao.sh?ref=main&t=$(date +%s%N)" \
 #     -H "Accept: application/vnd.github.raw" -H "User-Agent: arbishield-diag")
 #
 # Existem várias cópias do shim no disco (os hotfixes gravavam em mais de um

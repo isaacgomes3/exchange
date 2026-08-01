@@ -5,7 +5,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-v10-fonte-verdade-501d/scripts/vps-contar-interacoes-pos-trava-v10.sh?$(date +%s)")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/protecao-v10-fonte-verdade-501d}"
+REF="${ARBISHIELD_REF:-main}"
 BUST="${ARBISHIELD_BUST:-$(date +%s%N)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"

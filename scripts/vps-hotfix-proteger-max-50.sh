@@ -8,7 +8,7 @@
 #   ARBISHIELD_REF=cursor/fix-reembolso-lucas-perdeu-723d bash <(curl -fsSL "...")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/fix-reembolso-lucas-perdeu-723d}"
+REF="${ARBISHIELD_REF:-main}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 TS="$(date +%s)"
 

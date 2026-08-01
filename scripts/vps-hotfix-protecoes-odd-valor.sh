@@ -2,11 +2,11 @@
 # Hotfix UI Minhas Proteções — remove Competição, odd ao lado do Valor
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-hotfix-protecoes-odd-valor.sh?ref=cursor/fix-reembolso-lucas-perdeu-723d&t=$(date +%s%N)" \
+#   bash <(curl -fsSL "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-hotfix-protecoes-odd-valor.sh?ref=main&t=$(date +%s%N)" \
 #     -H "Accept: application/vnd.github.raw" -H "Cache-Control: no-cache" -H "User-Agent: arbishield-hotfix")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/fix-reembolso-lucas-perdeu-723d}"
+REF="${ARBISHIELD_REF:-main}"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"

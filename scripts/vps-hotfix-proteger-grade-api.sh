@@ -3,7 +3,7 @@
 # Serve a grade via GET /api/arbishield/matches (service_role) + libera RLS.
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/fix-proteger-js-e85c}"
+REF="${ARBISHIELD_REF:-main}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"

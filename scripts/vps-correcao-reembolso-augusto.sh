@@ -4,7 +4,7 @@
 # FIX=0 bash <(curl ...)   # relatório
 # FIX=1 bash <(curl ...)   # aplica
 set -euo pipefail
-REF="${ARBISHIELD_REF:-cursor/fix-reembolso-lucas-perdeu-723d}"
+REF="${ARBISHIELD_REF:-main}"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"

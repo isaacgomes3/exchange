@@ -6,11 +6,11 @@
 #   bash <(curl -fsSL "https://cdn.jsdelivr.net/gh/isaacgomes3/exchange@8af363f/scripts/vps-restart-stake-lock-v10.sh")
 # Ou API GitHub:
 #   bash <(curl -fsSL -H "Accept: application/vnd.github.raw" \
-#     "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-restart-stake-lock-v10.sh?ref=cursor/protecao-v10-fonte-verdade-501d&t=$(date +%s)")
+#     "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-restart-stake-lock-v10.sh?ref=main&t=$(date +%s)")
 set -euo pipefail
 
 RESTART_VER="restart-stake-lock-v10-shim-scripts-path-20260730b"
-REF="${ARBISHIELD_REF:-cursor/protecao-v10-fonte-verdade-501d}"
+REF="${ARBISHIELD_REF:-main}"
 BUST="$(date +%s%N)"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"
 JSDELIVR="https://cdn.jsdelivr.net/gh/isaacgomes3/exchange@${REF}"

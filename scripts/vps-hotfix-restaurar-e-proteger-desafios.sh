@@ -12,10 +12,10 @@
 #
 # Na VPS (root):
 #   bash <(curl -fsSL -H "Accept: application/vnd.github.raw" \
-#     "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-hotfix-restaurar-e-proteger-desafios.sh?ref=cursor/desafios-sumiram-restaurar-a632&t=$(date +%s)")
+#     "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-hotfix-restaurar-e-proteger-desafios.sh?ref=main&t=$(date +%s)")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/desafios-sumiram-restaurar-a632}"
+REF="${ARBISHIELD_REF:-main}"
 BUST="$(date +%s)"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"
 JSDELIVR="https://cdn.jsdelivr.net/gh/isaacgomes3/exchange@${REF}"

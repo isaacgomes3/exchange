@@ -11,13 +11,13 @@
 #
 # Na VPS (root):
 #   bash <(curl -fsSL -H "Accept: application/vnd.github.raw" \
-#     "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-hotfix-reativar-desafios-apostaveis.sh?ref=cursor/protecao-v10-fonte-verdade-501d&t=$(date +%s)")
+#     "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-hotfix-reativar-desafios-apostaveis.sh?ref=main&t=$(date +%s)")
 #
 # Opcional:
 #   SHIFT_MINUTES=120 IDS=uuid1,uuid2 bash <(curl ...)
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/protecao-v10-fonte-verdade-501d}"
+REF="${ARBISHIELD_REF:-main}"
 ENV_FILE="${ARBISHIELD_ENV:-/opt/arbishield/deploy/vps-supabase/.env}"
 SHIFT_MINUTES="${SHIFT_MINUTES:-90}"
 IDS="${IDS:-9dd0901f-a449-47c1-8443-c1b0c66303c4,e502804b-05ca-4c0d-8f69-a3a45d9d18ee,8beb938c-fa29-4bb6-9d97-fd1650bba3c4,b598561a-abe0-41c3-aeaa-5f1bd7c90d52}"

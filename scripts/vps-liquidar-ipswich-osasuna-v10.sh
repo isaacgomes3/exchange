@@ -11,7 +11,7 @@
 #   FIX=1 bash <(curl ...)
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/protecao-v10-fonte-verdade-501d}"
+REF="${ARBISHIELD_REF:-main}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}/scripts/vps-liquidar-eventos-a-liquidar-v10.sh"
 

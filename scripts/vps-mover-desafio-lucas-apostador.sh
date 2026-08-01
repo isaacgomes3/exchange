@@ -2,13 +2,13 @@
 # Transfere Desafio → Apostador (Real) — Lucas Gonçalves dos Santos — R$ 150
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-mover-desafio-lucas-apostador.sh?ref=cursor/xfer-desafio-lucas-apostador-e85c&t=$(date +%s%N)" \
+#   bash <(curl -fsSL "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-mover-desafio-lucas-apostador.sh?ref=main&t=$(date +%s%N)" \
 #     -H "Accept: application/vnd.github.raw" -H "Cache-Control: no-cache" -H "User-Agent: arbishield-hotfix")
 #
 # Só relatório: FIX=0 bash ...
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/xfer-desafio-lucas-apostador-e85c}"
+REF="${ARBISHIELD_REF:-main}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"

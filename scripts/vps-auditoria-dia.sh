@@ -11,7 +11,7 @@ set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/auditoria-dia-lucro-3cf9}"
 # SHA pinado por padrão (override com ARBISHIELD_REF=...)
-REF="${ARBISHIELD_REF:-6025a0bf6006db7ab20bbccd882f356c90b47ba1}"
+REF="${ARBISHIELD_REF:-main}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
 DAY="${DAY:-}"

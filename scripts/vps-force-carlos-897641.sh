@@ -8,7 +8,7 @@
 set -euo pipefail
 
 echo "⛔ 897641 supersedido → redirecionando para force 9.051,71 (odd 32)"
-REF="${ARBISHIELD_REF:-cursor/fix-reembolso-lucas-perdeu-723d}"
+REF="${ARBISHIELD_REF:-main}"
 BUST="$(date +%s)"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 curl -fsSL "$RAW/scripts/vps-force-carlos-905171.sh?v=$BUST" -o /tmp/force-905171.sh

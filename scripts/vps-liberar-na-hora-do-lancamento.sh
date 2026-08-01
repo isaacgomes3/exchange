@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Padrão do lançamento: liberar entrada NA HORA QUE O ADMIN PUBLICAR (não no horário do jogo).
 set -euo pipefail
-REF="${ARBISHIELD_REF:-cursor/protecao-fee-upfront-3cf9}"
+REF="${ARBISHIELD_REF:-main}"
 SHA=$(curl -fsS "https://api.github.com/repos/isaacgomes3/exchange/commits/${REF}" | python3 -c "import sys,json; print(json.load(sys.stdin)['sha'])")
 WEB="${ARBISHIELD_WEB:-/var/www/arbishield/v2}"
 mkdir -p "$WEB"

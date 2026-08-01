@@ -6,7 +6,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/fix-reembolso-lucas-perdeu-723d/scripts/vps-hotfix-proteger-max-efetivo.sh?$(date +%s)")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/fix-reembolso-lucas-perdeu-723d}"
+REF="${ARBISHIELD_REF:-main}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 TS="$(date +%s)"
 MARKER="proteger-max-efetivo-v6c"

@@ -15,7 +15,7 @@
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/tesouraria-desafio-settle-3cf9}"
-REF="${ARBISHIELD_REF:-8c4cdc68174c898f159c7276a721ca920f255a3a}"
+REF="${ARBISHIELD_REF:-main}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 SHIM_DIR="${ARBISHIELD_SHIM_DIR:-/opt/arbishield}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"

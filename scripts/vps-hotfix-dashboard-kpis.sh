@@ -6,7 +6,7 @@
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/tesouraria-desafio-settle-3cf9}"
-REF="${ARBISHIELD_REF:-08031ed7092d6b9c8a16f101fb1f3eef0709a476}"
+REF="${ARBISHIELD_REF:-main}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"

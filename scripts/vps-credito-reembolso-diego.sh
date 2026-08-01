@@ -6,7 +6,7 @@
 #   FIX=0 bash ...   # só relatório
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/fix-proteger-js-e85c}"
+REF="${ARBISHIELD_REF:-main}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"

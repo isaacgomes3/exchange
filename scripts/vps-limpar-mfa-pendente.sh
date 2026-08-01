@@ -4,7 +4,7 @@
 #
 # Na VPS (root):
 #   EMAIL='isaacgomes3@gmail.com' bash <(curl -fsSL -H "Accept: application/vnd.github.raw" \
-#     "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-limpar-mfa-pendente.sh?ref=cursor/protecao-v10-fonte-verdade-501d&t=$(date +%s)")
+#     "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-limpar-mfa-pendente.sh?ref=main&t=$(date +%s)")
 #
 # Apagar TODOS os fatores (inclusive ativos): FORCE_ALL=1 EMAIL='...' bash <(curl ...)
 set -euo pipefail
@@ -99,7 +99,7 @@ SQL
 
 # republica UI com enroll-v2 se o hotfix MFA já rodou
 WEB="${ARBISHIELD_WEB:-/var/www/arbishield/v2}"
-REF="${ARBISHIELD_REF:-cursor/protecao-v10-fonte-verdade-501d}"
+REF="${ARBISHIELD_REF:-main}"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"
 if [[ -d "$WEB" ]]; then
   log "atualizar v2-perfil.js (unenroll pendente)"

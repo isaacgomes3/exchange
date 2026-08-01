@@ -42,7 +42,7 @@ fi
 
 log "OVERRIDE ALLOW_FEE_UPFRONT_DEPLOY=1 — seguindo (emergência)"
 
-REF="${ARBISHIELD_REF:-cursor/protecao-fee-upfront-3cf9}"
+REF="${ARBISHIELD_REF:-main}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
 WEB_V2="${ARBISHIELD_WEB:-/var/www/arbishield/v2}"

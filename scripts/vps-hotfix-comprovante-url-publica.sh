@@ -3,10 +3,10 @@
 #
 # Na VPS (root):
 #   bash <(curl -fsSL -H "Accept: application/vnd.github.raw" \
-#     "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-hotfix-comprovante-url-publica.sh?ref=cursor/esqueci-senha-9ff2&t=$(date +%s)")
+#     "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-hotfix-comprovante-url-publica.sh?ref=main&t=$(date +%s)")
 set -euo pipefail
 
-BRANCH="${ARBISHIELD_REF:-cursor/esqueci-senha-9ff2}"
+BRANCH="${ARBISHIELD_REF:-main}"
 WEB_ROOT="${ARBISHIELD_WEB:-/var/www/arbishield}"
 WEB="$WEB_ROOT/v2"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"

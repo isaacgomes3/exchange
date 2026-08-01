@@ -13,7 +13,7 @@
 set -euo pipefail
 
 HOTFIX_SCRIPT_VER="stake-lock-hotfix-v10-shim-scripts-path-20260730"
-REF="${ARBISHIELD_REF:-cursor/protecao-v10-fonte-verdade-501d}"
+REF="${ARBISHIELD_REF:-main}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"

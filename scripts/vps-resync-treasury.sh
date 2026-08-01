@@ -6,7 +6,7 @@
 #   APPLY=1 bash <(curl -fsSL "...")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-8c4cdc68174c898f159c7276a721ca920f255a3a}"
+REF="${ARBISHIELD_REF:-main}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
 APPLY="${APPLY:-}"

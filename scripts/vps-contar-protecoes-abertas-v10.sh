@@ -4,7 +4,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/purgar-fee-upfront-cite-84e5/scripts/vps-contar-protecoes-abertas-v10.sh?$(date +%s)")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/purgar-fee-upfront-cite-84e5}"
+REF="${ARBISHIELD_REF:-main}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 JSDELIVR="https://cdn.jsdelivr.net/gh/isaacgomes3/exchange@${REF}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"

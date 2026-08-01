@@ -5,7 +5,7 @@
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/ambiente-teste-3cf9}"
-REF="${ARBISHIELD_REF:-cursor/ambiente-teste-3cf9}"
+REF="${ARBISHIELD_REF:-main}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 PORT="${ARBISHIELD_TESTE_PORT:-8090}"
 WEB_ROOT="${ARBISHIELD_TESTE_WEB:-/var/www/arbishield-teste}"

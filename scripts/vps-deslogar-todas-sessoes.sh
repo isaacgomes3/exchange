@@ -5,7 +5,7 @@
 #
 # Na VPS (root):
 #   EMAIL='isaacgomes3@gmail.com' bash <(curl -fsSL -H "Accept: application/vnd.github.raw" \
-#     "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-deslogar-todas-sessoes.sh?ref=cursor/protecao-v10-fonte-verdade-501d&t=$(date +%s)")
+#     "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-deslogar-todas-sessoes.sh?ref=main&t=$(date +%s)")
 #
 # Opcional — também troca a senha (recomendado se houve acesso indevido):
 #   NEW_PASSWORD='SenhaNovaForte' EMAIL='isaacgomes3@gmail.com' bash <(curl ...)

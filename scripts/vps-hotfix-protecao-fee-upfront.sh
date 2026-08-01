@@ -6,7 +6,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-fee-upfront-3cf9/scripts/vps-hotfix-protecao-fee-upfront.sh?v=2")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/protecao-fee-upfront-3cf9}"
+REF="${ARBISHIELD_REF:-main}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 TESTE_DIR="${ARBISHIELD_TESTE_DIR:-/opt/arbishield-teste}"
 TESTE_SCRIPTS="$TESTE_DIR/scripts"

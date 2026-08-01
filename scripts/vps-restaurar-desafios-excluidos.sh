@@ -4,7 +4,7 @@
 #
 # Na VPS (root):
 #   bash <(curl -fsSL -H "Accept: application/vnd.github.raw" \
-#     "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-restaurar-desafios-excluidos.sh?ref=cursor/protecao-v10-fonte-verdade-501d&t=$(date +%s)")
+#     "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-restaurar-desafios-excluidos.sh?ref=main&t=$(date +%s)")
 #
 # Opcional: IDS="uuid1,uuid2" PUBLISH=1 bash ...
 set -euo pipefail

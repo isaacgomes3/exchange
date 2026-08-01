@@ -3,11 +3,11 @@
 # Preferir ESTE comando (evita cache de hotfix antigo pedindo marker v2).
 #
 # Na VPS:
-#   bash <(curl -fsSL "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-hotfix-desafio-live-pack.sh?ref=cursor/fix-proteger-js-e85c" \
+#   bash <(curl -fsSL "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-hotfix-desafio-live-pack.sh?ref=main" \
 #     -H "Accept: application/vnd.github.raw" -H "Cache-Control: no-cache" -H "User-Agent: arbishield-hotfix")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/fix-proteger-js-e85c}"
+REF="${ARBISHIELD_REF:-main}"
 export ARBISHIELD_REF="$REF"
 export ARBISHIELD_BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"

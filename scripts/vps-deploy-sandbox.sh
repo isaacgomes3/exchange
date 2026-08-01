@@ -4,7 +4,7 @@
 set -euo pipefail
 
 BRANCH="${ARBISHIELD_BRANCH:-cursor/ambiente-teste-3cf9}"
-REF="${ARBISHIELD_REF:-cursor/ambiente-teste-3cf9}"
+REF="${ARBISHIELD_REF:-main}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 WEB="${ARBISHIELD_SANDBOX_WEB:-/var/www/arbishield/sandbox}"
 

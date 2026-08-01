@@ -5,7 +5,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/protecao-fee-upfront-3cf9/scripts/vps-fix-ocultar-canceladas-protecoes.sh")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/protecao-fee-upfront-3cf9}"
+REF="${ARBISHIELD_REF:-main}"
 # Pin no commit para evitar cache de branch
 SHA="${ARBISHIELD_SHA:-28ff8e81bb87d775ec5d7cd41a51b9451033bbf7}"
 RAW_SHA="https://raw.githubusercontent.com/isaacgomes3/exchange/${SHA}"

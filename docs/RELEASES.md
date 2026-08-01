@@ -1,5 +1,11 @@
 # Publicação versionada do frontend
 
+> **`main` é a fonte única.** Todo script de deploy baixa de `main`
+> (`ARBISHIELD_REF:-main`); default de branch ou sha fixo é proibido e o CI trava
+> (`deploy-ref-main.test.mjs`). Trabalho novo vai para branch, mas **só se publica
+> depois de estar em `main`** — foi o default de branch fixa que fazia rodar script
+> antigo trazer arquivo antigo de volta.
+
 **Contrato:** `release-artifact-v1`
 **Fonte da verdade:** `scripts/lib/release-manifest.mjs`
 **Testes CI:** `npm test` → `scripts/release-manifest.test.mjs`

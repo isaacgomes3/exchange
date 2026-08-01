@@ -151,6 +151,15 @@ teste: `shim-release.test.mjs` · runbook: `docs/RELEASES.md`.
   com `ok=true` + `createProtectionModel=stake_lock_v1` (código 7)
 - **Proibido** voltar a publicar shim copiando arquivo por hotfix
 
+## `main` como fonte única de deploy
+
+- Teste: `scripts/deploy-ref-main.test.mjs` · marker: `ARBISHIELD_REF:-main`
+- Todo script de deploy baixa de `main`. **Proibido** default `cursor/<branch>` ou sha
+  fixo — 45 scripts apontavam para uma branch de 27/07 e 38 para uma de 25/07, então
+  rodar script antigo republicava arquivo antigo
+- Publicar sempre `--ref main`; branch serve para revisão, não para deploy
+- A auditoria compara produção com `origin/main` por padrão
+
 ## Auditoria de desvio (produção × git)
 
 `npm run audit:prod` — compara cada arquivo servido em produção com o conteúdo de

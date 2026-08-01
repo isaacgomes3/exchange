@@ -3,7 +3,7 @@
 #
 # Na VPS (root):
 #   bash <(curl -fsSL -H "Accept: application/vnd.github.raw" \
-#     "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-quem-apagou-desafios.sh?ref=cursor/protecao-v10-fonte-verdade-501d&t=$(date +%s)")
+#     "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-quem-apagou-desafios.sh?ref=main&t=$(date +%s)")
 set -euo pipefail
 
 IDS="${IDS:-}"

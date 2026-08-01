@@ -5,7 +5,7 @@
 #   FIX=1 bash <(curl ... ) 4dc699ed
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/protecao-fee-upfront-3cf9}"
+REF="${ARBISHIELD_REF:-main}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
 PREFIX="${1:-${PROTECTION_ID:-}}"

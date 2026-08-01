@@ -2,14 +2,14 @@
 # Pedro: transfer Reembolso→Desafio sem débito no Reembolso — auditar/corrigir.
 #
 # Relatório:
-#   bash <(curl -fsSL "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-fix-xfer-reembolso-desafio-sem-debito.sh?ref=cursor/fix-reembolso-lucas-perdeu-723d&t=$(date +%s%N)" \
+#   bash <(curl -fsSL "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-fix-xfer-reembolso-desafio-sem-debito.sh?ref=main&t=$(date +%s%N)" \
 #     -H "Accept: application/vnd.github.raw" -H "Cache-Control: no-cache" -H "User-Agent: arbishield-hotfix")
 #
 # Aplicar débito faltante:
 #   FIX=1 bash <(curl ...)
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/fix-reembolso-lucas-perdeu-723d}"
+REF="${ARBISHIELD_REF:-main}"
 FIX="${FIX:-0}"
 ID_PREFIX="${ID_PREFIX:-24037bdf}"
 TX_ID="${TX_ID:-9fcb1d29-ddf1-44cd-bf7d-f8c0a25b33a6}"

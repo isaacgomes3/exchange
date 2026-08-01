@@ -9,7 +9,7 @@
 #   - cache-bust vem do build, não de sed no servidor.
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-publish-release.sh?ref=cursor/release-versionada-vps-4759&t=$(date +%s%N)" \
+#   bash <(curl -fsSL "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-publish-release.sh?ref=main&t=$(date +%s%N)" \
 #     -H "Accept: application/vnd.github.raw" -H "User-Agent: arbishield-publish") -- --ref main
 #
 # Opções:

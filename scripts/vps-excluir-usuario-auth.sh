@@ -5,7 +5,7 @@
 # Na VPS (root):
 #   EMAIL='danilomc1@live.com' CONFIRM=EXCLUIR \
 #     bash <(curl -fsSL -H "Accept: application/vnd.github.raw" \
-#       "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-excluir-usuario-auth.sh?ref=cursor/esqueci-senha-9ff2&t=$(date +%s)")
+#       "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-excluir-usuario-auth.sh?ref=main&t=$(date +%s)")
 #
 # Ou local na VPS:
 #   EMAIL='danilomc1@live.com' CONFIRM=EXCLUIR bash /opt/arbishield/scripts/vps-excluir-usuario-auth.sh

@@ -4,11 +4,11 @@
 # Conversão L/(L−1) continua só no cálculo de fee (effective_back_odd).
 #
 # Na VPS (root):
-#   bash <(curl -fsSL "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-hotfix-lay-odd-sem-converter.sh?ref=cursor/lay-odd-sem-converter-e85c&t=$(date +%s%N)" \
+#   bash <(curl -fsSL "https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-hotfix-lay-odd-sem-converter.sh?ref=main&t=$(date +%s%N)" \
 #     -H "Accept: application/vnd.github.raw" -H "Cache-Control: no-cache" -H "User-Agent: arbishield-hotfix")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/lay-odd-sem-converter-e85c}"
+REF="${ARBISHIELD_REF:-main}"
 BUST="${ARBISHIELD_BUST:-$(date +%s)}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 API="https://api.github.com/repos/isaacgomes3/exchange/contents"

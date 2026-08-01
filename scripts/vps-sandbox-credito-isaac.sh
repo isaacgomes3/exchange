@@ -5,7 +5,7 @@
 #   bash <(curl -fsSL "https://raw.githubusercontent.com/isaacgomes3/exchange/cursor/ambiente-teste-3cf9/scripts/vps-sandbox-credito-isaac.sh?v=1")
 set -euo pipefail
 
-REF="${ARBISHIELD_REF:-cursor/ambiente-teste-3cf9}"
+REF="${ARBISHIELD_REF:-main}"
 RAW="https://raw.githubusercontent.com/isaacgomes3/exchange/${REF}"
 SCRIPTS_DIR="${ARBISHIELD_SCRIPTS:-/opt/arbishield/scripts}"
 DST="$SCRIPTS_DIR/vps-sandbox-credito-isaac.mjs"
