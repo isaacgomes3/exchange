@@ -45,7 +45,7 @@ export const ADMIN_LANCAR_SALDO = Object.freeze({
 /** Lançar jogos = criar match BetBra/manual + publicar na fila. */
 export const ADMIN_LANCAR_JOGOS = Object.freeze({
   page: "deploy/vps-supabase/static/v2/admin-jogos.html",
-  build: "admin-jogos-unpublish-finalizados-v8",
+  build: "admin-jogos-edit-preserva-publicacao-v1",
   navId: "jogos",
   navLabel: "Jogos",
   uiMustInclude: Object.freeze([
@@ -60,6 +60,13 @@ export const ADMIN_LANCAR_JOGOS = Object.freeze({
     "football-teams",
     "btnSaveManual",
     "btnManualMatch",
+    "admin-jogos-edit-preserva-publicacao-v1",
+    "confirmEditMatch",
+    "Regras ao salvar",
+  ]),
+  uiMustNotInclude: Object.freeze([
+    'id="editPublish"',
+    'id="editHide"',
   ]),
   preliveMustInclude: Object.freeze([
     "/api/arbishield/matches",
@@ -75,6 +82,7 @@ export const ADMIN_LANCAR_JOGOS = Object.freeze({
     "liquidez obrigatória no fluxo BetBra",
     "não misturar external_id BetBra com admin_manual",
     "unpublish de finalizados/expirados permanece",
+    "edição de evento só altera dados — não muda is_published nem hide_from_site",
   ]),
 });
 

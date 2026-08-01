@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta name="arbishield-vps-page" content="jogos" />
-  <meta name="arbishield-build" content="admin-jogos-unpublish-finalizados-v8" />
+  <meta name="arbishield-build" content="admin-jogos-edit-preserva-publicacao-v1" />
+  <meta name="arbishield-features" content="admin-jogos-edit-preserva-publicacao-v1" />
   <title>Gestão de Jogos — ArbiShield v2</title>
   <link rel="stylesheet" href="/v2.css" />
   <script src="/v2-shell.js" defer></script>
@@ -660,7 +661,8 @@
   <div class="modal-backdrop" id="editMatchModal">
     <div class="modal" style="width:min(560px,100%);max-height:90vh;overflow:auto">
       <h3>Editar <span style="color:var(--lime)">evento</span></h3>
-      <p id="editMatchSummary" class="hint">Altere qualquer informação do jogo lançado.</p>
+      <!-- admin-jogos-edit-preserva-publicacao-v1 -->
+      <p id="editMatchSummary" class="hint">Altere os dados do jogo. A publicação e a visibilidade no site não mudam ao salvar.</p>
       <div class="grid" style="margin-top:12px">
         <div class="field"><label for="editHome">Time casa</label><input id="editHome" autocomplete="off" /></div>
         <div class="field"><label for="editAway">Time fora</label><input id="editAway" autocomplete="off" /></div>
@@ -710,14 +712,10 @@
         </div>
         <div class="field"><label for="editOdd">Odd</label><input id="editOdd" inputmode="decimal" placeholder="Ex.: 2.10" /></div>
       </div>
-      <label class="publish-opt" style="display:flex;gap:10px;align-items:flex-start;margin:0 0 10px;font-size:12px;line-height:1.4;cursor:pointer">
-        <input type="checkbox" id="editPublish" style="margin-top:2px;accent-color:var(--lime)" />
-        <span><strong>Publicado na fila</strong> — visível em Proteger Aposta</span>
-      </label>
-      <label class="publish-opt" style="display:flex;gap:10px;align-items:flex-start;margin:0 0 16px;font-size:12px;line-height:1.4;cursor:pointer">
-        <input type="checkbox" id="editHide" style="margin-top:2px;accent-color:var(--lime)" />
-        <span><strong>Esconder do site</strong> — não aparece para o cliente</span>
-      </label>
+      <p class="hint" style="margin:0 0 16px">
+        <strong>Regras ao salvar:</strong> só atualiza os dados (times, horário, odd, liquidez ≥ utilizado, etc.).
+        Não publica, não tira da fila e não esconde — o estado de publicação atual permanece.
+      </p>
       <div class="modal-actions">
         <button class="btn btn-ghost btn-sm" id="btnCancelEditMatch" type="button">Fechar</button>
         <button class="btn btn-primary btn-sm" id="btnConfirmEditMatch" type="button">Salvar alterações</button>
@@ -2470,14 +2468,6 @@
           primary.odd != null && primary.odd !== ""
             ? String(primary.odd)
             : "";
-        if ($("editPublish")) $("editPublish").checked = !!m.is_published;
-        if ($("editHide")) {
-          $("editHide").checked = !!(
-            meta.hide_from_site ||
-            meta.hidden ||
-            m.hide_from_site
-          );
-        }
         $("editMatchModal").classList.add("show");
       }
 
@@ -2565,14 +2555,12 @@
             market_type: marketType,
           });
         }
-        var published = !!($("editPublish") && $("editPublish").checked);
-        var hide = !!($("editHide") && $("editHide").checked);
+        // admin-jogos-edit-preserva-publicacao-v1: edição NÃO mexe em
+        // is_published nem hide_from_site — só nos dados do evento.
         var prevMeta =
           m.metadata && typeof m.metadata === "object" ? m.metadata : {};
         var betLink = String($("editBetLink").value || "").trim();
         var nextMeta = Object.assign({}, prevMeta, {
-          hide_from_site: hide,
-          hidden: hide,
           external_bet_link: betLink || null,
           betbra_link: betLink || prevMeta.betbra_link || null,
           external_bet_name: betLink
@@ -2591,7 +2579,6 @@
           starts_at: startsAt.toISOString(),
           home_logo: String($("editHomeLogo").value || "").trim() || null,
           away_logo: String($("editAwayLogo").value || "").trim() || null,
-          is_published: published && !hide,
           markets: applied.markets,
           max_protection_cents: applied.max,
           metadata: nextMeta,
