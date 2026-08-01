@@ -103,6 +103,40 @@ async function publishedVersion() {
 
 const version = await publishedVersion();
 
+/**
+ * Produção pode estar **à frente** da mainline — publicada de branch ainda não
+ * mesclada. Chamar isso de "ATRASADO" mente sobre a direção, então descobre pelo
+ * commit da release quem está na frente.
+ */
+function relationToMainline() {
+  const commit = version && version.commit;
+  if (!commit) return "desconhecida";
+  const isAncestor = (a, b) => {
+    try {
+      git(["merge-base", "--is-ancestor", a, b]);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  try {
+    git(["cat-file", "-e", `${commit}^{commit}`]);
+  } catch {
+    return "desconhecida";
+  }
+  if (isAncestor(mainlineRef, commit)) return "a frente";
+  if (isAncestor(commit, mainlineRef)) return "atras";
+  return "divergente";
+}
+
+const relation = relationToMainline();
+const behindLabel =
+  relation === "a frente"
+    ? "À FRENTE"
+    : relation === "divergente"
+      ? "DIVERGENTE"
+      : "ATRASADO";
+
 const rows = [];
 for (const [urlPath, repoPath] of PROD_SURFACE) {
   const row = { urlPath, repoPath, status: "", detail: "", bad: false };
@@ -181,9 +215,9 @@ for (const [urlPath, repoPath] of PROD_SURFACE) {
         .join(", ");
     row.bad = true;
   } else {
-    row.status = "ATRASADO";
+    row.status = behindLabel;
     row.detail =
-      "no ar = " +
+      (behindLabel === "À FRENTE" ? "publicado de branch não mesclada = " : "no ar = ") +
       matches
         .slice(0, 3)
         .map((b) => `${b} (${branchDate.get(b) || "?"})`)
@@ -214,9 +248,10 @@ const allowBehind = process.env.ARBISHIELD_AUDIT_ALLOW_BEHIND === "1";
 const bad = rows.filter((r) => r.bad);
 const drift = rows.filter((r) => r.status === "DESVIO");
 // Atrasado é estado normal entre mesclar em main e publicar — não é alarme.
-const alarming = allowBehind
-  ? bad.filter((r) => r.status !== "ATRASADO" && r.status !== "SEM FONTE")
-  : bad;
+// Atrasado ou à frente da mainline é normal entre mesclar e publicar; o alarme
+// fica para arquivo sem commit e rota não servida.
+const NAO_E_ALARME = new Set(["ATRASADO", "À FRENTE", "SEM FONTE"]);
+const alarming = allowBehind ? bad.filter((r) => !NAO_E_ALARME.has(r.status)) : bad;
 console.log(
   `\n  ${rows.length} arquivos · ${rows.length - bad.length} OK · ${bad.length} com problema · ${drift.length} editados fora do git\n`
 );

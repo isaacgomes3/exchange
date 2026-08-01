@@ -204,6 +204,8 @@ Ignora só o cache-bust `?v=` que os hotfixes reescrevem no servidor. Status por
 |---|---|
 | `OK` | igual à referência de mainline — publicação confiável |
 | `ATRASADO` | no ar está uma branch mais antiga que a mainline |
+| `À FRENTE` | publicado de branch **não mesclada** — mainline é ancestral do que está no ar |
+| `DIVERGENTE` | o commit publicado e a mainline não têm linha reta entre si |
 | `SEM FONTE` | a mainline não tem o arquivo — não existe versão canônica |
 | `DESVIO` | o conteúdo no ar **não existe em branch nenhuma** (editado no servidor) |
 | `NAO SERVIDO` | nginx devolveu o fallback SPA em vez do arquivo |
