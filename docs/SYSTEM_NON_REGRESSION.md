@@ -64,7 +64,12 @@ Marker session admin: `DO_NOT_CHANGE_ADMIN_SESSION_MODE_WITHOUT_EXPLICIT_REQUEST
 - **Empate Anula / Draw No Bet é aposta no time**, com estorno se der empate:
   V no time que venceu, × no outro, **E** (`is-void`) quando terminou empatado
 - Proibido cair no ramo 1X2 `isDraw` — marcava × nos dois lados do card
-- Times chegam pelos dois painéis: `marketLineHtml(item.marketArbi|marketCasa, item.liveInfo, { homeTeam, awayTeam })`
+- Times chegam pelos dois painéis: `marketLineHtml(item.marketArbi|marketCasa, item.liveInfo, teams)`
+- **Quadro embaixo do time apostado** (`desafio-painel-lado-time-v1`): `marketTeamSide()` +
+  classe `is-swapped` no `.dz-v2-compare` (mandante à esquerda); no mobile de 1 coluna
+  a ordem volta ao padrão (ArbiShield primeiro)
+- **Logo da casa de aposta** (`desafio-casa-logo-v1`): `casaBrandLogo()` → `/brand/houses/betbra.png`,
+  fallback `/brand/houses/casa.svg` (sempre tem logo); não remover os assets
 - Teste: `scripts/desafio-market-flag.test.mjs` · Hotfix: `scripts/vps-hotfix-desafio-dnb-flag.sh`
 
 ### Modo usuário / Modo ADM (anti-regressão)

@@ -119,6 +119,7 @@ Desafios. Não reverter **Modo usuário / Modo ADM** nem **espelho de conta**.
 10. **Espelho de conta:** `setImpersonation` / `getEffectiveUserId` / banner «Sair do espelho»; entrada em `admin-users` (Espelho); proteger readonly (`proteger-espelho-readonly-v13`).
 11. **VPS:** após deploy → `vps-check-pos-deploy-v10.sh` (via API GitHub, não raw cacheado).
 12. **Desafio — marcador de mercado:** `app-desafio.html` (`desafio-dnb-flag-v1`) → **Empate Anula/DNB é aposta no time** (V no vencedor, × no outro, **E** de estorno se empatar); nunca resolver pelo ramo 1X2 `isDraw`. Teste: `desafio-market-flag.test.mjs`.
+13. **Desafio — card do cliente:** cada quadro fica **embaixo do time em que aposta** (`desafio-painel-lado-time-v1`, `marketTeamSide` + `is-swapped`; mobile 1 coluna volta ao padrão) e a **casa de aposta sempre mostra logo** (`desafio-casa-logo-v1`, `/brand/houses/`).
 
 Mudança em qualquer item exige pedido explícito + bump + sync AGENTS/docs + testes verdes.
 <!-- END:system-non-regression -->
