@@ -195,6 +195,29 @@ if (PARA === "exchange") {
   console.log(`    stake ${money(amount)} devolvido à origem · dedução ${money(feeCents)} cobrada`);
 }
 
+// Reconstrução do razão: a ativação debita a origem e trava; o settle destrava.
+// Sem isso é fácil achar que o cliente recebeu o stake DUAS vezes.
+const lockTx = (Array.isArray(txs) ? txs : []).find((t) =>
+  String(t.type || "").includes("lock")
+);
+if (lockTx) {
+  const lockCents = Math.abs(Number(lockTx.amount_cents || 0));
+  const preProtecao = Number(prof?.balance_cents || 0) + lockCents;
+  console.log("\n  razão do stake (de onde saiu e onde está)");
+  console.log(`    ativação      Apostador −${money(lockCents)} · Travado +${money(lockCents)}`);
+  console.log(
+    `    liquidação    Travado −${money(lockCents)} · ${bucketAtual} +${money(atual.total)}` +
+      "  (Apostador NÃO recebeu de volta)"
+  );
+  console.log(`    Apostador antes da proteção: ${money(preProtecao)}`);
+  if (PARA === "exchange") {
+    console.log(
+      `    após a correção esperado:    ${money(preProtecao - feeCents)}` +
+        `  (= antes da proteção − dedução ${money(feeCents)})`
+    );
+  }
+}
+
 console.log("\n  DELTA a corrigir");
 if (outcomeAtual === PARA) {
   console.log("    nenhum — o outcome já é o desejado");
