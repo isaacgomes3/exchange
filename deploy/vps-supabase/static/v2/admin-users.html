@@ -6,12 +6,14 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Usuários — ArbiShield v2</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="admin-users-email-saldo-v1" />
-  <link rel="stylesheet" href="/v2.css?v=users-email-saldo-1" />
+  <meta name="arbishield-build" content="admin-users-extrato-detalhado-v1" />
+  <meta name="arbishield-features" content="extrato-eventos-detalhado-v1" />
+  <link rel="stylesheet" href="/v2.css?v=users-extrato-detalhado-1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/finance-admins.js?v=fin-acl-1"></script>
-  <script src="/v2.js?v=users-email-saldo-1"></script>
-  <script src="/v2-shell.js?v=users-email-saldo-1" defer></script>
+  <script src="/v2.js?v=users-extrato-detalhado-1"></script>
+  <script src="/v2-pages.js?v=extrato-eventos-detalhado-1"></script>
+  <script src="/v2-shell.js?v=users-extrato-detalhado-1" defer></script>
   <style>
     .ops-wallets {
       display: grid; gap: 2px; font-size: 11px; line-height: 1.35;
@@ -28,9 +30,35 @@
     }
     .user-drawer-backdrop.open { display: flex; }
     .user-drawer {
-      width: min(440px, 100%); background: #0a0a0a; border-left: 1px solid #1f1f1f;
+      width: min(560px, 100%); background: #0a0a0a; border-left: 1px solid #1f1f1f;
       padding: 20px 18px 28px; overflow: auto;
     }
+    .ud-extrato { margin: 8px 0 16px; }
+    .ud-extrato .ud-extrato-head {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 8px; margin-bottom: 8px;
+    }
+    .ud-extrato .ud-extrato-head h2 {
+      margin: 0; font-size: 1rem; font-weight: 900; font-style: italic;
+      text-transform: uppercase;
+    }
+    .ud-extrato .ud-extrato-head h2 span { color: var(--lime); }
+    .ud-extrato table {
+      width: 100%; border-collapse: collapse; font-size: 11px;
+    }
+    .ud-extrato th, .ud-extrato td {
+      padding: 8px 6px; border-bottom: 1px solid #1f1f1f;
+      text-align: left; vertical-align: top;
+    }
+    .ud-extrato th {
+      color: var(--muted); font-size: 9px; letter-spacing: 0.08em;
+      text-transform: uppercase; font-weight: 800;
+    }
+    .ud-extrato .num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 800; }
+    .ud-extrato .pos { color: var(--lime); }
+    .ud-extrato .neg { color: #ff6b6b; }
+    .ud-extrato .muted { color: var(--muted); }
+    .ud-extrato .empty { color: var(--muted); padding: 12px 0; font-size: 12px; }
     .user-drawer h2 {
       margin: 0; font-size: 1.2rem; font-weight: 900; font-style: italic;
       text-transform: uppercase; letter-spacing: -0.02em;
@@ -125,6 +153,18 @@
       <div class="ud-grid" id="udProfile"></div>
       <h2 style="font-size:1rem;margin:8px 0 10px">Carteiras</h2>
       <div class="ud-grid" id="udWallets"></div>
+
+      <!-- Marker: extrato-eventos-detalhado-v1 -->
+      <div class="ud-extrato" id="udExtrato">
+        <div class="ud-extrato-head">
+          <h2>Extrato / <span>Movimentação</span></h2>
+          <button type="button" class="btn btn-ghost btn-sm" id="udExtratoRefresh">Atualizar</button>
+        </div>
+        <p class="hint" style="margin-top:0">
+          Entradas e saídas de eventos, lucro, deduções, cancelamentos (admin) e ajustes de saldo.
+        </p>
+        <div id="udExtratoBody"><div class="empty">Abra um usuário para carregar o extrato…</div></div>
+      </div>
 
       <div class="bal-panel" id="balPanel">
         <h3>Ajuste de <span>saldo</span></h3>
@@ -373,6 +413,81 @@
           .join("");
       }
 
+      function describeAdminExtratoTx(row) {
+        if (window.ArbiV2Page && typeof ArbiV2Page.describeWalletTx === "function") {
+          return ArbiV2Page.describeWalletTx(row);
+        }
+        return String((row && row.type) || "—");
+      }
+
+      async function loadUserExtrato(userId) {
+        var host = document.getElementById("udExtratoBody");
+        if (!host || !userId) return;
+        host.innerHTML = '<div class="empty">Carregando movimentação…</div>';
+        try {
+          var res = await supa
+            .from("wallet_transactions")
+            .select("id,type,amount_cents,created_at,metadata,ref")
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false })
+            .limit(300);
+          if (res.error) throw res.error;
+          var rows = res.data || [];
+          if (!rows.length) {
+            host.innerHTML =
+              '<div class="empty">Nenhuma movimentação registrada neste usuário.</div>';
+            return;
+          }
+          host.innerHTML =
+            "<table><thead><tr>" +
+            "<th>Data</th><th>Movimentação</th><th class=\"num\">Valor</th>" +
+            "</tr></thead><tbody>" +
+            rows
+              .map(function (tx) {
+                var amt = Number(tx.amount_cents || 0);
+                var cls = amt > 0 ? "pos" : amt < 0 ? "neg" : "";
+                var prefix = amt > 0 ? "+" : amt < 0 ? "−" : "";
+                var meta =
+                  tx.metadata && typeof tx.metadata === "object" ? tx.metadata : {};
+                var extra = [];
+                if (meta.outcome) extra.push(String(meta.outcome));
+                if (meta.reason) extra.push(String(meta.reason));
+                if (meta.cancelled_by_admin || meta.cancelled_by) {
+                  extra.push("cancelado pelo admin");
+                }
+                if (meta.admin_email) extra.push(String(meta.admin_email));
+                return (
+                  "<tr>" +
+                  "<td>" +
+                  esc(new Date(tx.created_at).toLocaleString("pt-BR")) +
+                  '<div class="muted">' +
+                  esc(tx.type || "") +
+                  "</div></td>" +
+                  "<td>" +
+                  esc(describeAdminExtratoTx(tx)) +
+                  (extra.length
+                    ? '<div class="muted">' + esc(extra.join(" · ")) + "</div>"
+                    : "") +
+                  "</td>" +
+                  '<td class="num ' +
+                  cls +
+                  '">' +
+                  prefix +
+                  esc(money(Math.abs(amt))) +
+                  "</td>" +
+                  "</tr>"
+                );
+              })
+              .join("") +
+            "</tbody></table>";
+        } catch (err) {
+          host.innerHTML =
+            '<div class="empty">Falha ao carregar extrato: ' +
+            esc(err.message || String(err)) +
+            "</div>";
+        }
+      }
+
       function openDrawer(r, opts) {
         opts = opts || {};
         selected = r;
@@ -390,6 +505,7 @@
         var backdrop = document.getElementById("userDrawer");
         backdrop.classList.add("open");
         backdrop.setAttribute("aria-hidden", "false");
+        loadUserExtrato(r.id);
       }
 
       function closeDrawer() {
@@ -397,6 +513,11 @@
         var backdrop = document.getElementById("userDrawer");
         backdrop.classList.remove("open");
         backdrop.setAttribute("aria-hidden", "true");
+        var host = document.getElementById("udExtratoBody");
+        if (host) {
+          host.innerHTML =
+            '<div class="empty">Abra um usuário para carregar o extrato…</div>';
+        }
       }
 
       function startMirror(r) {
@@ -703,6 +824,12 @@
       });
 
       document.getElementById("udClose").onclick = closeDrawer;
+      var udExtratoRefresh = document.getElementById("udExtratoRefresh");
+      if (udExtratoRefresh) {
+        udExtratoRefresh.onclick = function () {
+          if (selected && selected.id) loadUserExtrato(selected.id);
+        };
+      }
       document.getElementById("userDrawer").addEventListener("click", function (e) {
         if (e.target === document.getElementById("userDrawer")) closeDrawer();
       });

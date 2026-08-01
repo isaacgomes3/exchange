@@ -86,6 +86,15 @@ Marker session admin: `DO_NOT_CHANGE_ADMIN_SESSION_MODE_WITHOUT_EXPLICIT_REQUEST
 - Shim `deleteDesafio`: **403** se `is_active` (Excluir nunca em publicado)
 - A trava nasceu numa linhagem e faltava na outra; não remover de nenhum dos dois lados.
 
+### Extrato financeiro detalhado (anti-regressão)
+
+- Marker `extrato-eventos-detalhado-v1` · teste `scripts/extrato-eventos-detalhado.test.mjs`
+- Cliente `app-carteira` / `v2-financeiro.js`: extrato lista entradas/saídas de eventos
+  (`protection_lock/settlement/fee/refund`), deduções, cancelamentos (incl. admin),
+  Desafio, transferências e ajustes admin — não só `internal_transfer`
+- Admin `admin-users` drawer: seção **Extrato / Movimentação** com as mesmas txs
+- Admin `admin-transactions`: ledger ampliado (2000) + labels pt de evento/cancel admin
+
 ### Desafio — editar lançado sem retirar (anti-regressão)
 
 - Marker `admin-desafios-edit-preserva-publicacao-v1` · teste `scripts/desafio-edit-preserva.test.mjs`

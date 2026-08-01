@@ -6,29 +6,31 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Transações — ArbiShield v2</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="extrato-tx-tipo-pt-v2" />
-  <link rel="stylesheet" href="/v2.css?v=extrato-tx-tipo-pt-2" />
+  <meta name="arbishield-build" content="extrato-eventos-detalhado-v1" />
+  <meta name="arbishield-features" content="extrato-eventos-detalhado-v1" />
+  <link rel="stylesheet" href="/v2.css?v=extrato-eventos-detalhado-1" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
   <script src="/finance-admins.js?v=fin-acl-2"></script>
   <script src="/v2.js?v=fin-acl-2"></script>
-  <script src="/v2-pages.js?v=extrato-tx-tipo-pt-2"></script>
+  <script src="/v2-pages.js?v=extrato-eventos-detalhado-1"></script>
   <script src="/v2-shell.js?v=fin-acl-2" defer></script>
 </head>
 <body data-shell="admin" data-active="transactions">
   <div class="page-head">
     <div>
       <h1>Gestão de <span>Transações</span></h1>
-      <p class="sub">Financeiro · layout Jogos · nativo v2 · sem SPA</p>
+      <p class="sub">Movimentação completa · eventos · lucro · deduções · cancelamentos admin</p>
     </div>
   </div>
   <div id="err" class="err"></div>
   <div id="pageBody"><div class="meta">Carregando…</div></div>
   <script>
+    // Marker: extrato-eventos-detalhado-v1
     ArbiV2Page.mountAdmin({
-      sources: [{ table: "wallet_transactions", limit: 200 }],
+      sources: [{ table: "wallet_transactions", limit: 2000 }],
       cols: ["created_at", "user_name", "amount_cents", "type", "id"],
       enrichUserNames: true,
-      searchPlaceholder: "Buscar por nome, tipo, id…",
+      searchPlaceholder: "Buscar por nome, tipo, evento, id…",
     });
   </script>
 </body>

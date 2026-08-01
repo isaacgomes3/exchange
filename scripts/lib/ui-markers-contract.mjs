@@ -32,9 +32,15 @@ export const UI_CRITICAL_MARKERS = Object.freeze({
     bodyMustInclude: Object.freeze(["Cancelar", "Saldo Reembolso"]),
   }),
   "deploy/vps-supabase/static/v2/app-carteira.html": Object.freeze({
-    build: "extrato-fee-upfront-perdeu-v1",
-    featuresMustInclude: Object.freeze([]),
-    bodyMustInclude: Object.freeze(["Saldo Reembolso"]),
+    build: "extrato-eventos-detalhado-v1",
+    featuresMustInclude: Object.freeze(["extrato-eventos-detalhado-v1"]),
+    bodyMustInclude: Object.freeze([
+      "Saldo Reembolso",
+      "extrato-eventos-detalhado-v1",
+      "Eventos / Proteções",
+      "Ajustes admin",
+      "entradas e saídas dos eventos",
+    ]),
     bodyMustNotInclude: Object.freeze(["Saldo Dedução"]),
   }),
   "deploy/vps-supabase/static/v2/admin-jogos.html": Object.freeze({

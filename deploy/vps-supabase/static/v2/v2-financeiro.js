@@ -12,7 +12,7 @@
     { id: "all", label: "Tudo" },
   ];
   var GROUP_LABEL = {
-    protecao: "Proteção",
+    protecao: "Proteção / Evento",
     reembolso: "Reembolso",
     contestacao: "Contestação",
     deposito: "Depósito",
@@ -20,6 +20,38 @@
     afiliado: "Afiliado",
     provedor: "Provedor",
     transferencia: "Transferência",
+    desafio: "Desafio",
+    ajuste: "Ajuste admin",
+  };
+
+  // Marker: extrato-eventos-detalhado-v1 — tipos de wallet_transactions no extrato
+  var WALLET_TX_GROUP = {
+    protection_lock: "protecao",
+    protection_settlement: "protecao",
+    protection_fee: "protecao",
+    protection_refund: "protecao",
+    protection_release: "protecao",
+    protection_unlock: "protecao",
+    exchange_commission: "protecao",
+    desafio_deposit: "desafio",
+    desafio_cancel_refund: "desafio",
+    desafio_void_refund: "desafio",
+    desafio_forfeit_to_provider: "desafio",
+    desafio_zebra_payout: "desafio",
+    desafio_reregister: "desafio",
+    internal_transfer: "transferencia",
+    admin_adjustment: "ajuste",
+    admin_adjustment_credit: "ajuste",
+    provider_deposit: "provedor",
+    deposit: "deposito",
+    asaas_deposit: "deposito",
+    manual_credit: "deposito",
+    withdrawal: "saque",
+    withdrawal_request: "saque",
+    refund: "reembolso",
+    profit: "protecao",
+    coverage_credit: "protecao",
+    bonus: "deposito",
   };
   var AFF_OK = { approved: 1, available: 1, pending_payout: 1 };
   var WD_OPEN = { pending: 1, approved: 1, paid: 1, processing: 1 };
@@ -254,7 +286,15 @@
         pe = Ne;
         Ae = true;
         Ue = se.settled_at || se.updated_at || se.created_at;
-        Qe = "Capital devolvido (jogo cancelado)";
+        var cancelMeta =
+          se.metadata && typeof se.metadata === "object" ? se.metadata : {};
+        var byAdmin =
+          !!(cancelMeta.cancelled_by_admin || cancelMeta.cancelled_by) ||
+          String(cancelMeta.cancel_source || "").toLowerCase().indexOf("admin") >= 0;
+        Qe = byAdmin
+          ? "Cancelado pelo admin · capital devolvido à origem"
+          : "Capital devolvido (jogo cancelado)";
+        if (byAdmin) je = "Cancelado (admin)";
       } else if (se.settled_at) {
         ze = "Proteção Encerrada";
         Ue = se.settled_at;
@@ -268,7 +308,10 @@
           je = "Exchange";
           pe = 0;
           Ae = undefined;
-          Qe = "Bateu Exchange • sem crédito (cobra só a dedução)";
+          Qe =
+            Ye > 0
+              ? "Bateu Exchange • dedução " + money(Ye) + " (sem crédito de stake)"
+              : "Bateu Exchange • sem crédito (cobra só a dedução)";
         } else if (Se === "void" || Se === "empate_anula" || Se === "anula") {
           je = "Empate Anula";
           pe = Ne;
@@ -305,6 +348,25 @@
         side: se.side || "",
         odd: se.odd,
       });
+      // Linha explícita de dedução no evento (Exchange / fee)
+      if (se.settled_at && Se === "exchange" && Ye > 0) {
+        G.push({
+          id: "prot-ded-" + fe,
+          ts: Ue,
+          group: "protecao",
+          action: "Dedução do evento",
+          status: "Exchange",
+          valueCents: Ye,
+          credit: false,
+          protectionId: fe,
+          origin: "Dedução ArbiShield da odd canônica (entrada/saída discriminada)",
+          home: match.home_team || se.home_team || "",
+          away: match.away_team || se.away_team || "",
+          market: se.market_category || match.league || "",
+          side: se.side || "",
+          odd: se.odd,
+        });
+      }
     });
 
     function pushRefund(se) {
@@ -619,14 +681,17 @@
       });
     });
 
-    // Transferências internas (ex.: Saldo Reembolso → Carteira Desafio)
+    // Marker: extrato-eventos-detalhado-v1
+    // Todas as movimentações de wallet_transactions (entradas/saídas de eventos,
+    // lucro, deduções, cancelamentos admin, desafio, ajustes).
     var bucketLbl = {
       deduction_balance_cents: "Saldo Reembolso",
       balance_cents: "Saldo Real",
       reusable_balance_cents: "Saldo Reutilizável",
       desafio_balance_cents: "Carteira Desafio",
       demo_balance_cents: "Demo",
-      investor_balance_cents: "Investidor",
+      investor_balance_cents: "Saldo Provedor",
+      locked_balance_cents: "Saldo Travado",
     };
     function metaTx(row) {
       var m = row && row.metadata;
@@ -640,29 +705,192 @@
       }
       return typeof m === "object" && m ? m : {};
     }
-    (state.walletTx || []).forEach(function (se) {
-      var t = String(se.type || "").toLowerCase();
-      if (t !== "internal_transfer") return;
+    function describeWalletMovement(se) {
+      var t = String((se && se.type) || "").toLowerCase();
       var m = metaTx(se);
-      var from = m.from_bucket || m.from || "";
-      var to = m.to_bucket || m.to || "";
-      var label =
-        (m.label && String(m.label).trim()) ||
-        (from || to
-          ? "Transferência " +
+      if (m.label && String(m.label).trim()) return String(m.label).trim();
+      var from = m.from_bucket || m.from || m.source_bucket || "";
+      var to = m.to_bucket || m.to || m.dest_bucket || "";
+      if (t === "internal_transfer" || from || to) {
+        if (from || to) {
+          return (
+            "Transferência " +
             (bucketLbl[from] || from || "?") +
             " → " +
             (bucketLbl[to] || to || "?")
-          : "Transferência interna");
+          );
+        }
+        return "Transferência interna";
+      }
+      if (t === "protection_lock") {
+        return m.refund_kind === "fee"
+          ? "Entrada no evento · trava/taxa"
+          : "Entrada no evento · stake travado";
+      }
+      if (t === "protection_settlement") {
+        var o = String(m.outcome || "").toLowerCase();
+        if (o === "arbishield" || o === "lost_exchange") {
+          return "Saída do evento · Bateu ArbiShield (crédito Saldo Reembolso)";
+        }
+        if (o === "exchange" || o === "won_exchange") {
+          return "Saída do evento · Bateu Exchange";
+        }
+        if (o === "void" || o === "empate_anula") {
+          return "Saída do evento · Empate Anula (estorno)";
+        }
+        return "Liquidação do evento";
+      }
+      if (t === "protection_fee" || t === "exchange_commission") {
+        return "Dedução / comissão do evento";
+      }
+      if (t === "protection_refund" || t === "protection_unlock" || t === "protection_release") {
+        if (m.cancelled_by_admin || m.cancelled_by) {
+          return "Cancelamento pelo admin · devolução de saldo";
+        }
+        return "Cancelamento / destravamento · devolução de saldo";
+      }
+      if (t === "admin_adjustment_credit") {
+        return "Crédito admin" + (m.reason ? " · " + m.reason : "");
+      }
+      if (t === "admin_adjustment") {
+        var signed = Number(se.amount_cents || 0);
+        return (
+          (signed < 0 || m.mode === "debit" ? "Débito admin" : "Ajuste admin") +
+          (m.reason ? " · " + m.reason : "")
+        );
+      }
+      if (t === "desafio_deposit") return "Entrada Desafio (depósito)";
+      if (t === "desafio_cancel_refund") return "Estorno Desafio (cancelado pelo admin)";
+      if (t === "desafio_void_refund") return "Estorno Desafio (Empate Anula)";
+      if (t === "desafio_forfeit_to_provider") return "Forfeit Desafio → Provedor";
+      if (t === "desafio_zebra_payout") return "Lucro Desafio (zebra)";
+      if (t === "provider_deposit") return "Aporte Provedor";
+      if (t === "withdrawal" || t === "withdrawal_request") return "Saque";
+      if (t === "deposit" || t === "asaas_deposit" || t === "manual_credit") {
+        return "Depósito";
+      }
+      return t || "Movimentação";
+    }
+    function walletTxStatus(se) {
+      var t = String((se && se.type) || "").toLowerCase();
+      var m = metaTx(se);
+      if (t === "protection_refund" && (m.cancelled_by_admin || m.cancelled_by)) {
+        return "Cancelado (admin)";
+      }
+      if (t === "protection_settlement") {
+        var o = String(m.outcome || "").toLowerCase();
+        if (o === "arbishield" || o === "lost_exchange") return "ArbiShield";
+        if (o === "exchange" || o === "won_exchange") return "Exchange";
+        if (o === "void" || o === "empate_anula") return "Empate Anula";
+        return "Liquidado";
+      }
+      if (t.indexOf("refund") >= 0 || t.indexOf("unlock") >= 0 || t.indexOf("release") >= 0) {
+        return "Estornado";
+      }
+      if (t === "protection_lock") return "Entrada";
+      if (t === "protection_fee" || t === "exchange_commission") return "Dedução";
+      if (t.indexOf("admin") >= 0) return "Admin";
+      return "Concluída";
+    }
+    var protById = new Map();
+    allProt.forEach(function (p) {
+      if (p && p.id) protById.set(String(p.id), p);
+    });
+    (state.walletTx || []).forEach(function (se) {
+      var t = String(se.type || "").toLowerCase();
+      if (!t) return;
+      // Tipos já cobertos por fluxos sintéticos de depósito/saque/comissão —
+      // ainda assim mostramos movimentação de evento/ajuste/desafio/transfer.
+      var group = WALLET_TX_GROUP[t];
+      if (!group) {
+        // tipos desconhecidos entram como ajuste para não sumir do extrato
+        group = "ajuste";
+      }
+      // Evita duplicar depósito/saque/afiliado já listados pelas tabelas dedicadas
+      if (
+        group === "deposito" ||
+        group === "saque" ||
+        group === "afiliado" ||
+        group === "reembolso"
+      ) {
+        // Mantém só se for claramente de evento/desafio/admin — senão pula
+        if (
+          t !== "refund" &&
+          t.indexOf("protection") < 0 &&
+          t.indexOf("desafio") < 0 &&
+          t.indexOf("admin") < 0
+        ) {
+          return;
+        }
+      }
+      var m = metaTx(se);
+      var amt = Number(se.amount_cents || 0);
+      var credit =
+        amt > 0 ? true : amt < 0 ? false : undefined;
+      // locks/fees são saída mesmo se amount vier positivo em builds antigos
+      if (
+        (t === "protection_lock" ||
+          t === "protection_fee" ||
+          t === "exchange_commission") &&
+        credit !== false
+      ) {
+        if (!(amt < 0)) credit = false;
+      }
+      if (
+        (t === "protection_refund" ||
+          t === "protection_unlock" ||
+          t === "protection_release" ||
+          t === "admin_adjustment_credit") &&
+        credit !== true
+      ) {
+        if (!(amt < 0)) credit = true;
+      }
+      var pid = String(
+        m.protection_id || se.ref || m.ref || ""
+      ).trim();
+      var prot = pid ? protById.get(pid) : null;
+      var match = (prot && prot.match) || {};
+      var originBits = [];
+      originBits.push(describeWalletMovement(se));
+      if (m.fee_cents != null && Number(m.fee_cents) > 0) {
+        originBits.push("taxa/dedução " + money(Number(m.fee_cents)));
+      }
+      if (m.stake_cents != null && Number(m.stake_cents) > 0) {
+        originBits.push("stake " + money(Number(m.stake_cents)));
+      }
+      if (m.wallet || m.field || m.credit_bucket) {
+        var w = String(m.wallet || m.field || m.credit_bucket || "");
+        originBits.push(
+          "carteira " +
+            (bucketLbl[w] ||
+              (w === "investor" || w === "investor_balance_cents"
+                ? "Saldo Provedor"
+                : w === "desafio" || w === "desafio_balance_cents"
+                  ? "Desafio"
+                  : w === "refund" || w === "deduction_balance_cents"
+                    ? "Saldo Reembolso"
+                    : w))
+        );
+      }
+      if (m.admin_email) originBits.push("admin " + m.admin_email);
+      else if (m.cancelled_by_admin || m.admin_id) {
+        originBits.push("admin " + String(m.cancelled_by_admin || m.admin_id).slice(0, 8));
+      }
       G.push({
-        id: "xfer-" + se.id,
+        id: "wtx-" + se.id,
         ts: se.created_at,
-        group: "transferencia",
-        action: "Transferência interna",
-        status: "Concluída",
-        valueCents: Number(se.amount_cents || 0),
-        credit: undefined,
-        origin: label,
+        group: group,
+        action: describeWalletMovement(se),
+        status: walletTxStatus(se),
+        valueCents: Math.abs(amt),
+        credit: credit,
+        protectionId: pid || undefined,
+        origin: originBits.join(" · "),
+        home: (prot && (match.home_team || prot.home_team)) || "",
+        away: (prot && (match.away_team || prot.away_team)) || "",
+        market: (prot && (prot.market_category || match.league)) || "",
+        side: (prot && prot.side) || m.side || "",
+        odd: prot && prot.odd != null ? prot.odd : m.odd,
       });
     });
 
@@ -1635,9 +1863,9 @@
 
   async function loadAll(supa, userId) {
     var protSelect =
-      "id,user_id,match_id,side,odd,status,amount_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents,created_at,settled_at,refunded_at,settled_outcome,updated_at,market_category,match:matches(home_team,away_team,league)";
+      "id,user_id,match_id,side,odd,status,amount_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents,created_at,settled_at,refunded_at,settled_outcome,updated_at,market_category,metadata,match:matches(home_team,away_team,league)";
     var protSelectPlain =
-      "id,user_id,match_id,side,odd,status,amount_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents,created_at,settled_at,refunded_at,settled_outcome,updated_at";
+      "id,user_id,match_id,side,odd,status,amount_cents,user_profit_cents,platform_deduction_cents,locked_deduction_cents,created_at,settled_at,refunded_at,settled_outcome,updated_at,metadata";
 
     var profileRes = await supa
       .from("profiles")
@@ -1763,18 +1991,28 @@
     state.walletTx = await safeQuery(
       supa,
       "unified_wallet_transactions",
-      "id,type,amount_cents,created_at,metadata",
+      "id,type,amount_cents,created_at,metadata,ref",
       function (q) {
-        return q.eq("user_id", userId).order("created_at", { ascending: false }).limit(500);
+        return q.eq("user_id", userId).order("created_at", { ascending: false }).limit(2000);
       }
     );
     if (!state.walletTx.length) {
       state.walletTx = await safeQuery(
         supa,
         "wallet_transactions",
+        "id,type,amount_cents,created_at,metadata,ref",
+        function (q) {
+          return q.eq("user_id", userId).order("created_at", { ascending: false }).limit(2000);
+        }
+      );
+    }
+    if (!state.walletTx.length) {
+      state.walletTx = await safeQuery(
+        supa,
+        "wallet_transactions",
         "id,type,amount_cents,created_at,metadata",
         function (q) {
-          return q.eq("user_id", userId).order("created_at", { ascending: false }).limit(500);
+          return q.eq("user_id", userId).order("created_at", { ascending: false }).limit(2000);
         }
       );
     }
@@ -1784,7 +2022,7 @@
         "wallet_transactions",
         "id,type,amount_cents,created_at",
         function (q) {
-          return q.eq("user_id", userId).order("created_at", { ascending: false }).limit(500);
+          return q.eq("user_id", userId).order("created_at", { ascending: false }).limit(2000);
         }
       );
     }

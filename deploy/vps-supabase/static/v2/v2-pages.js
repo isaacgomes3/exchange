@@ -85,23 +85,27 @@
 
   var TX_TYPE_LABELS = {
     internal_transfer: "Transferência interna",
-    protection_settlement: "Liquidação de proteção",
-    protection_lock: "Travamento de proteção",
-    protection_fee: "Taxa de proteção",
-    exchange_commission: "Comissão Exchange (4,5%)",
-    protection_refund: "Reembolso de proteção",
-    protection_release: "Liberação de proteção",
+    protection_settlement: "Saída do evento · liquidação",
+    protection_lock: "Entrada no evento · stake travado",
+    protection_fee: "Dedução / taxa do evento",
+    exchange_commission: "Dedução Exchange (4,5%)",
+    protection_refund: "Cancelamento · devolução de saldo",
+    protection_release: "Destravamento de proteção",
     protection_unlock: "Destravamento de proteção",
     admin_adjustment: "Ajuste administrativo",
-    desafio_deposit: "Depósito Desafio",
-    desafio_cancel_refund: "Estorno cancelamento Desafio",
-    desafio_void_refund: "Estorno empate Desafio",
+    admin_adjustment_credit: "Crédito admin",
+    desafio_deposit: "Entrada Desafio (depósito)",
+    desafio_cancel_refund: "Estorno Desafio (cancelado pelo admin)",
+    desafio_void_refund: "Estorno Desafio (Empate Anula)",
     desafio_forfeit_to_provider: "Forfeit Desafio → Provedor",
+    desafio_zebra_payout: "Lucro Desafio (zebra)",
+    desafio_reregister: "Reentrada Desafio",
     deposit: "Depósito",
     asaas_deposit: "Depósito Asaas",
     manual_credit: "Crédito manual",
-    provider_deposit: "Depósito Provedor",
+    provider_deposit: "Aporte Provedor",
     withdrawal: "Saque",
+    withdrawal_request: "Pedido de saque",
     bonus: "Bônus",
     refund: "Estorno",
     profit: "Lucro",
@@ -148,13 +152,33 @@
     if (t === "internal_transfer") return "Transferência interna";
     if (t === "protection_settlement") {
       var o = String(meta.outcome || "").toLowerCase();
-      if (o === "arbishield" || o === "lost_exchange") return "Liquidação · Bateu ArbiShield";
-      if (o === "exchange" || o === "won_exchange") return "Liquidação · Bateu Exchange";
-      if (o === "void" || o === "empate_anula") return "Liquidação · Empate Anula";
-      return "Liquidação de proteção";
+      if (o === "arbishield" || o === "lost_exchange") {
+        return "Saída do evento · Bateu ArbiShield";
+      }
+      if (o === "exchange" || o === "won_exchange") {
+        return "Saída do evento · Bateu Exchange";
+      }
+      if (o === "void" || o === "empate_anula") {
+        return "Saída do evento · Empate Anula";
+      }
+      return "Saída do evento · liquidação";
+    }
+    if (t === "protection_refund" || t === "protection_unlock" || t === "protection_release") {
+      if (meta.cancelled_by_admin || meta.cancelled_by) {
+        return "Cancelamento pelo admin · devolução de saldo";
+      }
+      return TX_TYPE_LABELS[t] || "Cancelamento · devolução";
     }
     if (t === "exchange_commission") {
-      return meta.label || "Comissão Exchange (4,5% do lucro bruto)";
+      return meta.label || "Dedução Exchange (4,5% do lucro bruto)";
+    }
+    if (t === "admin_adjustment_credit") {
+      return meta.reason
+        ? "Crédito admin · " + String(meta.reason)
+        : "Crédito admin";
+    }
+    if (t === "admin_adjustment" && meta.reason) {
+      return "Ajuste admin · " + String(meta.reason);
     }
     return TX_TYPE_LABELS[t] || (row && row.type) || "—";
   }

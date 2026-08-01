@@ -4,7 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <meta name="arbishield-build" content="extrato-fee-upfront-perdeu-v1" />
+  <meta name="arbishield-build" content="extrato-eventos-detalhado-v1" />
+  <meta name="arbishield-features" content="extrato-eventos-detalhado-v1" />
   <title>Centro Financeiro — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
@@ -119,17 +120,23 @@
           <span class="fin-search-ico" aria-hidden="true">⌕</span>
           <input id="finSearch" type="search" placeholder="Buscar por jogo, mercado, ação, status..." autocomplete="off" />
         </div>
+        <!-- Marker: extrato-eventos-detalhado-v1 -->
         <div class="fin-chips" id="finChips" role="group" aria-label="Filtros">
           <button type="button" class="fin-chip active" data-group="all">Todos</button>
-          <button type="button" class="fin-chip" data-group="protecao">Proteções</button>
+          <button type="button" class="fin-chip" data-group="protecao">Eventos / Proteções</button>
+          <button type="button" class="fin-chip" data-group="desafio">Desafio</button>
           <button type="button" class="fin-chip" data-group="reembolso">Reembolsos</button>
           <button type="button" class="fin-chip" data-group="contestacao">Contestações</button>
           <button type="button" class="fin-chip" data-group="deposito">Depósitos</button>
           <button type="button" class="fin-chip" data-group="saque">Saques</button>
           <button type="button" class="fin-chip" data-group="transferencia">Transferências</button>
+          <button type="button" class="fin-chip" data-group="ajuste">Ajustes admin</button>
           <button type="button" class="fin-chip" data-group="afiliado">Afiliado</button>
           <button type="button" class="fin-chip" data-group="provedor">Provedor</button>
         </div>
+        <p class="fin-note" style="margin:8px 0 0">
+          Extrato detalhado: entradas e saídas dos eventos, lucro, deduções, cancelamentos (incluindo pelo admin) e toda movimentação de saldo.
+        </p>
         <div class="fin-table-wrap">
           <table class="fin-table">
             <thead>
