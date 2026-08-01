@@ -1,5 +1,6 @@
 /**
  * Aba Provedor v2 — Aporte de Capital (wizard SPA) + painel da rodada ativa.
+ * Marker: provedor-espelho-dashboard-v1
  */
 (function () {
   var STEPS = [
@@ -29,6 +30,10 @@
     distributions: [],
     withdrawals: [],
     pendingDeposit: null,
+    investorBalanceCents: 0,
+    viewUserId: null,
+    isMirror: false,
+    forceWizard: false,
     err: "",
     ok: "",
     copied: false,
@@ -37,6 +42,18 @@
     withdrawPix: "",
     withdrawType: "CPF",
   };
+
+  function viewUserIdOf(authUser) {
+    if (typeof ArbiV2 !== "undefined" && ArbiV2.getEffectiveUserId) {
+      return ArbiV2.getEffectiveUserId(authUser);
+    }
+    return authUser && authUser.id ? authUser.id : null;
+  }
+
+  function hasProviderCapital() {
+    if (state.round && state.round.id) return true;
+    return Number(state.investorBalanceCents || 0) > 0;
+  }
 
   function money(cents) {
     return ArbiV2.money(cents);
@@ -296,12 +313,17 @@
 
   function renderDashboard() {
     var r = state.round || {};
-    var invested = Number(r.invested_amount || 0);
+    var invested = Number(
+      r.invested_amount != null ? r.invested_amount : state.investorBalanceCents || 0
+    );
     var accrued = Number(r.accumulated_amount || 0);
     var avail = withdrawable();
     var windowOk = isWithdrawWindow();
     var distRows = (state.distributions || []).slice(0, 12);
     var wdRows = (state.withdrawals || []).slice(0, 8);
+    var mirrorNote = state.isMirror
+      ? '<p class="prov-empty" style="margin:0 0 12px">Espelho: somente leitura. Saques e novos aportes ficam com o cliente.</p>'
+      : "";
 
     return (
       '<div class="prov-dash">' +
@@ -310,6 +332,7 @@
         "Acompanhe seu capital, rentabilidade e saques."
       ) +
       alertHtml() +
+      mirrorNote +
       '<section class="prov-kpis">' +
       '<article><span class="l">Capital investido</span><strong>' +
       esc(money(invested)) +
@@ -324,6 +347,10 @@
       (windowOk ? "Aberta (15/30)" : "Dias 15 e 30") +
       "</strong></article>" +
       "</section>" +
+      '<div class="prov-row end" style="margin:0 0 14px">' +
+      '<button type="button" class="prov-btn sm ghost" data-act="novo-aporte"' +
+      (state.isMirror ? " disabled" : "") +
+      ">Novo aporte</button></div>" +
       '<section class="prov-dash-grid">' +
       '<article class="prov-panel">' +
       "<h3>Distribuições</h3>" +
@@ -348,7 +375,7 @@
       '<article class="prov-panel">' +
       '<div class="prov-panel-head"><h3>Saques</h3>' +
       '<button type="button" class="prov-btn sm" data-act="open-withdraw"' +
-      (!windowOk || avail <= 0 ? " disabled" : "") +
+      (!windowOk || avail <= 0 || state.isMirror || !state.round ? " disabled" : "") +
       ">Solicitar saque</button></div>" +
       (wdRows.length
         ? '<ul class="prov-list">' +
@@ -419,7 +446,9 @@
   function paint() {
     var root = document.getElementById("provRoot");
     if (!root) return;
-    root.innerHTML = state.round ? renderDashboard() : renderWizard();
+    // Já tem capital Provedor → painel (não forçar wizard de depósito)
+    var showDash = hasProviderCapital() && !state.forceWizard;
+    root.innerHTML = showDash ? renderDashboard() : renderWizard();
     bind(root);
   }
 
@@ -433,6 +462,17 @@
           paint();
         } else if (act === "to-welcome") {
           state.step = 0;
+          paint();
+        } else if (act === "novo-aporte") {
+          if (state.isMirror) {
+            state.err = "Espelho é somente leitura para novos aportes.";
+            paint();
+            return;
+          }
+          state.forceWizard = true;
+          state.step = 0;
+          state.err = "";
+          state.ok = "";
           paint();
         } else if (act === "gerar-pix") gerarPix();
         else if (act === "copy-pix") copyPix();
@@ -539,12 +579,30 @@
     }
   }
 
-  async function loadPartner(supa, userId) {
+  async function loadPartner(supa, authUser) {
+    var viewId = viewUserIdOf(authUser);
+    state.viewUserId = viewId;
+    state.isMirror = !!(authUser && viewId && String(viewId) !== String(authUser.id));
+    state.err = "";
+
+    var prof = await supa
+      .from("profiles")
+      .select("investor_balance_cents,demo_balance_provider_cents")
+      .eq("id", viewId)
+      .maybeSingle();
+    if (!prof.error && prof.data) {
+      state.investorBalanceCents =
+        Number(prof.data.investor_balance_cents || 0) +
+        Number(prof.data.demo_balance_provider_cents || 0);
+    } else {
+      state.investorBalanceCents = 0;
+    }
+
     // Prefer ACTIVE (schema VPS usa maiúsculas). Fallback: qualquer rodada do user.
     var roundRes = await supa
       .from("partner_rounds")
       .select("*")
-      .eq("user_id", userId)
+      .eq("user_id", viewId)
       .eq("status", "ACTIVE")
       .order("created_at", { ascending: false })
       .limit(1)
@@ -559,7 +617,7 @@
       var anyRound = await supa
         .from("partner_rounds")
         .select("*")
-        .eq("user_id", userId)
+        .eq("user_id", viewId)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -585,12 +643,15 @@
         .eq("round_id", state.round.id)
         .order("created_at", { ascending: false });
       state.withdrawals = wd.data || [];
+    } else {
+      state.distributions = [];
+      state.withdrawals = [];
     }
 
     var pend = await supa
       .from("manual_deposits")
       .select("id, status, amount_cents, created_at")
-      .eq("user_id", userId)
+      .eq("user_id", viewId)
       .eq("deposit_type", "investor")
       .in("status", ["PENDING", "AWAITING_PROOF"])
       .order("created_at", { ascending: false })
@@ -598,21 +659,32 @@
       .maybeSingle();
     state.pendingDeposit = pend.data || null;
 
-    if (!state.round && state.pendingDeposit) {
+    // Só manda pro wizard de comprovante se AINDA não tem capital/rodada
+    if (!hasProviderCapital() && state.pendingDeposit) {
+      state.forceWizard = true;
       state.step = 3;
       state.depositId = state.pendingDeposit.id;
-      state.amountCents = Number(state.pendingDeposit.amount_cents || state.amountCents);
+      state.amountCents = Number(
+        state.pendingDeposit.amount_cents || state.amountCents
+      );
       if (state.pendingDeposit.created_at) {
         state.confirmAt = new Date(state.pendingDeposit.created_at);
       }
       if (state.pendingDeposit.status === "AWAITING_PROOF") {
         state.step = 2;
       }
+    } else {
+      state.forceWizard = false;
     }
   }
 
   async function gerarPix() {
     if (state.busy) return;
+    if (state.isMirror) {
+      state.err = "Espelho é somente leitura para gerar PIX.";
+      paint();
+      return;
+    }
     if (state.amountCents < state.minCents) {
       state.err = "Investimento mínimo: " + money(state.minCents);
       paint();
@@ -630,6 +702,10 @@
       var supa = ArbiV2.client();
       var user = await ArbiV2.requireUser(supa);
       if (!user) return;
+      var viewId = viewUserIdOf(user);
+      if (String(viewId) !== String(user.id)) {
+        throw new Error("Espelho é somente leitura para gerar PIX.");
+      }
       var ins = await supa
         .from("manual_deposits")
         .insert({
@@ -644,6 +720,7 @@
       if (ins.error) throw ins.error;
       state.depositId = ins.data.id;
       state.step = 2;
+      state.forceWizard = true;
       state.ok = "PIX gerado. Realize o pagamento e anexe o comprovante.";
     } catch (ex) {
       state.err = (ex && ex.message) || "Erro ao gerar PIX";
@@ -672,6 +749,11 @@
   }
 
   async function sendProof() {
+    if (state.isMirror) {
+      state.err = "Espelho é somente leitura para enviar comprovante.";
+      paint();
+      return;
+    }
     if (state.busy || !state.file || !state.depositId) {
       if (!state.file) state.err = "Anexe o comprovante de pagamento";
       paint();
@@ -684,6 +766,9 @@
       var supa = ArbiV2.client();
       var user = await ArbiV2.requireUser(supa);
       if (!user) return;
+      if (String(viewUserIdOf(user)) !== String(user.id)) {
+        throw new Error("Espelho é somente leitura para enviar comprovante.");
+      }
       var ext = (state.file.name.split(".").pop() || "jpg").toLowerCase();
       var path = user.id + "/" + Date.now() + "." + ext;
       var up = await supa.storage.from("deposit-proofs").upload(path, state.file);
@@ -695,6 +780,7 @@
       if (upd.error) throw upd.error;
       state.confirmAt = new Date();
       state.step = 3;
+      state.forceWizard = true;
       state.ok = "Comprovante enviado!";
       state.pendingDeposit = {
         id: state.depositId,
@@ -712,6 +798,11 @@
 
   async function sendWithdraw() {
     if (state.busy) return;
+    if (state.isMirror) {
+      state.err = "Espelho é somente leitura para saques.";
+      paint();
+      return;
+    }
     var cents = parseReaisToCents(state.withdrawAmount);
     var avail = withdrawable();
     if (!cents || cents <= 0 || cents > avail) {
@@ -755,7 +846,7 @@
       state.ok = "Solicitação de saque enviada";
       state.withdrawOpen = false;
       var user = await ArbiV2.requireUser(supa);
-      if (user) await loadPartner(supa, user.id);
+      if (user) await loadPartner(supa, user);
     } catch (ex) {
       state.err = (ex && ex.message) || "Erro ao solicitar saque";
     } finally {
@@ -771,7 +862,7 @@
       var user = await ArbiV2.requireUser(supa);
       if (!user) return;
       await loadConfig(supa);
-      await loadPartner(supa, user.id);
+      await loadPartner(supa, user);
       state.amountText = formatMoneyInput(state.amountCents);
       paint();
     } catch (ex) {
