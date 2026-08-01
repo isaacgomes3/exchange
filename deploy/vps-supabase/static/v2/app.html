@@ -155,24 +155,24 @@
         if (!host) return;
         var w = 640;
         var h = 220;
-        var pad = 12;
+        var pad = 16;
         if (!points.length) points = [{ d: 0, v: 0 }, { d: 1, v: 0 }];
-        var max = Math.max.apply(
-          null,
-          points.map(function (p) {
-            return p.v;
-          }).concat([1])
-        );
-        var min = Math.min.apply(
-          null,
-          points.map(function (p) {
-            return p.v;
-          })
-        );
-        var span = Math.max(max - min, 1);
+        var vals = points.map(function (p) {
+          return Number(p.v) || 0;
+        });
+        var max = Math.max.apply(null, vals);
+        var min = Math.min.apply(null, vals);
+        // Série plana (min===max) — desenha no meio do gráfico, senão some na borda
+        var span = max - min;
+        var flat = !(span > 0);
+        if (flat) {
+          span = Math.max(max, 1);
+          min = max - span;
+        }
         var coords = points.map(function (p, i) {
           var x = pad + (i / Math.max(points.length - 1, 1)) * (w - pad * 2);
-          var y = h - pad - ((p.v - min) / span) * (h - pad * 2);
+          var ratio = flat ? 0.55 : (Number(p.v) - min) / span;
+          var y = h - pad - ratio * (h - pad * 2);
           return x.toFixed(1) + "," + y.toFixed(1);
         });
         var poly = coords.join(" ");
@@ -192,17 +192,40 @@
           "</svg>";
       }
 
+      function outcomeOf(row) {
+        var o = String(row && row.settled_outcome || "")
+          .toLowerCase()
+          .trim();
+        if (o === "arbishield" || o === "exchange" || o === "void") return o;
+        var st = String(row && row.status || "").toLowerCase();
+        if (st === "lost_exchange" || st === "refunded" || st === "refund_requested") {
+          return "arbishield";
+        }
+        if (st === "won_exchange") return "exchange";
+        if (st === "void" || st === "cancelled") return "void";
+        if (st === "settled") return o || "exchange";
+        return "";
+      }
+
+      function isSettledRow(row) {
+        var o = outcomeOf(row);
+        if (o === "arbishield" || o === "exchange") return true;
+        var st = String(row && row.status || "").toLowerCase();
+        return /^(settled|won_exchange|lost_exchange|refunded|refund_requested|closed|completed)$/.test(st);
+      }
+
       try {
         var profileRes = await supa
           .from("profiles")
           .select(
-            "full_name,balance_cents,reusable_balance_cents,deduction_balance_cents,demo_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,cpf,pix_key,pix_priority_type,pix_bank,pix_account,pix_account_holder,phone"
+            "full_name,balance_cents,reusable_balance_cents,deduction_balance_cents,demo_balance_cents,investor_balance_cents,demo_balance_provider_cents,desafio_balance_cents,locked_balance_cents,cpf,pix_key,pix_priority_type,pix_bank,pix_account,pix_account_holder,phone"
           )
           .eq("id", user.id)
           .maybeSingle();
         if (profileRes.error) throw profileRes.error;
         var p = profileRes.data || {};
 
+        var locked = Number(p.locked_balance_cents || 0);
         var apostador =
           Number(p.balance_cents || 0) +
           Number(p.reusable_balance_cents || 0) +
@@ -211,10 +234,11 @@
         var provedor =
           Number(p.investor_balance_cents || 0) +
           Number(p.demo_balance_provider_cents || 0);
+        var patrimonio = apostador + provedor + locked;
 
         set("kBalApostador", money(apostador));
         set("kBalProvedor", money(provedor));
-        set("evoToday", money(apostador + provedor));
+        set("evoToday", money(patrimonio));
 
         var missing = [];
         if (!p.full_name) missing.push("Nome completo");
@@ -240,63 +264,99 @@
           });
         }
 
+        // Colunas reais do schema VPS — profit_cents/pnl_cents NÃO existem (quebravam o painel).
+        var protCols =
+          "id,status,settled_outcome,amount_cents,responsibility_cents,user_profit_cents,platform_profit_cents,exchange_profit_net_cents,settled_at,created_at";
         var protRes = await supa
           .from("protections")
-          .select("id,status,amount_cents,profit_cents,pnl_cents,created_at")
+          .select(protCols)
           .eq("user_id", user.id)
           .limit(500);
+        if (protRes.error) throw protRes.error;
         var rows = (protRes.data || []).slice();
+        try {
+          var backRes = await supa
+            .from("back_protections")
+            .select(
+              "id,status,settled_outcome,amount_cents,user_profit_cents,exchange_profit_net_cents,settled_at,created_at"
+            )
+            .eq("user_id", user.id)
+            .limit(200);
+          if (!backRes.error && backRes.data && backRes.data.length) {
+            rows = rows.concat(
+              backRes.data.map(function (r) {
+                return Object.assign({}, r, {
+                  responsibility_cents: r.amount_cents,
+                });
+              })
+            );
+          }
+        } catch (backErr) {}
+
         var active = rows.filter(function (r) {
           return String(r.status || "").toLowerCase() === "active";
         }).length;
-        var settledStatuses = /settled|liquidat|won|lost|closed|completed|resolved/i;
-        var settled = rows.filter(function (r) {
-          return settledStatuses.test(String(r.status || ""));
-        });
-        var won = settled.filter(function (r) {
-          return /won|profit|win/i.test(String(r.status || "")) || Number(r.profit_cents || r.pnl_cents || 0) > 0;
+        var settled = rows.filter(isSettledRow);
+        var hits = settled.filter(function (r) {
+          return outcomeOf(r) === "exchange";
         }).length;
-        var winRate = settled.length ? (won / settled.length) * 100 : 0;
-        var capital = rows.reduce(function (acc, r) {
-          return acc + Number(r.amount_cents || 0);
-        }, 0);
-        var profit = rows.reduce(function (acc, r) {
-          return acc + Number(r.profit_cents || r.pnl_cents || 0);
-        }, 0);
-
-        var refundCount = 0;
-        try {
-          var ref = await supa
-            .from("refunds")
-            .select("id", { count: "exact", head: true })
-            .eq("user_id", user.id);
-          refundCount = ref.count || 0;
-        } catch (refErr) {}
+        var refunds = settled.filter(function (r) {
+          return outcomeOf(r) === "arbishield";
+        }).length;
+        var scored = hits + refunds;
+        var winRate = scored ? (hits / scored) * 100 : 0;
+        var capital = rows
+          .filter(function (r) {
+            return String(r.status || "").toLowerCase() !== "cancelled";
+          })
+          .reduce(function (acc, r) {
+            return acc + Number(r.amount_cents || r.responsibility_cents || 0);
+          }, 0);
+        var profit = settled
+          .filter(function (r) {
+            return outcomeOf(r) === "exchange";
+          })
+          .reduce(function (acc, r) {
+            var net = Number(r.exchange_profit_net_cents || 0);
+            if (net > 0) return acc + net;
+            return acc + Number(r.user_profit_cents || 0);
+          }, 0);
 
         set("kProt", String(active));
-        set("opsWin", winRate.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "%");
+        set(
+          "opsWin",
+          winRate.toLocaleString("pt-BR", {
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1,
+          }) + "%"
+        );
         set("opsSettled", String(settled.length));
-        set("opsRefunds", String(refundCount));
+        set("opsRefunds", String(refunds));
         set("opsCapital", money(capital));
         set("opsProfit", money(profit));
 
         var monthStart = new Date();
         monthStart.setDate(1);
         monthStart.setHours(0, 0, 0, 0);
-        var monthProfit = rows
+        var monthProfit = settled
           .filter(function (r) {
-            return r.created_at && new Date(r.created_at) >= monthStart;
+            var when = r.settled_at || r.created_at;
+            return when && new Date(when) >= monthStart && outcomeOf(r) === "exchange";
           })
           .reduce(function (acc, r) {
-            return acc + Number(r.profit_cents || r.pnl_cents || 0);
+            var net = Number(r.exchange_profit_net_cents || 0);
+            return acc + (net > 0 ? net : Number(r.user_profit_cents || 0));
           }, 0);
-        var base = Math.max(apostador + provedor - monthProfit, 1);
+        var base = Math.max(patrimonio - monthProfit, 1);
         var rentPct = (monthProfit / base) * 100;
         var rentEl = document.getElementById("kRent");
         var evoPct = document.getElementById("evoPct");
         var rentTxt =
           (rentPct >= 0 ? "+" : "") +
-          rentPct.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
+          rentPct.toLocaleString("pt-BR", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }) +
           "%";
         if (rentEl) rentEl.textContent = rentTxt;
         if (evoPct) {
@@ -304,29 +364,39 @@
           evoPct.className = rentPct >= 0 ? "pos" : "neg";
         }
 
+        var totalNow = patrimonio;
         var points = [];
-        var now = Date.now();
-        var totalNow = apostador + provedor;
+        var dayNet = {};
+        try {
+          var since = new Date(Date.now() - 30 * 86400000).toISOString();
+          var txRes = await supa
+            .from("wallet_transactions")
+            .select("amount_cents,created_at")
+            .eq("user_id", user.id)
+            .gte("created_at", since)
+            .order("created_at", { ascending: true })
+            .limit(1000);
+          if (!txRes.error && txRes.data) {
+            txRes.data.forEach(function (tx) {
+              if (!tx.created_at) return;
+              var key = new Date(tx.created_at).toISOString().slice(0, 10);
+              dayNet[key] = (dayNet[key] || 0) + Number(tx.amount_cents || 0);
+            });
+          }
+        } catch (txErr) {}
+
+        var netWindow = Object.keys(dayNet).reduce(function (acc, k) {
+          return acc + dayNet[k];
+        }, 0);
+        var cursor = Math.max(0, totalNow - netWindow);
         for (var i = 29; i >= 0; i--) {
-          var t = now - i * 86400000;
-          var dayProfit = rows
-            .filter(function (r) {
-              if (!r.created_at) return false;
-              var d = new Date(r.created_at).getTime();
-              return d >= t - 86400000 && d < t;
-            })
-            .reduce(function (acc, r) {
-              return acc + Number(r.profit_cents || r.pnl_cents || 0);
-            }, 0);
-          points.push({ d: 30 - i, v: Math.max(0, totalNow - dayProfit * (i + 1) * 0.02) });
+          var day = new Date(Date.now() - i * 86400000);
+          var key = day.toISOString().slice(0, 10);
+          cursor += dayNet[key] || 0;
+          if (cursor < 0) cursor = 0;
+          points.push({ d: 30 - i, v: i === 0 ? totalNow : cursor });
         }
-        if (totalNow === 0 && !rows.length) {
-          points = Array.from({ length: 30 }, function (_, idx) {
-            return { d: idx, v: 0 };
-          });
-        } else {
-          points[points.length - 1].v = totalNow;
-        }
+        if (points.length) points[points.length - 1].v = totalNow;
         renderChart(points);
       } catch (ex) {
         showErr(ex.message || "Erro ao carregar visão geral");
