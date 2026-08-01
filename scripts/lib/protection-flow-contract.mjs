@@ -149,7 +149,9 @@ export const PROTECTION_RESULT_TERMS = Object.freeze({
   arbishield: Object.freeze({
     term: "Reembolso",
     kind: "reembolso",
-    hint: "Indicação perdeu — ArbiShield reembolsa no Saldo Reembolso",
+    // O stake sai de travado e ArbiShield o credita no Saldo Reembolso — não
+    // volta ao Apostador. Ver PROTECTION_RESULT_WALLET_EFFECT.
+    hint: "Indicação perdeu — destrava o stake e ArbiShield credita no Saldo Reembolso",
   }),
   exchange: Object.freeze({
     term: "Ganho",
@@ -161,6 +163,24 @@ export const PROTECTION_RESULT_TERMS = Object.freeze({
     kind: "anula",
     hint: "Empate anula — destrava o stake e devolve à origem",
   }),
+});
+
+/**
+ * Para onde o stake vai em cada resultado — o que os rótulos descrevem.
+ * Marker: `protection-result-terms-v1`
+ *
+ * Exemplo com Apostador 1000 e stake travado 500:
+ *   Reembolso → Apostador 1000 · Travado 0 · Saldo Reembolso 500
+ *   Ganho     → Apostador 1500 · Travado 0 · Saldo Reembolso 0   (menos a dedução)
+ *   Anula     → Apostador 1500 · Travado 0 · Saldo Reembolso 0
+ *
+ * Ou seja: no **Reembolso** o stake destrava e vai para o **Saldo Reembolso**;
+ * é só no Ganho e no Anula que ele volta para a carteira de origem.
+ */
+export const PROTECTION_RESULT_WALLET_EFFECT = Object.freeze({
+  arbishield: "destrava o stake e credita o mesmo valor no Saldo Reembolso",
+  exchange: "destrava e devolve o stake à origem, cobrando só a dedução",
+  void: "destrava e devolve o stake à origem",
 });
 
 /** Termo canônico de um outcome; "" quando ainda não há resultado. */

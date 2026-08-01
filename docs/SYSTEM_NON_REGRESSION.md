@@ -135,8 +135,20 @@ indicação perde. O termo sai da **indicação**, igual em todas as telas:
 | Outcome (interno) | Termo | O que acontece |
 |---|---|---|
 | `exchange` | **Ganho** | indicação bateu na casa externa → devolve o stake à origem, cobra só a dedução |
-| `arbishield` | **Reembolso** | indicação perdeu → ArbiShield credita no Saldo Reembolso |
+| `arbishield` | **Reembolso** | indicação perdeu → destrava o stake e credita no **Saldo Reembolso** |
 | `void` / `empate_anula` | **Anula** | destrava o stake e devolve à origem |
+
+Efeito na carteira (`PROTECTION_RESULT_WALLET_EFFECT`), com Apostador 1000 e stake
+travado 500:
+
+| Termo | Apostador | Travado | Saldo Reembolso |
+|---|---|---|---|
+| Reembolso | 1000 | 0 | **500** |
+| Ganho | **1500** | 0 | 0 (menos a dedução) |
+| Anula | **1500** | 0 | 0 |
+
+No **Reembolso** o stake **não volta ao Apostador** — vai para o Saldo Reembolso. O
+teste proíbe o rótulo desse caso dizer «à origem».
 
 A direção confere com a carteira: é no `arbishield` que o **Saldo Reembolso** é
 creditado, porque aquilo é o reembolso. O teste trava isso — `arbishield` nunca

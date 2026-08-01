@@ -18,6 +18,8 @@ import { describe, it } from "node:test";
 import {
   PROTECTION_RESULT_TERMS,
   PROTECTION_RESULT_TERMS_VERSION,
+  PROTECTION_RESULT_WALLET_EFFECT,
+  creditBucketForSettlement,
   protectionResultHint,
   protectionResultKind,
   protectionResultTerm,
@@ -153,5 +155,21 @@ describe("a direção do termo casa com a carteira", () => {
   it("ArbiShield não gera ganho — o termo Ganho nunca aponta para ela", () => {
     assert.notEqual(protectionResultTerm("arbishield"), "Ganho");
     assert.notEqual(protectionResultTerm("lost_exchange"), "Ganho");
+  });
+
+  it("no Reembolso o stake vai para o Saldo Reembolso, não para a origem", () => {
+    assert.equal(
+      creditBucketForSettlement("REAL", stakeLock, "arbishield"),
+      "deduction_balance_cents"
+    );
+    assert.match(PROTECTION_RESULT_WALLET_EFFECT.arbishield, /Saldo Reembolso/);
+    // O texto do rótulo não pode prometer devolução à origem nesse caso.
+    assert.doesNotMatch(protectionResultHint("arbishield"), /à origem/);
+  });
+
+  it("Ganho e Anula devolvem à carteira de origem", () => {
+    assert.equal(creditBucketForSettlement("REAL", stakeLock, "void"), "balance_cents");
+    assert.match(PROTECTION_RESULT_WALLET_EFFECT.exchange, /à origem/);
+    assert.match(PROTECTION_RESULT_WALLET_EFFECT.void, /à origem/);
   });
 });

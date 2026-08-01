@@ -186,7 +186,7 @@ function suggestOutcome(row, match, sc) {
     ? {
         outcome: "arbishield",
         label: "Reembolso",
-        reason: `${row._kind} · mercado ${aconteceu ? "aconteceu" : "não aconteceu"} → indicação perdeu → ArbiShield reembolsa`,
+        reason: `${row._kind} · mercado ${aconteceu ? "aconteceu" : "não aconteceu"} → indicação perdeu → destrava o stake e credita no Saldo Reembolso`,
         marketName,
       }
     : {

@@ -408,7 +408,7 @@
     arbishield: {
       term: "Reembolso",
       kind: "reembolso",
-      hint: "Indicação perdeu — ArbiShield reembolsa no Saldo Reembolso",
+      hint: "Indicação perdeu — destrava o stake e ArbiShield credita no Saldo Reembolso",
     },
     exchange: {
       term: "Ganho",
