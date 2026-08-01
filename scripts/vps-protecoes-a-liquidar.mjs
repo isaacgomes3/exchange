@@ -21,7 +21,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { marketStatus } from "./lib/desafio-settle-suggest.mjs";
+import { suggestProtectionOutcome } from "./lib/desafio-settle-suggest.mjs";
 
 function loadEnvFile(file) {
   if (!file || !fs.existsSync(file)) return;
@@ -148,55 +148,6 @@ function scoreOfMatch(match) {
   return { home, away, finished, why };
 }
 
-/** Sugestão de outcome. BACK ganha se o mercado acontece; LAY, se não acontece. */
-function suggestOutcome(row, match, sc) {
-  const meta = metaOf(row);
-  const marketName = meta.market_name || row.market_name || "";
-  const teams = { homeTeam: match?.home_team || "", awayTeam: match?.away_team || "" };
-  if (!sc.finished) {
-    return { outcome: null, label: "aguardar", reason: "partida não encerrada", marketName };
-  }
-  if (sc.home == null || sc.away == null) {
-    return {
-      outcome: null,
-      label: "sem placar",
-      reason: "encerrada sem resultado gravado — buscar o placar",
-      marketName,
-    };
-  }
-  const st = marketStatus(marketName, sc.home, sc.away, true, teams);
-  if (st === "void") {
-    return { outcome: "void", label: "Anula", reason: "empate anula — destrava o stake e devolve à origem", marketName };
-  }
-  if (st !== "win" && st !== "lose") {
-    return {
-      outcome: null,
-      label: "conferir",
-      reason: marketName
-        ? `mercado não reconhecido: "${marketName}"`
-        : "proteção sem mercado registrado",
-      marketName,
-    };
-  }
-  const aconteceu = st === "win";
-  // BACK cobre quando o mercado acontece; LAY, quando não acontece. Se a
-  // proteção pagou, a indicação perdeu na casa → Reembolso.
-  const protecaoPagou = row._kind === "BACK" ? aconteceu : !aconteceu;
-  return protecaoPagou
-    ? {
-        outcome: "arbishield",
-        label: "Reembolso",
-        reason: `${row._kind} · mercado ${aconteceu ? "aconteceu" : "não aconteceu"} → indicação perdeu → destrava o stake e credita no Saldo Reembolso`,
-        marketName,
-      }
-    : {
-        outcome: "exchange",
-        label: "Ganho",
-        reason: `${row._kind} · mercado ${aconteceu ? "aconteceu" : "não aconteceu"} → indicação bateu na casa → devolve o stake e cobra só a dedução`,
-        marketName,
-      };
-}
-
 const byMatch = new Map();
 for (const r of all) {
   const key = String(r.match_id || "sem-partida");
@@ -227,7 +178,16 @@ for (const [matchId, rows] of byMatch) {
   console.log(`   encerrada: ${sc.finished ? "sim" : "NÃO"} (${sc.why})`);
 
   for (const r of rows) {
-    const sug = suggestOutcome(r, match, sc);
+    const sug = suggestProtectionOutcome({
+      kind: r._kind,
+      marketName: metaOf(r).market_name || r.market_name || "",
+      home: sc.home,
+      away: sc.away,
+      finished: sc.finished,
+      homeTeam: match?.home_team || "",
+      awayTeam: match?.away_team || "",
+    });
+    sug.marketName = metaOf(r).market_name || r.market_name || "";
     const valor = Number(r.responsibility_cents || r.amount_cents || 0);
     totalCents += valor;
     if (sug.outcome) ready += 1;

@@ -11,6 +11,7 @@ import {
   SETTLE_SUGGEST_VERSION,
   marketStatus,
   marketTeamSide,
+  suggestProtectionOutcome,
   suggestSettle,
 } from "./lib/desafio-settle-suggest.mjs";
 
@@ -157,6 +158,66 @@ describe("placar exato (proteções LAY de correct score)", () => {
     // Espelha a regra do relatório de proteções: LAY ganha quando não acontece.
     const naoAconteceu = marketStatus("Lay 0x1", 2, 0, FT, t) === "lose";
     assert.equal(naoAconteceu, true);
+  });
+});
+
+describe("outcome da proteção: BACK e LAY invertem", () => {
+  const base = { home: 2, away: 0, finished: true, homeTeam: "LASK", awayTeam: "Nice" };
+
+  it("LAY de placar exato que não saiu → Reembolso", () => {
+    const r = suggestProtectionOutcome({ ...base, kind: "LAY", marketName: "Lay 0x1" });
+    assert.equal(r.outcome, "arbishield");
+    assert.equal(r.label, "Reembolso");
+  });
+
+  it("LAY de placar exato que saiu → Ganho", () => {
+    const r = suggestProtectionOutcome({
+      ...base,
+      home: 0,
+      away: 1,
+      kind: "LAY",
+      marketName: "Lay 0x1",
+    });
+    assert.equal(r.outcome, "exchange");
+    assert.equal(r.label, "Ganho");
+  });
+
+  it("BACK é o espelho do LAY no mesmo mercado e placar", () => {
+    const lay = suggestProtectionOutcome({ ...base, kind: "LAY", marketName: "Mandante" });
+    const back = suggestProtectionOutcome({ ...base, kind: "BACK", marketName: "Mandante" });
+    assert.notEqual(lay.outcome, back.outcome);
+    assert.equal(back.outcome, "arbishield");
+    assert.equal(lay.outcome, "exchange");
+  });
+
+  it("empate em Empate Anula → Anula, para os dois lados", () => {
+    for (const kind of ["BACK", "LAY"]) {
+      const r = suggestProtectionOutcome({
+        ...base,
+        home: 1,
+        away: 1,
+        kind,
+        marketName: "LASK EMPATE ANULA",
+      });
+      assert.equal(r.outcome, "void");
+    }
+  });
+
+  it("sem placar, sem fim de jogo ou mercado exótico não sugere nada", () => {
+    assert.equal(
+      suggestProtectionOutcome({ ...base, kind: "LAY", marketName: "Lay 0x1", finished: false })
+        .outcome,
+      null
+    );
+    assert.equal(
+      suggestProtectionOutcome({ ...base, home: null, away: null, kind: "LAY", marketName: "Lay 0x1" })
+        .outcome,
+      null
+    );
+    assert.equal(
+      suggestProtectionOutcome({ ...base, kind: "LAY", marketName: "Handicap -1.25" }).outcome,
+      null
+    );
   });
 });
 

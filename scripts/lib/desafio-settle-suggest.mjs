@@ -123,6 +123,67 @@ export function marketStatus(name, home, away, finished, teams) {
 }
 
 /**
+ * Outcome sugerido para uma proteção.
+ *
+ * BACK cobre quando o mercado acontece; LAY, quando não acontece. Se a proteção
+ * pagou, a indicação perdeu na casa → `arbishield` (**Reembolso**). Se não pagou,
+ * a indicação bateu → `exchange` (**Ganho**).
+ *
+ * `kind`: "BACK" | "LAY" · `marketName`: rótulo do mercado · `home`/`away`: placar.
+ */
+export function suggestProtectionOutcome({
+  kind,
+  marketName,
+  home,
+  away,
+  finished,
+  homeTeam,
+  awayTeam,
+} = {}) {
+  const teams = { homeTeam, awayTeam };
+  if (!finished) {
+    return { outcome: null, label: "aguardar", reason: "partida não encerrada" };
+  }
+  if (!Number.isFinite(home) || !Number.isFinite(away)) {
+    return {
+      outcome: null,
+      label: "sem placar",
+      reason: "encerrada sem resultado gravado — buscar o placar",
+    };
+  }
+  const st = marketStatus(marketName, home, away, true, teams);
+  if (st === "void") {
+    return {
+      outcome: "void",
+      label: "Anula",
+      reason: "empate anula — destrava o stake e devolve à origem",
+    };
+  }
+  if (st !== "win" && st !== "lose") {
+    return {
+      outcome: null,
+      label: "conferir",
+      reason: marketName
+        ? `mercado não reconhecido: "${marketName}"`
+        : "proteção sem mercado registrado",
+    };
+  }
+  const aconteceu = st === "win";
+  const protecaoPagou = String(kind).toUpperCase() === "BACK" ? aconteceu : !aconteceu;
+  return protecaoPagou
+    ? {
+        outcome: "arbishield",
+        label: "Reembolso",
+        reason: `${kind} · mercado ${aconteceu ? "aconteceu" : "não aconteceu"} → indicação perdeu → destrava o stake e credita no Saldo Reembolso`,
+      }
+    : {
+        outcome: "exchange",
+        label: "Ganho",
+        reason: `${kind} · mercado ${aconteceu ? "aconteceu" : "não aconteceu"} → indicação bateu na casa → devolve o stake e cobra só a dedução`,
+      };
+}
+
+/**
  * Botão sugerido para a etapa.
  * `winningSide`: "arbishield" | "casa" | "empate_anula" | null (indefinido)
  */
