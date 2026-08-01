@@ -72,6 +72,14 @@ Marker session admin: `DO_NOT_CHANGE_ADMIN_SESSION_MODE_WITHOUT_EXPLICIT_REQUEST
   fallback `/brand/houses/casa.svg` (sempre tem logo); não remover os assets
 - Teste: `scripts/desafio-market-flag.test.mjs` · Hotfix: `scripts/vps-hotfix-desafio-dnb-flag.sh`
 
+### Desafio — reentrada após cancelar (anti-regressão)
+
+- Marker `desafio-reentrada-apos-cancelar-v1` · `scripts/lib/desafio-reentry-contract.mjs`
+- Cancelar a própria entrada **permite** nova entrada na **mesma etapa**
+- Condições: desafio ativo; etapa aberta (antes do kickoff, não live/finalizada); regras do ciclo
+- Participação `cancelled` **não** bloqueia nem consome slot do ciclo
+- Teste: `scripts/desafio-reentry-contract.test.mjs`
+
 ### Desafio em andamento — liquidar, não cancelar (anti-regressão)
 
 - Marker `block-cancel-delete-andamento-v1` · teste `scripts/desafio-ops-guard.test.mjs`
