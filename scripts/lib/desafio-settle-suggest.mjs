@@ -69,6 +69,21 @@ export function marketStatus(name, home, away, finished, teams) {
     return "pending";
   }
 
+  // Placar exato ("Lay 0x1", "2 x 2", "Placar exato 1-0"): a seleção é o próprio
+  // resultado. Casamento estrito — o rótulo tem que SER um placar, para não
+  // confundir com linha de gols ("mais de 1.5") nem handicap.
+  const exact = n
+    .replace(/\b(placar\s*exato|correct\s*score|resultado\s*exato|lay|back)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .match(/^(\d{1,2})\s*[x×:\-]\s*(\d{1,2})$/);
+  if (exact) {
+    if (!finished) return "pending";
+    const eh = Number(exact[1]);
+    const ea = Number(exact[2]);
+    return home === eh && away === ea ? "win" : "lose";
+  }
+
   if (DNB_RE.test(n)) {
     if (!finished) return "pending";
     if (home === away) return "void";

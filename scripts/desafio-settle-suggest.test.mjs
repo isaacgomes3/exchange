@@ -118,6 +118,48 @@ describe("botão sugerido", () => {
   });
 });
 
+describe("placar exato (proteções LAY de correct score)", () => {
+  const t = { homeTeam: "Juventus", awayTeam: "Nice" };
+
+  it("acerta o placar → seleção aconteceu", () => {
+    assert.equal(marketStatus("Lay 0x1", 0, 1, FT, t), "win");
+    assert.equal(marketStatus("Lay 3x2", 3, 2, FT, t), "win");
+    assert.equal(marketStatus("Placar exato 1-0", 1, 0, FT, t), "win");
+  });
+
+  it("erra o placar → não aconteceu", () => {
+    assert.equal(marketStatus("Lay 0x1", 2, 0, FT, t), "lose");
+    assert.equal(marketStatus("Lay 2x2", 0, 0, FT, t), "lose");
+    assert.equal(marketStatus("Lay 0x0", 2, 1, FT, t), "lose");
+  });
+
+  it("respeita a ordem: 0x1 não é 1x0", () => {
+    assert.equal(marketStatus("Lay 0x1", 1, 0, FT, t), "lose");
+    assert.equal(marketStatus("Lay 1x0", 1, 0, FT, t), "win");
+  });
+
+  it("em andamento fica pendente", () => {
+    assert.equal(marketStatus("Lay 0x1", 0, 1, LIVE, t), "pending");
+  });
+
+  it("não engole linha de gols, handicap nem DNB", () => {
+    assert.equal(marketStatus("MENOS DE 1.5 GOLS NA PARTIDA", 0, 0, FT, t), "win");
+    assert.equal(marketStatus("MAIS DE 1.5 GOLS NA PARTIDA", 0, 0, FT, t), "lose");
+    assert.equal(marketStatus("Handicap -1.25", 2, 0, FT, t), null);
+    assert.equal(
+      marketStatus("Juventus EMPATE ANULA", 2, 0, FT, t),
+      "win",
+      "DNB não pode virar placar exato"
+    );
+  });
+
+  it("LAY de placar exato que não saiu → cliente ganhou", () => {
+    // Espelha a regra do relatório de proteções: LAY ganha quando não acontece.
+    const naoAconteceu = marketStatus("Lay 0x1", 2, 0, FT, t) === "lose";
+    assert.equal(naoAconteceu, true);
+  });
+});
+
 describe("concorda com a leitura do card", () => {
   const teams = { homeTeam: "LASK", awayTeam: "GRAZER AK" };
 
