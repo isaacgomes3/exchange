@@ -113,11 +113,15 @@ describe("as telas usam o termo único", () => {
     assert.match(ADMIN, />ANULA</);
   });
 
-  it("o vocabulário antigo não voltou", () => {
+  it("o vocabulário antigo não voltou — inclusive em avisos e alertas", () => {
     for (const antigo of [
       "BATEU ARBISHIELD",
       "BATEU CASA EXTERNA",
       "Onde bateu?",
+      "Ganhou ArbiShield",
+      "Exchange/PERDEU",
+      "Casa externa ou",
+      "sem reembolso (casa externa)",
     ]) {
       assert.ok(!ADMIN.includes(antigo), `admin-jogos ainda diz "${antigo}"`);
     }

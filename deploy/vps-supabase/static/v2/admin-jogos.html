@@ -3499,17 +3499,17 @@
           money(stake);
         if ($("settleRefundHint")) {
           $("settleRefundHint").textContent =
-            "Ganhou ArbiShield → credita stake no Saldo Reembolso: " +
+            "Reembolso → credita o stake no Saldo Reembolso: " +
             money(refund) +
             " (stake_lock; dedução NÃO entra no Reembolso)";
         }
         if ($("settleDeductHint")) {
           $("settleDeductHint").textContent =
             margin > 0
-              ? "Exchange/PERDEU → cobra só a dedução agora: " +
+              ? "Ganho → cobra só a dedução agora: " +
                 money(margin) +
                 " · R$ 0 Reembolso · destrava e devolve o stake (ex. 1000@10 → R$ 91,11; sem comissão extra)"
-              : "Exchange/PERDEU → R$ 0 Reembolso · destrava e devolve o stake · cobra só a dedução ArbiShield";
+              : "Ganho → R$ 0 no Saldo Reembolso · destrava e devolve o stake à origem · cobra só a dedução";
         }
         if ($("settleStakeKeepHint")) {
           $("settleStakeKeepHint").textContent =
@@ -3598,7 +3598,7 @@
           outcome !== "anula"
         ) {
           alert(
-            "Selecione: ArbiShield, Casa externa ou Empate Anula."
+            "Selecione o resultado: Ganho, Reembolso ou Anula."
           );
           return;
         }
@@ -3638,13 +3638,13 @@
               Number(data.settledCount || 0) +
               " proteção(ões) · " +
               (outcome === "arbishield"
-                ? "reembolso " + money(data.refundedCents || 0)
+                ? "Reembolso · creditado " + money(data.refundedCents || 0)
                 : outcome === "void" ||
                     outcome === "empate_anula" ||
                     outcome === "anula"
-                  ? "Empate Anula · dedução devolvida " +
+                  ? "Anula · devolvido " +
                     money(data.refundedCents || 0)
-                  : "sem reembolso (casa externa)")
+                  : "Ganho · stake devolvido à origem")
           );
           $("settleModal").classList.remove("show");
           platformLoaded = false;
