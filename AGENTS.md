@@ -112,7 +112,7 @@ Desafios. Não reverter **Modo usuário / Modo ADM** nem **espelho de conta**.
 3. **Banco:** sem `profiles.email`; colunas wallet (`locked_balance_cents`, `deduction_balance_cents`, …) e RPC `request_saldo_reembolso_withdrawal` permanecem.
 4. **Deploy:** `vps-atualizar-protecao-fee-upfront-prod.sh` bloqueado; shim em `/opt/arbishield/scripts/`; rota `/api/arbishield/football-teams` viva.
 5. **Admin — Lançar saldo:** `admin-manual-deposits.html` → `Confirmar e Creditar` / `Já creditado` (sem alterar saldo) via `approveManualDeposit` + finance admin.
-6. **Admin — Lançar jogos:** `admin-jogos.html` → `POST /api/arbishield/matches` (BetBra + manual); padrão rascunho; `Publicar na fila` explícito; unpublish finalizados.
+6. **Admin — Lançar jogos:** `admin-jogos.html` (`admin-jogos-publish-imediato-agendar-v1`) → `POST /api/arbishield/matches` (BetBra + manual); padrão **publicação imediata**; opção **Agendar publicação** (`scheduled_publish_at`); unpublish finalizados.
 7. **Admin — menu accordion:** `v2-shell.js` + `v2.css` → só títulos; clique abre; `bindAdminNavAccordion` / `v2-nav-accordion-btn`.
 8. **Admin — Monitor Desafios cards:** `admin-monitoring-desafios.html` (`desafio-monitor-card-layout-v1`) → zonas `mdz-card-top` / `mdz-card-game` / `mdz-card-foot` + settle Bateu Arbi/Casa/Empate Anula; sem tabela `.mdz` densa.
 9. **Modo usuário / Modo ADM:** `v2ModeSwitch` — admin→`/app.html` («Modo usuário»); app→`/admin.html` («Modo ADM», hidden até `requireAdmin`).

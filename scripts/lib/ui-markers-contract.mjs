@@ -38,16 +38,20 @@ export const UI_CRITICAL_MARKERS = Object.freeze({
     bodyMustNotInclude: Object.freeze(["Saldo Dedução"]),
   }),
   "deploy/vps-supabase/static/v2/admin-jogos.html": Object.freeze({
-    build: "admin-jogos-unpublish-finalizados-v8",
-    featuresMustInclude: Object.freeze([]),
+    build: "admin-jogos-publish-imediato-agendar-v1",
+    featuresMustInclude: Object.freeze([
+      "admin-jogos-publish-imediato-agendar-v1",
+    ]),
     bodyMustInclude: Object.freeze([
       "searchFootballTeams",
       "football-teams",
       "Saldo Reembolso",
       "Lançar evento",
-      "Publicar na fila",
+      "Publicar agora",
+      "Agendar publicação",
       "/api/arbishield/matches",
       "publishMatch",
+      "scheduledPublishAt",
     ]),
   }),
   "deploy/vps-supabase/static/v2/admin-manual-deposits.html": Object.freeze({

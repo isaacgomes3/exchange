@@ -96,8 +96,11 @@ describe("admin ops — lançar saldo + lançar jogos", () => {
     assertIncludes(prelive, ADMIN_LANCAR_JOGOS.preliveMustInclude, "prelive jogos");
     assert.match(shell, /admin-jogos\.html/);
     assert.match(shell, /"Jogos"/);
-    // rascunho por defeito / publicar explícito
-    assert.match(html, /Publicar na fila/);
-    assert.match(html, /rascunho/i);
+    // publicação imediata por defeito + agendar
+    assert.match(html, /Publicar agora/);
+    assert.match(html, /Agendar publicação/);
+    assert.match(html, /admin-jogos-publish-imediato-agendar-v1/);
+    assert.match(prelive, /publishDueScheduledMatches/);
+    assert.match(prelive, /resolveMatchPublishState/);
   });
 });
