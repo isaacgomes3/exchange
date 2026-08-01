@@ -24,6 +24,7 @@ do dono + bump de versão + sync docs/testes.
 | Admin ops | `admin-ops-contract-v1` | **Lançar saldo** (depósitos) + **Lançar jogos** |
 | Admin UI layout | `admin-ui-layout-contract-v1` | **Menu accordion** + **Monitor Desafios cards** |
 | Admin session | `admin-session-mode-contract-v1` | **Modo usuário/ADM** + **Espelho de conta** |
+| Grade Proteger | `proteger-grade-dia-visivel-v1` | publicados do dia; liquidez finalizada visível |
 
 Marker admin: `DO_NOT_CHANGE_ADMIN_OPS_WITHOUT_EXPLICIT_REQUEST`  
 Marker layout admin: `DO_NOT_CHANGE_ADMIN_UI_LAYOUT_WITHOUT_EXPLICIT_REQUEST`  
@@ -41,7 +42,17 @@ Marker session admin: `DO_NOT_CHANGE_ADMIN_SESSION_MODE_WITHOUT_EXPLICIT_REQUEST
 - UI: `admin-jogos.html` (`admin-jogos-unpublish-finalizados-v8`)
 - Fluxos: BetBra + **Lançar evento manual** → `POST /api/arbishield/matches`
 - Padrão: **rascunho**; **Publicar na fila** só se marcado
-- Logos: `/api/arbishield/football-teams`; unpublish de finalizados permanece
+- Logos: `/api/arbishield/football-teams`
+- Unpublish automático só para `starts_at` de **dias anteriores** (SP); finalizados/pós-kickoff do dia permanecem publicados
+
+### Grade Proteger Aposta (cliente) — publicados do dia
+
+- UI: `app-proteger.html` (`proteger-grade-dia-visivel-v1`)
+- Lista **todos** os `is_published` com kickoff no dia America/Sao_Paulo
+- Sem liquidez: permanece na grade com destaque **Liquidez finalizada**
+- Pós-kickoff / finalizados do dia: **permanecem** na grade (não somem do site)
+- Ativação pós-kickoff continua bloqueada (`stake_lock_v1`)
+- Contrato: `scripts/lib/proteger-grade-contract.mjs` · teste: `proteger-grade-contract.test.mjs`
 
 ### Admin — Menu accordion (anti-reversão)
 
@@ -102,7 +113,7 @@ Marker session admin: `DO_NOT_CHANGE_ADMIN_SESSION_MODE_WITHOUT_EXPLICIT_REQUEST
 
 ## Páginas críticas (layout)
 
-- `app-proteger.html` — stake_lock + teto 50% + 1 op/evento
+- `app-proteger.html` — stake_lock + teto 50% + 1 op/evento + grade do dia (`proteger-grade-dia-visivel-v1`)
 - `app-protecoes.html` — cancel / comissão
 - `app-carteira.html` — Saldo Reembolso (nunca “Saldo Dedução”)
 - `admin-jogos.html` — settle + busca logos + lançar/publicar

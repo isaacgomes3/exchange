@@ -46,6 +46,14 @@ import {
   EXCHANGE_COMMISSION_RATE,
 } from "./lib/protection-flow-contract.mjs";
 import {
+  PROTEGER_GRADE_CONTRACT_VERSION,
+  LIQUIDITY_FINISHED_LABEL,
+  startOfDaySaoPaulo,
+  endOfCalendarDaySaoPaulo,
+  isVisibleOnClientDayGrade,
+  matchLiquidityLeftCents,
+} from "./lib/proteger-grade-contract.mjs";
+import {
   BETBRA_INPLAY_SYNC_VERSION,
   indexInplayFeed,
   matchEligibleForInplaySync,
@@ -2217,12 +2225,12 @@ async function settleMatchFromBody(body, token) {
   // Só agora marca a partida (evita o trigger de proteções ativas).
   // updated_by/settled_by = adminId: trigger match_change_logs exige admin_id NOT NULL.
   // status_v2 enum na VPS aceita "closed" (não "settled").
-  // Finalizado NUNCA fica publicado — some da grade do cliente e da Fila.
+  // Pedido explícito: finalizados do dia PERMANECEM publicados na grade do cliente
+  // (proteger-grade-dia-visivel-v1). Unpublish só limpa dias anteriores.
   const basePatch = {
     final_score: String(finalScore),
     settled_at: now,
     status: "settled",
-    is_published: false,
     markets,
     updated_at: now,
     updated_by: adminId,
@@ -4355,46 +4363,13 @@ async function syncBetbraInplayScores({ force = false } = {}) {
 
 const CLIENT_LIVE_WINDOW_MS = 9000 * 1000;
 
-function matchHasClientLiquidity(m) {
-  const markets = Array.isArray(m?.markets) ? m.markets : [];
-  if (markets.length) {
-    const left = markets.reduce((acc, mk) => {
-      if (!mk) return acc;
-      const max = Number(
-        mk.liquidity ?? mk.max_cents ?? mk.max_protection_cents ?? 0
-      );
-      const used = Number(
-        mk.used_liquidity ?? mk.used_cents ?? mk.used_protection_cents ?? 0
-      );
-      return acc + Math.max(0, max - used);
-    }, 0);
-    if (left > 0) return true;
-  }
-  const max = Number(m?.max_protection_cents || 0);
-  const used = Number(m?.used_protection_cents || 0);
-  return max > 0 && used < max;
-}
-
+/**
+ * Grade do dia (proteger-grade-dia-visivel-v1): publicados do dia SP,
+ * com ou sem liquidez, inclusive pós-kickoff/finalizados.
+ * Alias mantido para callers/testes que ainda greppam o nome antigo.
+ */
 function isAvailableForClientGrid(m, now = Date.now()) {
-  if (!m || m.deleted_at || m.is_published !== true) return false;
-  const start = new Date(m.starts_at).getTime();
-  if (!Number.isFinite(start)) return false;
-  // Contrato v6: não listar / não aceitar após o início do evento
-  if (isMatchKickoffPassed(m.starts_at, now)) return false;
-  const meta = m.metadata && typeof m.metadata === "object" ? m.metadata : {};
-  if (meta.hide_from_site || meta.hidden) return false;
-  const st = String(m.status_v2 || m.status || "open").toLowerCase();
-  if (
-    ["closed", "cancelled", "finished", "settled", "finalizado", "void"].includes(
-      st
-    )
-  ) {
-    return false;
-  }
-  const rel = Number(meta.release_minutes_before ?? 0) || 0;
-  if (rel > 0 && now < start - rel * 60_000) return false;
-  if (!matchHasClientLiquidity(m)) return false;
-  return true;
+  return isVisibleOnClientDayGrade(m, now);
 }
 
 let lastMatchesListLiveSyncMs = 0;
@@ -4423,6 +4398,8 @@ function enrichMatchForClientGrid(match) {
 
 /**
  * Lista jogos da grade Proteger via service_role (não depende de RLS do cliente).
+ * Pedido explícito: todos os publicados do dia (SP), com ou sem liquidez,
+ * inclusive após kickoff/finalização (proteger-grade-dia-visivel-v1).
  */
 async function listAvailableMatchesForClient() {
   if (!SERVICE_KEY) {
@@ -4446,62 +4423,74 @@ async function listAvailableMatchesForClient() {
       );
     }
   }
-  // Só jogos ainda não iniciados (contrato v6)
-  const windowStart = new Date(now).toISOString();
+  const dayStartMs = startOfDaySaoPaulo(now);
+  const dayEndMs = endOfCalendarDaySaoPaulo(now);
+  const windowStart = new Date(dayStartMs).toISOString();
+  const windowEnd = new Date(dayEndMs).toISOString();
   const select =
-    "id,external_id,home_team,away_team,home_logo,away_logo,league,starts_at,status,status_v2,sport_type,is_published,markets,max_protection_cents,used_protection_cents,protection_odds,metadata,deleted_at";
+    "id,external_id,home_team,away_team,home_logo,away_logo,league,starts_at,status,status_v2,sport_type,is_published,markets,max_protection_cents,used_protection_cents,protection_odds,metadata,deleted_at,final_score,settled_at";
   const rows = await sb(
-    `/rest/v1/matches?deleted_at=is.null&is_published=eq.true&starts_at=gte.${encodeURIComponent(windowStart)}&select=${select}&order=starts_at.asc&limit=300`,
+    `/rest/v1/matches?deleted_at=is.null&is_published=eq.true&starts_at=gte.${encodeURIComponent(windowStart)}&starts_at=lte.${encodeURIComponent(windowEnd)}&select=${select}&order=starts_at.asc&limit=300`,
     { token: SERVICE_KEY }
   );
   const matches = (Array.isArray(rows) ? rows : [])
     .filter((m) => isAvailableForClientGrid(m, now))
-    .map(enrichMatchForClientGrid);
+    .map((m) => {
+      const enriched = enrichMatchForClientGrid(m);
+      const left = matchLiquidityLeftCents(enriched);
+      return {
+        ...enriched,
+        liquidity_left_cents: left,
+        liquidity_finished: left <= 0,
+        grade_day: PROTEGER_GRADE_CONTRACT_VERSION,
+      };
+    });
   return {
     ok: true,
     matches,
     total: matches.length,
     windowStart,
+    windowEnd,
+    grade: PROTEGER_GRADE_CONTRACT_VERSION,
+    liquidityFinishedLabel: LIQUIDITY_FINISHED_LABEL,
     at: new Date(now).toISOString(),
     inplayVersion: BETBRA_INPLAY_SYNC_VERSION,
   };
 }
 
 /**
- * Finalizados / fora da janela (~3h) não podem ficar is_published=true.
- * Limpa lixo histórico e evita que a grade do cliente leia dezenas de mortos.
+ * Unpublish só dias ANTERIORES (starts_at < início do dia SP).
+ * Jogos finalizados / pós-kickoff do dia permanecem na grade do cliente.
+ * Marker: proteger-grade-dia-visivel-v1
  */
 async function unpublishExpiredPublishedMatches() {
   if (!SERVICE_KEY) {
     return { ok: false, error: "SERVICE_KEY ausente", unpublished: 0 };
   }
-  const now = new Date().toISOString();
-  const cutoff = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+  const nowMs = Date.now();
+  const now = new Date(nowMs).toISOString();
+  const cutoff = new Date(startOfDaySaoPaulo(nowMs)).toISOString();
   const body = { is_published: false, updated_at: now };
-  const queries = [
-    `/rest/v1/matches?is_published=eq.true&settled_at=not.is.null`,
-    `/rest/v1/matches?is_published=eq.true&status=in.(settled,finished,closed,cancelled,finalizado)`,
-    `/rest/v1/matches?is_published=eq.true&status_v2=in.(settled,finished,closed,cancelled,finalizado)`,
-    `/rest/v1/matches?is_published=eq.true&starts_at=lt.${encodeURIComponent(cutoff)}`,
-  ];
+  // Apenas kickoffs de dias anteriores — NÃO unpublish settled/finished do dia.
+  const q = `/rest/v1/matches?is_published=eq.true&starts_at=lt.${encodeURIComponent(cutoff)}`;
   let unpublished = 0;
   const errors = [];
-  for (const q of queries) {
-    try {
-      const rows = await sb(q, {
-        method: "PATCH",
-        token: SERVICE_KEY,
-        body,
-      });
-      unpublished += Array.isArray(rows) ? rows.length : 0;
-    } catch (err) {
-      errors.push(err instanceof Error ? err.message : String(err));
-    }
+  try {
+    const rows = await sb(q, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body,
+    });
+    unpublished += Array.isArray(rows) ? rows.length : 0;
+  } catch (err) {
+    errors.push(err instanceof Error ? err.message : String(err));
   }
   return {
-    ok: errors.length < queries.length,
+    ok: errors.length === 0,
     unpublished,
     cutoff,
+    mode: "previous-days-only",
+    grade: PROTEGER_GRADE_CONTRACT_VERSION,
     errors: errors.slice(0, 3),
     at: now,
   };

@@ -8078,8 +8078,8 @@ async function settleMatch(token, body) {
     patchMatch.settled_at = now;
     patchMatch.status = "settled";
     patchMatch.settled_by = adminId;
-    // Finalizado NUNCA fica publicado — some da grade do cliente e da Fila.
-    patchMatch.is_published = false;
+    // Pedido explícito: finalizados do dia PERMANECEM publicados na grade
+    // (proteger-grade-dia-visivel-v1). Unpublish só limpa dias anteriores.
   }
 
   // status_v2 enum VPS: "closed" (não "settled"); updated_by alimenta trigger admin_id
