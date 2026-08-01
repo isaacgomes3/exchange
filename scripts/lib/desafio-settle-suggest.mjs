@@ -127,6 +127,17 @@ export function suggestSettle({
   if (!finished) {
     return { winningSide: null, label: "aguardar", reason: "jogo não encerrado", arbi, casa };
   }
+  // Encerrado sem placar: o feed não trouxe o resultado. Culpar o mercado aqui
+  // mandaria o admin olhar no lugar errado.
+  if (!Number.isFinite(home) || !Number.isFinite(away)) {
+    return {
+      winningSide: null,
+      label: "sem placar",
+      reason: "feed diz encerrado mas não trouxe o resultado — buscar o placar na casa",
+      arbi,
+      casa,
+    };
+  }
   if (arbi === "void" || casa === "void") {
     return {
       winningSide: "empate_anula",
