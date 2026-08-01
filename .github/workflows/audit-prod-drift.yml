@@ -1,9 +1,11 @@
 name: Auditoria de desvio (produção × git)
 
-# Manual por enquanto: enquanto `main` não for a fonte de verdade, a auditoria
-# falha por definição. Depois de consolidar main, trocar para `schedule` para
-# detectar regressão antes do cliente.
+# `main` já é a fonte de verdade, então a auditoria agendada vira alarme: acusa
+# arquivo editado no servidor sem commit antes de o cliente reclamar. Estar
+# ATRASADO em relação a main é normal entre mesclar e publicar — não falha.
 on:
+  schedule:
+    - cron: "17 */6 * * *"
   workflow_dispatch:
     inputs:
       origin:
@@ -13,6 +15,11 @@ on:
       mainline_ref:
         description: "Referência que deveria estar publicada"
         default: "origin/main"
+        required: false
+      strict:
+        description: "Falhar também quando produção estiver atrasada em relação a main"
+        type: boolean
+        default: false
         required: false
 
 jobs:
@@ -38,5 +45,6 @@ jobs:
       - name: Auditar
         run: node scripts/audit-prod-drift.mjs
         env:
-          ARBISHIELD_ORIGIN: ${{ inputs.origin }}
-          ARBISHIELD_MAINLINE_REF: ${{ inputs.mainline_ref }}
+          ARBISHIELD_ORIGIN: ${{ inputs.origin || 'https://arbishield.app' }}
+          ARBISHIELD_MAINLINE_REF: ${{ inputs.mainline_ref || 'origin/main' }}
+          ARBISHIELD_AUDIT_ALLOW_BEHIND: ${{ inputs.strict == true && '0' || '1' }}

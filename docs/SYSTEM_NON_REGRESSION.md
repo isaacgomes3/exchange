@@ -175,8 +175,12 @@ Ignora só o cache-bust `?v=` que os hotfixes reescrevem no servidor. Status por
 | `NAO SERVIDO` | nginx devolveu o fallback SPA em vez do arquivo |
 
 `DESVIO` é a causa das regressões: o arquivo publicado não tem commit, então qualquer
-hotfix o sobrescreve com a versão da branch dele. Rodar antes e depois de publicar.
-Workflow manual: `.github/workflows/audit-prod-drift.yml`.
+publicação o sobrescreve. Rodar antes e depois de publicar.
+
+**Agendada** a cada 6h (`.github/workflows/audit-prod-drift.yml`): alarma em `DESVIO`,
+`SEM FONTE`, `NAO SERVIDO` e falha de resposta, mas **não** em `ATRASADO` — estar atrás
+de `main` é normal entre mesclar e publicar (`ARBISHIELD_AUDIT_ALLOW_BEHIND=1`). Para
+falhar também no atraso, disparar manualmente com `strict`.
 
 ## Runtime (VPS)
 

@@ -13,6 +13,10 @@
  *
  * Sai com código 1 se algum arquivo estiver divergente (não existe em branch
  * nenhuma) ou atrasado em relação à referência de mainline.
+ *
+ * `ARBISHIELD_AUDIT_ALLOW_BEHIND=1` (usado pela auditoria agendada) não falha por
+ * `ATRASADO`: entre mesclar em `main` e publicar, estar atrás é normal. O alarme
+ * fica para o que é sempre errado — arquivo no ar sem commit ou rota não servida.
  */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -50,10 +54,16 @@ function digest(text) {
   return createHash("sha256").update(normalizeDeployedAsset(text)).digest("hex");
 }
 
-const branches = git(["for-each-ref", "--format=%(refname:short)", "refs/remotes/origin"])
+// `refname:short` encurta refs/remotes/origin/HEAD para "origin" — fora da lista,
+// senão o relatório atribui o conteúdo a uma branch chamada "origin".
+const branches = git([
+  "for-each-ref",
+  "--format=%(refname:short)",
+  "refs/remotes/origin",
+])
   .split("\n")
   .map((s) => s.trim())
-  .filter((s) => s && !s.endsWith("/HEAD"));
+  .filter((s) => s && s.includes("/") && !s.endsWith("/HEAD"));
 
 /** Data do último commit de cada branch, para dizer "atrasado desde quando". */
 const branchDate = new Map(
@@ -200,8 +210,13 @@ for (const r of rows) {
   );
 }
 
+const allowBehind = process.env.ARBISHIELD_AUDIT_ALLOW_BEHIND === "1";
 const bad = rows.filter((r) => r.bad);
 const drift = rows.filter((r) => r.status === "DESVIO");
+// Atrasado é estado normal entre mesclar em main e publicar — não é alarme.
+const alarming = allowBehind
+  ? bad.filter((r) => r.status !== "ATRASADO" && r.status !== "SEM FONTE")
+  : bad;
 console.log(
   `\n  ${rows.length} arquivos · ${rows.length - bad.length} OK · ${bad.length} com problema · ${drift.length} editados fora do git\n`
 );
@@ -209,8 +224,11 @@ if (drift.length) {
   console.log(
     "  DESVIO significa que alguém editou em produção e nunca voltou ao repositório."
   );
+  console.log("  A próxima publicação sobrescreve isso — traga para o repo antes.\n");
+}
+if (allowBehind && bad.length && !alarming.length) {
   console.log(
-    "  Rodar qualquer hotfix vai sobrescrever isso com a versão da branch dele.\n"
+    "  Só há arquivos atrasados em relação a main (normal antes de publicar) — sem alarme.\n"
   );
 }
-process.exit(bad.length ? 1 : 0);
+process.exit(alarming.length ? 1 : 0);
