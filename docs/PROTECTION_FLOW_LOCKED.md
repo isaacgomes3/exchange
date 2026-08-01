@@ -19,6 +19,9 @@ devem ser **ignorados** na resposta.
 (`system-non-regression-v1`) — layout UI, buckets de carteira, schema e
 superfície de deploy.
 
+**Guia operacional (Desafio + proteção + financeiro + admin + APIs):**
+`docs/FUNCIONAMENTO_DESAFIO_E_PROTECAO.md`
+
 ## Anti-regressão runtime
 
 | Controle | Marker / script |

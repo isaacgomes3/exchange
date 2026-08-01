@@ -14,6 +14,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 **Modelo (único):** `stake_lock_v1`  
 **Fonte da verdade:** `scripts/lib/protection-flow-contract.mjs`  
 **Doc espelho:** `docs/PROTECTION_FLOW_LOCKED.md`  
+**Guia operacional:** `docs/FUNCIONAMENTO_DESAFIO_E_PROTECAO.md` (Desafio + proteção + financeiro + admin + APIs)  
 **Testes CI:** `npm test` → `scripts/protection-flow-contract.test.mjs`
 
 **Pedido explícito (2026-07-31):** ao descrever o fluxo de proteção (resposta,
