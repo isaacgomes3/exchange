@@ -792,9 +792,24 @@ function startOfDaySaoPaulo(d = new Date()) {
  */
 let desafioStepsHasMetadata = null;
 
+/**
+ * Coluna ausente aparece de duas formas, e as duas contam:
+ *   - Postgres 42703 no SELECT: `column desafio_steps.metadata does not exist`
+ *   - PostgREST PGRST204 na escrita: `Could not find the 'metadata' column of
+ *     'desafio_steps' in the schema cache`
+ * Cobrir só a primeira deixava o settle quebrado exatamente no PATCH.
+ */
 function isMissingColumnError(err, column) {
   const msg = String((err && err.message) || "");
-  return /does not exist/i.test(msg) && msg.includes(column);
+  const code = String((err && err.code) || "");
+  const col = String(column || "");
+  if (!col) return false;
+  if (code === "PGRST204") return msg.includes(col) || !msg;
+  if (code === "42703") return msg.includes(col) || !msg;
+  if (!msg.includes(col)) return false;
+  if (/does not exist/i.test(msg)) return true;
+  if (/could not find/i.test(msg) && /schema cache/i.test(msg)) return true;
+  return false;
 }
 
 async function patchDesafioStep(stepId, body) {
@@ -856,6 +871,9 @@ async function sb(path, { token, method = "GET", body } = {}) {
       res.statusText;
     const err = new Error(msg);
     err.status = res.status;
+    // Código do PostgREST/Postgres (ex.: PGRST204, 42703) — quem trata precisa dele.
+    if (data && data.code) err.code = String(data.code);
+    if (data && data.details) err.details = data.details;
     throw err;
   }
   return data;

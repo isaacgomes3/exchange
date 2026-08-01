@@ -83,6 +83,23 @@ describe("liquidar não depende de coluna opcional", () => {
     const body = shim.slice(start, shim.indexOf("async function sb(path,"));
     assert.match(body, /if \(!isMissingColumnError\(err, "metadata"\)\) throw err;/);
   });
+
+  it("cobre os dois formatos de coluna ausente", () => {
+    const start = shim.indexOf("function isMissingColumnError(");
+    const body = shim.slice(start, shim.indexOf("async function patchDesafioStep("));
+    // SELECT devolve 42703 "does not exist"; a escrita devolve PGRST204
+    // "Could not find ... in the schema cache". Cobrir só um deixa o settle quebrado.
+    assert.match(body, /PGRST204/);
+    assert.match(body, /42703/);
+    assert.match(body, /does not exist/);
+    assert.match(body, /schema cache/);
+  });
+
+  it("sb() repassa o código do erro para quem trata", () => {
+    const start = shim.indexOf("async function sb(path,");
+    const body = shim.slice(start, start + 1600);
+    assert.match(body, /err\.code = String\(data\.code\)/);
+  });
 });
 
 describe("UI esconde Cancelar/Excluir em andamento", () => {
