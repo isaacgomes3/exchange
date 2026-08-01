@@ -122,6 +122,7 @@ Desafios. Não reverter **Modo usuário / Modo ADM** nem **espelho de conta**.
 13. **Publicar frontend:** `scripts/vps-publish-release.sh --ref <commit>` (`release-artifact-v1`, runbook `docs/RELEASES.md`) — release por commit em `releases/<sha>`, `v2` como symlink, `__version.json` no ar e **guarda que recusa commit anterior/divergente**. Cache-bust vem do build; **proibido** `sed` de `?v=` no servidor e `find /var/www -name` para escrever. Novos hotfixes por arquivo não devem ser criados.
 14. **Desafio — marcador de mercado:** `app-desafio.html` (`desafio-dnb-flag-v1`) → **Empate Anula/DNB é aposta no time** (V no vencedor, × no outro, **E** de estorno se empatar); nunca resolver pelo ramo 1X2 `isDraw`. Teste: `desafio-market-flag.test.mjs`.
 15. **Desafio — card do cliente:** cada quadro fica **embaixo do time em que aposta** (`desafio-painel-lado-time-v1`, `marketTeamSide` + `is-swapped`; mobile 1 coluna volta ao padrão) e a **casa de aposta sempre mostra logo** (`desafio-casa-logo-v1`, `/brand/houses/`).
+16. **Desafio em andamento:** liquida-se (Bateu Arbi/Casa/Empate Anula), **nunca** cancela nem exclui — `block-cancel-delete-andamento-v1` esconde os botões e o shim recusa com 403 antes de qualquer estorno. Teste: `desafio-ops-guard.test.mjs`.
 
 Mudança em qualquer item exige pedido explícito + bump + sync AGENTS/docs + testes verdes.
 <!-- END:system-non-regression -->

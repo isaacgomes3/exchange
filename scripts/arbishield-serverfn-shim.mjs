@@ -1298,6 +1298,20 @@ async function deleteDesafio(token, body, clientMeta = null) {
     /* */
   }
 
+  // Marker: block-cancel-delete-andamento-v1 — desafio em andamento não se apaga
+  if (
+    curRow &&
+    curRow.is_active &&
+    !curRow.deleted_at &&
+    String(curRow.status || "").toLowerCase() !== "cancelled"
+  ) {
+    const err = new Error(
+      "Não é permitido excluir desafio em andamento (publicado/ativo)."
+    );
+    err.status = 403;
+    throw err;
+  }
+
   // Marker: protect-desafio-casual-v1
   if (curMeta.protect_from_casual_delete === true) {
     if (confirm !== "FORCAR_EXCLUIR_PROTEGIDO" || !force) {
@@ -1612,6 +1626,15 @@ async function cancelDesafio(token, body, clientMeta = null) {
   }
   if (String(desafio.status) === "cancelled") {
     throw new Error("Desafio já cancelado");
+  }
+
+  // Marker: block-cancel-delete-andamento-v1 — em andamento se liquida, não se cancela
+  if (desafio.is_active) {
+    const err = new Error(
+      "Não é permitido cancelar desafio em andamento (publicado/ativo)."
+    );
+    err.status = 403;
+    throw err;
   }
 
   // Marker: protect-desafio-casual-v1 — Cancelar também tira o jogo do ar

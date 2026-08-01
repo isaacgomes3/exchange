@@ -1715,6 +1715,9 @@
               }
               ${
                 // Marker: protect-ops-isaac-carlos-v1 — Isaac/Carlos veem Cancelar em protegido
+                // Marker: block-cancel-delete-andamento-v1 — em andamento se liquida, não se cancela
+                !isDesafioActiveOpen(d) &&
+                !d.is_active &&
                 !isDesafioCancelled(d) &&
                 !d.deleted_at &&
                 (!(d.metadata && d.metadata.protect_from_casual_delete) ||
@@ -1722,6 +1725,12 @@
                   ? `<button class="btn btn-warn" type="button" data-cancel-desafio="${esc(d.id)}" data-protected="${
                       d.metadata && d.metadata.protect_from_casual_delete ? "1" : "0"
                     }">Cancelar · devolver saldo</button>`
+                  : ""
+              }
+              ${
+                // Marker: block-cancel-delete-andamento-v1
+                (isDesafioActiveOpen(d) || d.is_active) && !d.deleted_at
+                  ? `<span class="meta" style="align-self:center;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;font-weight:800;color:var(--muted)">Em andamento · Cancelar/Excluir bloqueados</span>`
                   : ""
               }
               ${
