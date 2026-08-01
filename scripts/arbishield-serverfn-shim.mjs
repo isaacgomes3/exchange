@@ -2687,10 +2687,35 @@ async function listAdminUsers() {
   });
 }
 
+/**
+ * Admins autorizados (API). Promoção de role só via VPS/SERVICE_ROLE.
+ * Marker: admin-email-allowlist-v1 — role no banco não basta; o e-mail do JWT
+ * tem que estar aqui. Nasceu de conta que virou super admin e apagou desafios.
+ */
+const ALLOWED_ADMIN_EMAILS = new Set([
+  "isaacgomes3@gmail.com",
+  "financeiro@arbishield.com",
+  "carlos@arbishield.com",
+  "icaro@arbishield.com",
+]);
+
+function adminEmailFromJwt(payload) {
+  return String(
+    payload?.email ||
+      payload?.user_metadata?.email ||
+      payload?.app_metadata?.email ||
+      ""
+  )
+    .trim()
+    .toLowerCase();
+}
+
 async function currentUserIsSuperAdmin(token) {
   const payload = decodeJwtPayload(token);
   const uid = payload?.sub;
   if (!uid) return false;
+  // Marker: admin-email-allowlist-v1
+  if (!ALLOWED_ADMIN_EMAILS.has(adminEmailFromJwt(payload))) return false;
   const rows = await sb(
     `/rest/v1/profiles?select=is_super_admin&id=eq.${uid}&limit=1`,
     { token: SERVICE_KEY }
@@ -2700,10 +2725,12 @@ async function currentUserIsSuperAdmin(token) {
 }
 
 async function currentUserIsAdmin(token) {
-  if (await currentUserIsSuperAdmin(token)) return true;
   const payload = decodeJwtPayload(token);
   const uid = payload?.sub;
   if (!uid) return false;
+  // Marker: admin-email-allowlist-v1
+  if (!ALLOWED_ADMIN_EMAILS.has(adminEmailFromJwt(payload))) return false;
+  if (await currentUserIsSuperAdmin(token)) return true;
   const roles = await sb(
     `/rest/v1/user_roles?select=role&user_id=eq.${encodeURIComponent(uid)}`,
     { token: SERVICE_KEY }

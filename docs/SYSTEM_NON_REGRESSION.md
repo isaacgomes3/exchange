@@ -127,6 +127,16 @@ contrato: `scripts/lib/release-manifest.mjs` · teste: `release-manifest.test.mj
 - Cache-bust sai do build (`applyCacheBust()` → commit curto). **Proibido** `sed` de
   `?v=` no HTML publicado e escrita com `find /var/www -name` (atinge backups)
 
+### Allowlist de admin (anti-regressão)
+
+- Marker `admin-email-allowlist-v1` · teste `scripts/admin-allowlist.test.mjs`
+- Shim: `currentUserIsAdmin` e `currentUserIsSuperAdmin` checam `ALLOWED_ADMIN_EMAILS`
+  **antes** de qualquer consulta ao banco — role no banco não basta
+- `v2.js`: `isAdminUser` idem; `BLOCKED_EMAILS` guarda as contas do incidente
+- Complementa o 2FA obrigatório (`admin-mfa-required-v1`); **os dois ficam**
+- Nasceu de conta que virou super admin e apagou desafios; já se perdeu uma vez ao
+  publicar de linhagem que não a tinha. Não remover de nenhum dos dois lados.
+
 ## Backend versionado (`shim-release-v1`)
 
 Publicador: `scripts/vps-publish-shim.sh` · diagnóstico: `vps-diag-shim-versao.sh` ·

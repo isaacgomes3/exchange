@@ -10,6 +10,19 @@
     "jefferson@arbishield": 1,
     "jeffersonboulevard@gmail.com": 1,
     "jeffersojeffersonboulevard@gmail.com": 1,
+    "jawadog871@kierko.com": 1,
+    "admin.probe.1784500869@arbishield.local": 1,
+  };
+
+  /**
+   * Admins autorizados (UI). Promoção de role só via VPS.
+   * Marker: admin-email-allowlist-v1 — role no banco não basta.
+   */
+  var ALLOWED_ADMIN_EMAILS = {
+    "isaacgomes3@gmail.com": 1,
+    "financeiro@arbishield.com": 1,
+    "carlos@arbishield.com": 1,
+    "icaro@arbishield.com": 1,
   };
 
   /** Só estes e-mails veem o menu/páginas Financeiro no admin */
@@ -128,8 +141,17 @@
     return res.data.user;
   }
 
+  function isAllowedAdminEmail(email) {
+    email = String(email || "")
+      .trim()
+      .toLowerCase();
+    return !!(email && ALLOWED_ADMIN_EMAILS[email]);
+  }
+
   async function isAdminUser(supa, user) {
     if (!user || isBlockedEmail(user.email)) return false;
+    // Marker: admin-email-allowlist-v1
+    if (!isAllowedAdminEmail(user.email)) return false;
     var profile = await supa
       .from("profiles")
       .select("is_super_admin")
