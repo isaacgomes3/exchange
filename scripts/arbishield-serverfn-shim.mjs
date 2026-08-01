@@ -3584,11 +3584,12 @@ async function listDesafioParticipations(token, body) {
  * Distribui valor confiscado do circuito Desafio para provedores ativos
  * (proporcional ao invested_amount das partner_rounds).
  */
-async function distributeToActiveProviders(amountCents, description) {
+async function distributeToActiveProviders(amountCents, description, adminId) {
   const total = Math.max(0, Math.round(Number(amountCents) || 0));
   if (!(total > 0)) return { count: 0, totalDistributed: 0 };
+  // Schema: status ACTIVE (maiúsculo). Trigger credita saldo + accumulated.
   const rounds = await sb(
-    `/rest/v1/partner_rounds?select=id,user_id,invested_amount,accumulated_amount,status&status=eq.active&invested_amount=gt.0&limit=2000`,
+    `/rest/v1/partner_rounds?select=id,user_id,invested_amount,accumulated_amount,status&status=eq.ACTIVE&invested_amount=gt.0&limit=2000`,
     { token: SERVICE_KEY }
   ).catch(() => []);
   const list = Array.isArray(rounds) ? rounds : [];
@@ -3596,6 +3597,24 @@ async function distributeToActiveProviders(amountCents, description) {
   const pool = list.reduce((a, r) => a + n(r.invested_amount), 0);
   if (!(pool > 0)) return { count: 0, totalDistributed: 0 };
 
+  let createdBy = String(adminId || "").trim();
+  if (!createdBy) {
+    createdBy = String(process.env.ARBISHIELD_SYSTEM_ADMIN_ID || "").trim();
+  }
+  if (!createdBy) {
+    const supers = await sb(
+      `/rest/v1/profiles?select=id&is_super_admin=eq.true&order=created_at.asc&limit=1`,
+      { token: SERVICE_KEY }
+    ).catch(() => []);
+    createdBy =
+      Array.isArray(supers) && supers[0]?.id ? String(supers[0].id) : "";
+  }
+  if (!createdBy) {
+    console.warn(
+      "[partner] distributeToActiveProviders sem created_by_admin — abort"
+    );
+    return { count: 0, totalDistributed: 0, skipped: "no_admin" };
+  }
   let distributed = 0;
   let count = 0;
   for (const r of list) {
@@ -3606,42 +3625,12 @@ async function distributeToActiveProviders(amountCents, description) {
       token: SERVICE_KEY,
       body: {
         round_id: r.id,
-        user_id: r.user_id,
-        partner_id: r.user_id,
         distribution_amount: share,
-        contribution_amount: n(r.invested_amount),
         description:
           description || "Liquidez Desafio — circuito sem vitória na casa",
+        created_by_admin: createdBy,
       },
     });
-    const nextAcc = n(r.accumulated_amount) + share;
-    await sb(`/rest/v1/partner_rounds?id=eq.${encodeURIComponent(r.id)}`, {
-      method: "PATCH",
-      token: SERVICE_KEY,
-      body: {
-        accumulated_amount: nextAcc,
-        updated_at: new Date().toISOString(),
-      },
-    }).catch(() => null);
-    try {
-      const prof = await sb(
-        `/rest/v1/profiles?select=investor_balance_cents&id=eq.${encodeURIComponent(r.user_id)}&limit=1`,
-        { token: SERVICE_KEY }
-      );
-      const cur = Array.isArray(prof) ? prof[0] : null;
-      if (cur) {
-        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(r.user_id)}`, {
-          method: "PATCH",
-          token: SERVICE_KEY,
-          body: {
-            investor_balance_cents: n(cur.investor_balance_cents) + share,
-            updated_at: new Date().toISOString(),
-          },
-        });
-      }
-    } catch {
-      /* saldo provedor opcional */
-    }
     distributed += share;
     count += 1;
   }
@@ -5194,16 +5183,73 @@ async function previewDesafioSinal(token, body) {
   };
 }
 
-async function listActivePartnerRounds(token) {
+/**
+ * Garante partner_rounds ACTIVE para o provedor.
+ * Marker: provedor-ensure-partner-round-v1
+ *
+ * Schema VPS: status em MAIÚSCULAS (ACTIVE/COMPLETED/…), unique(user_id),
+ * target_percentage default 250. Sem rodada o app fica no wizard para sempre
+ * mesmo com investor_balance_cents creditado.
+ */
+async function ensurePartnerRound(userId, addInvestedCents, opts = {}) {
+  const uid = String(userId || "").trim();
+  const add = Math.max(0, Math.round(Number(addInvestedCents) || 0));
+  if (!uid || !(add > 0)) return null;
+  const TARGET_PCT = 250;
+  const existing = await sb(
+    `/rest/v1/partner_rounds?user_id=eq.${encodeURIComponent(uid)}&select=*&limit=1`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  const row = Array.isArray(existing) ? existing[0] : null;
+  if (row?.id) {
+    const nextInvested = n(row.invested_amount) + add;
+    const nextTarget = Math.round((nextInvested * TARGET_PCT) / 100);
+    const patch = {
+      invested_amount: nextInvested,
+      target_amount: nextTarget,
+      target_percentage: TARGET_PCT,
+      updated_at: new Date().toISOString(),
+    };
+    if (String(row.status || "").toUpperCase() !== "ACTIVE") {
+      patch.status = "ACTIVE";
+      patch.completed_at = null;
+    }
+    await sb(`/rest/v1/partner_rounds?id=eq.${encodeURIComponent(row.id)}`, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: patch,
+    });
+    return Object.assign({}, row, patch);
+  }
+  const target = Math.round((add * TARGET_PCT) / 100);
+  const created = await sb("/rest/v1/partner_rounds", {
+    method: "POST",
+    token: SERVICE_KEY,
+    body: {
+      user_id: uid,
+      invested_amount: add,
+      target_percentage: TARGET_PCT,
+      target_amount: target,
+      accumulated_amount: 0,
+      status: "ACTIVE",
+      is_demo: !!opts.isDemo,
+      contract_accepted: true,
+      signed_at: new Date().toISOString(),
+    },
+  });
+  return Array.isArray(created) ? created[0] : created;
+}
 
+async function listActivePartnerRounds(token) {
   await requireFinanceAdmin(token);
   // profiles-sem-coluna-email-v1 — embed sem email
+  // Schema: status = 'ACTIVE' (não 'active')
   const rounds = await sb(
-    `/rest/v1/partner_rounds?select=*,profiles(full_name)&status=eq.active&order=created_at.desc&limit=500`,
+    `/rest/v1/partner_rounds?select=*,profiles(full_name)&status=eq.ACTIVE&order=created_at.desc&limit=500`,
     { token: SERVICE_KEY }
   ).catch(() =>
     sb(
-      `/rest/v1/partner_rounds?select=*&status=eq.active&order=created_at.desc&limit=500`,
+      `/rest/v1/partner_rounds?select=*&status=eq.ACTIVE&order=created_at.desc&limit=500`,
       { token: SERVICE_KEY }
     )
   );
@@ -5212,6 +5258,7 @@ async function listActivePartnerRounds(token) {
 
 async function distributePartnerYield(token, body) {
   await requireFinanceAdmin(token);
+  const adminId = requireUserId(token);
   const percentage = Number(body?.percentage ?? body?.pct ?? 0);
   if (!(percentage > 0) || percentage > 100) {
     throw new Error("Informe um percentual válido.");
@@ -5228,45 +5275,18 @@ async function distributePartnerYield(token, body) {
     if (!(invested > 0)) continue;
     const share = Math.round((invested * percentage) / 100);
     if (share <= 0) continue;
+    // Schema real: round_id, distribution_amount, description, created_by_admin.
+    // Trigger handle_new_distribution já acumula na rodada e credita investor_balance.
     await sb("/rest/v1/partner_distributions", {
       method: "POST",
       token: SERVICE_KEY,
       body: {
         round_id: r.id,
-        user_id: r.user_id,
-        partner_id: r.user_id,
         distribution_amount: share,
-        contribution_amount: invested,
         description,
+        created_by_admin: adminId,
       },
     });
-    await sb(`/rest/v1/partner_rounds?id=eq.${encodeURIComponent(r.id)}`, {
-      method: "PATCH",
-      token: SERVICE_KEY,
-      body: {
-        accumulated_amount: n(r.accumulated_amount) + share,
-        updated_at: new Date().toISOString(),
-      },
-    }).catch(() => null);
-    try {
-      const prof = await sb(
-        `/rest/v1/profiles?select=investor_balance_cents&id=eq.${encodeURIComponent(r.user_id)}&limit=1`,
-        { token: SERVICE_KEY }
-      );
-      const cur = Array.isArray(prof) ? prof[0] : null;
-      if (cur) {
-        await sb(`/rest/v1/profiles?id=eq.${encodeURIComponent(r.user_id)}`, {
-          method: "PATCH",
-          token: SERVICE_KEY,
-          body: {
-            investor_balance_cents: n(cur.investor_balance_cents) + share,
-            updated_at: new Date().toISOString(),
-          },
-        });
-      }
-    } catch {
-      /* */
-    }
     totalDistributed += share;
     count += 1;
   }
@@ -5786,6 +5806,21 @@ async function approveManualDeposit(token, body) {
     });
   }
 
+  // provedor-ensure-partner-round-v1 — sem rodada o app não abre o painel
+  let partnerRound = null;
+  if (isInvestor) {
+    try {
+      partnerRound = await ensurePartnerRound(userId, amount, {
+        isDemo: false,
+      });
+    } catch (e) {
+      console.warn(
+        "[deposit] ensurePartnerRound:",
+        e instanceof Error ? e.message : e
+      );
+    }
+  }
+
   try {
     await sb("/rest/v1/wallet_transactions", {
       method: "POST",
@@ -5799,6 +5834,7 @@ async function approveManualDeposit(token, body) {
           network: row.network || null,
           deposit_type: row.deposit_type || "user_balance",
           credit_bucket: creditBucket,
+          partner_round_id: partnerRound?.id || null,
         },
       },
     });
@@ -5836,8 +5872,10 @@ async function approveManualDeposit(token, body) {
     status: "APPROVED",
     creditedCents: amount,
     depositType: creditBucket,
+    partnerRoundId: partnerRound?.id || null,
     treasury,
     fix: "treasury-writers-v1",
+    provedorFix: "provedor-ensure-partner-round-v1",
   };
 }
 
@@ -6083,6 +6121,19 @@ async function adjustAdminBalance(token, body = {}) {
     }
   }
 
+  // Crédito no bucket Provedor → garante partner_rounds ACTIVE
+  let partnerRound = null;
+  if (wallet === "investor" && delta > 0) {
+    try {
+      partnerRound = await ensurePartnerRound(userId, delta, { isDemo: false });
+    } catch (e) {
+      console.warn(
+        "[adjust-balance] ensurePartnerRound:",
+        e instanceof Error ? e.message : e
+      );
+    }
+  }
+
   return {
     ok: true,
     userId,
@@ -6094,6 +6145,7 @@ async function adjustAdminBalance(token, body = {}) {
     deltaCents: delta,
     reason,
     adminId,
+    partnerRoundId: partnerRound?.id || null,
   };
 }
 

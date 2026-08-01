@@ -540,14 +540,31 @@
   }
 
   async function loadPartner(supa, userId) {
+    // Prefer ACTIVE (schema VPS usa maiúsculas). Fallback: qualquer rodada do user.
     var roundRes = await supa
       .from("partner_rounds")
       .select("*")
       .eq("user_id", userId)
+      .eq("status", "ACTIVE")
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    if (roundRes.error) {
+      state.err =
+        "Erro ao carregar rodada Provedor: " +
+        (roundRes.error.message || "falha na consulta");
+    }
     state.round = roundRes.data || null;
+    if (!state.round) {
+      var anyRound = await supa
+        .from("partner_rounds")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      state.round = anyRound.data || null;
+    }
 
     if (state.round && state.round.id) {
       var dist = await supa
@@ -555,6 +572,12 @@
         .select("*")
         .eq("round_id", state.round.id)
         .order("created_at", { ascending: false });
+      if (dist.error) {
+        state.err =
+          (state.err ? state.err + " · " : "") +
+          "Distribuições: " +
+          (dist.error.message || "erro");
+      }
       state.distributions = dist.data || [];
       var wd = await supa
         .from("partner_withdraw_requests")
