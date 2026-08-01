@@ -64,6 +64,9 @@ let settlementOutcomeFromProtectionRow;
 let EXCHANGE_CHARGE_DEDUCTION_RULE = "settle-exchange-cobra-so-deducao-v9";
 let EXCHANGE_INCOMPLETE_HEAL_RULE = "settle-exchange-heal-incompleto-v10";
 let SETTLEMENT_ODD_CANONICAL_RULE = "settlement-odd-canonico-v10";
+let LOCKED_ALWAYS_RETURNS_APOSTADOR_RULE =
+  "locked-always-returns-apostador-v1";
+let lockedStakeSettleEffect = null;
 let settlementExchangeCommissionCents;
 let settlementExchangeCommissionWalletCents = () => 0;
 let EXCHANGE_COMMISSION_RATE = 0.045;
@@ -118,6 +121,13 @@ try {
   }
   if (mod.SETTLEMENT_ODD_CANONICAL_RULE) {
     SETTLEMENT_ODD_CANONICAL_RULE = mod.SETTLEMENT_ODD_CANONICAL_RULE;
+  }
+  if (mod.LOCKED_ALWAYS_RETURNS_APOSTADOR_RULE) {
+    LOCKED_ALWAYS_RETURNS_APOSTADOR_RULE =
+      mod.LOCKED_ALWAYS_RETURNS_APOSTADOR_RULE;
+  }
+  if (typeof mod.lockedStakeSettleEffect === "function") {
+    lockedStakeSettleEffect = mod.lockedStakeSettleEffect;
   }
   settlementExchangeCommissionCents = mod.settlementExchangeCommissionCents;
   if (typeof mod.settlementExchangeCommissionWalletCents === "function") {
@@ -782,6 +792,67 @@ function startOfDaySaoPaulo(d = new Date()) {
   );
 }
 
+/**
+ * Marker: desafio-steps-metadata-opcional-v1
+ *
+ * `desafio_steps.metadata` não existe em todo banco — a tabela nasceu fora das
+ * migrations. Como ninguém **lê** essa coluna (ela só guarda auditoria do
+ * settle), a escrita não pode derrubar a liquidação: sem a coluna, grava o resto
+ * e segue. Antes disso, liquidar devolvia 400 e nada era liquidado.
+ */
+let desafioStepsHasMetadata = null;
+
+/**
+ * Coluna ausente aparece de duas formas, e as duas contam:
+ *   - Postgres 42703 no SELECT: `column desafio_steps.metadata does not exist`
+ *   - PostgREST PGRST204 na escrita: `Could not find the 'metadata' column of
+ *     'desafio_steps' in the schema cache`
+ * Cobrir só a primeira deixava o settle quebrado exatamente no PATCH.
+ */
+function isMissingColumnError(err, column) {
+  const msg = String((err && err.message) || "");
+  const code = String((err && err.code) || "");
+  const col = String(column || "");
+  if (!col) return false;
+  if (code === "PGRST204") return msg.includes(col) || !msg;
+  if (code === "42703") return msg.includes(col) || !msg;
+  if (!msg.includes(col)) return false;
+  if (/does not exist/i.test(msg)) return true;
+  if (/could not find/i.test(msg) && /schema cache/i.test(msg)) return true;
+  return false;
+}
+
+async function patchDesafioStep(stepId, body) {
+  const url = `/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`;
+  const payload = body || {};
+  const hasMeta = Object.prototype.hasOwnProperty.call(payload, "metadata");
+  const withoutMeta = () => {
+    const rest = { ...payload };
+    delete rest.metadata;
+    return rest;
+  };
+  if (!hasMeta || desafioStepsHasMetadata === false) {
+    return sb(url, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: hasMeta ? withoutMeta() : payload,
+    });
+  }
+  try {
+    const out = await sb(url, { method: "PATCH", token: SERVICE_KEY, body: payload });
+    desafioStepsHasMetadata = true;
+    return out;
+  } catch (err) {
+    if (!isMissingColumnError(err, "metadata")) throw err;
+    desafioStepsHasMetadata = false;
+    console.warn(
+      "[desafio] desafio_steps.metadata ausente — auditoria do passo fica só no log de ações",
+      stepId
+    );
+    return sb(url, { method: "PATCH", token: SERVICE_KEY, body: withoutMeta() });
+  }
+}
+
 async function sb(path, { token, method = "GET", body } = {}) {
   const key = token || SERVICE_KEY || ANON_KEY;
   if (!key) throw new Error("Sem chave Supabase configurada");
@@ -810,6 +881,9 @@ async function sb(path, { token, method = "GET", body } = {}) {
       res.statusText;
     const err = new Error(msg);
     err.status = res.status;
+    // Código do PostgREST/Postgres (ex.: PGRST204, 42703) — quem trata precisa dele.
+    if (data && data.code) err.code = String(data.code);
+    if (data && data.details) err.details = data.details;
     throw err;
   }
   return data;
@@ -4350,30 +4424,26 @@ async function settleDesafioStep(token, body, clientMeta = null) {
         : null;
   const settledAt = new Date().toISOString();
   const settleIdent = adminId ? await resolveAdminIdentity(adminId) : { name: null, email: null };
-  await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: {
-      status: "done",
-      result,
-      settled_at: settledAt,
-      settled_by: adminId,
-      final_score_home:
-        body?.homeScore != null ? Number(body.homeScore) : step.final_score_home,
-      final_score_away:
-        body?.awayScore != null ? Number(body.awayScore) : step.final_score_away,
-      updated_at: settledAt,
-      // Marker: delete-audit-ip-ua-v1
-      metadata: {
-        ...(step.metadata && typeof step.metadata === "object" ? step.metadata : {}),
-        settled_via: "settle-desafio-audit-v1",
-        settled_ip: audit?.ip || null,
-        settled_user_agent: audit?.userAgent || null,
-        settled_outcome: result,
-        // Marker: delete-audit-admin-name-v1
-        settled_by_name: settleIdent.name || null,
-        settled_by_email: settleIdent.email || null,
-      },
+  await patchDesafioStep(stepId, {
+    status: "done",
+    result,
+    settled_at: settledAt,
+    settled_by: adminId,
+    final_score_home:
+      body?.homeScore != null ? Number(body.homeScore) : step.final_score_home,
+    final_score_away:
+      body?.awayScore != null ? Number(body.awayScore) : step.final_score_away,
+    updated_at: settledAt,
+    // Marker: delete-audit-ip-ua-v1
+    metadata: {
+      ...(step.metadata && typeof step.metadata === "object" ? step.metadata : {}),
+      settled_via: "settle-desafio-audit-v1",
+      settled_ip: audit?.ip || null,
+      settled_user_agent: audit?.userAgent || null,
+      settled_outcome: result,
+      // Marker: delete-audit-admin-name-v1
+      settled_by_name: settleIdent.name || null,
+      settled_by_email: settleIdent.email || null,
     },
   });
 
@@ -7310,7 +7380,8 @@ async function creditWalletForSettlement(row, outcome, now) {
     return { refunded: 0, credited: 0, alreadyCredited: true };
   }
 
-  // Ganhou na Exchange: R$ 0 Reembolso; stake_lock DEVOLVE stake; cobra SÓ dedução.
+  // Ganho (exchange): congelado VOLTA ao Apostador COM dedução.
+  // Congelado ≠ crédito — só defesa (locked-always-returns-apostador-v1).
   // Guarda: settle-exchange-cobra-so-deducao-v9 · settle-exchange-sem-comissao-extra-v9
   if (!wonArbi && !isVoid) {
     const fee =
@@ -7638,26 +7709,88 @@ async function creditWalletForSettlement(row, outcome, now) {
   const p = Array.isArray(prof) ? prof[0] : null;
   if (!p) throw new Error(`Perfil ${row.user_id} não encontrado para crédito`);
 
+  // Reembolso / Anula: congelado SEMPRE volta ao Apostador (integral).
+  // Marker: locked-always-returns-apostador-v1
+  // - Congelar = defesa (não gastar acima do disponível), NÃO é crédito.
+  // - Reembolso: volta integral + crédito SEPARADO (seguro) no Saldo Reembolso.
+  // - Anula: volta integral (sem seguro).
   const patch = { updated_at: now };
-  if ((typeof isStakeLockProtection === "function" && isStakeLockProtection(row)) || !feeUpfront) {
+  const stakeLock =
+    (typeof isStakeLockProtection === "function" && isStakeLockProtection(row)) ||
+    !feeUpfront;
+  const lockFx =
+    typeof lockedStakeSettleEffect === "function"
+      ? lockedStakeSettleEffect(row, outcomeNorm)
+      : null;
+
+  if (stakeLock && amount > 0) {
     patch.locked_balance_cents = Math.max(0, n(p.locked_balance_cents) - amount);
   }
+
   let bucket = creditBucketForSettlement(balanceType, row, outcomeNorm);
-  if (bucket === "demo_balance_cents") {
+  let returnedToApostador = 0;
+  let insuranceCredited = 0;
+
+  if (wonArbi && stakeLock && !feeUpfront && amount > 0) {
+    // 1) Congelado volta INTEGRAL ao Apostador
+    if (balanceType === "DEMO") {
+      patch.demo_balance_cents = n(p.demo_balance_cents) + amount;
+    } else if (balanceType === "INVESTOR") {
+      patch.investor_balance_cents = n(p.investor_balance_cents) + amount;
+    } else {
+      patch.balance_cents =
+        n(p.balance_cents) + n(p.reusable_balance_cents) + amount;
+      patch.reusable_balance_cents = 0;
+    }
+    returnedToApostador = amount;
+    // 2) Seguro SEPARADO no Saldo Reembolso (não é o congelado "virando" crédito)
+    if (credit > 0) {
+      patch.deduction_balance_cents = n(p.deduction_balance_cents) + credit;
+      insuranceCredited = credit;
+    }
+    bucket = "deduction_balance_cents";
+  } else if (bucket === "demo_balance_cents") {
     patch.demo_balance_cents = n(p.demo_balance_cents) + credit;
+    if (isVoid && stakeLock) returnedToApostador = credit;
   } else if (bucket === "investor_balance_cents") {
     patch.investor_balance_cents = n(p.investor_balance_cents) + credit;
+    if (isVoid && stakeLock) returnedToApostador = credit;
   } else if (bucket === "balance_cents") {
     patch.balance_cents = n(p.balance_cents) + credit;
+    if (isVoid && stakeLock) returnedToApostador = credit;
   } else {
     patch.deduction_balance_cents = n(p.deduction_balance_cents) + credit;
+    if (wonArbi) insuranceCredited = credit;
   }
 
   let creditedOk = false;
   let lastErr = null;
   const attempts = [patch, { ...patch }];
   delete attempts[1].updated_at;
-  if (bucket === "deduction_balance_cents") {
+  // Fallback: se deduction_balance_cents falhar no Reembolso stake_lock,
+  // mantém a volta do congelado ao Apostador (seguro pode ficar pendente).
+  if (
+    wonArbi &&
+    stakeLock &&
+    !feeUpfront &&
+    patch.deduction_balance_cents != null
+  ) {
+    const fallbackReturn = {
+      updated_at: now,
+      locked_balance_cents: patch.locked_balance_cents,
+    };
+    if (balanceType === "DEMO") {
+      fallbackReturn.demo_balance_cents = n(p.demo_balance_cents) + amount;
+    } else if (balanceType === "INVESTOR") {
+      fallbackReturn.investor_balance_cents =
+        n(p.investor_balance_cents) + amount;
+    } else {
+      fallbackReturn.balance_cents =
+        n(p.balance_cents) + n(p.reusable_balance_cents) + amount;
+      fallbackReturn.reusable_balance_cents = 0;
+    }
+    attempts.push(fallbackReturn);
+  } else if (bucket === "deduction_balance_cents" && !(wonArbi && stakeLock)) {
     attempts.push({
       updated_at: now,
       balance_cents: n(p.balance_cents) + credit,
@@ -7674,8 +7807,26 @@ async function creditWalletForSettlement(row, outcome, now) {
         body,
       });
       creditedOk = true;
-      if (body.balance_cents != null && body.deduction_balance_cents == null) {
+      if (
+        body.balance_cents != null &&
+        body.deduction_balance_cents == null &&
+        !(wonArbi && stakeLock && !feeUpfront)
+      ) {
         bucket = "balance_cents";
+      }
+      if (
+        wonArbi &&
+        stakeLock &&
+        body.deduction_balance_cents == null &&
+        (body.balance_cents != null ||
+          body.demo_balance_cents != null ||
+          body.investor_balance_cents != null)
+      ) {
+        insuranceCredited = 0;
+        console.warn(
+          "[settle] Reembolso: volta ao Apostador ok; seguro Saldo Reembolso pendente (coluna ausente?)",
+          row.id
+        );
       }
       break;
     } catch (err) {
@@ -7703,14 +7854,22 @@ async function creditWalletForSettlement(row, outcome, now) {
           fee_cents: parts.fee,
           fee_returned_cents: wonArbi || isVoid ? parts.fee : 0,
           bucket,
-          billing_model: feeUpfront ? "fee_upfront_v1" : "legacy_lock",
+          returned_to_apostador_cents: returnedToApostador,
+          reembolso_insurance_cents: insuranceCredited,
+          locked_rule:
+            (lockFx && lockFx.rule) || LOCKED_ALWAYS_RETURNS_APOSTADOR_RULE,
+          billing_model: feeUpfront
+            ? "fee_upfront_v1"
+            : stakeLock
+              ? "stake_lock_v1"
+              : "legacy_lock",
           fix: isVoid
-            ? "settle-empate-anula-deducao-v1"
-            : "settle-arbishield-stake-mais-deducao-v1",
+            ? "settle-empate-anula-volta-apostador-v1"
+            : "settle-arbishield-volta-mais-seguro-v1",
           note: isVoid
-            ? "Empate Anula: devolve só a dedução (Saldo Reembolso)"
+            ? "Anula: congelado volta INTEGRAL ao Apostador (defesa, não crédito)"
             : wonArbi
-              ? "ArbiShield: stake + dedução creditados (Saldo Reembolso)"
+              ? "Reembolso: congelado volta INTEGRAL ao Apostador; seguro SEPARADO no Saldo Reembolso"
               : undefined,
         },
       },
@@ -7725,6 +7884,8 @@ async function creditWalletForSettlement(row, outcome, now) {
     stakeCents: parts.stake,
     feeCents: parts.fee,
     bucket,
+    returnedToApostadorCents: returnedToApostador,
+    reembolsoInsuranceCents: insuranceCredited,
     void: isVoid,
   };
 }
@@ -9651,6 +9812,7 @@ const server = createServer(async (req, res) => {
       createProtectionModel: PROTECTION_BILLING_MODEL_CANONICAL,
       cancelRefundGuard: CANCEL_LEGACY_NO_STAKE_OVERCREDIT,
       exchangeChargeGuard: EXCHANGE_CHARGE_DEDUCTION_RULE,
+      lockedReturnsApostador: LOCKED_ALWAYS_RETURNS_APOSTADOR_RULE,
       protectionFlowContract: PROTECTION_FLOW_CONTRACT_VERSION,
       // Marker: shim-release-v1
       release: SHIM_RELEASE || null,

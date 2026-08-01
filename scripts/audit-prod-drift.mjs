@@ -13,6 +13,10 @@
  *
  * Sai com código 1 se algum arquivo estiver divergente (não existe em branch
  * nenhuma) ou atrasado em relação à referência de mainline.
+ *
+ * `ARBISHIELD_AUDIT_ALLOW_BEHIND=1` (usado pela auditoria agendada) não falha por
+ * `ATRASADO`: entre mesclar em `main` e publicar, estar atrás é normal. O alarme
+ * fica para o que é sempre errado — arquivo no ar sem commit ou rota não servida.
  */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -50,10 +54,16 @@ function digest(text) {
   return createHash("sha256").update(normalizeDeployedAsset(text)).digest("hex");
 }
 
-const branches = git(["for-each-ref", "--format=%(refname:short)", "refs/remotes/origin"])
+// `refname:short` encurta refs/remotes/origin/HEAD para "origin" — fora da lista,
+// senão o relatório atribui o conteúdo a uma branch chamada "origin".
+const branches = git([
+  "for-each-ref",
+  "--format=%(refname:short)",
+  "refs/remotes/origin",
+])
   .split("\n")
   .map((s) => s.trim())
-  .filter((s) => s && !s.endsWith("/HEAD"));
+  .filter((s) => s && s.includes("/") && !s.endsWith("/HEAD"));
 
 /** Data do último commit de cada branch, para dizer "atrasado desde quando". */
 const branchDate = new Map(
@@ -92,6 +102,40 @@ async function publishedVersion() {
 }
 
 const version = await publishedVersion();
+
+/**
+ * Produção pode estar **à frente** da mainline — publicada de branch ainda não
+ * mesclada. Chamar isso de "ATRASADO" mente sobre a direção, então descobre pelo
+ * commit da release quem está na frente.
+ */
+function relationToMainline() {
+  const commit = version && version.commit;
+  if (!commit) return "desconhecida";
+  const isAncestor = (a, b) => {
+    try {
+      git(["merge-base", "--is-ancestor", a, b]);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  try {
+    git(["cat-file", "-e", `${commit}^{commit}`]);
+  } catch {
+    return "desconhecida";
+  }
+  if (isAncestor(mainlineRef, commit)) return "a frente";
+  if (isAncestor(commit, mainlineRef)) return "atras";
+  return "divergente";
+}
+
+const relation = relationToMainline();
+const behindLabel =
+  relation === "a frente"
+    ? "À FRENTE"
+    : relation === "divergente"
+      ? "DIVERGENTE"
+      : "ATRASADO";
 
 const rows = [];
 for (const [urlPath, repoPath] of PROD_SURFACE) {
@@ -171,9 +215,9 @@ for (const [urlPath, repoPath] of PROD_SURFACE) {
         .join(", ");
     row.bad = true;
   } else {
-    row.status = "ATRASADO";
+    row.status = behindLabel;
     row.detail =
-      "no ar = " +
+      (behindLabel === "À FRENTE" ? "publicado de branch não mesclada = " : "no ar = ") +
       matches
         .slice(0, 3)
         .map((b) => `${b} (${branchDate.get(b) || "?"})`)
@@ -200,8 +244,14 @@ for (const r of rows) {
   );
 }
 
+const allowBehind = process.env.ARBISHIELD_AUDIT_ALLOW_BEHIND === "1";
 const bad = rows.filter((r) => r.bad);
 const drift = rows.filter((r) => r.status === "DESVIO");
+// Atrasado é estado normal entre mesclar em main e publicar — não é alarme.
+// Atrasado ou à frente da mainline é normal entre mesclar e publicar; o alarme
+// fica para arquivo sem commit e rota não servida.
+const NAO_E_ALARME = new Set(["ATRASADO", "À FRENTE", "SEM FONTE"]);
+const alarming = allowBehind ? bad.filter((r) => !NAO_E_ALARME.has(r.status)) : bad;
 console.log(
   `\n  ${rows.length} arquivos · ${rows.length - bad.length} OK · ${bad.length} com problema · ${drift.length} editados fora do git\n`
 );
@@ -209,8 +259,11 @@ if (drift.length) {
   console.log(
     "  DESVIO significa que alguém editou em produção e nunca voltou ao repositório."
   );
+  console.log("  A próxima publicação sobrescreve isso — traga para o repo antes.\n");
+}
+if (allowBehind && bad.length && !alarming.length) {
   console.log(
-    "  Rodar qualquer hotfix vai sobrescrever isso com a versão da branch dele.\n"
+    "  Só há arquivos atrasados em relação a main (normal antes de publicar) — sem alarme.\n"
   );
 }
-process.exit(bad.length ? 1 : 0);
+process.exit(alarming.length ? 1 : 0);

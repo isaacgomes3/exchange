@@ -397,9 +397,77 @@
     if (opts.redirect) location.href = opts.redirect;
   }
 
+  /**
+   * Vocabulário único do resultado da proteção (marker: protection-result-terms-v1).
+   * Espelha scripts/lib/protection-flow-contract.mjs — se divergir, o CI acusa.
+   * A ArbiShield não é casa de aposta: não gera ganho, só reembolsa quando a
+   * indicação perde. Indicação ganha (bateu na casa) = Ganho; indicação perde =
+   * Reembolso; empate anula = Anula.
+   *
+   * Congelado (Travado): SEMPRE volta ao Apostador — não é crédito, só defesa
+   * (locked-always-returns-apostador-v1). Ganho volta com dedução; demais integral.
+   * No Reembolso o Saldo Reembolso é seguro SEPARADO (não é o congelado).
+   */
+  var PROTECTION_RESULT_TERMS = {
+    arbishield: {
+      term: "Reembolso",
+      kind: "reembolso",
+      hint: "Indicação perdeu — congelado volta integral ao Apostador; ArbiShield credita o seguro no Saldo Reembolso",
+    },
+    exchange: {
+      term: "Ganho",
+      kind: "ganho",
+      hint: "Indicação bateu na casa externa — congelado volta ao Apostador com dedução",
+    },
+    void: {
+      term: "Anula",
+      kind: "anula",
+      hint: "Empate anula — congelado volta integral ao Apostador",
+    },
+  };
+
+  function normalizeProtectionOutcome(outcome) {
+    var o = String(outcome == null ? "" : outcome)
+      .toLowerCase()
+      .trim()
+      .replace(/[\s-]+/g, "_");
+    if (o === "arbishield" || o === "lost_exchange") return "arbishield";
+    if (o === "exchange" || o === "won_exchange") return "exchange";
+    if (
+      o === "void" ||
+      o === "empate_anula" ||
+      o === "anula" ||
+      o === "draw" ||
+      o === "push" ||
+      o === "dnb" ||
+      o === "draw_no_bet"
+    ) {
+      return "void";
+    }
+    return "";
+  }
+
+  function protectionResultTerm(outcome) {
+    var t = PROTECTION_RESULT_TERMS[normalizeProtectionOutcome(outcome)];
+    return t ? t.term : "";
+  }
+  function protectionResultKind(outcome) {
+    var t = PROTECTION_RESULT_TERMS[normalizeProtectionOutcome(outcome)];
+    return t ? t.kind : "";
+  }
+  function protectionResultHint(outcome) {
+    var t = PROTECTION_RESULT_TERMS[normalizeProtectionOutcome(outcome)];
+    return t ? t.hint : "";
+  }
+
   global.ArbiV2 = {
     client: client,
     money: money,
+    PROTECTION_RESULT_TERMS: PROTECTION_RESULT_TERMS,
+    normalizeProtectionOutcome: normalizeProtectionOutcome,
+    protectionResultTerm: protectionResultTerm,
+    protectionResultKind: protectionResultKind,
+    protectionResultHint: protectionResultHint,
     requireUser: requireUser,
     requireAdmin: requireAdmin,
     isAdminUser: isAdminUser,

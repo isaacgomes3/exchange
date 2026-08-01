@@ -127,6 +127,39 @@ contrato: `scripts/lib/release-manifest.mjs` · teste: `release-manifest.test.mj
 - Cache-bust sai do build (`applyCacheBust()` → commit curto). **Proibido** `sed` de
   `?v=` no HTML publicado e escrita com `find /var/www -name` (atinge backups)
 
+### Termo do resultado da proteção (`protection-result-terms-v1`)
+
+A ArbiShield **não é casa de aposta**: não gera ganho, só reembolsa quando a
+indicação perde. O termo sai da **indicação**, igual em todas as telas:
+
+| Outcome (interno) | Termo | O que acontece |
+|---|---|---|
+| `exchange` | **Ganho** | indicação bateu → congelado volta ao Apostador **com dedução** |
+| `arbishield` | **Reembolso** | indicação perdeu → congelado volta **integral** + seguro SEPARADO no **Saldo Reembolso** |
+| `void` / `empate_anula` | **Anula** | congelado volta **integral** ao Apostador |
+
+**Congelado ≠ crédito** (`locked-always-returns-apostador-v1`): só defesa para não
+gastar acima do disponível. Em todas as etapas congela; ao final **sempre** volta
+ao Apostador. Única diferença: Ganho com dedução; demais integral.
+
+Após ativação (Apostador 1000 → trava 500): Apostador 500 · Travado 500
+
+| Termo | Apostador | Travado | Saldo Reembolso |
+|---|---|---|---|
+| Reembolso | **1000** | 0 | **500** (seguro à parte) |
+| Ganho | **1000−dedução** | 0 | 0 |
+| Anula | **1000** | 0 | 0 |
+
+O Saldo Reembolso no outcome `arbishield` é o **seguro**, não o congelado “virando”
+crédito. O teste trava isso — `arbishield` nunca pode ser chamado de Ganho.
+
+- Fonte: `PROTECTION_RESULT_TERMS` em `scripts/lib/protection-flow-contract.mjs`,
+  espelhada em `ArbiV2.protectionResultTerm` (`v2.js`) para as telas estáticas
+- **Proibido** «Bateu ArbiShield», «Bateu Casa Externa», «Ganhou», «Perdeu»
+- Os valores enviados ao settle **não** mudam: `arbishield` / `exchange` / `empate_anula`
+- Teste `protection-result-terms.test.mjs` verifica contrato × v2.js × telas e que as
+  regras de crédito seguem intactas
+
 ### Allowlist de admin (anti-regressão)
 
 - Marker `admin-email-allowlist-v1` · teste `scripts/admin-allowlist.test.mjs`
@@ -170,13 +203,19 @@ Ignora só o cache-bust `?v=` que os hotfixes reescrevem no servidor. Status por
 |---|---|
 | `OK` | igual à referência de mainline — publicação confiável |
 | `ATRASADO` | no ar está uma branch mais antiga que a mainline |
+| `À FRENTE` | publicado de branch **não mesclada** — mainline é ancestral do que está no ar |
+| `DIVERGENTE` | o commit publicado e a mainline não têm linha reta entre si |
 | `SEM FONTE` | a mainline não tem o arquivo — não existe versão canônica |
 | `DESVIO` | o conteúdo no ar **não existe em branch nenhuma** (editado no servidor) |
 | `NAO SERVIDO` | nginx devolveu o fallback SPA em vez do arquivo |
 
 `DESVIO` é a causa das regressões: o arquivo publicado não tem commit, então qualquer
-hotfix o sobrescreve com a versão da branch dele. Rodar antes e depois de publicar.
-Workflow manual: `.github/workflows/audit-prod-drift.yml`.
+publicação o sobrescreve. Rodar antes e depois de publicar.
+
+**Agendada** a cada 6h (`.github/workflows/audit-prod-drift.yml`): alarma em `DESVIO`,
+`SEM FONTE`, `NAO SERVIDO` e falha de resposta, mas **não** em `ATRASADO` — estar atrás
+de `main` é normal entre mesclar e publicar (`ARBISHIELD_AUDIT_ALLOW_BEHIND=1`). Para
+falhar também no atraso, disparar manualmente com `strict`.
 
 ## Runtime (VPS)
 

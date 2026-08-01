@@ -96,10 +96,33 @@ describe("tamanho do desvio", () => {
 });
 
 describe("o auditor documenta o próprio uso", () => {
-  it("explica variáveis e código de saída", () => {
-    const src = readFileSync(resolve(root, "scripts/audit-prod-drift.mjs"), "utf8");
+  const src = readFileSync(resolve(root, "scripts/audit-prod-drift.mjs"), "utf8");
+
+  it("explica as variáveis de ambiente", () => {
     assert.match(src, /ARBISHIELD_MAINLINE_REF/);
     assert.match(src, /ARBISHIELD_ORIGIN/);
-    assert.match(src, /process\.exit\(bad\.length \? 1 : 0\)/);
+    assert.match(src, /ARBISHIELD_AUDIT_ALLOW_BEHIND/);
+  });
+
+  it("o código de saída olha o que é alarme, não todo problema", () => {
+    assert.match(src, /process\.exit\(alarming\.length \? 1 : 0\)/);
+  });
+
+  it("ALLOW_BEHIND tolera só atraso/avanço — nunca arquivo sem commit", () => {
+    const from = src.indexOf("const NAO_E_ALARME");
+    assert.ok(from > 0, "lista de status toleráveis não encontrada");
+    const block = src.slice(from, src.indexOf("console.log", from));
+    assert.match(block, /"ATRASADO"/);
+    assert.match(block, /"À FRENTE"/);
+    assert.match(block, /"SEM FONTE"/);
+    assert.doesNotMatch(block, /"DESVIO"/, "DESVIO nunca pode ser tolerado");
+  });
+
+  it("distingue produção à frente da mainline de produção atrasada", () => {
+    // Chamar de ATRASADO o que está à frente mente sobre a direção.
+    assert.match(src, /function relationToMainline\(\)/);
+    assert.match(src, /merge-base", "--is-ancestor"/);
+    assert.match(src, /\? "À FRENTE"/);
+    assert.match(src, /"DIVERGENTE"/);
   });
 });

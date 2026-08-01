@@ -499,14 +499,25 @@
           return "arbishield";
         }
         if (o === "exchange" || o === "lost" || o === "loss") return "exchange";
+        // Marker: protection-result-terms-v1 — Anula também é resultado
+        if (o === "void" || o === "empate_anula" || o === "anula") return "void";
         var st = String(row && row.status || "").toLowerCase();
         // Contrato: arbishield → lost_exchange; exchange → won_exchange
         if (st === "lost_exchange") return "arbishield";
         if (st === "won_exchange") return "exchange";
+        if (st === "void") return "void";
         return "";
       }
       function resultInfo(row) {
         var outcome = settleOutcomeOf(row);
+        if (outcome === "void") {
+          var termsVoid = (window.ArbiV2 && window.ArbiV2.protectionResultTerm) || null;
+          return {
+            label: termsVoid ? termsVoid("void") : "Anula",
+            kind: "void",
+            refundCents: null,
+          };
+        }
         if (outcome !== "arbishield" && outcome !== "exchange") {
           return { label: "", kind: "", refundCents: null };
         }
@@ -519,8 +530,10 @@
         if (won) {
           refund = isLegacyActivationFee(row) ? amount + fee : amount;
         }
+        // Marker: protection-result-terms-v1 — termo único vem do ArbiV2
+        var terms = (window.ArbiV2 && window.ArbiV2.protectionResultTerm) || null;
         return {
-          label: won ? "Ganhou" : "Perdeu",
+          label: terms ? terms(outcome) : won ? "Ganho" : "Reembolso",
           kind: won ? "won" : "lost",
           refundCents: refund,
         };

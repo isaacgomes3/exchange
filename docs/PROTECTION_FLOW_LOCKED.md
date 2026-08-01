@@ -66,10 +66,13 @@ Arquivos cobertos (mínimo):
 
 1. **Só antes do início do evento** — se `now >= starts_at`, a API e a grade **recusam**.
 2. **Uma operação por evento** — o cliente só pode ter **uma** proteção por jogo (`user` + `match`, LAY ou BACK). Proteção **cancelada/estornada** não conta (pode tentar de novo).
-3. **Trava o stake** em `locked_balance_cents` (sai do Apostador disponível).
-4. **Não cobra dedução** na entrada (a dedução fica calculada/armazenada para o caso Exchange).
-5. **Teto:** no máximo **50% do saldo Apostador restante naquele momento**.
-6. Em eventos seguintes, o teto **recalcula sobre o que sobrou** (não sobre a banca original).
+3. **Congela o stake** em `locked_balance_cents` (sai do Apostador disponível).
+   Isso é **defesa** (impede gastar acima) — **não é crédito**.
+4. Em **todas** as etapas o valor congela; ao final **sempre volta ao Apostador**
+   (`locked-always-returns-apostador-v1`). Ganho → com dedução; demais → integral.
+5. **Não cobra dedução** na entrada (a dedução fica para o caso Ganho/exchange).
+6. **Teto:** no máximo **50% do saldo Apostador restante naquele momento**.
+7. Em eventos seguintes, o teto **recalcula sobre o que sobrou** (não sobre a banca original).
 
 Exemplo sucessivo:
 
@@ -81,19 +84,19 @@ Exemplo sucessivo:
 
 - **LAY** = responsabilidade · **BACK** = stake
 
-### 2. Ganhou na ArbiShield
+### 2. Reembolso (indicação perdeu)
 
 - Outcome: `arbishield` → status `lost_exchange`
-- **Credita o stake** no **Saldo Reembolso** (`deduction_balance_cents`)
-- **Destrava** o locked
+- **Congelado volta INTEGRAL** ao Apostador
+- **Além disso**, credita seguro SEPARADO no **Saldo Reembolso** (`deduction_balance_cents`)
+- O congelado **não** “vira” o Saldo Reembolso — são dois movimentos
 - **Não** cobra dedução
 
-### 3. Ganhou na Exchange
+### 3. Ganho (indicação bateu na casa)
 
 - Outcome: `exchange` → status `won_exchange`
 - **R$ 0** no Saldo Reembolso (não credita)
-- **Destrava e DEVOLVE** o stake à origem (Apostador / Demo / Investidor)
-- **Cobra só a dedução ArbiShield** da odd canônica do bilhete
+- **Congelado volta** ao Apostador **COM dedução** ArbiShield da odd canônica
 - A fatia Exchange 4,5% já entra no cálculo da dedução — **não** debita de novo
 - Heal: `won_exchange` com tx zerada/incompleta **reprocessa** até carteira completa
 
@@ -108,12 +111,12 @@ Odd canônica: `approved_odd` > `calculations.marketOdd` > `metadata.market_odd`
 
 ### 4. Empate Anula / void
 
-- **Destrava** o stake e devolve à origem
+- Congelado volta **integral** ao Apostador
 - Não credita Reembolso
 
 ### 5. Cancelar proteção
 
-- **Destrava** o stake e devolve à origem
+- Congelado volta **integral** ao Apostador
 
 ---
 
@@ -125,6 +128,7 @@ Odd canônica: `approved_odd` > `calculations.marketOdd` > `metadata.market_odd`
 | `NEVER_CITE_OBSOLETE_PROTECTION_MODELS` | proibição de citar modelos antigos |
 | `protection-flow-contract-v10` | versão do contrato |
 | `stake_lock_v1` | único billing model |
+| `locked-always-returns-apostador-v1` | congelado sempre volta ao Apostador |
 | `protection-runtime-stake-lock-v10` | health runtime |
 | `create-protection-stake-lock-v6` | createProtection |
 | `settle-exchange-cobra-so-deducao-v9` | settle Exchange |

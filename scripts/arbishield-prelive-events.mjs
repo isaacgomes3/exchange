@@ -41,6 +41,8 @@ import {
   EXCHANGE_CHARGE_DEDUCTION_RULE,
   EXCHANGE_INCOMPLETE_HEAL_RULE,
   SETTLEMENT_ODD_CANONICAL_RULE,
+  LOCKED_ALWAYS_RETURNS_APOSTADOR_RULE,
+  lockedStakeSettleEffect,
   settlementExchangeCommissionCents,
   settlementExchangeCommissionWalletCents,
   EXCHANGE_COMMISSION_RATE,
@@ -83,6 +85,8 @@ void CANCEL_LEGACY_NO_STAKE_OVERCREDIT;
 void EXCHANGE_CHARGE_DEDUCTION_RULE;
 void EXCHANGE_INCOMPLETE_HEAL_RULE;
 void SETTLEMENT_ODD_CANONICAL_RULE;
+void LOCKED_ALWAYS_RETURNS_APOSTADOR_RULE;
+void lockedStakeSettleEffect;
 void settlementCreditCents;
 void calcFeeUpfront;
 void layToBackOdd;
@@ -1565,8 +1569,8 @@ async function creditWalletForSettlement(row, outcome, now) {
     return { refunded: 0, credited: 0, alreadyCredited: true };
   }
 
-  // Ganhou na Exchange: R$ 0 Reembolso; stake_lock DEVOLVE stake à origem;
-  // cobra SÓ dedução ArbiShield (4,5% já líquido nela — sem débito extra).
+  // Ganho: congelado VOLTA ao Apostador COM dedução (defesa, não crédito).
+  // Marker: locked-always-returns-apostador-v1 · settle-exchange-cobra-so-deducao-v9
   // fee_upfront: dedução já cobrada na criação — só audita.
   // Guarda: settle-exchange-cobra-so-deducao-v9 · settle-exchange-sem-comissao-extra-v9
   if (!wonArbi && !isVoid) {
@@ -1891,25 +1895,51 @@ async function creditWalletForSettlement(row, outcome, now) {
   }
   if (!p) throw new Error(`Perfil ${row.user_id} não encontrado para crédito`);
 
+  // Reembolso / Anula: congelado SEMPRE volta ao Apostador (integral).
+  // Marker: locked-always-returns-apostador-v1
+  // Congelar = defesa (não gastar acima), NÃO é crédito.
+  // Reembolso = volta integral + seguro SEPARADO no Saldo Reembolso.
   const patch = { updated_at: now };
-  // ArbiShield: stake → Reembolso. void stake_lock: stake → origem. fee_upfront void: fee → Reembolso.
+  const stakeLock = isStakeLockProtection(row) || !feeUpfront;
   let bucket = creditBucketForSettlement(balanceType, row, outcomeNorm);
-  if (bucket === "demo_balance_cents") {
-    patch.demo_balance_cents = nCents(p.demo_balance_cents) + credit;
-  } else if (bucket === "investor_balance_cents") {
-    patch.investor_balance_cents = nCents(p.investor_balance_cents) + credit;
-  } else if (bucket === "balance_cents") {
-    patch.balance_cents = nCents(p.balance_cents) + credit;
-  } else {
-    patch.deduction_balance_cents = nCents(p.deduction_balance_cents) + credit;
-  }
+  let returnedToApostador = 0;
+  let insuranceCredited = 0;
 
-  // stake_lock / legado: solta o stake do locked
-  if (isStakeLockProtection(row) || !feeUpfront) {
+  if (stakeLock && amount > 0) {
     patch.locked_balance_cents = Math.max(
       0,
       nCents(p.locked_balance_cents) - amount
     );
+  }
+
+  if (wonArbi && stakeLock && !feeUpfront && amount > 0) {
+    if (balanceType === "DEMO") {
+      patch.demo_balance_cents = nCents(p.demo_balance_cents) + amount;
+    } else if (balanceType === "INVESTOR") {
+      patch.investor_balance_cents = nCents(p.investor_balance_cents) + amount;
+    } else {
+      patch.balance_cents =
+        nCents(p.balance_cents) + nCents(p.reusable_balance_cents) + amount;
+      patch.reusable_balance_cents = 0;
+    }
+    returnedToApostador = amount;
+    if (credit > 0) {
+      patch.deduction_balance_cents = nCents(p.deduction_balance_cents) + credit;
+      insuranceCredited = credit;
+    }
+    bucket = "deduction_balance_cents";
+  } else if (bucket === "demo_balance_cents") {
+    patch.demo_balance_cents = nCents(p.demo_balance_cents) + credit;
+    if (isVoid && stakeLock) returnedToApostador = credit;
+  } else if (bucket === "investor_balance_cents") {
+    patch.investor_balance_cents = nCents(p.investor_balance_cents) + credit;
+    if (isVoid && stakeLock) returnedToApostador = credit;
+  } else if (bucket === "balance_cents") {
+    patch.balance_cents = nCents(p.balance_cents) + credit;
+    if (isVoid && stakeLock) returnedToApostador = credit;
+  } else {
+    patch.deduction_balance_cents = nCents(p.deduction_balance_cents) + credit;
+    if (wonArbi) insuranceCredited = credit;
   }
 
   let creditedOk = false;
@@ -1922,8 +1952,33 @@ async function creditWalletForSettlement(row, outcome, now) {
       return s;
     })(),
   ];
-  // Fallback se deduction_balance_cents ainda não existir no schema
-  if (bucket === "deduction_balance_cents") {
+  if (
+    wonArbi &&
+    stakeLock &&
+    !feeUpfront &&
+    patch.deduction_balance_cents != null
+  ) {
+    const fallbackReturn = {
+      updated_at: now,
+      locked_balance_cents: patch.locked_balance_cents,
+    };
+    if (balanceType === "DEMO") {
+      fallbackReturn.demo_balance_cents = nCents(p.demo_balance_cents) + amount;
+    } else if (balanceType === "INVESTOR") {
+      fallbackReturn.investor_balance_cents =
+        nCents(p.investor_balance_cents) + amount;
+    } else {
+      fallbackReturn.balance_cents =
+        nCents(p.balance_cents) + nCents(p.reusable_balance_cents) + amount;
+      fallbackReturn.reusable_balance_cents = 0;
+    }
+    attempts.push(fallbackReturn);
+    attempts.push((() => {
+      const s = { ...fallbackReturn };
+      delete s.updated_at;
+      return s;
+    })());
+  } else if (bucket === "deduction_balance_cents" && !(wonArbi && stakeLock)) {
     attempts.push({
       updated_at: now,
       balance_cents: nCents(p.balance_cents) + credit,
@@ -1938,8 +1993,26 @@ async function creditWalletForSettlement(row, outcome, now) {
         body,
       });
       creditedOk = true;
-      if (body.balance_cents != null && body.deduction_balance_cents == null) {
+      if (
+        body.balance_cents != null &&
+        body.deduction_balance_cents == null &&
+        !(wonArbi && stakeLock && !feeUpfront)
+      ) {
         bucket = "balance_cents";
+      }
+      if (
+        wonArbi &&
+        stakeLock &&
+        body.deduction_balance_cents == null &&
+        (body.balance_cents != null ||
+          body.demo_balance_cents != null ||
+          body.investor_balance_cents != null)
+      ) {
+        insuranceCredited = 0;
+        console.warn(
+          "[settle] Reembolso: volta ao Apostador ok; seguro Saldo Reembolso pendente",
+          row.id
+        );
       }
       break;
     } catch (err) {
@@ -1967,18 +2040,21 @@ async function creditWalletForSettlement(row, outcome, now) {
           fee_cents: parts.fee,
           fee_returned_cents: wonArbi || isVoid ? parts.fee : 0,
           bucket,
+          returned_to_apostador_cents: returnedToApostador,
+          reembolso_insurance_cents: insuranceCredited,
+          locked_rule: "locked-always-returns-apostador-v1",
           billing_model: feeUpfront
             ? "fee_upfront_v1"
             : isStakeLockProtection(row)
               ? "stake_lock_v1"
               : "legacy_lock",
           fix: isVoid
-            ? "settle-empate-anula-destrava-v1"
-            : "settle-arbishield-stake-reembolso-v1",
+            ? "settle-empate-anula-volta-apostador-v1"
+            : "settle-arbishield-volta-mais-seguro-v1",
           note: isVoid
-            ? "Empate Anula: destrava stake (devolve à origem)"
+            ? "Anula: congelado volta INTEGRAL ao Apostador (defesa, não crédito)"
             : wonArbi
-              ? "Ganhou na ArbiShield: credita stake no Saldo Reembolso e destrava"
+              ? "Reembolso: congelado volta INTEGRAL ao Apostador; seguro SEPARADO no Saldo Reembolso"
               : undefined,
         },
       },
@@ -1996,6 +2072,8 @@ async function creditWalletForSettlement(row, outcome, now) {
     stakeCents: parts.stake,
     feeCents: parts.fee,
     bucket,
+    returnedToApostadorCents: returnedToApostador,
+    reembolsoInsuranceCents: insuranceCredited,
     void: isVoid,
   };
 }
@@ -4575,6 +4653,7 @@ async function handleApi(req, res) {
       createProtectionModel: PROTECTION_BILLING_MODEL_CANONICAL,
       cancelRefundGuard: CANCEL_LEGACY_NO_STAKE_OVERCREDIT,
       exchangeChargeGuard: EXCHANGE_CHARGE_DEDUCTION_RULE,
+      lockedReturnsApostador: LOCKED_ALWAYS_RETURNS_APOSTADOR_RULE,
       protectionFlowContract: PROTECTION_FLOW_CONTRACT_VERSION,
       protectionFlowLock: PROTECTION_FLOW_LOCK,
       inplaySync: BETBRA_INPLAY_SYNC_VERSION,

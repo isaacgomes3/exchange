@@ -330,6 +330,61 @@
     .row .entries {
       margin-top: 6px; font-size: 11px; color: var(--muted);
     }
+    /* Marker: admin-jogos-row-compacta-v1 — evento, mercado e placar em destaque;
+       o resto vira chip pequeno. Antes o card ocupava a largura toda com texto
+       solto e o mercado ficava perdido junto da liga. */
+    .row.match-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: start;
+      column-gap: 16px;
+      row-gap: 6px;
+      padding: 12px 16px;
+    }
+    .match-row .match-head {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px;
+    }
+    /* .row .teams tem flex:1 e empurrava mercado e placar para o outro extremo,
+       deixando o meio vazio. Aqui eles ficam colados no evento. */
+    .match-row .match-head .teams { flex: 0 1 auto; }
+    .match-row .match-market {
+      font-size: 12px; font-weight: 800; letter-spacing: 0.04em;
+      text-transform: uppercase; color: #dbeafe;
+      border: 1px solid rgba(147, 197, 253, 0.4);
+      background: rgba(59, 130, 246, 0.12);
+      border-radius: 999px; padding: 3px 10px; white-space: nowrap;
+    }
+    .match-row .match-score {
+      font-size: 15px; font-weight: 900; font-variant-numeric: tabular-nums;
+      color: var(--lime); letter-spacing: 0.04em; white-space: nowrap;
+    }
+    .match-row .match-score .st {
+      font-size: 10px; font-weight: 800; letter-spacing: 0.08em;
+      color: var(--muted); margin-left: 6px;
+    }
+    .match-row .match-facts {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px;
+    }
+    .match-row .match-facts span {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+      color: var(--muted); border: 1px solid var(--border);
+      border-radius: 6px; padding: 2px 7px; white-space: nowrap;
+    }
+    .match-row .match-facts span.on {
+      color: #bbf7d0; border-color: rgba(134, 239, 172, 0.35);
+    }
+    .match-row .match-side {
+      display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+    }
+    .match-row .match-side .when { font-size: 11px; color: var(--muted); }
+    .match-row .match-actions {
+      display: flex; gap: 6px; margin-top: 2px;
+    }
+    .match-row .match-actions .btn { margin: 0 !important; }
+    @media (max-width: 720px) {
+      .row.match-row { grid-template-columns: minmax(0, 1fr); }
+      .match-row .match-side { align-items: flex-start; }
+    }
     .v2-nav {
       display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px;
     }
@@ -573,9 +628,6 @@
         <h2>Eventos cadastrados na plataforma</h2>
         <span class="hint" id="platformMeta">—</span>
       </div>
-      <p class="hint" style="margin:0 0 12px">
-        Jogos com proteção aberta aparecem em <strong style="color:var(--lime)">A liquidar</strong> (mesmo após +3h). Na janela de ~3h após o kickoff o status exibe <strong style="color:var(--lime)">Ao vivo</strong>. Finalizados saem da publicação automaticamente (não ficam na Fila nem na grade do cliente).
-      </p>
       <div class="platform-filters" id="platformFilters">
         <button type="button" class="chip is-on" data-pf="settle">A liquidar</button>
         <button type="button" class="chip" data-pf="live">Ao vivo</button>
@@ -629,22 +681,22 @@
         <div class="field"><label>Placar fora</label><input id="settleAway" type="number" min="0" step="1" placeholder="0" /></div>
       </div>
       <div class="field" style="margin-top:14px">
-        <label>Onde bateu?</label>
+        <label>Resultado da proteção</label>
         <div id="settleOutcomeBox" style="display:grid;gap:10px;margin-top:8px">
           <button type="button" class="btn btn-ghost" id="btnOutcomeArbi" data-outcome="arbishield" style="justify-content:flex-start;text-align:left;padding:14px 16px;border-color:rgba(201,242,35,0.45)">
-            <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU ARBISHIELD</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção válida · devolve stake/responsabilidade + dedução (Saldo Reembolso)</span>
+            <span style="display:block;font-size:11px;letter-spacing:0.08em">REEMBOLSO</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Indicação perdeu · destrava o stake e ArbiShield credita no Saldo Reembolso</span>
             <span id="settleRefundHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">A creditar: —</span>
           </button>
           <button type="button" class="btn btn-ghost" id="btnOutcomeExch" data-outcome="exchange" style="justify-content:flex-start;text-align:left;padding:14px 16px">
-            <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU CASA EXTERNA (EXCHANGE)</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção perde · sem reembolso ao usuário</span>
+            <span style="display:block;font-size:11px;letter-spacing:0.08em">GANHO</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Indicação bateu na casa externa · devolve o stake à origem e cobra só a dedução</span>
             <span id="settleDeductHint" style="display:block;margin-top:8px;color:var(--amber);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Dedução / margem ArbiShield: —</span>
             <span id="settleStakeKeepHint" style="display:block;margin-top:4px;color:var(--muted);font-size:11px;font-weight:600;text-transform:none;letter-spacing:0"></span>
           </button>
           <button type="button" class="btn btn-ghost" id="btnOutcomeVoid" data-outcome="empate_anula" style="justify-content:flex-start;text-align:left;padding:14px 16px">
-            <span style="display:block;font-size:11px;letter-spacing:0.08em">EMPATE ANULA</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Aposta anulada · devolve só a dedução (Saldo Reembolso)</span>
+            <span style="display:block;font-size:11px;letter-spacing:0.08em">ANULA</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Empate anula · destrava o stake e devolve à origem</span>
             <span id="settleVoidHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Dedução a devolver: —</span>
           </button>
         </div>
@@ -1912,33 +1964,37 @@
                     : "") +
                   "</div>";
               }
+              // Marker: admin-jogos-row-compacta-v1 — placar ao lado do evento
               var liveInfo = matchLiveInfo(m);
-              var liveHtml = "";
+              var scoreHtml = "";
               if (liveInfo && (liveInfo.score || liveInfo.elapsed)) {
-                liveHtml =
-                  '<div class="entries" style="color:var(--lime);font-weight:800;margin-top:4px">' +
-                  (liveInfo.finished
-                    ? "FT"
-                    : liveInfo.live
-                      ? "AO VIVO"
-                      : "BetBra") +
-                  (liveInfo.score ? " · " + escHtml(liveInfo.score) : "") +
-                  (liveInfo.elapsed ? " · " + escHtml(liveInfo.elapsed) : "") +
-                  (liveInfo.matchStatus
-                    ? ' <span style="color:var(--muted);font-weight:600">(' +
-                      escHtml(liveInfo.matchStatus) +
-                      ")</span>"
+                var estado = liveInfo.finished
+                  ? "FT"
+                  : liveInfo.live
+                    ? "AO VIVO"
+                    : "BETBRA";
+                scoreHtml =
+                  '<span class="match-score">' +
+                  (liveInfo.score ? escHtml(liveInfo.score) : "—") +
+                  '<span class="st">' +
+                  escHtml(estado) +
+                  (!liveInfo.finished && liveInfo.elapsed
+                    ? " " + escHtml(liveInfo.elapsed)
                     : "") +
-                  "</div>";
+                  "</span></span>";
               } else if (m.final_score) {
-                liveHtml =
-                  '<div class="entries" style="color:var(--muted);margin-top:4px">Placar: ' +
+                scoreHtml =
+                  '<span class="match-score">' +
                   escHtml(m.final_score) +
-                  "</div>";
+                  '<span class="st">FINAL</span></span>';
               }
+              var acoes = publishBtn + settleBtn + editBtn;
               return (
-                '<div class="row" style="cursor:default">' +
-                "<div><div class=\"teams row-teams-with-logos\">" +
+                '<div class="row match-row" style="cursor:default">' +
+                "<div>" +
+                // 1) evento + mercado + placar — o que importa, na mesma linha
+                '<div class="match-head">' +
+                '<div class="teams row-teams-with-logos">' +
                 homeLogo +
                 "<span>" +
                 escHtml(m.home_team) +
@@ -1947,30 +2003,41 @@
                 "<span>" +
                 escHtml(m.away_team) +
                 "</span></div>" +
-                '<div class="meta">' +
-                escHtml(m.league || "—") +
-                (names ? " · " + escHtml(names) + extra : "") +
+                (names
+                  ? '<span class="match-market">' + escHtml(names) + escHtml(extra) + "</span>"
+                  : "") +
+                scoreHtml +
                 "</div>" +
-                liveHtml +
-                '<div class="entries">' +
+                // 2) liga e números, compactos
+                '<div class="match-facts">' +
+                '<span>' +
+                escHtml(m.league || "—") +
+                "</span>" +
+                '<span>' +
                 markets.length +
-                " entrada(s) · liquidez " +
+                " entrada(s)</span>" +
+                '<span>liquidez ' +
                 money(m.max_protection_cents) +
-                (used > 0 ? " · protegido " + money(used) : "") +
-                (openN > 0 ? " · " + openN + " proteção(ões) aberta(s)" : "") +
+                "</span>" +
+                (used > 0 ? '<span>protegido ' + money(used) + "</span>" : "") +
+                (openN > 0
+                  ? '<span class="on">' + openN + " proteção(ões) aberta(s)</span>"
+                  : "") +
                 "</div>" +
                 launchedByHtml +
                 closedByHtml +
-                publishBtn +
-                settleBtn +
-                editBtn +
                 "</div>" +
-                '<div class="time">' +
+                // 3) situação, horário e ações
+                '<div class="match-side">' +
+                '<div style="display:flex;gap:6px;align-items:center">' +
                 originBadge +
                 badge +
+                "</div>" +
                 '<div class="when">' +
                 fmtDate(m.starts_at) +
-                "</div></div></div>"
+                "</div>" +
+                (acoes ? '<div class="match-actions">' + acoes + "</div>" : "") +
+                "</div></div>"
               );
             })
             .join("") +
@@ -3499,17 +3566,17 @@
           money(stake);
         if ($("settleRefundHint")) {
           $("settleRefundHint").textContent =
-            "Ganhou ArbiShield → credita stake no Saldo Reembolso: " +
+            "Reembolso → credita o stake no Saldo Reembolso: " +
             money(refund) +
             " (stake_lock; dedução NÃO entra no Reembolso)";
         }
         if ($("settleDeductHint")) {
           $("settleDeductHint").textContent =
             margin > 0
-              ? "Exchange/PERDEU → cobra só a dedução agora: " +
+              ? "Ganho → cobra só a dedução agora: " +
                 money(margin) +
                 " · R$ 0 Reembolso · destrava e devolve o stake (ex. 1000@10 → R$ 91,11; sem comissão extra)"
-              : "Exchange/PERDEU → R$ 0 Reembolso · destrava e devolve o stake · cobra só a dedução ArbiShield";
+              : "Ganho → R$ 0 no Saldo Reembolso · destrava e devolve o stake à origem · cobra só a dedução";
         }
         if ($("settleStakeKeepHint")) {
           $("settleStakeKeepHint").textContent =
@@ -3598,7 +3665,7 @@
           outcome !== "anula"
         ) {
           alert(
-            "Selecione: ArbiShield, Casa externa ou Empate Anula."
+            "Selecione o resultado: Ganho, Reembolso ou Anula."
           );
           return;
         }
@@ -3638,13 +3705,13 @@
               Number(data.settledCount || 0) +
               " proteção(ões) · " +
               (outcome === "arbishield"
-                ? "reembolso " + money(data.refundedCents || 0)
+                ? "Reembolso · creditado " + money(data.refundedCents || 0)
                 : outcome === "void" ||
                     outcome === "empate_anula" ||
                     outcome === "anula"
-                  ? "Empate Anula · dedução devolvida " +
+                  ? "Anula · devolvido " +
                     money(data.refundedCents || 0)
-                  : "sem reembolso (casa externa)")
+                  : "Ganho · stake devolvido à origem")
           );
           $("settleModal").classList.remove("show");
           platformLoaded = false;
