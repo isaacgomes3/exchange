@@ -53,6 +53,38 @@ describe("API recusa cancelar/excluir desafio em andamento", () => {
   });
 });
 
+describe("liquidar não depende de coluna opcional", () => {
+  const shim = read(SHIM);
+
+  it("o settle grava via patchDesafioStep, não sb() direto", () => {
+    const start = shim.indexOf("async function settleDesafioStep(");
+    assert.ok(start > 0);
+    const end = shim.indexOf("\nasync function ", start + 1);
+    const body = shim.slice(start, end > 0 ? end : undefined);
+    assert.match(body, /await patchDesafioStep\(stepId, \{/);
+    assert.doesNotMatch(
+      body,
+      /sb\(`\/rest\/v1\/desafio_steps\?id=eq[\s\S]{0,200}metadata:/,
+      "PATCH direto com metadata volta a quebrar o settle onde a coluna não existe"
+    );
+  });
+
+  it("o helper cai para sem metadata em vez de falhar", () => {
+    assert.match(shim, /desafio-steps-metadata-opcional-v1/);
+    const start = shim.indexOf("async function patchDesafioStep(");
+    const body = shim.slice(start, shim.indexOf("async function sb(path,"));
+    assert.match(body, /isMissingColumnError\(err, "metadata"\)/);
+    assert.match(body, /desafioStepsHasMetadata = false/);
+    assert.match(body, /delete rest\.metadata/);
+  });
+
+  it("erro que não é de coluna ausente continua estourando", () => {
+    const start = shim.indexOf("async function patchDesafioStep(");
+    const body = shim.slice(start, shim.indexOf("async function sb(path,"));
+    assert.match(body, /if \(!isMissingColumnError\(err, "metadata"\)\) throw err;/);
+  });
+});
+
 describe("UI esconde Cancelar/Excluir em andamento", () => {
   const ui = read(UI);
 

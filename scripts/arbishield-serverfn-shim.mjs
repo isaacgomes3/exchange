@@ -782,6 +782,52 @@ function startOfDaySaoPaulo(d = new Date()) {
   );
 }
 
+/**
+ * Marker: desafio-steps-metadata-opcional-v1
+ *
+ * `desafio_steps.metadata` não existe em todo banco — a tabela nasceu fora das
+ * migrations. Como ninguém **lê** essa coluna (ela só guarda auditoria do
+ * settle), a escrita não pode derrubar a liquidação: sem a coluna, grava o resto
+ * e segue. Antes disso, liquidar devolvia 400 e nada era liquidado.
+ */
+let desafioStepsHasMetadata = null;
+
+function isMissingColumnError(err, column) {
+  const msg = String((err && err.message) || "");
+  return /does not exist/i.test(msg) && msg.includes(column);
+}
+
+async function patchDesafioStep(stepId, body) {
+  const url = `/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`;
+  const payload = body || {};
+  const hasMeta = Object.prototype.hasOwnProperty.call(payload, "metadata");
+  const withoutMeta = () => {
+    const rest = { ...payload };
+    delete rest.metadata;
+    return rest;
+  };
+  if (!hasMeta || desafioStepsHasMetadata === false) {
+    return sb(url, {
+      method: "PATCH",
+      token: SERVICE_KEY,
+      body: hasMeta ? withoutMeta() : payload,
+    });
+  }
+  try {
+    const out = await sb(url, { method: "PATCH", token: SERVICE_KEY, body: payload });
+    desafioStepsHasMetadata = true;
+    return out;
+  } catch (err) {
+    if (!isMissingColumnError(err, "metadata")) throw err;
+    desafioStepsHasMetadata = false;
+    console.warn(
+      "[desafio] desafio_steps.metadata ausente — auditoria do passo fica só no log de ações",
+      stepId
+    );
+    return sb(url, { method: "PATCH", token: SERVICE_KEY, body: withoutMeta() });
+  }
+}
+
 async function sb(path, { token, method = "GET", body } = {}) {
   const key = token || SERVICE_KEY || ANON_KEY;
   if (!key) throw new Error("Sem chave Supabase configurada");
@@ -4350,30 +4396,26 @@ async function settleDesafioStep(token, body, clientMeta = null) {
         : null;
   const settledAt = new Date().toISOString();
   const settleIdent = adminId ? await resolveAdminIdentity(adminId) : { name: null, email: null };
-  await sb(`/rest/v1/desafio_steps?id=eq.${encodeURIComponent(stepId)}`, {
-    method: "PATCH",
-    token: SERVICE_KEY,
-    body: {
-      status: "done",
-      result,
-      settled_at: settledAt,
-      settled_by: adminId,
-      final_score_home:
-        body?.homeScore != null ? Number(body.homeScore) : step.final_score_home,
-      final_score_away:
-        body?.awayScore != null ? Number(body.awayScore) : step.final_score_away,
-      updated_at: settledAt,
-      // Marker: delete-audit-ip-ua-v1
-      metadata: {
-        ...(step.metadata && typeof step.metadata === "object" ? step.metadata : {}),
-        settled_via: "settle-desafio-audit-v1",
-        settled_ip: audit?.ip || null,
-        settled_user_agent: audit?.userAgent || null,
-        settled_outcome: result,
-        // Marker: delete-audit-admin-name-v1
-        settled_by_name: settleIdent.name || null,
-        settled_by_email: settleIdent.email || null,
-      },
+  await patchDesafioStep(stepId, {
+    status: "done",
+    result,
+    settled_at: settledAt,
+    settled_by: adminId,
+    final_score_home:
+      body?.homeScore != null ? Number(body.homeScore) : step.final_score_home,
+    final_score_away:
+      body?.awayScore != null ? Number(body.awayScore) : step.final_score_away,
+    updated_at: settledAt,
+    // Marker: delete-audit-ip-ua-v1
+    metadata: {
+      ...(step.metadata && typeof step.metadata === "object" ? step.metadata : {}),
+      settled_via: "settle-desafio-audit-v1",
+      settled_ip: audit?.ip || null,
+      settled_user_agent: audit?.userAgent || null,
+      settled_outcome: result,
+      // Marker: delete-audit-admin-name-v1
+      settled_by_name: settleIdent.name || null,
+      settled_by_email: settleIdent.email || null,
     },
   });
 

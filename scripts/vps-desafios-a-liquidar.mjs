@@ -120,8 +120,7 @@ function scoreOf(step) {
 }
 
 const desafios = await sb(
-  "/rest/v1/desafios?select=id,number,title,status,is_active,deleted_at,metadata" +
-    "&deleted_at=is.null&is_active=eq.true&order=number.asc"
+  "/rest/v1/desafios?select=*&deleted_at=is.null&is_active=eq.true&order=number.asc"
 );
 
 if (!desafios.length) {
@@ -131,19 +130,25 @@ if (!desafios.length) {
 
 const ids = desafios.map((d) => d.id);
 const inList = `(${ids.map((i) => `"${i}"`).join(",")})`;
+// select=* de propósito: as tabelas nasceram fora das migrations e o conjunto de
+// colunas varia entre bancos (desafio_steps.metadata, por exemplo, não existe).
 const steps = await sb(
-  "/rest/v1/desafio_steps?select=id,desafio_id,step_index,home_team,away_team,match_label," +
-    "market_name,market_name_arbishield,market_name_casa,starts_at,status,result,settled_at," +
-    "final_score_home,final_score_away,metadata,arbi_odd,casa_odd" +
-    `&desafio_id=in.${inList}&deleted_at=is.null&order=step_index.asc`
+  `/rest/v1/desafio_steps?select=*&desafio_id=in.${inList}&order=step_index.asc`
 );
 const parts = await sb(
-  "/rest/v1/desafio_participations?select=id,desafio_id,step_id,user_id,amount_cents,result" +
-    `&desafio_id=in.${inList}`
+  `/rest/v1/desafio_participations?select=*&desafio_id=in.${inList}`
 );
+
+if (process.env.DEBUG_COLUNAS === "1" && steps[0]) {
+  console.log("\ncolunas de desafio_steps:", Object.keys(steps[0]).sort().join(", "));
+  if (parts[0]) {
+    console.log("colunas de desafio_participations:", Object.keys(parts[0]).sort().join(", "));
+  }
+}
 
 const openByDesafio = new Map();
 for (const s of steps) {
+  if (s.deleted_at) continue;
   if (stepSettled(s)) continue;
   if (!openByDesafio.has(s.desafio_id)) openByDesafio.set(s.desafio_id, []);
   openByDesafio.get(s.desafio_id).push(s);
