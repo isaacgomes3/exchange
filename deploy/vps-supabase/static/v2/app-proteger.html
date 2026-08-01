@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <meta name="arbishield-build" content="proteger-sem-stake-equiv-v1" />
-  <meta name="arbishield-features" content="proteger-stake-lock-v6-max-btn-lime proteger-espelho-readonly-v13 hide-congelado-visor-v1 proteger-sem-stake-equiv-v1" />
+  <meta name="arbishield-build" content="proteger-grade-dia-visivel-v1" />
+  <meta name="arbishield-features" content="proteger-stake-lock-v6-max-btn-lime proteger-espelho-readonly-v13 hide-congelado-visor-v1 proteger-sem-stake-equiv-v1 proteger-grade-dia-visivel-v1" />
   <title>Proteger Aposta — ArbiShield</title>
   <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/v2.css?v=proteger-sem-stake-equiv-v1" />
+  <link rel="stylesheet" href="/v2.css?v=proteger-grade-dia-visivel-v1" />
   <style>
     .term-score {
       display: inline-flex;
@@ -66,10 +66,36 @@
       cursor: not-allowed;
       filter: none;
     }
+    /* proteger-grade-dia-visivel-v1 — liquidez esgotada permanece na grade */
+    .term-row.is-liq-finished {
+      opacity: 0.92;
+    }
+    .term-row.is-liq-finished .term-col-liq strong,
+    .term-liq-finished {
+      color: #f0b429;
+      font-weight: 800;
+    }
+    .term-liq-finished {
+      display: block;
+      margin-top: 4px;
+      font-size: 11px;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+    .term-protect-btn.is-finished {
+      opacity: 0.7;
+      cursor: not-allowed;
+      border-color: rgba(240, 180, 41, 0.55);
+      color: #f0b429;
+      background: rgba(240, 180, 41, 0.08);
+    }
+    .term-row.is-started:not(.is-liq-finished) {
+      opacity: 0.88;
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-  <script src="/v2.js?v=proteger-sem-stake-equiv-v1"></script>
-  <script src="/v2-shell.js?v=proteger-sem-stake-equiv-v1" defer></script>
+  <script src="/v2.js?v=proteger-grade-dia-visivel-v1"></script>
+  <script src="/v2-shell.js?v=proteger-grade-dia-visivel-v1" defer></script>
 </head>
 <body data-shell="app" data-active="proteger">
   <div class="page-head term-head">
@@ -91,9 +117,9 @@
 
   <div class="term-kpis">
     <article class="term-kpi">
-      <div class="term-kpi-top"><span>Jogos Disponíveis</span><span class="ico" aria-hidden="true">▦</span></div>
+      <div class="term-kpi-top"><span>Jogos do dia</span><span class="ico" aria-hidden="true">▦</span></div>
       <div class="v" id="stGames">0</div>
-      <p class="h">Ao vivo e futuros</p>
+      <p class="h">Publicados hoje</p>
     </article>
     <article class="term-kpi">
       <div class="term-kpi-top"><span>Liquidez Total</span><span class="ico" aria-hidden="true">↗</span></div>
@@ -140,7 +166,7 @@
     <div id="list" class="term-list">
       <div class="term-empty">
         <div class="term-empty-ico" aria-hidden="true">☰</div>
-        <h2>Sem partidas com liquidez</h2>
+        <h2>Sem jogos publicados hoje</h2>
         <p>Carregando…</p>
       </div>
     </div>
@@ -412,36 +438,82 @@
           s === "pending_refund"
         );
       }
+      /** Dia civil America/Sao_Paulo (proteger-grade-dia-visivel-v1). */
+      function brDayKey(ms) {
+        return new Intl.DateTimeFormat("en-CA", {
+          timeZone: "America/Sao_Paulo",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date(ms));
+      }
+      function isStartsAtTodaySp(startsAt, now) {
+        var t = new Date(startsAt).getTime();
+        if (!Number.isFinite(t)) return false;
+        return brDayKey(t) === brDayKey(now != null ? now : Date.now());
+      }
+      function isMatchFinishedStatus(m) {
+        var status = m && (m.status_v2 || m.status || "open");
+        if (status === "FINISHED") return true;
+        var live = liveMetaOf(m);
+        if (live && live.finished) return true;
+        if (m && m.settled_at) return true;
+        return (
+          ["closed", "cancelled", "finished", "settled", "finalizado", "void"].indexOf(
+            String(status).toLowerCase()
+          ) >= 0
+        );
+      }
       /**
-       * Grade: liquidez + liberação + ainda não iniciado + sem operação prévia do user.
+       * Grade do dia: todos os publicados de hoje (SP), com ou sem liquidez,
+       * inclusive pós-kickoff/finalizados. Ativação continua bloqueada à parte.
        */
       function isOnAvailableGrid(m) {
         if (!m || !m.starts_at) return false;
+        if (m.is_published === false) return false;
         var now = Date.now();
-        var start = new Date(m.starts_at).getTime();
-        if (!Number.isFinite(start)) return false;
+        if (!isStartsAtTodaySp(m.starts_at, now)) return false;
+        var meta = m.metadata && typeof m.metadata === "object" ? m.metadata : {};
+        if (meta.hide_from_site || meta.hidden) return false;
+        return true;
+      }
+      /** Pode abrir o drawer / ativar proteção (antes do kickoff + liquidez). */
+      function canActivateProtection(m) {
+        if (!isOnAvailableGrid(m)) return false;
+        var now = Date.now();
         if (isMatchKickoffPassed(m, now)) return false;
+        if (isMatchFinishedStatus(m)) return false;
         if (!isEntryReleased(m, now)) return false;
         if (state.occupiedMatchIds && state.occupiedMatchIds[String(m.id)]) {
           return false;
         }
-        var status = m.status_v2 || m.status || "open";
-        if (
-          status === "FINISHED" ||
-          ["closed", "cancelled", "finished", "settled", "finalizado", "void"].indexOf(
-            String(status).toLowerCase()
-          ) >= 0
-        ) {
-          return false;
-        }
-        var max = Number(m.max_protection_cents || 0);
-        var used = Number(m.used_protection_cents || 0);
-        if (!(max > 0 && used < max)) return false;
-        if (liqLeft(m) <= 0) return false;
-        return true;
+        return liqLeft(m) > 0;
       }
       function hasProtectLiquidity(m) {
-        return isOnAvailableGrid(m) && liqLeft(m) > 0;
+        return canActivateProtection(m);
+      }
+      function protectActionState(m) {
+        var now = Date.now();
+        if (state.occupiedMatchIds && state.occupiedMatchIds[String(m.id)]) {
+          return { kind: "occupied", label: "Já protegido", title: "Você já tem proteção neste evento" };
+        }
+        if (isMatchFinishedStatus(m)) {
+          return { kind: "finished", label: "Finalizado", title: "Jogo finalizado" };
+        }
+        if (isMatchKickoffPassed(m, now)) {
+          return { kind: "started", label: "Iniciado", title: "Entradas só antes do kickoff" };
+        }
+        if (!isEntryReleased(m, now)) {
+          return { kind: "locked", label: "Em breve", title: "Ainda não liberado para entrada" };
+        }
+        if (liqLeft(m) <= 0) {
+          return {
+            kind: "liq",
+            label: "Liquidez finalizada",
+            title: "Liquidez finalizada — não aceita novas proteções",
+          };
+        }
+        return { kind: "ok", label: "Proteger", title: "" };
       }
       function marketsOf(m) {
         if (Array.isArray(m.markets) && m.markets.length) return m.markets;
@@ -898,11 +970,11 @@
         return (
           '<div class="term-empty">' +
           '<div class="term-empty-ico" aria-hidden="true">☰</div>' +
-          "<h2>Sem partidas com liquidez</h2>" +
+          "<h2>Sem jogos publicados hoje</h2>" +
           "<p>" +
           esc(
             msg ||
-              "Só aparecem jogos com liquidez disponível. Quando a liquidez esgota, o jogo sai da grade automaticamente."
+              "A grade mostra todos os jogos publicados do dia. Sem liquidez, o card permanece com “Liquidez finalizada”."
           ) +
           "</p></div>"
         );
@@ -922,7 +994,7 @@
             state.syncIn > 0
               ? "Atualizando em " +
                 state.syncIn +
-                "s… Só aparecem jogos com liquidez disponível."
+                "s… Exibindo todos os publicados do dia."
               : null;
           el.innerHTML = emptyHtml(waitMsg);
           return;
@@ -938,7 +1010,10 @@
               return String(mk.market_type || "").toUpperCase() === "BACK";
             });
             var left = liqLeft(m);
-            var canProtect = hasProtectLiquidity(m);
+            var action = protectActionState(m);
+            var canProtect = action.kind === "ok";
+            var liqFinished = left <= 0;
+            var started = isMatchKickoffPassed(m, Date.now()) || isMatchFinishedStatus(m);
             var max = Math.max(Number(m.max_protection_cents || 0), 1);
             var pct = Math.min(100, Math.round((left / max) * 100));
             var primary =
@@ -961,7 +1036,13 @@
             var liveNow =
               isLive(m) || (liveMeta && liveMeta.live && !liveMeta.finished);
             var whenHtml;
-            if (liveNow) {
+            if (isMatchFinishedStatus(m) && !liveNow) {
+              whenHtml =
+                '<span class="term-time">Finalizado</span>' +
+                (liveScore
+                  ? '<span class="term-elapsed">' + esc(liveScore) + "</span>"
+                  : "");
+            } else if (liveNow) {
               whenHtml =
                 '<span class="term-live">AO VIVO</span>' +
                 (liveElapsed
@@ -985,15 +1066,27 @@
                 : "—";
             var actionBtn = canProtect
               ? '<button type="button" class="term-protect-btn" data-protect="1">Proteger</button>'
-              : '<button type="button" class="term-protect-btn" disabled title="Liquidez esgotada">Sem liquidez</button>';
+              : '<button type="button" class="term-protect-btn is-finished" disabled title="' +
+                esc(action.title || action.label) +
+                '">' +
+                esc(action.label) +
+                "</button>";
+            var liqExtra = liqFinished
+              ? '<span class="term-liq-finished">Liquidez finalizada</span>'
+              : "";
             var vsOrScore = liveScore
               ? '<span class="term-score" title="Placar ao vivo">' +
                 esc(liveScore) +
                 "</span>"
               : "<span>×</span>";
-            return (
-              '<article class="term-row' +
+            var rowClass =
+              "term-row" +
               (canProtect ? "" : " is-exhausted") +
+              (liqFinished ? " is-liq-finished" : "") +
+              (started ? " is-started" : "");
+            return (
+              '<article class="' +
+              rowClass +
               '" data-id="' +
               esc(m.id) +
               '">' +
@@ -1028,6 +1121,7 @@
               "<strong>" +
               money(left) +
               "</strong>" +
+              liqExtra +
               '<div class="term-bar"><i style="width:' +
               pct +
               '%"></i></div></div>' +
@@ -1047,7 +1141,12 @@
             });
             if (!match) return;
             if (!hasProtectLiquidity(match)) {
-              showErr("Este jogo ficou sem liquidez e não aceita novas proteções.");
+              var st = protectActionState(match);
+              showErr(
+                st.kind === "liq"
+                  ? "Liquidez finalizada — este jogo não aceita novas proteções."
+                  : st.title || "Este jogo não aceita novas proteções agora."
+              );
               return;
             }
             var wallet =
@@ -1155,15 +1254,19 @@
               return isOnAvailableGrid(m);
             });
           } else {
-            var windowStartIso = new Date().toISOString();
+            // Fallback: publicados do dia SP (mesmo sem liquidez / pós-kickoff)
+            var dayKey = brDayKey(Date.now());
+            var dayStartIso = new Date(dayKey + "T00:00:00.000-03:00").toISOString();
+            var dayEndIso = new Date(dayKey + "T23:59:59.999-03:00").toISOString();
             var matchesRes = await supa
               .from("matches")
               .select(
-                "id,home_team,away_team,home_logo,away_logo,league,starts_at,status,status_v2,sport_type,is_published,markets,max_protection_cents,used_protection_cents,protection_odds,metadata"
+                "id,home_team,away_team,home_logo,away_logo,league,starts_at,status,status_v2,sport_type,is_published,markets,max_protection_cents,used_protection_cents,protection_odds,metadata,settled_at,final_score"
               )
               .is("deleted_at", null)
               .eq("is_published", true)
-              .gte("starts_at", windowStartIso)
+              .gte("starts_at", dayStartIso)
+              .lte("starts_at", dayEndIso)
               .order("starts_at", { ascending: true })
               .limit(300);
             if (matchesRes.error) throw matchesRes.error;
@@ -1215,13 +1318,13 @@
           p.textContent =
             "Atualizando em " +
             state.syncIn +
-            "s… Só aparecem jogos com liquidez disponível.";
+            "s… Exibindo todos os publicados do dia.";
         }
       }, 1000);
 
       await syncGrade(false);
     })();
   </script>
-  <script src="/proteger-preview-fix.js?v=proteger-sem-stake-equiv-v1"></script>
+  <script src="/proteger-preview-fix.js?v=proteger-grade-dia-visivel-v1"></script>
 </body>
 </html>

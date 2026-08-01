@@ -74,7 +74,9 @@ export const ADMIN_LANCAR_JOGOS = Object.freeze({
     "lançamento padrão = rascunho (is_published false) salvo marcar publicar",
     "liquidez obrigatória no fluxo BetBra",
     "não misturar external_id BetBra com admin_manual",
-    "unpublish de finalizados/expirados permanece",
+    // Pedido explícito: grade do dia permanece publicada (finalizados/pós-kickoff).
+    // Unpublish automático só limpa starts_at de dias anteriores (SP).
+    "unpublish só dias anteriores — grade do dia permanece publicada",
   ]),
 });
 

@@ -10,11 +10,12 @@ export const SYSTEM_NON_REGRESSION_LOCK =
 /** Páginas críticas → metas esperadas (build exato; features contém). */
 export const UI_CRITICAL_MARKERS = Object.freeze({
   "deploy/vps-supabase/static/v2/app-proteger.html": Object.freeze({
-    build: "proteger-sem-stake-equiv-v1",
+    build: "proteger-grade-dia-visivel-v1",
     featuresMustInclude: Object.freeze([
       "proteger-stake-lock-v6",
       "proteger-sem-stake-equiv-v1",
       "proteger-espelho-readonly-v13",
+      "proteger-grade-dia-visivel-v1",
     ]),
     bodyMustInclude: Object.freeze([
       "currentEventMaxCents",
@@ -24,6 +25,8 @@ export const UI_CRITICAL_MARKERS = Object.freeze({
       "getEffectiveUserId",
       "isMirror",
       "Espelho é somente leitura para ativar proteção",
+      "Liquidez finalizada",
+      "proteger-grade-dia-visivel-v1",
     ]),
   }),
   "deploy/vps-supabase/static/v2/app-protecoes.html": Object.freeze({

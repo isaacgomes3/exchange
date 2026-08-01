@@ -104,6 +104,7 @@ Desafios. Não reverter **Modo usuário / Modo ADM** nem **espelho de conta**.
 | Admin ops | `scripts/lib/admin-ops-contract.mjs` | `admin-ops-contract.test.mjs` |
 | Admin UI layout | `scripts/lib/admin-ui-layout-contract.mjs` | `admin-ui-layout-contract.test.mjs` |
 | Admin session | `scripts/lib/admin-session-mode-contract.mjs` | `admin-session-mode-contract.test.mjs` |
+| Grade Proteger | `scripts/lib/proteger-grade-contract.mjs` | `proteger-grade-contract.test.mjs` |
 
 ## Regras rápidas
 
@@ -112,7 +113,8 @@ Desafios. Não reverter **Modo usuário / Modo ADM** nem **espelho de conta**.
 3. **Banco:** sem `profiles.email`; colunas wallet (`locked_balance_cents`, `deduction_balance_cents`, …) e RPC `request_saldo_reembolso_withdrawal` permanecem.
 4. **Deploy:** `vps-atualizar-protecao-fee-upfront-prod.sh` bloqueado; shim em `/opt/arbishield/scripts/`; rota `/api/arbishield/football-teams` viva.
 5. **Admin — Lançar saldo:** `admin-manual-deposits.html` → `Confirmar e Creditar` / `Já creditado` (sem alterar saldo) via `approveManualDeposit` + finance admin.
-6. **Admin — Lançar jogos:** `admin-jogos.html` → `POST /api/arbishield/matches` (BetBra + manual); padrão rascunho; `Publicar na fila` explícito; unpublish finalizados.
+6. **Admin — Lançar jogos:** `admin-jogos.html` → `POST /api/arbishield/matches` (BetBra + manual); padrão rascunho; `Publicar na fila` explícito; unpublish só dias anteriores (grade do dia permanece).
+6b. **Grade Proteger (cliente):** `app-proteger.html` (`proteger-grade-dia-visivel-v1`) lista **todos os publicados do dia** (SP), mesmo sem liquidez (destaca **Liquidez finalizada**) e mesmo após kickoff/finalização; ativação pós-kickoff continua bloqueada (`stake_lock_v1`). Teste: `proteger-grade-contract.test.mjs`.
 7. **Admin — menu accordion:** `v2-shell.js` + `v2.css` → só títulos; clique abre; `bindAdminNavAccordion` / `v2-nav-accordion-btn`.
 8. **Admin — Monitor Desafios cards:** `admin-monitoring-desafios.html` (`desafio-monitor-card-layout-v1`) → zonas `mdz-card-top` / `mdz-card-game` / `mdz-card-foot` + settle Bateu Arbi/Casa/Empate Anula; sem tabela `.mdz` densa.
 9. **Modo usuário / Modo ADM:** `v2ModeSwitch` — admin→`/app.html` («Modo usuário»); app→`/admin.html` («Modo ADM», hidden até `requireAdmin`).
