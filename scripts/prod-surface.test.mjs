@@ -12,6 +12,7 @@ import {
   PROD_SURFACE,
   PROD_SURFACE_VERSION,
   isTextContentType,
+  lineDelta,
   normalizeDeployedAsset,
 } from "./lib/prod-surface.mjs";
 
@@ -70,6 +71,27 @@ describe("normalização do cache-bust", () => {
     assert.equal(isTextContentType("text/html; charset=utf-8"), true);
     assert.equal(isTextContentType("application/javascript"), true);
     assert.equal(isTextContentType("image/png"), false);
+  });
+});
+
+describe("tamanho do desvio", () => {
+  it("conteúdo igual dá zero", () => {
+    assert.equal(lineDelta("<a>\n<b>\n", "<a>\n<b>\n"), 0);
+  });
+
+  it("uma linha trocada conta as duas pontas", () => {
+    assert.equal(lineDelta("<a>\nx\n", "<a>\ny\n"), 2);
+  });
+
+  it("ignora indentação, linha vazia e o ?v= do servidor", () => {
+    assert.equal(
+      lineDelta('  <script src="/v2.js?v=um"></script>\n\n', '<script src="/v2.js?v=dois"></script>\n'),
+      0
+    );
+  });
+
+  it("linha a mais de um lado conta uma", () => {
+    assert.equal(lineDelta("<a>\n", "<a>\n<b>\n"), 1);
   });
 });
 
