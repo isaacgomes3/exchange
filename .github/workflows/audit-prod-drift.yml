@@ -1,0 +1,42 @@
+name: Auditoria de desvio (produção × git)
+
+# Manual por enquanto: enquanto `main` não for a fonte de verdade, a auditoria
+# falha por definição. Depois de consolidar main, trocar para `schedule` para
+# detectar regressão antes do cliente.
+on:
+  workflow_dispatch:
+    inputs:
+      origin:
+        description: "Origem a auditar"
+        default: "https://arbishield.app"
+        required: false
+      mainline_ref:
+        description: "Referência que deveria estar publicada"
+        default: "origin/main"
+        required: false
+
+jobs:
+  audit:
+    name: Comparar produção com o repositório
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout (histórico completo)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Buscar todas as branches
+        run: git fetch --no-tags origin "+refs/heads/*:refs/remotes/origin/*"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Auditar
+        run: node scripts/audit-prod-drift.mjs
+        env:
+          ARBISHIELD_ORIGIN: ${{ inputs.origin }}
+          ARBISHIELD_MAINLINE_REF: ${{ inputs.mainline_ref }}

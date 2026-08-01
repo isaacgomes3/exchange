@@ -118,6 +118,7 @@ Desafios. Não reverter **Modo usuário / Modo ADM** nem **espelho de conta**.
 9. **Modo usuário / Modo ADM:** `v2ModeSwitch` — admin→`/app.html` («Modo usuário»); app→`/admin.html` («Modo ADM», hidden até `requireAdmin`).
 10. **Espelho de conta:** `setImpersonation` / `getEffectiveUserId` / banner «Sair do espelho»; entrada em `admin-users` (Espelho); proteger readonly (`proteger-espelho-readonly-v13`).
 11. **VPS:** após deploy → `vps-check-pos-deploy-v10.sh` (via API GitHub, não raw cacheado).
+12. **Antes e depois de publicar:** `npm run audit:prod` (`prod-surface-v1`) compara produção × git. `DESVIO` = arquivo no ar sem commit (editado no servidor) → o próximo hotfix o sobrescreve; `ATRASADO` = publicado de branch antiga. Não publicar em cima de `DESVIO` sem antes trazer o conteúdo para o repo.
 
 Mudança em qualquer item exige pedido explícito + bump + sync AGENTS/docs + testes verdes.
 <!-- END:system-non-regression -->

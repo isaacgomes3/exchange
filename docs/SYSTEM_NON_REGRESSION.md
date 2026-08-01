@@ -84,6 +84,24 @@ Marker session admin: `DO_NOT_CHANGE_ADMIN_SESSION_MODE_WITHOUT_EXPLICIT_REQUEST
 - `admin-manual-deposits.html` — creditar saldo (depósitos)
 - `admin-monitoring-desafios.html` — cards 3 zonas + settle
 
+## Auditoria de desvio (produção × git)
+
+`npm run audit:prod` — compara cada arquivo servido em produção com o conteúdo de
+todas as branches (`scripts/audit-prod-drift.mjs` + lista `scripts/lib/prod-surface.mjs`).
+Ignora só o cache-bust `?v=` que os hotfixes reescrevem no servidor. Status por arquivo:
+
+| Status | O que significa |
+|---|---|
+| `OK` | igual à referência de mainline — publicação confiável |
+| `ATRASADO` | no ar está uma branch mais antiga que a mainline |
+| `SEM FONTE` | a mainline não tem o arquivo — não existe versão canônica |
+| `DESVIO` | o conteúdo no ar **não existe em branch nenhuma** (editado no servidor) |
+| `NAO SERVIDO` | nginx devolveu o fallback SPA em vez do arquivo |
+
+`DESVIO` é a causa das regressões: o arquivo publicado não tem commit, então qualquer
+hotfix o sobrescreve com a versão da branch dele. Rodar antes e depois de publicar.
+Workflow manual: `.github/workflows/audit-prod-drift.yml`.
+
 ## Runtime (VPS)
 
 ```bash
