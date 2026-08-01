@@ -93,11 +93,23 @@ describe("admin ops — lançar saldo + lançar jogos", () => {
       ADMIN_LANCAR_JOGOS.build
     );
     assertIncludes(html, ADMIN_LANCAR_JOGOS.uiMustInclude, "admin-jogos");
+    for (const ban of ADMIN_LANCAR_JOGOS.uiMustNotInclude || []) {
+      assert.ok(
+        !html.includes(ban),
+        `admin-jogos NÃO pode ter "${ban}"`
+      );
+    }
     assertIncludes(prelive, ADMIN_LANCAR_JOGOS.preliveMustInclude, "prelive jogos");
     assert.match(shell, /admin-jogos\.html/);
     assert.match(shell, /"Jogos"/);
     // rascunho por defeito / publicar explícito
     assert.match(html, /Publicar na fila/);
     assert.match(html, /rascunho/i);
+    // edição preserva publicação (não envia is_published no PATCH de edit)
+    assert.match(html, /admin-jogos-edit-preserva-publicacao-v1/);
+    assert.match(
+      html,
+      /edição NÃO mexe em[\s\S]*is_published[\s\S]*hide_from_site/
+    );
   });
 });
