@@ -76,13 +76,15 @@ Marker session admin: `DO_NOT_CHANGE_ADMIN_SESSION_MODE_WITHOUT_EXPLICIT_REQUEST
 ### Desafio em andamento — liquidar, não cancelar (anti-regressão)
 
 - Marker `block-cancel-delete-andamento-v1` · teste `scripts/desafio-ops-guard.test.mjs`
-- UI `admin-desafios.html`: sem **Cancelar · devolver saldo** nem **Excluir** enquanto
-  `is_active` / `isDesafioActiveOpen`; mostra «Em andamento · Cancelar/Excluir bloqueados»
-- Shim `deleteDesafio` / `cancelDesafio`: **403** antes de qualquer estorno
-- Isaac/Carlos seguem podendo cancelar protegido que **não** está em andamento
-  (`protect-ops-isaac-carlos-v1`)
-- A trava nasceu numa linhagem e faltava na outra; publicar a linhagem sem ela
-  devolveu o botão. Não remover de nenhum dos dois lados.
+- **Em andamento** = etapa **ao vivo** (kickoff passou e ainda aberta)
+- UI `admin-desafios.html`: sem **Cancelar/Excluir** ao vivo; aviso
+  «Em andamento · Cancelar/Excluir bloqueados»
+- **Isaac/Carlos** (`protect-ops-isaac-carlos-v1`): veem **Cancelar · devolver saldo**
+  em rascunho, protegido e **publicado/agendado** (não ao vivo)
+- Demais admins: Cancelar só em rascunho não protegido
+- Shim `cancelDesafio`: **403** se ao vivo; publicado/agendado só Isaac/Carlos
+- Shim `deleteDesafio`: **403** se `is_active` (Excluir nunca em publicado)
+- A trava nasceu numa linhagem e faltava na outra; não remover de nenhum dos dois lados.
 
 ### Desafio — editar lançado sem retirar (anti-regressão)
 

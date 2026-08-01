@@ -707,6 +707,31 @@
       return Boolean(d && d.is_active) && !isDesafioClosed(d) && !isDesafioCancelled(d);
     }
 
+    /**
+     * Em andamento = etapa ao vivo (kickoff passou e ainda não encerrada).
+     * Marker: block-cancel-delete-andamento-v1
+     * Agendado/publicado sem ao vivo NÃO é andamento — Isaac/Carlos podem cancelar.
+     */
+    function isDesafioEmAndamento(d) {
+      if (!d || d.deleted_at || isDesafioCancelled(d) || isDesafioClosed(d)) return false;
+      const steps = d.desafio_steps || [];
+      return steps.some((s) => !stepIsClosed(s) && stepState(s) === "live");
+    }
+
+    /**
+     * Quem vê Cancelar · devolver saldo.
+     * Marker: protect-ops-isaac-carlos-v1 — Isaac/Carlos cancelam fora de andamento
+     * (inclui publicado/agendado). Demais admins: só rascunho não protegido.
+     */
+    function canShowCancelDesafio(d) {
+      if (!d || d.deleted_at || isDesafioCancelled(d)) return false;
+      if (isDesafioEmAndamento(d)) return false;
+      if (canManageProtectedDesafio()) return true;
+      if (isDesafioActiveOpen(d) || d.is_active) return false;
+      if (d.metadata && d.metadata.protect_from_casual_delete) return false;
+      return true;
+    }
+
     function desafioBadge(d) {
       if (d && d.deleted_at) {
         return { cls: "red", label: "Excluído" };
@@ -1835,14 +1860,9 @@
                   : ""
               }
               ${
-                // Marker: protect-ops-isaac-carlos-v1 — Isaac/Carlos veem Cancelar em protegido
-                // Marker: block-cancel-delete-andamento-v1 — em andamento se liquida, não se cancela
-                !isDesafioActiveOpen(d) &&
-                !d.is_active &&
-                !isDesafioCancelled(d) &&
-                !d.deleted_at &&
-                (!(d.metadata && d.metadata.protect_from_casual_delete) ||
-                  canManageProtectedDesafio())
+                // Marker: protect-ops-isaac-carlos-v1 — Isaac/Carlos veem Cancelar fora de andamento
+                // Marker: block-cancel-delete-andamento-v1 — ao vivo se liquida, não se cancela
+                canShowCancelDesafio(d)
                   ? `<button class="btn btn-warn" type="button" data-cancel-desafio="${esc(d.id)}" data-protected="${
                       d.metadata && d.metadata.protect_from_casual_delete ? "1" : "0"
                     }">Cancelar · devolver saldo</button>`
@@ -1850,7 +1870,7 @@
               }
               ${
                 // Marker: block-cancel-delete-andamento-v1
-                (isDesafioActiveOpen(d) || d.is_active) && !d.deleted_at
+                isDesafioEmAndamento(d) && !d.deleted_at
                   ? `<span class="meta" style="align-self:center;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;font-weight:800;color:var(--muted)">Em andamento · Cancelar/Excluir bloqueados</span>`
                   : ""
               }

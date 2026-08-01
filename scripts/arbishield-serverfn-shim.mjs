@@ -1719,6 +1719,51 @@ async function restoreDesafio(token, body) {
   };
 }
 
+/** E-mails que podem cancelar desafio publicado/agendado (não ao vivo). */
+const DESAFIO_CANCEL_OPS_ADMINS = new Set([
+  "isaacgomes3@gmail.com",
+  "carlos@arbishield.com",
+]);
+
+function tokenIsDesafioCancelOpsAdmin(token) {
+  const payload = decodeJwtPayload(token);
+  return DESAFIO_CANCEL_OPS_ADMINS.has(adminEmailFromJwt(payload));
+}
+
+/**
+ * Em andamento = etapa ao vivo (kickoff passou, ainda aberta).
+ * Marker: block-cancel-delete-andamento-v1
+ */
+async function desafioHasLiveOpenStep(desafioId) {
+  const rows = await sb(
+    `/rest/v1/desafio_steps?select=id,status,result,settled_at,starts_at,deleted_at&desafio_id=eq.${encodeURIComponent(desafioId)}&limit=200`,
+    { token: SERVICE_KEY }
+  ).catch(() => []);
+  const now = Date.now();
+  for (const s of Array.isArray(rows) ? rows : []) {
+    if (s.deleted_at) continue;
+    const st = String(s.status || "").toLowerCase();
+    if (["done", "settled", "closed", "cancelled"].includes(st) || s.settled_at) {
+      continue;
+    }
+    const res = String(s.result || "").toLowerCase();
+    if (
+      ["win", "lost", "void", "empate_anula", "zebra_protected", "cancelled"].includes(
+        res
+      )
+    ) {
+      continue;
+    }
+    if (st === "live" || st === "current") return true;
+    if (!s.starts_at) continue;
+    const start = new Date(s.starts_at).getTime();
+    if (!Number.isFinite(start)) continue;
+    const end = start + 9000 * 1000;
+    if (now >= start && now < end) return true;
+  }
+  return false;
+}
+
 /** Cancela o desafio inteiro e devolve entradas pendentes à carteira Desafio. */
 async function cancelDesafio(token, body, clientMeta = null) {
   await requireAdminMfa(token);
@@ -1748,10 +1793,20 @@ async function cancelDesafio(token, body, clientMeta = null) {
     throw new Error("Desafio já cancelado");
   }
 
-  // Marker: block-cancel-delete-andamento-v1 — em andamento se liquida, não se cancela
-  if (desafio.is_active) {
+  // Marker: block-cancel-delete-andamento-v1 — ao vivo se liquida, não se cancela
+  const emAndamento = await desafioHasLiveOpenStep(id);
+  if (emAndamento) {
     const err = new Error(
       "Não é permitido cancelar desafio em andamento (publicado/ativo)."
+    );
+    err.status = 403;
+    throw err;
+  }
+
+  // Publicado/agendado (não ao vivo): só Isaac/Carlos — protect-ops-isaac-carlos-v1
+  if (desafio.is_active && !tokenIsDesafioCancelOpsAdmin(token)) {
+    const err = new Error(
+      "Só Isaac/Carlos podem cancelar desafio publicado. Em andamento (ao vivo) ninguém cancela."
     );
     err.status = 403;
     throw err;
@@ -1772,7 +1827,7 @@ async function cancelDesafio(token, body, clientMeta = null) {
     throw err;
   }
 
-  const pending = await listPendingDesafioParticipations(id);
+  const pending = await listPendingDesafioParticipations(id)
   let refundedCents = 0;
   let refundedCount = 0;
   const stepDelta = new Map();
