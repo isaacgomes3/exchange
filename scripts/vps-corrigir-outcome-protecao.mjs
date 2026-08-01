@@ -183,14 +183,25 @@ if (n(prof.deduction_balance_cents) < creditadoAntes) {
   );
 }
 
-// Alvo: retira o crédito indevido e aplica o efeito do outcome correto.
+/**
+ * O destravamento no settle **já devolveu o stake à origem** — verificado no
+ * caso do Senilvo: Apostador 783,86 + travado 150 → 933,86 no fim da operação.
+ * Então a correção NÃO devolve o stake de novo; ela só tira o crédito indevido
+ * do Saldo Reembolso e cobra a dedução que faltou.
+ *
+ * STAKE_JA_DEVOLVIDO=0 força o comportamento antigo (devolver o stake também),
+ * para o caso de aparecer proteção em que o destravamento não creditou a origem.
+ */
+const stakeJaDevolvido = process.env.STAKE_JA_DEVOLVIDO !== "0";
+
 const deducaoNova = { ...prof };
 deducaoNova.deduction_balance_cents = n(prof.deduction_balance_cents) - creditadoAntes;
 if (PARA === "exchange") {
-  // Ganho: stake volta à origem e cobra só a dedução.
-  deducaoNova.balance_cents = n(prof.balance_cents) + amount - fee;
+  // Ganho: stake na origem (já devolvido) e cobra só a dedução.
+  deducaoNova.balance_cents =
+    n(prof.balance_cents) + (stakeJaDevolvido ? 0 : amount) - fee;
 } else if (PARA === "void") {
-  deducaoNova.balance_cents = n(prof.balance_cents) + amount;
+  deducaoNova.balance_cents = n(prof.balance_cents) + (stakeJaDevolvido ? 0 : amount);
 } else {
   deducaoNova.deduction_balance_cents += creditoNovo;
 }
@@ -220,6 +231,16 @@ console.log(`    Travado          ${money(prof.locked_balance_cents)} (não muda
 console.log(
   `    Saldo Reembolso  ${money(prof.deduction_balance_cents)} → ${money(deducaoNova.deduction_balance_cents)}`
 );
+console.log("\n  o que a correção faz");
+console.log(`    estorna ${money(creditadoAntes)} do Saldo Reembolso (crédito indevido)`);
+if (PARA === "exchange") {
+  console.log(
+    stakeJaDevolvido
+      ? `    stake ${money(amount)} JÁ estava na origem (destravado no settle) — não devolve de novo`
+      : `    devolve o stake ${money(amount)} à origem`
+  );
+  if (fee > 0) console.log(`    cobra a dedução ${money(fee)} do Apostador`);
+}
 
 if (!APPLY) {
   console.log("\n  dry-run: nada foi alterado. Repita com --apply para executar.\n");
@@ -257,7 +278,9 @@ const txBase = {
     termo_antes: protectionResultTerm(DE),
     termo_depois: protectionResultTerm(PARA),
     estorno_reembolso_cents: creditadoAntes,
-    stake_devolvido_cents: PARA === "exchange" || PARA === "void" ? amount : 0,
+    stake_ja_devolvido_no_settle: stakeJaDevolvido,
+    stake_devolvido_agora_cents:
+      !stakeJaDevolvido && (PARA === "exchange" || PARA === "void") ? amount : 0,
     deducao_cobrada_cents: PARA === "exchange" ? fee : 0,
     saldo_antes: {
       balance_cents: n(prof.balance_cents),
