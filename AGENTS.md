@@ -49,6 +49,8 @@ Arquivos cobertos (lista mínima):
 8. **Cancelar proteção:** **destrava o stake** (devolve à origem).
 9. **LAY lucro (fees):** `resp/(odd−1)` — ex. R$1000 @10 = R$111,11 → fee **91,11** → carteira `8.067,52+1.000−91,11=**8.976,41**`; R$1000 @32 → fee **15,81** → `8.067,52+1.000−15,81=**9.051,71**`. Odd canônica: `approved_odd` > `calculations.marketOdd` > `metadata.market_odd` > `row.odd` (`settlement-odd-canonico-v10`). Marker settle: `settle-exchange-cobra-so-deducao-v9`. Helper anti-duplo: `settlementExchangeCommissionWalletCents()` sempre **0**.
 
+10. **Termo do resultado (`protection-result-terms-v1`) — pedido explícito 2026-08-01:** nomear pela **indicação da proteção**, em todas as telas: indicação **ganha** → **Ganho** (`arbishield`); indicação **perde** → **Reembolso** (`exchange`); **empate anula** → **Anula** (`void`). Fonte: `PROTECTION_RESULT_TERMS` no contrato, espelhado em `ArbiV2.protectionResultTerm`. **Proibido** voltar a «Bateu ArbiShield» / «Bateu Casa Externa» / «Ganhou» / «Perdeu». Valores enviados ao settle seguem `arbishield` / `exchange` / `empate_anula`. Teste: `protection-result-terms.test.mjs`.
+
 Alterar qualquer item acima exige pedido explícito + atualização dos testes do contrato.
 
 ## Anti-regressão runtime (pedido 2026-07-30 / 2026-07-31)

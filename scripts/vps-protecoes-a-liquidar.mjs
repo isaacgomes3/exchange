@@ -7,10 +7,11 @@
  * e sugere o outcome para o admin conferir antes de liquidar.
  *
  * Regra usada (v10 · stake_lock_v1):
- *   arbishield → ArbiShield cobriu: credita o stake no Saldo Reembolso, destrava
- *   exchange   → Exchange venceu: R$ 0 no Reembolso, destrava e devolve o stake
- *                à origem, cobra só a dedução
- *   void       → destrava o stake e devolve à origem
+ * Termos (protection-result-terms-v1) — nomeados pela indicação da proteção:
+ *   Ganho     (arbishield) → indicação ganhou: credita no Saldo Reembolso
+ *   Reembolso (exchange)   → indicação perdeu: devolve o stake à origem,
+ *                            cobra só a dedução
+ *   Anula     (void)       → empate anula: destrava e devolve à origem
  *
  * BACK ganha quando o mercado acontece; LAY ganha quando NÃO acontece.
  *
@@ -164,7 +165,7 @@ function suggestOutcome(row, match, sc) {
   }
   const st = marketStatus(marketName, sc.home, sc.away, true, teams);
   if (st === "void") {
-    return { outcome: "void", label: "Empate Anula / void", reason: "mercado anulado", marketName };
+    return { outcome: "void", label: "Anula", reason: "empate anula — destrava o stake e devolve à origem", marketName };
   }
   if (st !== "win" && st !== "lose") {
     return {
@@ -181,14 +182,14 @@ function suggestOutcome(row, match, sc) {
   return clienteGanhou
     ? {
         outcome: "arbishield",
-        label: "ArbiShield cobriu",
-        reason: `${row._kind} · mercado ${aconteceu ? "aconteceu" : "não aconteceu"} → credita o stake no Saldo Reembolso`,
+        label: "Ganho",
+        reason: `${row._kind} · mercado ${aconteceu ? "aconteceu" : "não aconteceu"} → indicação ganhou → credita no Saldo Reembolso`,
         marketName,
       }
     : {
         outcome: "exchange",
-        label: "Exchange venceu",
-        reason: `${row._kind} · mercado ${aconteceu ? "aconteceu" : "não aconteceu"} → devolve o stake e cobra só a dedução`,
+        label: "Reembolso",
+        reason: `${row._kind} · mercado ${aconteceu ? "aconteceu" : "não aconteceu"} → indicação perdeu → devolve o stake à origem e cobra só a dedução`,
         marketName,
       };
 }

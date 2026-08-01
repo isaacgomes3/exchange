@@ -397,9 +397,72 @@
     if (opts.redirect) location.href = opts.redirect;
   }
 
+  /**
+   * Vocabulário único do resultado da proteção (marker: protection-result-terms-v1).
+   * Espelha scripts/lib/protection-flow-contract.mjs — se divergir, o CI acusa.
+   * Nomeado sobre a indicação da proteção: ganha = Ganho, perde = Reembolso,
+   * empate anula = Anula. Só nomenclatura; as regras de crédito não mudam.
+   */
+  var PROTECTION_RESULT_TERMS = {
+    arbishield: {
+      term: "Ganho",
+      kind: "ganho",
+      hint: "Indicação da proteção ganhou — credita no Saldo Reembolso",
+    },
+    exchange: {
+      term: "Reembolso",
+      kind: "reembolso",
+      hint: "Indicação da proteção perdeu — devolve o stake à origem e cobra só a dedução",
+    },
+    void: {
+      term: "Anula",
+      kind: "anula",
+      hint: "Empate anula — destrava o stake e devolve à origem",
+    },
+  };
+
+  function normalizeProtectionOutcome(outcome) {
+    var o = String(outcome == null ? "" : outcome)
+      .toLowerCase()
+      .trim()
+      .replace(/[\s-]+/g, "_");
+    if (o === "arbishield" || o === "lost_exchange") return "arbishield";
+    if (o === "exchange" || o === "won_exchange") return "exchange";
+    if (
+      o === "void" ||
+      o === "empate_anula" ||
+      o === "anula" ||
+      o === "draw" ||
+      o === "push" ||
+      o === "dnb" ||
+      o === "draw_no_bet"
+    ) {
+      return "void";
+    }
+    return "";
+  }
+
+  function protectionResultTerm(outcome) {
+    var t = PROTECTION_RESULT_TERMS[normalizeProtectionOutcome(outcome)];
+    return t ? t.term : "";
+  }
+  function protectionResultKind(outcome) {
+    var t = PROTECTION_RESULT_TERMS[normalizeProtectionOutcome(outcome)];
+    return t ? t.kind : "";
+  }
+  function protectionResultHint(outcome) {
+    var t = PROTECTION_RESULT_TERMS[normalizeProtectionOutcome(outcome)];
+    return t ? t.hint : "";
+  }
+
   global.ArbiV2 = {
     client: client,
     money: money,
+    PROTECTION_RESULT_TERMS: PROTECTION_RESULT_TERMS,
+    normalizeProtectionOutcome: normalizeProtectionOutcome,
+    protectionResultTerm: protectionResultTerm,
+    protectionResultKind: protectionResultKind,
+    protectionResultHint: protectionResultHint,
     requireUser: requireUser,
     requireAdmin: requireAdmin,
     isAdminUser: isAdminUser,

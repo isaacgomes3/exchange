@@ -629,22 +629,22 @@
         <div class="field"><label>Placar fora</label><input id="settleAway" type="number" min="0" step="1" placeholder="0" /></div>
       </div>
       <div class="field" style="margin-top:14px">
-        <label>Onde bateu?</label>
+        <label>Resultado da proteção</label>
         <div id="settleOutcomeBox" style="display:grid;gap:10px;margin-top:8px">
           <button type="button" class="btn btn-ghost" id="btnOutcomeArbi" data-outcome="arbishield" style="justify-content:flex-start;text-align:left;padding:14px 16px;border-color:rgba(201,242,35,0.45)">
-            <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU ARBISHIELD</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção válida · devolve stake/responsabilidade + dedução (Saldo Reembolso)</span>
+            <span style="display:block;font-size:11px;letter-spacing:0.08em">GANHO</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Indicação da proteção ganhou · credita no Saldo Reembolso</span>
             <span id="settleRefundHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">A creditar: —</span>
           </button>
           <button type="button" class="btn btn-ghost" id="btnOutcomeExch" data-outcome="exchange" style="justify-content:flex-start;text-align:left;padding:14px 16px">
-            <span style="display:block;font-size:11px;letter-spacing:0.08em">BATEU CASA EXTERNA (EXCHANGE)</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Proteção perde · sem reembolso ao usuário</span>
+            <span style="display:block;font-size:11px;letter-spacing:0.08em">REEMBOLSO</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Indicação da proteção perdeu · devolve o stake à origem e cobra só a dedução</span>
             <span id="settleDeductHint" style="display:block;margin-top:8px;color:var(--amber);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Dedução / margem ArbiShield: —</span>
             <span id="settleStakeKeepHint" style="display:block;margin-top:4px;color:var(--muted);font-size:11px;font-weight:600;text-transform:none;letter-spacing:0"></span>
           </button>
           <button type="button" class="btn btn-ghost" id="btnOutcomeVoid" data-outcome="empate_anula" style="justify-content:flex-start;text-align:left;padding:14px 16px">
-            <span style="display:block;font-size:11px;letter-spacing:0.08em">EMPATE ANULA</span>
-            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Aposta anulada · devolve só a dedução (Saldo Reembolso)</span>
+            <span style="display:block;font-size:11px;letter-spacing:0.08em">ANULA</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)">Empate anula · destrava o stake e devolve à origem</span>
             <span id="settleVoidHint" style="display:block;margin-top:8px;color:var(--lime);font-size:13px;font-weight:800;text-transform:none;letter-spacing:0">Dedução a devolver: —</span>
           </button>
         </div>

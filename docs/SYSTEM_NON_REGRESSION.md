@@ -127,6 +127,23 @@ contrato: `scripts/lib/release-manifest.mjs` · teste: `release-manifest.test.mj
 - Cache-bust sai do build (`applyCacheBust()` → commit curto). **Proibido** `sed` de
   `?v=` no HTML publicado e escrita com `find /var/www -name` (atinge backups)
 
+### Termo do resultado da proteção (`protection-result-terms-v1`)
+
+Nomeado pela **indicação da proteção**, igual em todas as telas:
+
+| Outcome (interno) | Termo | O que acontece |
+|---|---|---|
+| `arbishield` | **Ganho** | indicação ganhou → credita no Saldo Reembolso |
+| `exchange` | **Reembolso** | indicação perdeu → devolve o stake à origem, cobra só a dedução |
+| `void` / `empate_anula` | **Anula** | destrava o stake e devolve à origem |
+
+- Fonte: `PROTECTION_RESULT_TERMS` em `scripts/lib/protection-flow-contract.mjs`,
+  espelhada em `ArbiV2.protectionResultTerm` (`v2.js`) para as telas estáticas
+- **Proibido** «Bateu ArbiShield», «Bateu Casa Externa», «Ganhou», «Perdeu»
+- Os valores enviados ao settle **não** mudam: `arbishield` / `exchange` / `empate_anula`
+- Teste `protection-result-terms.test.mjs` verifica contrato × v2.js × telas e que as
+  regras de crédito seguem intactas
+
 ### Allowlist de admin (anti-regressão)
 
 - Marker `admin-email-allowlist-v1` · teste `scripts/admin-allowlist.test.mjs`

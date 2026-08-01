@@ -128,6 +128,55 @@ export const LAY_PROFIT_OVER_ODD_RULE = "lay-lucro-back-equiv-v9";
 export const EXCHANGE_NO_DOUBLE_COMMISSION_RULE =
   "settle-exchange-sem-comissao-extra-v9";
 
+/**
+ * Vocabulário único do resultado da proteção (pedido explícito 2026-08-01).
+ * Marker: `protection-result-terms-v1`
+ *
+ * Nomeado do ponto de vista da ArbiShield, sobre a **indicação da proteção**:
+ *   - indicação ganha  → **Ganho**     (`arbishield`) — a proteção pagou
+ *   - indicação perde  → **Reembolso** (`exchange`)   — devolve o stake à origem
+ *   - empate anula     → **Anula**     (`void`)
+ *
+ * Só nomenclatura: os valores internos (`arbishield` / `exchange` / `void`) e as
+ * regras de crédito seguem exatamente as mesmas. Antes disso o mesmo resultado
+ * era "Bateu ArbiShield" no admin e "Ganhou" no cliente.
+ */
+export const PROTECTION_RESULT_TERMS_VERSION = "protection-result-terms-v1";
+
+export const PROTECTION_RESULT_TERMS = Object.freeze({
+  arbishield: Object.freeze({
+    term: "Ganho",
+    kind: "ganho",
+    hint: "Indicação da proteção ganhou — credita no Saldo Reembolso",
+  }),
+  exchange: Object.freeze({
+    term: "Reembolso",
+    kind: "reembolso",
+    hint: "Indicação da proteção perdeu — devolve o stake à origem e cobra só a dedução",
+  }),
+  void: Object.freeze({
+    term: "Anula",
+    kind: "anula",
+    hint: "Empate anula — destrava o stake e devolve à origem",
+  }),
+});
+
+/** Termo canônico de um outcome; "" quando ainda não há resultado. */
+export function protectionResultTerm(outcome) {
+  const o = normalizeSettleOutcome(outcome);
+  return PROTECTION_RESULT_TERMS[o]?.term || "";
+}
+
+export function protectionResultKind(outcome) {
+  const o = normalizeSettleOutcome(outcome);
+  return PROTECTION_RESULT_TERMS[o]?.kind || "";
+}
+
+export function protectionResultHint(outcome) {
+  const o = normalizeSettleOutcome(outcome);
+  return PROTECTION_RESULT_TERMS[o]?.hint || "";
+}
+
 /** Marcador exigido pelos testes / hotfixes — não renomear. */
 export const PROTECTION_FLOW_LOCK =
   "DO_NOT_CHANGE_PROTECTION_FLOW_WITHOUT_EXPLICIT_REQUEST";
