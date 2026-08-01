@@ -38,9 +38,11 @@ Marker session admin: `DO_NOT_CHANGE_ADMIN_SESSION_MODE_WITHOUT_EXPLICIT_REQUEST
 
 ### Admin — Lançar jogos
 
-- UI: `admin-jogos.html` (`admin-jogos-unpublish-finalizados-v8`)
+- UI: `admin-jogos.html` (`admin-jogos-publish-imediato-agendar-v1`)
 - Fluxos: BetBra + **Lançar evento manual** → `POST /api/arbishield/matches`
-- Padrão: **rascunho**; **Publicar na fila** só se marcado
+- Padrão: **publicação imediata** (`is_published=true`)
+- Opção: **Agendar publicação** → rascunho até `metadata.scheduled_publish_at` (worker `publishDueScheduledMatches`)
+- Também: **Só rascunho** sem agendar
 - Logos: `/api/arbishield/football-teams`; unpublish de finalizados permanece
 
 ### Admin — Menu accordion (anti-reversão)

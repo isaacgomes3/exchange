@@ -436,6 +436,46 @@ async function getPreliveEventMarkets(eventId, sportId = SOCCER_ID) {
   };
 }
 
+/**
+ * Pedido explícito: lançamento padrão = publicação imediata.
+ * Agendar: is_published=false + metadata.scheduled_publish_at.
+ * Marker: admin-jogos-publish-imediato-agendar-v1
+ */
+function resolveMatchPublishState(body, nowMs = Date.now()) {
+  const raw =
+    body?.scheduledPublishAt ?? body?.scheduled_publish_at ?? null;
+  if (raw != null && String(raw).trim() !== "") {
+    const t = new Date(raw).getTime();
+    if (Number.isFinite(t) && t > nowMs) {
+      return {
+        isPublished: false,
+        scheduledPublishAt: new Date(t).toISOString(),
+      };
+    }
+    // horário passado/agora → publica na hora
+    return { isPublished: true, scheduledPublishAt: null };
+  }
+  if (body?.is_published === false || body?.isPublished === false) {
+    return { isPublished: false, scheduledPublishAt: null };
+  }
+  if (body?.is_published === true || body?.isPublished === true) {
+    return { isPublished: true, scheduledPublishAt: null };
+  }
+  // undefined → imediato
+  return { isPublished: true, scheduledPublishAt: null };
+}
+
+function applyScheduledPublishMeta(meta, scheduledPublishAt) {
+  const next = meta && typeof meta === "object" ? { ...meta } : {};
+  if (scheduledPublishAt) {
+    next.scheduled_publish_at = scheduledPublishAt;
+  } else {
+    delete next.scheduled_publish_at;
+    delete next.scheduledPublishAt;
+  }
+  return next;
+}
+
 async function createMatchFromMarket(body, token) {
   // Guarda: liquidação nunca deve cair neste fluxo (evita "Odd inválida" no Encerrar)
   if (
@@ -452,6 +492,7 @@ async function createMatchFromMarket(body, token) {
   }
   const odd = Number(body.odd);
   if (!Number.isFinite(odd) || odd <= 1) throw new Error("Odd inválida");
+  const publishState = resolveMatchPublishState(body);
 
   const payload = decodeJwtPayload(token);
   const adminId = payload?.sub ? String(payload.sub) : null;
@@ -611,29 +652,34 @@ async function createMatchFromMarket(body, token) {
     const createdByName =
       prevMeta.created_by_name ||
       (await resolveAdminDisplayName(adminId));
+    let patchMeta = {
+      ...prevMeta,
+      external_bet_link:
+        resolvedMarketLink || prevMeta.external_bet_link || null,
+      external_bet_name: "BetBra",
+      external_bet_logo: "https://betbra.bet.br/favicon.ico",
+      market_id: body.marketId,
+      runner_id: body.runnerId || null,
+      source: "betbra_prelive_catalog",
+      score_sync_enabled: true,
+      score_sync_source: "betbra_inplay",
+      created_by: prevMeta.created_by || adminId,
+      created_by_name: createdByName,
+    };
+    patchMeta = applyScheduledPublishMeta(
+      patchMeta,
+      publishState.scheduledPublishAt
+    );
     const patchBody = {
       markets: nextMarkets,
       max_protection_cents: nextMax,
       score_sync_enabled: true,
       updated_by: adminId,
-      metadata: {
-        ...prevMeta,
-        external_bet_link:
-          resolvedMarketLink || prevMeta.external_bet_link || null,
-        external_bet_name: "BetBra",
-        external_bet_logo: "https://betbra.bet.br/favicon.ico",
-        market_id: body.marketId,
-        runner_id: body.runnerId || null,
-        source: "betbra_prelive_catalog",
-        score_sync_enabled: true,
-        score_sync_source: "betbra_inplay",
-        created_by: prevMeta.created_by || adminId,
-        created_by_name: createdByName,
-      },
+      metadata: patchMeta,
       updated_at: new Date().toISOString(),
     };
-    // Lançar com "publicar" promove rascunho existente para a fila do cliente
-    if (body.isPublished) patchBody.is_published = true;
+    // Publicar agora / agendar / rascunho — respeita escolha do lançamento
+    patchBody.is_published = publishState.isPublished;
 
     const updated = await sb(`/rest/v1/matches?id=eq.${existing.id}`, {
       method: "PATCH",
@@ -656,7 +702,7 @@ async function createMatchFromMarket(body, token) {
     starts_at: new Date(body.startsAt).toISOString(),
     status: "open",
     status_v2: "open",
-    is_published: Boolean(body.isPublished),
+    is_published: publishState.isPublished,
     sport_type: "futebol",
     max_protection_cents: liquidityCents,
     used_protection_cents: 0,
@@ -666,18 +712,21 @@ async function createMatchFromMarket(body, token) {
     has_live_stream: false,
     created_by: adminId,
     updated_by: adminId,
-    metadata: {
-      external_bet_link: resolvedMarketLink || null,
-      external_bet_name: "BetBra",
-      external_bet_logo: "https://betbra.bet.br/favicon.ico",
-      market_id: body.marketId,
-      runner_id: body.runnerId || null,
-      source: "betbra_prelive_catalog",
-      score_sync_enabled: true,
-      score_sync_source: "betbra_inplay",
-      created_by: adminId,
-      created_by_name: createdByName,
-    },
+    metadata: applyScheduledPublishMeta(
+      {
+        external_bet_link: resolvedMarketLink || null,
+        external_bet_name: "BetBra",
+        external_bet_logo: "https://betbra.bet.br/favicon.ico",
+        market_id: body.marketId,
+        runner_id: body.runnerId || null,
+        source: "betbra_prelive_catalog",
+        score_sync_enabled: true,
+        score_sync_source: "betbra_inplay",
+        created_by: adminId,
+        created_by_name: createdByName,
+      },
+      publishState.scheduledPublishAt
+    ),
     markets: [newMarket],
   };
 
@@ -788,9 +837,8 @@ async function createManualMatch(body, token) {
   const firstOdd = markets[0].odd;
   const status = String(body.status || body.status_v2 || "open").toLowerCase();
   const sport = String(body.sport_type || body.sportType || "futebol").toLowerCase();
-  const isPublished = Boolean(
-    body.is_published ?? body.isPublished ?? false
-  );
+  const publishState = resolveMatchPublishState(body);
+  const isPublished = publishState.isPublished;
   const allowedRelease = new Set([0, 15, 30, 60, 120]);
   // 0 = liberado assim que o admin publicar (não espera o horário do jogo)
   let releaseMinutesBefore = Number(
@@ -823,18 +871,27 @@ async function createManualMatch(body, token) {
     has_live_stream: Boolean(body.has_live_stream ?? body.hasLiveStream),
     created_by: adminId,
     updated_by: adminId,
-    metadata: {
-      external_bet_link: body.external_bet_link || body.externalBetLink || null,
-      external_bet_name: body.external_bet_name || body.externalBetName || null,
-      external_bet_logo: body.external_bet_logo || body.externalBetLogo || null,
-      betting_house_id: body.betting_house_id || body.bettingHouseId || null,
-      source: "admin_manual",
-      release_minutes_before: releaseMinutesBefore,
-      created_by: adminId,
-      created_by_name: createdByName,
-    },
+    metadata: applyScheduledPublishMeta(
+      {
+        external_bet_link: body.external_bet_link || body.externalBetLink || null,
+        external_bet_name: body.external_bet_name || body.externalBetName || null,
+        external_bet_logo: body.external_bet_logo || body.externalBetLogo || null,
+        betting_house_id: body.betting_house_id || body.bettingHouseId || null,
+        source: "admin_manual",
+        release_minutes_before: releaseMinutesBefore,
+        hide_from_site: Boolean(body.hide_from_site ?? body.hideFromSite),
+        created_by: adminId,
+        created_by_name: createdByName,
+      },
+      publishState.scheduledPublishAt
+    ),
     markets,
   };
+
+  // Esconder do site força fora da grade mesmo se publicar
+  if (body.hide_from_site ?? body.hideFromSite) {
+    row.is_published = false;
+  }
 
   // limpa external_id nulo para não colidir com unique vazio
   if (!row.external_id) delete row.external_id;
@@ -4468,6 +4525,68 @@ async function listAvailableMatchesForClient() {
 }
 
 /**
+ * Publica jogos com metadata.scheduled_publish_at <= agora.
+ * Marker: admin-jogos-publish-imediato-agendar-v1
+ */
+async function publishDueScheduledMatches() {
+  if (!SERVICE_KEY) {
+    return { ok: false, error: "SERVICE_KEY ausente", published: 0 };
+  }
+  const nowMs = Date.now();
+  const nowIso = new Date(nowMs).toISOString();
+  let rows = [];
+  try {
+    rows = await sb(
+      `/rest/v1/matches?deleted_at=is.null&is_published=eq.false&select=id,metadata,starts_at&order=starts_at.asc&limit=300`,
+      { token: SERVICE_KEY }
+    );
+  } catch (err) {
+    return {
+      ok: false,
+      published: 0,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+  const list = Array.isArray(rows) ? rows : [];
+  let published = 0;
+  const errors = [];
+  for (const m of list) {
+    const meta =
+      m.metadata && typeof m.metadata === "object" ? m.metadata : {};
+    const raw = meta.scheduled_publish_at || meta.scheduledPublishAt;
+    if (!raw) continue;
+    const t = new Date(raw).getTime();
+    if (!Number.isFinite(t) || t > nowMs) continue;
+    const nextMeta = { ...meta };
+    delete nextMeta.scheduled_publish_at;
+    delete nextMeta.scheduledPublishAt;
+    nextMeta.published_at = nowIso;
+    nextMeta.published_via = "scheduled-publish-v1";
+    try {
+      await sb(`/rest/v1/matches?id=eq.${encodeURIComponent(m.id)}`, {
+        method: "PATCH",
+        token: SERVICE_KEY,
+        body: {
+          is_published: true,
+          metadata: nextMeta,
+          updated_at: nowIso,
+        },
+      });
+      published += 1;
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : String(err));
+    }
+  }
+  return {
+    ok: errors.length === 0,
+    published,
+    scanned: list.length,
+    errors: errors.slice(0, 3),
+    at: nowIso,
+  };
+}
+
+/**
  * Finalizados / fora da janela (~3h) não podem ficar is_published=true.
  * Limpa lixo histórico e evita que a grade do cliente leia dezenas de mortos.
  */
@@ -4534,6 +4653,19 @@ function startBetbraInplaySyncLoop() {
         console.warn(
           "[unpublish-expired] falhou",
           eClean instanceof Error ? eClean.message : eClean
+        );
+      }
+      try {
+        const due = await publishDueScheduledMatches();
+        if (due.published > 0) {
+          console.log(
+            `[scheduled-publish] published=${due.published}`
+          );
+        }
+      } catch (eDue) {
+        console.warn(
+          "[scheduled-publish] falhou",
+          eDue instanceof Error ? eDue.message : eDue
         );
       }
       const result = await syncBetbraInplayScores();
@@ -4766,6 +4898,7 @@ async function handleApi(req, res) {
     try {
       // Limpa finalizados publicados antes de listar (barato / idempotente).
       await unpublishExpiredPublishedMatches().catch(() => null);
+      await publishDueScheduledMatches().catch(() => null);
       const result = await listAvailableMatchesForClient();
       return sendJson(res, result.ok ? 200 : 502, result);
     } catch (err) {
@@ -4785,6 +4918,7 @@ async function handleApi(req, res) {
   ) {
     try {
       await unpublishExpiredPublishedMatches().catch(() => null);
+      await publishDueScheduledMatches().catch(() => null);
       const result = await listAvailableMatchesForClient();
       return sendJson(res, result.ok ? 200 : 502, result);
     } catch (err) {
