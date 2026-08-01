@@ -6,13 +6,48 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <title>Desafio · ArbiShield</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <meta name="arbishield-build" content="desafio-sem-radar-v1" />
-  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-dnb-flag-v1 desafio-painel-lado-time-v1 desafio-casa-logo-v1" />
+  <meta name="arbishield-build" content="desafio-etapas-liquidadas-visiveis-v1" />
+  <meta name="arbishield-features" content="desafio-sem-radar-v1 desafio-ft-result-v2 desafio-saldo-reutilizavel-v1 desafio-dnb-flag-v1 desafio-painel-lado-time-v1 desafio-casa-logo-v1 desafio-etapas-liquidadas-visiveis-v1" />
   <!-- desafio-dnb-flag-v1: Empate Anula marca V/× pelo time nomeado; empate = E (estorno) -->
   <!-- desafio-painel-lado-time-v1: cada quadro embaixo do time em que aposta -->
   <!-- desafio-casa-logo-v1: logo da casa de aposta no topo do quadro -->
-  <link rel="stylesheet" href="/v2.css?v=desafio-painel-lado-time-1" />
+  <!-- desafio-etapas-liquidadas-visiveis-v1: etapas liquidadas permanecem na grade -->
+  <link rel="stylesheet" href="/v2.css?v=desafio-etapas-liquidadas-visiveis-1" />
   <style>
+    /* desafio-etapas-liquidadas-visiveis-v1 */
+    .dz-card.is-settled {
+      opacity: 0.92;
+      outline: 1px solid rgba(201, 242, 35, 0.22);
+    }
+    .dz-v2-etapa.is-settled-badge {
+      color: #041a14;
+      background: #c9f223;
+      border-color: transparent;
+    }
+    .dz-v2-outcome {
+      display: inline-flex;
+      align-items: center;
+      margin-left: 8px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: #c9f223;
+      background: rgba(201, 242, 35, 0.12);
+      border: 1px solid rgba(201, 242, 35, 0.35);
+    }
+    .dz-v2-outcome.is-casa {
+      color: #f0b429;
+      background: rgba(240, 180, 41, 0.12);
+      border-color: rgba(240, 180, 41, 0.4);
+    }
+    .dz-v2-outcome.is-void {
+      color: rgba(255, 255, 255, 0.85);
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.22);
+    }
     /* v3: ícone SEMPRE à direita; pending = bolinha transparente */
     .dz-sb-market {
       display: flex !important;
@@ -1512,6 +1547,69 @@
         );
       }
 
+      /** Dia civil do browser — etapas liquidadas do dia permanecem na grade. */
+      function isSameLocalDay(iso, nowMs) {
+        if (!iso) return false;
+        var t = new Date(iso).getTime();
+        if (!Number.isFinite(t)) return false;
+        var a = new Date(t);
+        var b = new Date(nowMs != null ? nowMs : Date.now());
+        return a.toDateString() === b.toDateString();
+      }
+
+      /**
+       * Pedido explícito: etapas liquidadas ficam na tela.
+       * Desafio ativo OU (completed/inativo com etapa do dia).
+       * Marker: desafio-etapas-liquidadas-visiveis-v1
+       */
+      function isDesafioListedForClient(d, nowMs) {
+        if (!d || d.deleted_at) return false;
+        if (String(d.status || "").toLowerCase() === "deleted") return false;
+        if (d.is_active) return true;
+        // Completed do dia: etapas liquidadas continuam visíveis
+        var st = String(d.status || "").toLowerCase();
+        if (st !== "completed" && st !== "done" && st !== "finished") return false;
+        var steps = d.desafio_steps || [];
+        return steps.some(function (s) {
+          if (!s || s.deleted_at) return false;
+          return (
+            isSameLocalDay(s.starts_at, nowMs) ||
+            isSameLocalDay(s.settled_at, nowMs) ||
+            isSameLocalDay(d.completed_at, nowMs)
+          );
+        });
+      }
+
+      function listClientSteps(desafio) {
+        return (desafio.desafio_steps || [])
+          .slice()
+          .filter(function (s) {
+            return s && !s.deleted_at;
+          })
+          .sort(function (a, b) {
+            return (a.step_index || 0) - (b.step_index || 0);
+          });
+      }
+
+      function stepOutcomeLabel(item) {
+        var r = String((item && item.stepResult) || "").toLowerCase();
+        if (r === "zebra_protected") return { text: "Bateu Arbi", cls: "" };
+        if (r === "win") return { text: "Bateu Casa", cls: "is-casa" };
+        if (r === "void" || r === "empate_anula") {
+          return { text: "Empate Anula", cls: "is-void" };
+        }
+        if (r === "lost") return { text: "Perdeu", cls: "is-casa" };
+        if (item && item.isFinished) return { text: "Liquidado", cls: "" };
+        return null;
+      }
+
+      function phaseSortRank(item, now) {
+        var p = phaseOf(item, now);
+        if (p === "ativo" || p === "soon") return 0;
+        if (p === "live") return 1;
+        return 2;
+      }
+
       function phaseOf(item, now) {
         if (item.isFinished || (item.liveInfo && item.liveInfo.finished)) {
           return "done";
@@ -1669,9 +1767,12 @@
           casaCta =
             '<button type="button" class="dz-v2-cta casa wait is-disabled" disabled>Aguardando</button>';
         } else if (!canPlay) {
+          var outcomeBtn = stepOutcomeLabel(item);
           var blocked =
             phase === "done"
-              ? "Finalizado"
+              ? outcomeBtn && outcomeBtn.text
+                ? outcomeBtn.text
+                : "Liquidado"
               : phase === "live"
                 ? "Jogo ao vivo"
                 : "Em breve";
@@ -1699,17 +1800,35 @@
 
         var clockSvg =
           '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+        var outcomeChip = stepOutcomeLabel(item);
+        var outcomeHtml = outcomeChip
+          ? '<span class="dz-v2-outcome ' +
+            esc(outcomeChip.cls || "") +
+            '">' +
+            esc(outcomeChip.text) +
+            "</span>"
+          : "";
+        var settledClass = phase === "done" ? " is-settled" : "";
+        var etapaClass = phase === "done" ? " is-settled-badge" : "";
 
         return (
-          '<article class="dz-card" data-card="' +
+          '<article class="dz-card' +
+          settledClass +
+          '" data-card="' +
           esc(item.id) +
           '" data-step-id="' +
           esc(item.stepId || "") +
+          '" data-finished="' +
+          (phase === "done" ? "1" : "0") +
           '">' +
           '<div class="dz-v2-head">' +
           '<div class="dz-v2-brand"><img src="/brand/favicon-192.png" alt="" width="22" height="22" />ArbiShield</div>' +
-          '<div class="dz-v2-etapa">Etapa ' +
+          '<div class="dz-v2-etapa' +
+          etapaClass +
+          '">Etapa ' +
           esc(item.stepIndex || 1) +
+          (phase === "done" ? " · Liquidada" : "") +
+          outcomeHtml +
           "</div></div>" +
           '<div class="dz-v2-match">' +
           teamBlock(item.homeTeam, item.homeLogo, "is-home") +
@@ -1721,7 +1840,11 @@
               esc(item.liveInfo.score) +
               "</div>"
             : '<div class="dz-v2-x">×</div>') +
-          (item.liveInfo && item.liveInfo.live
+          (phase === "done"
+            ? '<div class="dz-v2-elapsed" style="color:#c9f223">Liquidado' +
+              (outcomeChip ? " · " + esc(outcomeChip.text) : "") +
+              "</div>"
+            : item.liveInfo && item.liveInfo.live
             ? '<div class="dz-v2-elapsed"><span class="dot"></span>Ao vivo' +
               (item.liveInfo.elapsed
                 ? " · " + esc(item.liveInfo.elapsed)
@@ -1827,17 +1950,29 @@
         // Se só há jogos já iniciados, deixa claro que não “sumiram” — só fecharam entrada.
         var playableN = 0;
         var liveN = 0;
+        var settledN = 0;
         visible.forEach(function (it) {
           var ph = phaseOf(it, now);
-          if (ph === "live") liveN += 1;
-          else if (ph !== "done" && ph !== "soon") playableN += 1;
+          if (ph === "done") settledN += 1;
+          else if (ph === "live") liveN += 1;
+          else if (ph !== "soon") playableN += 1;
         });
-        var tip =
-          playableN === 0 && liveN > 0
-            ? '<div class="ops-empty" style="margin-bottom:14px;padding:14px 16px"><h2 style="font-size:1.05rem;margin:0 0 6px">Entradas encerradas (ao vivo)</h2><p style="margin:0">Há ' +
-              liveN +
-              " jogo(s) em andamento abaixo — apostas só antes do horário de início.</p></div>"
-            : "";
+        var tip = "";
+        if (playableN === 0 && liveN > 0) {
+          tip =
+            '<div class="ops-empty" style="margin-bottom:14px;padding:14px 16px"><h2 style="font-size:1.05rem;margin:0 0 6px">Entradas encerradas (ao vivo)</h2><p style="margin:0">Há ' +
+            liveN +
+            " jogo(s) em andamento abaixo — apostas só antes do horário de início." +
+            (settledN
+              ? " Etapas liquidadas também permanecem na lista."
+              : "") +
+            "</p></div>";
+        } else if (playableN === 0 && liveN === 0 && settledN > 0) {
+          tip =
+            '<div class="ops-empty" style="margin-bottom:14px;padding:14px 16px"><h2 style="font-size:1.05rem;margin:0 0 6px">Etapas liquidadas</h2><p style="margin:0">Há ' +
+            settledN +
+            " etapa(s) já liquidada(s) abaixo — entram novas quando a equipe publicar.</p></div>";
+        }
         host.innerHTML = tip + visible.map(function (it) { return cardHtml(it, now); }).join("");
 
         function refreshCardMath(card) {
@@ -2187,19 +2322,20 @@
           var data = await res.json().catch(function () { return []; });
           if (!res.ok) return;
           var rows = normalizeDesafioRows(data);
-          var alive = rows.filter(function (d) {
-            return !d.deleted_at && String(d.status || "").toLowerCase() !== "deleted";
+          var listed = rows.filter(function (d) {
+            return isDesafioListedForClient(d, Date.now());
           });
-          var active = alive.filter(function (d) { return !!d.is_active; });
           var next = [];
-          active.forEach(function (d) {
-            var steps = (d.desafio_steps || [])
-              .slice()
-              .filter(function (s) { return !s.deleted_at && !stepIsFinished(s); })
-              .sort(function (a, b) { return (a.step_index || 0) - (b.step_index || 0); });
-            steps.forEach(function (s) { next.push(toCardItem(d, s)); });
+          listed.forEach(function (d) {
+            listClientSteps(d).forEach(function (s) {
+              next.push(toCardItem(d, s));
+            });
           });
+          var nowSort = Date.now();
           next.sort(function (a, b) {
+            var ra = phaseSortRank(a, nowSort);
+            var rb = phaseSortRank(b, nowSort);
+            if (ra !== rb) return ra - rb;
             var na = a.startsAtMs || Number.MAX_SAFE_INTEGER;
             var nb = b.startsAtMs || Number.MAX_SAFE_INTEGER;
             return na - nb;
@@ -2317,26 +2453,25 @@
         var data = await res.json().catch(function () { return []; });
         if (!res.ok) throw new Error((data && data.error) || "Falha ao carregar desafios");
         var rows = normalizeDesafioRows(data);
-        var alive = rows.filter(function (d) {
-          return !d.deleted_at && String(d.status || "").toLowerCase() !== "deleted";
+        // Pedido explícito: etapas liquidadas permanecem na grade
+        // (desafio-etapas-liquidadas-visiveis-v1).
+        var listed = rows.filter(function (d) {
+          return isDesafioListedForClient(d, Date.now());
         });
-        // Cliente: só desafios publicados (ativos). Etapas encerradas (bateu) não entram.
-        var active = alive.filter(function (d) { return !!d.is_active; });
 
         items = [];
-        active.forEach(function (d) {
-          var steps = (d.desafio_steps || [])
-            .slice()
-            .filter(function (s) { return !s.deleted_at && !stepIsFinished(s); })
-            .sort(function (a, b) { return (a.step_index || 0) - (b.step_index || 0); });
-          if (!steps.length) return;
-          steps.forEach(function (s) {
+        listed.forEach(function (d) {
+          listClientSteps(d).forEach(function (s) {
             items.push(toCardItem(d, s));
           });
         });
 
-        // Preferir jogos ainda jogáveis; ao vivo ficam no fim
+        // Abertos primeiro; ao vivo; liquidados no fim
+        var nowSort = Date.now();
         items.sort(function (a, b) {
+          var ra = phaseSortRank(a, nowSort);
+          var rb = phaseSortRank(b, nowSort);
+          if (ra !== rb) return ra - rb;
           var na = a.startsAtMs || Number.MAX_SAFE_INTEGER;
           var nb = b.startsAtMs || Number.MAX_SAFE_INTEGER;
           return na - nb;
