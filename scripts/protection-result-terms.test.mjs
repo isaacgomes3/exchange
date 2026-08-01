@@ -1,12 +1,14 @@
 /**
  * Vocabulário único do resultado da proteção (protection-result-terms-v1).
  *
- * Pedido explícito (2026-08-01): nomear pela indicação da proteção —
- * ganha = Ganho, perde = Reembolso, empate anula = Anula. Antes, o mesmo
- * resultado era "Bateu ArbiShield" no admin e "Ganhou" no cliente.
+ * Pedido explícito (2026-08-01): a ArbiShield **não é casa de aposta** — não gera
+ * ganho, só reembolsa quando a indicação perde. Então o nome sai da indicação:
+ * bateu na casa = Ganho (`exchange`); perdeu = Reembolso (`arbishield`); empate
+ * anula = Anula (`void`). Confere com a carteira: o Saldo Reembolso é creditado
+ * justamente no `arbishield`.
  *
- * Só nomenclatura: os valores internos (`arbishield`/`exchange`/`void`) e as
- * regras de crédito seguem intactas — isso também é verificado aqui.
+ * Antes, o cliente lia "Ganhou" quando havia sido reembolsado — este teste trava
+ * a direção para não inverter de novo.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -29,8 +31,8 @@ const CLIENTE = read("deploy/vps-supabase/static/v2/app-protecoes.html");
 const ADMIN = read("deploy/vps-supabase/static/v2/admin-jogos.html");
 
 const ESPERADO = {
-  arbishield: "Ganho",
-  exchange: "Reembolso",
+  arbishield: "Reembolso",
+  exchange: "Ganho",
   void: "Anula",
 };
 
@@ -130,15 +132,26 @@ describe("as telas usam o termo único", () => {
   });
 });
 
-describe("renomear não mexeu nas regras de crédito", () => {
+describe("a direção do termo casa com a carteira", () => {
   const stakeLock = { amount_cents: 100000, metadata: { billing_model: "stake_lock_v1" } };
 
-  it("Ganho credita o stake; Reembolso credita zero", () => {
+  it("Reembolso é o outcome que credita — não pode ser chamado de Ganho", () => {
     assert.equal(settlementCreditParts(stakeLock, "arbishield").total, 100000);
+    assert.equal(protectionResultTerm("arbishield"), "Reembolso");
+  });
+
+  it("Ganho não credita nada: o lucro veio da casa externa", () => {
     assert.equal(settlementCreditParts(stakeLock, "exchange").total, 0);
+    assert.equal(protectionResultTerm("exchange"), "Ganho");
   });
 
   it("Anula devolve o stake à origem", () => {
     assert.equal(settlementCreditParts(stakeLock, "void").stake, 100000);
+    assert.equal(protectionResultTerm("void"), "Anula");
+  });
+
+  it("ArbiShield não gera ganho — o termo Ganho nunca aponta para ela", () => {
+    assert.notEqual(protectionResultTerm("arbishield"), "Ganho");
+    assert.notEqual(protectionResultTerm("lost_exchange"), "Ganho");
   });
 });

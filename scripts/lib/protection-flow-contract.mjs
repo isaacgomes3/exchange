@@ -132,27 +132,29 @@ export const EXCHANGE_NO_DOUBLE_COMMISSION_RULE =
  * Vocabulário único do resultado da proteção (pedido explícito 2026-08-01).
  * Marker: `protection-result-terms-v1`
  *
- * Nomeado do ponto de vista da ArbiShield, sobre a **indicação da proteção**:
- *   - indicação ganha  → **Ganho**     (`arbishield`) — a proteção pagou
- *   - indicação perde  → **Reembolso** (`exchange`)   — devolve o stake à origem
- *   - empate anula     → **Anula**     (`void`)
+ * A ArbiShield **não é casa de aposta**: ela não gera ganho, apenas reembolsa
+ * quando a indicação perde. Daí o nome sair da **indicação da proteção**:
+ *   - indicação **ganha** (bateu na casa externa) → **Ganho**     (`exchange`)
+ *   - indicação **perde** (ArbiShield cobre)      → **Reembolso** (`arbishield`)
+ *   - empate anula                                → **Anula**     (`void`)
  *
- * Só nomenclatura: os valores internos (`arbishield` / `exchange` / `void`) e as
- * regras de crédito seguem exatamente as mesmas. Antes disso o mesmo resultado
- * era "Bateu ArbiShield" no admin e "Ganhou" no cliente.
+ * Confere com a carteira: é no `arbishield` que o **Saldo Reembolso** é creditado,
+ * porque aquilo é o reembolso. Só nomenclatura — os valores internos
+ * (`arbishield` / `exchange` / `void`) e as regras de crédito seguem as mesmas.
+ * Antes disso, o cliente lia "Ganhou" justamente quando havia sido reembolsado.
  */
 export const PROTECTION_RESULT_TERMS_VERSION = "protection-result-terms-v1";
 
 export const PROTECTION_RESULT_TERMS = Object.freeze({
   arbishield: Object.freeze({
-    term: "Ganho",
-    kind: "ganho",
-    hint: "Indicação da proteção ganhou — credita no Saldo Reembolso",
-  }),
-  exchange: Object.freeze({
     term: "Reembolso",
     kind: "reembolso",
-    hint: "Indicação da proteção perdeu — devolve o stake à origem e cobra só a dedução",
+    hint: "Indicação perdeu — ArbiShield reembolsa no Saldo Reembolso",
+  }),
+  exchange: Object.freeze({
+    term: "Ganho",
+    kind: "ganho",
+    hint: "Indicação bateu na casa externa — devolve o stake à origem e cobra só a dedução",
   }),
   void: Object.freeze({
     term: "Anula",

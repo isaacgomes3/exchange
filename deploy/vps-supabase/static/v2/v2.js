@@ -400,19 +400,20 @@
   /**
    * Vocabulário único do resultado da proteção (marker: protection-result-terms-v1).
    * Espelha scripts/lib/protection-flow-contract.mjs — se divergir, o CI acusa.
-   * Nomeado sobre a indicação da proteção: ganha = Ganho, perde = Reembolso,
-   * empate anula = Anula. Só nomenclatura; as regras de crédito não mudam.
+   * A ArbiShield não é casa de aposta: não gera ganho, só reembolsa quando a
+   * indicação perde. Indicação ganha (bateu na casa) = Ganho; indicação perde =
+   * Reembolso; empate anula = Anula. Só nomenclatura.
    */
   var PROTECTION_RESULT_TERMS = {
     arbishield: {
-      term: "Ganho",
-      kind: "ganho",
-      hint: "Indicação da proteção ganhou — credita no Saldo Reembolso",
-    },
-    exchange: {
       term: "Reembolso",
       kind: "reembolso",
-      hint: "Indicação da proteção perdeu — devolve o stake à origem e cobra só a dedução",
+      hint: "Indicação perdeu — ArbiShield reembolsa no Saldo Reembolso",
+    },
+    exchange: {
+      term: "Ganho",
+      kind: "ganho",
+      hint: "Indicação bateu na casa externa — devolve o stake à origem e cobra só a dedução",
     },
     void: {
       term: "Anula",

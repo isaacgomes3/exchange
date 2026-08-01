@@ -129,13 +129,18 @@ contrato: `scripts/lib/release-manifest.mjs` · teste: `release-manifest.test.mj
 
 ### Termo do resultado da proteção (`protection-result-terms-v1`)
 
-Nomeado pela **indicação da proteção**, igual em todas as telas:
+A ArbiShield **não é casa de aposta**: não gera ganho, só reembolsa quando a
+indicação perde. O termo sai da **indicação**, igual em todas as telas:
 
 | Outcome (interno) | Termo | O que acontece |
 |---|---|---|
-| `arbishield` | **Ganho** | indicação ganhou → credita no Saldo Reembolso |
-| `exchange` | **Reembolso** | indicação perdeu → devolve o stake à origem, cobra só a dedução |
+| `exchange` | **Ganho** | indicação bateu na casa externa → devolve o stake à origem, cobra só a dedução |
+| `arbishield` | **Reembolso** | indicação perdeu → ArbiShield credita no Saldo Reembolso |
 | `void` / `empate_anula` | **Anula** | destrava o stake e devolve à origem |
+
+A direção confere com a carteira: é no `arbishield` que o **Saldo Reembolso** é
+creditado, porque aquilo é o reembolso. O teste trava isso — `arbishield` nunca
+pode ser chamado de Ganho.
 
 - Fonte: `PROTECTION_RESULT_TERMS` em `scripts/lib/protection-flow-contract.mjs`,
   espelhada em `ArbiV2.protectionResultTerm` (`v2.js`) para as telas estáticas

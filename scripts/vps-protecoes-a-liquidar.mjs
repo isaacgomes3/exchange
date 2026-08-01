@@ -7,10 +7,11 @@
  * e sugere o outcome para o admin conferir antes de liquidar.
  *
  * Regra usada (v10 · stake_lock_v1):
- * Termos (protection-result-terms-v1) — nomeados pela indicação da proteção:
- *   Ganho     (arbishield) → indicação ganhou: credita no Saldo Reembolso
- *   Reembolso (exchange)   → indicação perdeu: devolve o stake à origem,
- *                            cobra só a dedução
+ * Termos (protection-result-terms-v1). A ArbiShield não é casa de aposta: não
+ * gera ganho, só reembolsa quando a indicação perde.
+ *   Reembolso (arbishield) → indicação perdeu: credita no Saldo Reembolso
+ *   Ganho     (exchange)   → indicação bateu na casa: devolve o stake à
+ *                            origem e cobra só a dedução
  *   Anula     (void)       → empate anula: destrava e devolve à origem
  *
  * BACK ganha quando o mercado acontece; LAY ganha quando NÃO acontece.
@@ -178,18 +179,20 @@ function suggestOutcome(row, match, sc) {
     };
   }
   const aconteceu = st === "win";
-  const clienteGanhou = row._kind === "BACK" ? aconteceu : !aconteceu;
-  return clienteGanhou
+  // BACK cobre quando o mercado acontece; LAY, quando não acontece. Se a
+  // proteção pagou, a indicação perdeu na casa → Reembolso.
+  const protecaoPagou = row._kind === "BACK" ? aconteceu : !aconteceu;
+  return protecaoPagou
     ? {
         outcome: "arbishield",
-        label: "Ganho",
-        reason: `${row._kind} · mercado ${aconteceu ? "aconteceu" : "não aconteceu"} → indicação ganhou → credita no Saldo Reembolso`,
+        label: "Reembolso",
+        reason: `${row._kind} · mercado ${aconteceu ? "aconteceu" : "não aconteceu"} → indicação perdeu → ArbiShield reembolsa`,
         marketName,
       }
     : {
         outcome: "exchange",
-        label: "Reembolso",
-        reason: `${row._kind} · mercado ${aconteceu ? "aconteceu" : "não aconteceu"} → indicação perdeu → devolve o stake à origem e cobra só a dedução`,
+        label: "Ganho",
+        reason: `${row._kind} · mercado ${aconteceu ? "aconteceu" : "não aconteceu"} → indicação bateu na casa → devolve o stake e cobra só a dedução`,
         marketName,
       };
 }
