@@ -95,6 +95,10 @@ contrato: `scripts/lib/release-manifest.mjs` · teste: `release-manifest.test.mj
   volta para a anterior pelo `.history`
 - **Guarda de regressão:** `decidePublish()` recusa commit `behind` ou `diverged` em
   relação ao que está no ar (código de saída 3); só `--force` passa por cima
+- **Checagem de referências:** `missingRefs()` recusa release que cite arquivo que ela
+  não carrega (código 5) — publicar assim trocaria arquivo servido por 404.
+  `finance-admins.js` e `blocked-emails.js` entram por `RELEASE_EXTRA_FILES`;
+  `market-catalog.js` precisa continuar em `static/v2/`
 - Cache-bust sai do build (`applyCacheBust()` → commit curto). **Proibido** `sed` de
   `?v=` no HTML publicado e escrita com `find /var/www -name` (atinge backups)
 

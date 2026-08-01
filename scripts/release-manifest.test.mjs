@@ -10,17 +10,22 @@ import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
+import { existsSync } from "node:fs";
 import {
   GENERATED_FILES,
   MANIFEST_FILE,
   RELEASE_CONTRACT_VERSION,
+  RELEASE_EXTRA_FILES,
+  RELEASE_OPTIONAL_REFS,
   RELEASE_SOURCE_DIR,
   VERSION_FILE,
   applyCacheBust,
   buildManifest,
   buildVersionInfo,
+  collectLocalRefs,
   decidePublish,
   listReleaseFiles,
+  missingRefs,
   sha256,
   verifyManifest,
 } from "./lib/release-manifest.mjs";
@@ -168,9 +173,64 @@ describe("manifesto", () => {
   });
 });
 
+describe("referências: publicar não pode virar 404", () => {
+  function pageDir(html) {
+    const dir = tempDir();
+    writeFileSync(join(dir, "admin.html"), html);
+    return dir;
+  }
+
+  it("acusa arquivo citado que a release não carrega", () => {
+    const broken = missingRefs(pageDir('<script src="/finance-admins.js?v=1"></script>'));
+    assert.equal(broken.length, 1);
+    assert.equal(broken[0].ref, "/finance-admins.js");
+    assert.deepEqual(broken[0].pages, ["admin.html"]);
+  });
+
+  it("aprova quando o arquivo está na release", () => {
+    const dir = pageDir('<script src="/finance-admins.js"></script>');
+    writeFileSync(join(dir, "finance-admins.js"), "//");
+    assert.deepEqual(missingRefs(dir), []);
+  });
+
+  it("respeita a lista de faltas intencionais", () => {
+    const dir = pageDir(
+      '<script src="/assets/market-catalog.js"></script><a href="/termos.html">t</a>'
+    );
+    assert.deepEqual(missingRefs(dir), []);
+  });
+
+  it("coleta a referência com a página que a cita e ignora externo", () => {
+    const refs = collectLocalRefs(
+      pageDir('<link href="https://fonts.googleapis.com/x" /><script src="/v2.js?v=1"></script>')
+    );
+    assert.deepEqual([...refs.keys()], ["/v2.js"]);
+    assert.deepEqual([...refs.get("/v2.js")], ["admin.html"]);
+  });
+});
+
 describe("origem da release existe no repo", () => {
   it("RELEASE_SOURCE_DIR aponta para a UI publicada", () => {
     assert.equal(RELEASE_SOURCE_DIR, "deploy/vps-supabase/static/v2");
     assert.ok(listReleaseFiles(resolve(root, RELEASE_SOURCE_DIR)).length > 20);
+  });
+
+  it("os assets da raiz existem — sem eles a release serve 404", () => {
+    assert.ok(Object.keys(RELEASE_EXTRA_FILES).length >= 2);
+    for (const from of Object.keys(RELEASE_EXTRA_FILES)) {
+      assert.ok(existsSync(resolve(root, from)), `${from} não existe`);
+    }
+  });
+
+  it("market-catalog.js está na UI (some da linhagem com facilidade)", () => {
+    assert.ok(
+      existsSync(resolve(root, RELEASE_SOURCE_DIR, "market-catalog.js")),
+      "market-catalog.js fora da release quebra o catálogo em admin-jogos"
+    );
+  });
+
+  it("cada falta tolerada tem motivo registrado", () => {
+    assert.ok(RELEASE_OPTIONAL_REFS.length >= 1);
+    for (const ref of RELEASE_OPTIONAL_REFS) assert.match(ref, /^\//);
   });
 });

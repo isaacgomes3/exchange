@@ -224,6 +224,12 @@ STAGING="$WORK/release"
 node "$WORK/src/scripts/build-release.mjs" \
   --source "$WORK/src" --out "$STAGING" --commit "$TARGET"
 node "$WORK/src/scripts/release-cli.mjs" verify --dir "$STAGING"
+if ! node "$WORK/src/scripts/release-cli.mjs" refs --dir "$STAGING"; then
+  echo >&2
+  echo "Publicacao abortada: a release trocaria arquivo servido hoje por 404." >&2
+  echo "  Traga o arquivo para o repo antes de publicar." >&2
+  exit 5
+fi
 
 if [[ "$DRY_RUN" == "1" ]]; then
   log "dry-run: artefato validado, nada foi instalado"

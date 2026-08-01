@@ -4,6 +4,7 @@
  *
  *   release-cli.mjs guard  --current <sha> --target <sha> --status <ahead|behind|identical|diverged> [--force]
  *   release-cli.mjs verify --dir <dir>
+ *   release-cli.mjs refs   --dir <dir>
  *
  * `guard` sai 0 quando pode publicar e 1 quando publicar seria regressão —
  * a decisão vive em lib/release-manifest.mjs e é coberta por teste.
@@ -13,6 +14,7 @@ import { join } from "node:path";
 import {
   MANIFEST_FILE,
   decidePublish,
+  missingRefs,
   verifyManifest,
 } from "./lib/release-manifest.mjs";
 
@@ -64,5 +66,23 @@ if (command === "verify") {
   process.exit(1);
 }
 
-console.error("comandos: guard | verify");
+if (command === "refs") {
+  const dir = arg("dir");
+  if (!dir) {
+    console.error("uso: release-cli.mjs refs --dir <dir>");
+    process.exit(2);
+  }
+  const broken = missingRefs(dir);
+  if (!broken.length) {
+    console.log("referencias OK · nenhum arquivo citado esta faltando");
+    process.exit(0);
+  }
+  console.error("a release referencia arquivos que ela nao carrega:");
+  for (const { ref, pages } of broken) {
+    console.error(`  ${ref}  <- ${pages.slice(0, 4).join(", ")}`);
+  }
+  process.exit(1);
+}
+
+console.error("comandos: guard | verify | refs");
 process.exit(2);

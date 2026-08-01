@@ -28,8 +28,9 @@ bash <(curl -fsSL "https://api.github.com/repos/isaacgomes3/exchange/contents/sc
 ```
 
 Etapas do script: resolve o ref → lê o commit no ar → **guarda de regressão** →
-baixa o tarball do commit → monta a release → confere o manifesto → instala →
-troca o symlink → retenção → reload do nginx → confirma pelo `/__version.json`.
+baixa o tarball do commit → monta a release → confere o manifesto → **checa
+referências** → instala → troca o symlink → retenção → reload do nginx → confirma
+pelo `/__version.json`.
 
 | Opção | Para quê |
 |---|---|
@@ -66,6 +67,28 @@ O script compara, pela API do GitHub, o commit no ar com o commit alvo:
 
 Sem versão anterior (primeira vez) ou mesmo commit (republicação) libera. A decisão
 vive em `decidePublish()` e é coberta por teste; sai com código 3 quando bloqueia.
+
+## Checagem de referências (não trocar arquivo por 404)
+
+`missingRefs()` varre os `src`/`href` locais dos HTML da release e exige que cada
+arquivo citado esteja **dentro** da release. Publicar sem isso troca um arquivo que
+o servidor serve hoje por 404 — regressão com outro nome. Sai com código 5.
+
+Foi o que pegou, na primeira adoção, que `finance-admins.js` (ACL de financeiro em 8
+páginas admin), `blocked-emails.js` (bloqueio de e-mail no cadastro) e
+`market-catalog.js` (catálogo em Lançar jogos) estavam servidos em produção e fora
+da release. Os dois primeiros moram um nível acima no repo e entram por
+`RELEASE_EXTRA_FILES`; o terceiro havia se perdido da linhagem principal.
+
+Falta intencional vai em `RELEASE_OPTIONAL_REFS`, com o motivo no comentário
+(`market-catalog.js` é carregado de três caminhos de propósito; `/termos.html` hoje
+cai no fallback do nginx e não existe em branch nenhuma).
+
+Conferir uma release já instalada:
+
+```bash
+node scripts/release-cli.mjs refs --dir /var/www/arbishield/releases/<sha>
+```
 
 ## Cache-bust
 

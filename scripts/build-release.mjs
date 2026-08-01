@@ -22,12 +22,14 @@ import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   MANIFEST_FILE,
+  RELEASE_EXTRA_FILES,
   RELEASE_SOURCE_DIR,
   VERSION_FILE,
   applyCacheBust,
   buildManifest,
   buildVersionInfo,
   listReleaseFiles,
+  missingRefs,
   sha256,
   verifyManifest,
 } from "./lib/release-manifest.mjs";
@@ -82,6 +84,20 @@ for (const generated of [MANIFEST_FILE, VERSION_FILE]) {
   rmSync(join(outDir, generated), { force: true });
 }
 
+// Assets que o v2 carrega da raiz mas que moram um nível acima no repo.
+for (const [from, to] of Object.entries(RELEASE_EXTRA_FILES)) {
+  const src = join(source, ...from.split("/"));
+  try {
+    if (!statSync(src).isFile()) throw new Error("não é arquivo");
+  } catch {
+    console.error(`asset obrigatório ausente: ${from}`);
+    process.exit(2);
+  }
+  const dest = join(outDir, ...to.split("/"));
+  mkdirSync(dirname(dest), { recursive: true });
+  cpSync(src, dest);
+}
+
 const files = {};
 let busted = 0;
 for (const rel of listReleaseFiles(outDir)) {
@@ -108,6 +124,19 @@ const check = verifyManifest(outDir, manifest);
 if (!check.ok) {
   console.error("manifesto não confere com o disco logo após o build:");
   console.error(JSON.stringify(check, null, 2));
+  process.exit(1);
+}
+
+const broken = missingRefs(outDir);
+if (broken.length) {
+  console.error("\nA release referencia arquivos que ela não carrega:");
+  for (const { ref, pages } of broken) {
+    console.error(`  ${ref}  <- ${pages.slice(0, 4).join(", ")}`);
+  }
+  console.error(
+    "\nPublicar assim trocaria arquivo servido hoje por 404. Traga o arquivo para\n" +
+      "o repo (ou registre em RELEASE_OPTIONAL_REFS se a falta for intencional).\n"
+  );
   process.exit(1);
 }
 

@@ -17,6 +17,29 @@ export const RELEASE_CONTRACT_VERSION = "release-artifact-v1";
 /** Diretório do repo que vira a raiz servida pelo nginx. */
 export const RELEASE_SOURCE_DIR = "deploy/vps-supabase/static/v2";
 
+/**
+ * Arquivos que as páginas do v2 carregam da raiz mas que moram um nível acima
+ * no repo. Ficaram de fora da release na primeira versão e o `--adopt-webroot`
+ * teria dado 404 neles — daí a checagem de referências abaixo.
+ */
+export const RELEASE_EXTRA_FILES = Object.freeze({
+  "deploy/vps-supabase/static/finance-admins.js": "finance-admins.js",
+  "deploy/vps-supabase/static/blocked-emails.js": "blocked-emails.js",
+});
+
+/**
+ * Referências que podem faltar sem quebrar nada:
+ *   - admin-jogos/admin-desafios carregam market-catalog.js de três caminhos de
+ *     propósito (só um precisa existir);
+ *   - /termos.html hoje cai no fallback do nginx e não existe em lugar nenhum —
+ *     link quebrado que precede a release; virar página de verdade é outro assunto.
+ */
+export const RELEASE_OPTIONAL_REFS = Object.freeze([
+  "/assets/market-catalog.js",
+  "/v2/market-catalog.js",
+  "/termos.html",
+]);
+
 export const MANIFEST_FILE = "__manifest.json";
 export const VERSION_FILE = "__version.json";
 
@@ -112,6 +135,43 @@ export function verifyManifest(dir, manifest) {
   const onDisk = new Set(listReleaseFiles(dir));
   const extra = [...onDisk].filter((rel) => !(rel in (manifest.files || {}))).sort();
   return { ok: !missing.length && !changed.length && !extra.length, missing, changed, extra };
+}
+
+/** Referências locais (`src`/`href` começando com `/`) dos HTML da release. */
+export function collectLocalRefs(dir) {
+  const refs = new Map();
+  for (const rel of listReleaseFiles(dir)) {
+    if (!rel.endsWith(".html")) continue;
+    const html = readFileSync(join(dir, ...rel.split(posix.sep)), "utf8");
+    for (const match of html.matchAll(/(?:src|href)="(\/[^"?#]*)/g)) {
+      const target = match[1];
+      if (!target || target === "/") continue;
+      if (!refs.has(target)) refs.set(target, new Set());
+      refs.get(target).add(rel);
+    }
+  }
+  return refs;
+}
+
+/**
+ * Arquivo que a release referencia mas não carrega. Publicar assim troca um
+ * arquivo que existe no servidor por um 404 — é regressão com outro nome.
+ */
+export function missingRefs(dir) {
+  const optional = new Set(RELEASE_OPTIONAL_REFS);
+  const out = [];
+  for (const [ref, pages] of collectLocalRefs(dir)) {
+    if (optional.has(ref)) continue;
+    const abs = join(dir, ...ref.replace(/^\//, "").split("/"));
+    let present = false;
+    try {
+      present = statSync(abs).isFile();
+    } catch {
+      present = false;
+    }
+    if (!present) out.push({ ref, pages: [...pages].sort() });
+  }
+  return out.sort((a, b) => a.ref.localeCompare(b.ref));
 }
 
 /**
