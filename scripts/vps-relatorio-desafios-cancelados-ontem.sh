@@ -62,10 +62,45 @@ echo "Regra: ao entrar debita desafio_balance; no cancel devolve (desafio_cancel
 echo "       Congelado/Apostador não entra neste fluxo."
 echo "════════════════════════════════════════════════════════════════════════"
 
+# Contagem rápida (falha cedo se o cast/uuid estiver quebrado)
+QUICK="$(psql_db -At <<SQL
+SELECT
+  (SELECT count(*)::text FROM public.desafios d
+    WHERE (d.status='cancelled' OR d.metadata ? 'cancelled_at' OR d.metadata ? 'cancelled_by')
+      AND coalesce(nullif(d.metadata->>'cancelled_at','')::timestamptz, d.updated_at)
+          >= timestamptz '${FROM_ISO}'
+      AND coalesce(nullif(d.metadata->>'cancelled_at','')::timestamptz, d.updated_at)
+          < timestamptz '${TO_ISO}'
+  ) || '|' ||
+  (SELECT count(*)::text FROM public.wallet_transactions wt
+    WHERE wt.type='desafio_cancel_refund'
+      AND wt.created_at >= timestamptz '${FROM_ISO}'
+      AND wt.created_at < timestamptz '${TO_ISO}'
+  );
+SQL
+)"
+DESAFIO_N="${QUICK%%|*}"
+REFUND_N="${QUICK##*|}"
+echo "Achados no dia: ${DESAFIO_N:-0} desafio(s) cancelado(s) · ${REFUND_N:-0} devolução(ões) (desafio_cancel_refund)"
+if [[ "${DESAFIO_N:-0}" == "0" && "${REFUND_N:-0}" == "0" ]]; then
+  echo
+  echo "NENHUM cancelamento/devolução de desafio neste dia (BRT $DATE)."
+  echo "Tente o dia anterior, ex.:"
+  echo "  DATE=$(python3 - <<PY
+from datetime import datetime, timedelta
+print((datetime.fromisoformat("$DATE") - timedelta(days=1)).date())
+PY
+) bash <(curl -fsSL -H \"Accept: application/vnd.github.raw\" \\"
+  echo "    \"https://api.github.com/repos/isaacgomes3/exchange/contents/scripts/vps-relatorio-desafios-cancelados-ontem.sh?ref=cursor/relatorio-desafios-cancelados-ontem-4759&t=\$(date +%s)\")"
+  echo
+  exit 0
+fi
+
 psql_db <<SQL
 \pset pager off
 \pset format aligned
 \pset border 1
+
 
 WITH bounds AS (
   SELECT
