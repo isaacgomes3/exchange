@@ -14,6 +14,7 @@ import {
   SETTLE_SUGGEST_VERSION,
   suggestSettle,
 } from "./lib/desafio-settle-suggest.mjs";
+import { inferMatchFinished } from "./lib/betbra-inplay-sync.mjs";
 
 function loadEnvFile(file) {
   if (!file || !fs.existsSync(file)) return;
@@ -92,7 +93,12 @@ function stepSettled(step) {
   return ["win", "zebra_protected", "lost", "bateu", "void", "empate_anula"].includes(res);
 }
 
-function scoreOf(step) {
+/**
+ * O sync grava final_score_* a cada gol, **durante** o jogo — placar presente não
+ * quer dizer encerrado. Usa a mesma inferência do sync (≥105 min do início com
+ * placar, ou 90'+ com ≥100 min) para não sugerir liquidar jogo em andamento.
+ */
+function scoreOf(step, nowMs) {
   const meta = step.metadata && typeof step.metadata === "object" ? step.metadata : {};
   const live = meta.live && typeof meta.live === "object" ? meta.live : null;
   const home =
@@ -107,15 +113,31 @@ function scoreOf(step) {
       : live && live.away_score != null
         ? Number(live.away_score)
         : null;
-  const finished = Boolean(
-    (live && live.finished) ||
-      step.final_score_home != null ||
-      String(step.status || "").toLowerCase() === "done"
-  );
+
+  const status = String(step.status || "").toLowerCase();
+  let finished = false;
+  let why = "";
+  if (status === "done") {
+    finished = true;
+    why = "etapa marcada como done";
+  } else if (live && live.finished) {
+    finished = true;
+    why = "feed marcou fim de jogo";
+  } else if (inferMatchFinished(step, null, nowMs)) {
+    finished = true;
+    const mins = step.starts_at
+      ? Math.floor((nowMs - new Date(step.starts_at).getTime()) / 60000)
+      : null;
+    why = mins != null ? `${mins} min desde o início` : "inferido pelo horário";
+  } else {
+    why = status === "live" ? "ainda ao vivo" : "sem sinal de encerramento";
+  }
+
   return {
     home: Number.isFinite(home) ? home : null,
     away: Number.isFinite(away) ? away : null,
     finished,
+    why,
   };
 }
 
@@ -172,7 +194,7 @@ for (const d of desafios) {
       homeTeam: s.home_team || "",
       awayTeam: s.away_team || "",
     };
-    const sc = scoreOf(s);
+    const sc = scoreOf(s, Date.now());
     const marketArbi = s.market_name_arbishield || s.market_name || "";
     const marketCasa = s.market_name_casa || s.market_name || "";
     const sug = suggestSettle({
@@ -209,6 +231,12 @@ for (const d of desafios) {
     );
     console.log(
       `            casa: ${pad(marketCasa, 32)} → ${sug.casa ?? "?"}`
+    );
+    const kick = s.starts_at
+      ? new Date(s.starts_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })
+      : "sem horário";
+    console.log(
+      `            início: ${pad(kick, 22)} encerrado: ${sc.finished ? "sim" : "NÃO"} (${sc.why})`
     );
     if (!sug.winningSide) console.log(`            motivo: ${sug.reason}`);
   }

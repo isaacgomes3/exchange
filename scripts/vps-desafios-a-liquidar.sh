@@ -23,5 +23,6 @@ fetch() {
 mkdir -p "$WORK/lib"
 fetch "scripts/vps-desafios-a-liquidar.mjs" "$WORK/vps-desafios-a-liquidar.mjs"
 fetch "scripts/lib/desafio-settle-suggest.mjs" "$WORK/lib/desafio-settle-suggest.mjs"
+fetch "scripts/lib/betbra-inplay-sync.mjs" "$WORK/lib/betbra-inplay-sync.mjs"
 
 exec node "$WORK/vps-desafios-a-liquidar.mjs" "$@"
