@@ -84,6 +84,20 @@ Marker session admin: `DO_NOT_CHANGE_ADMIN_SESSION_MODE_WITHOUT_EXPLICIT_REQUEST
 - `admin-manual-deposits.html` — creditar saldo (depósitos)
 - `admin-monitoring-desafios.html` — cards 3 zonas + settle
 
+## Publicação versionada (`release-artifact-v1`)
+
+Runbook: `docs/RELEASES.md` · publicador: `scripts/vps-publish-release.sh` ·
+contrato: `scripts/lib/release-manifest.mjs` · teste: `release-manifest.test.mjs`.
+
+- Um artefato por commit em `releases/<commit>`, com `__manifest.json` (sha256 de
+  cada arquivo) e `__version.json` (commit publicado, consultável por HTTP)
+- `v2` é **symlink** para a release; troca atômica (`ln -sfn` + `mv -Tf`); `--rollback`
+  volta para a anterior pelo `.history`
+- **Guarda de regressão:** `decidePublish()` recusa commit `behind` ou `diverged` em
+  relação ao que está no ar (código de saída 3); só `--force` passa por cima
+- Cache-bust sai do build (`applyCacheBust()` → commit curto). **Proibido** `sed` de
+  `?v=` no HTML publicado e escrita com `find /var/www -name` (atinge backups)
+
 ## Auditoria de desvio (produção × git)
 
 `npm run audit:prod` — compara cada arquivo servido em produção com o conteúdo de

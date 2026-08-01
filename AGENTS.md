@@ -119,6 +119,7 @@ Desafios. Não reverter **Modo usuário / Modo ADM** nem **espelho de conta**.
 10. **Espelho de conta:** `setImpersonation` / `getEffectiveUserId` / banner «Sair do espelho»; entrada em `admin-users` (Espelho); proteger readonly (`proteger-espelho-readonly-v13`).
 11. **VPS:** após deploy → `vps-check-pos-deploy-v10.sh` (via API GitHub, não raw cacheado).
 12. **Antes e depois de publicar:** `npm run audit:prod` (`prod-surface-v1`) compara produção × git. `DESVIO` = arquivo no ar sem commit (editado no servidor) → o próximo hotfix o sobrescreve; `ATRASADO` = publicado de branch antiga. Não publicar em cima de `DESVIO` sem antes trazer o conteúdo para o repo.
+13. **Publicar frontend:** `scripts/vps-publish-release.sh --ref <commit>` (`release-artifact-v1`, runbook `docs/RELEASES.md`) — release por commit em `releases/<sha>`, `v2` como symlink, `__version.json` no ar e **guarda que recusa commit anterior/divergente**. Cache-bust vem do build; **proibido** `sed` de `?v=` no servidor e `find /var/www -name` para escrever. Novos hotfixes por arquivo não devem ser criados.
 
 Mudança em qualquer item exige pedido explícito + bump + sync AGENTS/docs + testes verdes.
 <!-- END:system-non-regression -->

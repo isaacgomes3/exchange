@@ -76,6 +76,22 @@ async function fetchDeployed(urlPath) {
   return { status: res.status, contentType, body };
 }
 
+/** Release versionada responde direto qual commit está publicado. */
+async function publishedVersion() {
+  try {
+    const res = await fetch(origin + "/__version.json", {
+      headers: { "cache-control": "no-cache" },
+    });
+    if (!res.ok) return null;
+    const info = await res.json();
+    return info && info.commit ? info : null;
+  } catch {
+    return null;
+  }
+}
+
+const version = await publishedVersion();
+
 const rows = [];
 for (const [urlPath, repoPath] of PROD_SURFACE) {
   const row = { urlPath, repoPath, status: "", detail: "", bad: false };
@@ -146,6 +162,15 @@ for (const [urlPath, repoPath] of PROD_SURFACE) {
 
 const width = Math.max(...rows.map((r) => r.urlPath.length));
 console.log(`\nAuditoria de desvio · ${origin} · mainline=${mainlineRef}\n`);
+if (version) {
+  console.log(
+    `  release publicada: ${version.commit.slice(0, 12)} · ${version.fileCount} arquivos · ${version.builtAt}\n`
+  );
+} else {
+  console.log(
+    "  release publicada: <sem /__version.json> — publicação por arquivo, sem versão rastreável\n"
+  );
+}
 for (const r of rows) {
   console.log(
     "  " + r.urlPath.padEnd(width) + "  " + r.status.padEnd(12) + "  " + r.detail
