@@ -356,6 +356,21 @@ void EXCHANGE_INCOMPLETE_HEAL_RULE;
 void SETTLEMENT_ODD_CANONICAL_RULE;
 void settlementCreditCents;
 
+let createExchangeOrdersServiceFn = null;
+try {
+  const xo = await import(
+    pathToFileURL(
+      resolve(dirname(fileURLToPath(import.meta.url)), "lib/exchange-orders-service.mjs")
+    ).href
+  );
+  createExchangeOrdersServiceFn = xo.createExchangeOrdersService;
+} catch (err) {
+  console.warn(
+    "[serverfn-shim] exchange-orders-service ausente:",
+    err instanceof Error ? err.message : err
+  );
+}
+
 const require = createRequire(import.meta.url);
 let toJSON;
 try {
@@ -805,11 +820,14 @@ async function sb(path, { token, method = "GET", body } = {}) {
   if (!res.ok) {
     const msg =
       (data && data.message) ||
+      (data && data.error) ||
       (data && data.error_description) ||
       text.slice(0, 200) ||
       res.statusText;
     const err = new Error(msg);
     err.status = res.status;
+    err.code = (data && data.code) || undefined;
+    err.details = data;
     throw err;
   }
   return data;
@@ -3061,6 +3079,14 @@ function requireUserId(token) {
   if (!uid) throw new Error("Não autorizado");
   return uid;
 }
+
+const exchangeOrdersApi = createExchangeOrdersServiceFn
+  ? createExchangeOrdersServiceFn({
+      sb,
+      serviceKey: SERVICE_KEY,
+      requireUserId: async (token) => requireUserId(token),
+    })
+  : null;
 
 async function getUserProfileBundle(userId) {
   const dayIso = startOfDaySaoPaulo().toISOString();
@@ -9772,6 +9798,190 @@ const server = createServer(async (req, res) => {
       );
     } catch (err) {
       return sendJson(res, 400, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  // --- Exchange orders (sessão do cliente + place/cancel/status) ---
+  if (url.pathname === "/api/arbishield/exchange-session/connect" && req.method === "POST") {
+    try {
+      if (!exchangeOrdersApi) {
+        return sendJson(res, 503, { error: "exchange-orders-service ausente" });
+      }
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      const body = raw ? JSON.parse(raw) : {};
+      const out = await exchangeOrdersApi.connectSession(token, body.data || body);
+      return sendJson(res, 200, out);
+    } catch (err) {
+      return sendJson(res, err.status || 400, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+        code: err.code || undefined,
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/exchange-session/disconnect" && req.method === "POST") {
+    try {
+      if (!exchangeOrdersApi) {
+        return sendJson(res, 503, { error: "exchange-orders-service ausente" });
+      }
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      const body = raw ? JSON.parse(raw) : {};
+      const out = await exchangeOrdersApi.disconnectSession(token, body.data || body);
+      return sendJson(res, 200, out);
+    } catch (err) {
+      return sendJson(res, err.status || 400, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/exchange-session/status" && req.method === "GET") {
+    try {
+      if (!exchangeOrdersApi) {
+        return sendJson(res, 503, { error: "exchange-orders-service ausente" });
+      }
+      const token = bearerFromReq(req);
+      const out = await exchangeOrdersApi.sessionStatus(token, {
+        provider: url.searchParams.get("provider") || "betbra",
+      });
+      return sendJson(res, 200, out);
+    } catch (err) {
+      return sendJson(res, err.status || 400, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/exchange-session/balance" && req.method === "GET") {
+    try {
+      if (!exchangeOrdersApi) {
+        return sendJson(res, 503, { error: "exchange-orders-service ausente" });
+      }
+      if (typeof exchangeOrdersApi.sessionBalance !== "function") {
+        return sendJson(res, 503, {
+          error:
+            "API de saldo desatualizada — atualize exchange-orders-service.mjs na VPS",
+        });
+      }
+      const token = bearerFromReq(req);
+      const out = await exchangeOrdersApi.sessionBalance(token, {
+        provider: url.searchParams.get("provider") || "betbra",
+      });
+      return sendJson(res, 200, out);
+    } catch (err) {
+      return sendJson(res, err.status || 400, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+        code: err.code || undefined,
+      });
+    }
+  }
+
+  if (
+    url.pathname === "/api/arbishield/exchange-session/mexchange-account" &&
+    req.method === "GET"
+  ) {
+    try {
+      if (!exchangeOrdersApi) {
+        return sendJson(res, 503, { error: "exchange-orders-service ausente" });
+      }
+      if (typeof exchangeOrdersApi.sessionMexchangeAccount !== "function") {
+        return sendJson(res, 503, {
+          error:
+            "API desatualizada — rode vps-hotfix-mexchange-offers-live.sh na VPS",
+        });
+      }
+      const token = bearerFromReq(req);
+      const out = await exchangeOrdersApi.sessionMexchangeAccount(token, {
+        provider: url.searchParams.get("provider") || "betbra",
+      });
+      return sendJson(res, out.ok ? 200 : 401, out);
+    } catch (err) {
+      return sendJson(res, err.status || 400, {
+        ok: false,
+        authenticated: false,
+        error: err instanceof Error ? err.message : String(err),
+        code: err.code || undefined,
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/exchange-orders/place" && req.method === "POST") {
+    try {
+      if (!exchangeOrdersApi) {
+        return sendJson(res, 503, { error: "exchange-orders-service ausente" });
+      }
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      const body = raw ? JSON.parse(raw) : {};
+      const out = await exchangeOrdersApi.placeOrder(token, body.data || body);
+      return sendJson(res, 200, out);
+    } catch (err) {
+      return sendJson(res, err.status || 400, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+        code: err.code || undefined,
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/exchange-orders/cancel" && req.method === "POST") {
+    try {
+      if (!exchangeOrdersApi) {
+        return sendJson(res, 503, { error: "exchange-orders-service ausente" });
+      }
+      const token = bearerFromReq(req);
+      const raw = await parseBody(req);
+      const body = raw ? JSON.parse(raw) : {};
+      const out = await exchangeOrdersApi.cancelOrder(token, body.data || body);
+      return sendJson(res, 200, out);
+    } catch (err) {
+      return sendJson(res, err.status || 400, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+        code: err.code || undefined,
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/exchange-orders/status" && req.method === "GET") {
+    try {
+      if (!exchangeOrdersApi) {
+        return sendJson(res, 503, { error: "exchange-orders-service ausente" });
+      }
+      const token = bearerFromReq(req);
+      const out = await exchangeOrdersApi.orderStatus(token, {
+        orderId: url.searchParams.get("orderId") || url.searchParams.get("id"),
+        connectionId: url.searchParams.get("connectionId"),
+      });
+      return sendJson(res, 200, out);
+    } catch (err) {
+      return sendJson(res, err.status || 400, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+        code: err.code || undefined,
+      });
+    }
+  }
+
+  if (url.pathname === "/api/arbishield/exchange-orders" && req.method === "GET") {
+    try {
+      if (!exchangeOrdersApi) {
+        return sendJson(res, 503, { error: "exchange-orders-service ausente" });
+      }
+      const token = bearerFromReq(req);
+      const out = await exchangeOrdersApi.listMyOrders(token);
+      return sendJson(res, 200, out);
+    } catch (err) {
+      return sendJson(res, err.status || 400, {
+        ok: false,
         error: err instanceof Error ? err.message : String(err),
       });
     }

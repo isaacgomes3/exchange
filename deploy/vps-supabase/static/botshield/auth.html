@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Entrar — BotShield</title>
+  <link rel="stylesheet" href="/botshield.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/botshield.js"></script>
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="brand">
+        <div class="brand-mark">BS</div>
+        <div class="brand-name">botshield</div>
+        <span class="brand-badge">beta</span>
+      </div>
+      <h1>Entrar</h1>
+      <p class="sub">Painel de bots — acesso só por este subdomínio.</p>
+      <div id="err" class="err"></div>
+      <form id="form" class="form-grid">
+        <label>
+          E-mail
+          <input type="email" name="email" required autocomplete="username" />
+        </label>
+        <label>
+          Senha
+          <input type="password" name="password" required autocomplete="current-password" />
+        </label>
+        <button class="btn btn-primary" type="submit">Entrar</button>
+      </form>
+      <p class="notice">
+        Use a mesma conta ArbiShield. Este painel não aparece no app nem no admin —
+        URL direta: <strong>botshield.arbishield.app</strong>
+      </p>
+    </div>
+  </div>
+  <script>
+    (async function () {
+      if (!BotShield.hostOk()) {
+        document.body.innerHTML =
+          "<main style='padding:40px;color:#fff;background:#0b0d10;font-family:sans-serif'>" +
+          "<h1>BotShield</h1><p>Acesso somente via botshield.arbishield.app</p></main>";
+        return;
+      }
+      const sb = BotShield.client();
+      const { data } = await sb.auth.getSession();
+      const params = new URLSearchParams(location.search);
+      const next = params.get("next") || "/bots.html";
+      if (data?.session) {
+        location.replace(next);
+        return;
+      }
+      const err = document.getElementById("err");
+      document.getElementById("form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        err.classList.remove("show");
+        const fd = new FormData(e.target);
+        const email = String(fd.get("email") || "").trim();
+        const password = String(fd.get("password") || "");
+        const { error } = await sb.auth.signInWithPassword({ email, password });
+        if (error) {
+          err.textContent = error.message || "Falha no login";
+          err.classList.add("show");
+          return;
+        }
+        location.replace(next);
+      });
+    })();
+  </script>
+</body>
+</html>

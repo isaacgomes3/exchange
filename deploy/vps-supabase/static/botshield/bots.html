@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Meus bots — BotShield</title>
+  <link rel="stylesheet" href="/botshield.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/botshield.js"></script>
+  <script src="/botshield-shell.js" defer></script>
+</head>
+<body data-active="bots">
+  <div id="page" hidden>
+    <div class="page-head">
+      <div>
+        <h1>Meus bots</h1>
+        <p class="sub" id="botsSummary">—</p>
+      </div>
+      <a class="btn btn-primary" href="/criar.html">+ Criar bot</a>
+    </div>
+
+    <div class="toolbar">
+      <label class="field">
+        <span aria-hidden="true">⌕</span>
+        <input id="q" type="search" placeholder="Buscar por nome..." />
+      </label>
+      <label class="field" style="flex:0;min-width:140px">
+        <select id="filterActive">
+          <option value="all">Todos</option>
+          <option value="on">Ativos</option>
+          <option value="off">Inativos</option>
+        </select>
+      </label>
+      <label class="field" style="flex:0;min-width:140px">
+        <select id="sortBy">
+          <option value="name">Nome</option>
+          <option value="pnl">P/L</option>
+          <option value="winRate">WinRate</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="bots-grid" id="grid"></div>
+  </div>
+
+  <script>
+    function tagClass(t) {
+      const s = String(t || "").toLowerCase();
+      if (s === "lay") return "tag lay";
+      if (s === "back") return "tag back";
+      return "tag";
+    }
+
+    function render() {
+      const q = String(document.getElementById("q").value || "")
+        .trim()
+        .toLowerCase();
+      const filter = document.getElementById("filterActive").value;
+      const sortBy = document.getElementById("sortBy").value;
+      let list = BotShield.loadBots();
+
+      list = list.filter((b) => {
+        if (filter === "on" && !b.active) return false;
+        if (filter === "off" && b.active) return false;
+        if (!q) return true;
+        return (
+          String(b.name).toLowerCase().includes(q) ||
+          String(b.description).toLowerCase().includes(q)
+        );
+      });
+
+      list.sort((a, b) => {
+        if (sortBy === "pnl") return (b.pnlCents || 0) - (a.pnlCents || 0);
+        if (sortBy === "winRate") return (b.winRate || 0) - (a.winRate || 0);
+        return String(a.name).localeCompare(String(b.name), "pt-BR");
+      });
+
+      const active = BotShield.loadBots().filter((b) => b.active).length;
+      const total = BotShield.loadBots().length;
+      document.getElementById("botsSummary").textContent =
+        active +
+        " bot(s) ativo(s) (Limite: 10) / " +
+        total +
+        " bots (Limite: 100)";
+
+      const grid = document.getElementById("grid");
+      if (!list.length) {
+        grid.innerHTML =
+          '<div class="empty">Nenhum bot encontrado. <a href="/criar.html" style="color:var(--accent)">Criar o primeiro</a>.</div>';
+        return;
+      }
+
+      grid.innerHTML = list
+        .map((b) => {
+          const pnl = BotShield.money(b.pnlCents);
+          const pnlCls = (b.pnlCents || 0) >= 0 ? "good" : "bad";
+          const tags = (b.tags || [])
+            .map((t) => '<span class="' + tagClass(t) + '">' + t + "</span>")
+            .join("");
+          return (
+            '<article class="bot-card" data-id="' +
+            b.id +
+            '">' +
+            '<div class="bot-card-top">' +
+            '<label class="toggle"><input type="checkbox" data-toggle ' +
+            (b.active ? "checked" : "") +
+            " /> <span>" +
+            (b.active ? "Ativo" : "Inativo") +
+            "</span></label>" +
+            '<button type="button" class="menu-btn" data-del title="Excluir">⋯</button>' +
+            "</div>" +
+            "<h2>" +
+            b.name +
+            "</h2>" +
+            '<p class="desc">' +
+            (b.description || "") +
+            "</p>" +
+            '<div class="tags">' +
+            tags +
+            "</div>" +
+            '<div class="integ"><span>Integrações associadas:</span>' +
+            '<span class="integ-dot">' +
+            (b.integrations || 0) +
+            "</span></div>" +
+            '<div class="stats">' +
+            '<div class="stat"><div class="k">Green</div><div class="v good">' +
+            (b.wins || 0) +
+            "</div></div>" +
+            '<div class="stat"><div class="k">Red</div><div class="v bad">' +
+            (b.losses || 0) +
+            "</div></div>" +
+            '<div class="stat"><div class="k">P/L</div><div class="v ' +
+            pnlCls +
+            '">' +
+            pnl +
+            "</div></div>" +
+            '<div class="stat"><div class="k">ROI</div><div class="v">' +
+            (b.roi || 0) +
+            "%</div></div>" +
+            '<div class="stat"><div class="k">FlatROI</div><div class="v">' +
+            (b.flatRoi || 0) +
+            "%</div></div>" +
+            '<div class="stat"><div class="k">WinRate</div><div class="v">' +
+            (b.winRate || 0) +
+            "%</div></div>" +
+            "</div></article>"
+          );
+        })
+        .join("");
+
+      grid.querySelectorAll("[data-toggle]").forEach((input) => {
+        input.addEventListener("change", () => {
+          const card = input.closest(".bot-card");
+          BotShield.toggleBot(card.getAttribute("data-id"), input.checked);
+          render();
+        });
+      });
+      grid.querySelectorAll("[data-del]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const id = btn.closest(".bot-card").getAttribute("data-id");
+          if (confirm("Excluir este bot?")) {
+            BotShield.removeBot(id);
+            render();
+          }
+        });
+      });
+    }
+
+    document.addEventListener("botshield:ready", () => {
+      ["q", "filterActive", "sortBy"].forEach((id) => {
+        document.getElementById(id).addEventListener("input", render);
+        document.getElementById(id).addEventListener("change", render);
+      });
+      render();
+    });
+  </script>
+</body>
+</html>
