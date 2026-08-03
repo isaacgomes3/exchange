@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Conta Exchange — BotShield</title>
+  <link rel="stylesheet" href="/botshield.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/botshield.js"></script>
+  <script src="/botshield-shell.js" defer></script>
+</head>
+<body data-active="conta-betbra">
+  <div id="page" hidden>
+    <div class="page-head">
+      <div>
+        <h1>Conta Exchange</h1>
+        <p class="sub">
+          Login e senha da Mexchange (Fulltbet ou BetBra) — criptografados.
+          A marca ativa é a configurada na VPS (<code>EXCHANGE_BRAND</code>).
+        </p>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px">
+      <h2>Status</h2>
+      <p id="statusLine" class="notice" style="margin:0">Carregando…</p>
+      <div id="statusBox" class="form-grid" style="margin-top:14px;display:none">
+        <div class="field" style="flex-direction:column;align-items:flex-start;padding:12px;gap:4px">
+          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Login</span>
+          <strong id="stLogin">—</strong>
+        </div>
+        <div class="field" style="flex-direction:column;align-items:flex-start;padding:12px;gap:4px">
+          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Senha</span>
+          <strong id="stPass">—</strong>
+        </div>
+        <div class="field" style="flex-direction:column;align-items:flex-start;padding:12px;gap:4px">
+          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Rótulo</span>
+          <strong id="stLabel">—</strong>
+        </div>
+        <div class="field" style="flex-direction:column;align-items:flex-start;padding:12px;gap:4px">
+          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Saldo Exchange</span>
+          <strong id="stBalance">—</strong>
+        </div>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" type="button" id="btnBalance">
+          Atualizar saldo
+        </button>
+      </div>
+      <div
+        id="deviceCodeBox"
+        class="form-grid"
+        style="margin-top:14px;display:grid"
+      >
+        <label style="grid-column:1/-1">
+          Código do e-mail da exchange (novo dispositivo)
+          <input
+            id="deviceCode"
+            type="text"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            maxlength="12"
+            placeholder="Ex.: 123456"
+            style="letter-spacing:0.12em;font-weight:800"
+          />
+        </label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" type="button" id="btnDeviceCode">
+            Enviar código e atualizar saldo
+          </button>
+        </div>
+        <p class="notice" style="margin:0;grid-column:1/-1">
+          Não há tela de “dispositivos” no site. O código chega por
+          <strong>e-mail/SMS</strong> (“Código de Login”) da Fulltbet/BetBra
+          quando a VPS tenta logar. Cole aqui e envie.
+        </p>
+      </div>
+      <p id="balanceHint" class="notice" style="margin-top:12px">
+        O login da VPS é um dispositivo diferente das suas sessões Chrome.
+        Se a exchange enviar código por e-mail, use o campo acima.
+      </p>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px">
+      <h2>Token de Aplicativo Externo (recomendado)</h2>
+      <p>
+        Na BetBra: conta → <strong>Aplicativos Externos</strong>. Apps como
+        <code>BOT/SOFTWARE;LAYBACK</code> já têm permissão de apostar offline.
+        Se a BetBra mostrar <strong>token / session / API key</strong> ao criar
+        ou reautorizar o app, cole abaixo — é o caminho mais estável na VPS.
+      </p>
+      <ol class="notice" style="margin:10px 0;padding-left:1.2em">
+        <li>Abra Aplicativos Externos na BetBra (não clique no X — isso revoga)</li>
+        <li>Crie/reautorize um app de bot, ou use o token do LAYBACK se tiver</li>
+        <li>Cole o token aqui → Salvar → <strong>Testar sessão</strong></li>
+      </ol>
+      <label style="display:block;margin-top:10px">
+        Nome do app (opcional)
+        <input
+          id="appLabel"
+          type="text"
+          placeholder="Ex.: LAYBACK / ArbiShield Bot"
+          style="width:100%;margin-top:6px"
+        />
+      </label>
+      <label style="display:block;margin-top:12px">
+        Token / session do aplicativo
+        <textarea
+          id="appToken"
+          rows="3"
+          placeholder="Cole o token do aplicativo externo (não o Cookie do Chrome)"
+          style="width:100%;margin-top:6px;font-family:ui-monospace,monospace"
+        ></textarea>
+      </label>
+      <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" type="button" id="btnSaveAppToken">
+          Salvar token do app
+        </button>
+        <button class="btn btn-secondary" type="button" id="btnTestMexchangeApp">
+          Testar sessão
+        </button>
+      </div>
+      <p id="appTokenHint" class="notice" style="margin-top:12px">
+        O X na lista de apps é só “revogar”. Mantenha o LAYBACK ACTIVE.
+        Se não aparecer token na tela, use o código do e-mail ou o Cookie abaixo.
+      </p>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px">
+      <h2>Sessão do navegador (quando a VPS pede device)</h2>
+      <p>
+        O Cookie da exchange costuma ser <strong>HttpOnly</strong> (não aparece no
+        console). O jeito mais fácil é exportar um HAR e capturar aqui:
+      </p>
+      <ol class="notice" style="margin:10px 0;padding-left:1.2em">
+        <li>Chrome logado na exchange (Fulltbet ou BetBra) → <kbd>F12</kbd> → Network → filtro <code>mexchange-api</code></li>
+        <li>Botão direito num pedido → <strong>Copiar → Copiar como cURL</strong></li>
+        <li>Cole o cURL na caixa abaixo (ou arraste um arquivo <code>.har</code>)</li>
+      </ol>
+
+      <label style="display:block;margin-top:10px">
+        Colar cURL completo (Copy as cURL)
+        <textarea
+          id="curlPaste"
+          rows="4"
+          placeholder="curl &quot;https://mexchange-api.fulltbet.bet.br/...&quot; -b &quot;BIAB_LANGUAGE=PT_BR; sb=...&quot; ..."
+          style="width:100%;margin-top:6px"
+        ></textarea>
+      </label>
+      <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-secondary" type="button" id="btnParseCurl">
+          Extrair Cookie do cURL
+        </button>
+      </div>
+
+      <div
+        id="harDrop"
+        class="notice"
+        style="
+          margin-top:12px;
+          padding:22px;
+          text-align:center;
+          border-style:dashed;
+          cursor:pointer;
+        "
+      >
+        Ou arraste o arquivo <strong>.har</strong> aqui
+        <input id="harFile" type="file" accept=".har,application/json" hidden />
+      </div>
+
+      <label style="display:block;margin-top:14px">
+        Cookie header (preenchido automaticamente)
+        <textarea
+          id="cookieHeader"
+          rows="3"
+          placeholder="BIAB_LANGUAGE=PT_BR; sb=...; BIAB_CUSTOMER=..."
+          style="width:100%;margin-top:6px"
+        ></textarea>
+      </label>
+      <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" type="button" id="btnSaveCookies">
+          Salvar sessão do navegador
+        </button>
+        <button class="btn btn-secondary" type="button" id="btnTestMexchange">
+          Testar sessão
+        </button>
+        <button class="btn btn-secondary" type="button" id="btnCopyCookie">
+          Copiar Cookie
+        </button>
+      </div>
+      <p id="cookieHint" class="notice" style="margin-top:12px">
+        Cookies ficam criptografados. Expirem quando você sair da exchange.
+        Depois de salvar, use <strong>Testar sessão</strong> — precisa ver accountId
+        antes do place. Cookie do Chrome costuma falhar no IP da VPS.
+      </p>
+      <details style="margin-top:12px">
+        <summary style="cursor:pointer;color:var(--muted)">Script no PC (opcional)</summary>
+        <pre class="notice" style="margin-top:8px;white-space:pre-wrap">node scripts/extract-mexchange-cookie-from-har.mjs ./betbra.har</pre>
+      </details>
+    </div>
+
+    <div class="panel">
+      <h2>Salvar login e senha</h2>
+      <p>
+        Use o e-mail/usuário e a senha da Fulltbet (se a VPS estiver em EXCHANGE_BRAND=fulltbet).
+        A senha <strong>nunca</strong> é exibida de volta — só confirmação de que está salva.
+      </p>
+      <div id="err" class="err"></div>
+      <div id="ok" class="notice" style="display:none;color:var(--good);border-color:rgba(61,222,160,.35);background:rgba(61,222,160,.08)"></div>
+      <form id="form" class="form-grid" autocomplete="off">
+        <label>
+          Login / e-mail da exchange
+          <input
+            name="login"
+            id="login"
+            type="text"
+            required
+            autocomplete="username"
+            placeholder="seu@email.com"
+          />
+        </label>
+        <label>
+          Senha da exchange
+          <input
+            name="password"
+            id="password"
+            type="password"
+            required
+            autocomplete="current-password"
+            placeholder="••••••••"
+          />
+        </label>
+        <label>
+          Mostrar senha ao digitar
+          <span style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" id="showPass" style="width:auto;accent-color:var(--accent)" />
+            <span style="color:var(--muted);font-size:13px">revelar no campo (só enquanto digita)</span>
+          </span>
+        </label>
+        <label>
+          Rótulo da conta (opcional)
+          <input name="accountLabel" placeholder="Ex.: Conta principal" />
+        </label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" type="submit">Salvar credenciais</button>
+          <button class="btn btn-secondary" type="button" id="btnDisconnect">
+            Remover conta
+          </button>
+        </div>
+      </form>
+      <p class="notice">
+        Armazenamento AES-GCM no servidor (exchange_connections). Não aparece no app
+        nem no admin ArbiShield — só em botshield.arbishield.app.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener("botshield:ready", async (ev) => {
+      const { sb } = ev.detail;
+      const err = document.getElementById("err");
+      const ok = document.getElementById("ok");
+      const statusLine = document.getElementById("statusLine");
+      const statusBox = document.getElementById("statusBox");
+
+      async function bearer() {
+        const { data } = await sb.auth.getSession();
+        return data?.session?.access_token || "";
+      }
+
+      function formatBrl(n) {
+        const v = Number(n);
+        if (!Number.isFinite(v)) return "—";
+        return v.toLocaleString("pt-BR", {
+          style: "currency",
+          currency: "BRL",
+        });
+      }
+
+      function showDeviceCodeBox(show) {
+        const box = document.getElementById("deviceCodeBox");
+        if (box) box.style.display = show ? "grid" : "none";
+        if (show) {
+          const inp = document.getElementById("deviceCode");
+          if (inp) setTimeout(() => inp.focus(), 50);
+        }
+      }
+
+      async function refreshBalance(validationCode) {
+        const stBalance = document.getElementById("stBalance");
+        const hint = document.getElementById("balanceHint");
+        const code = String(validationCode || "")
+          .replace(/\s+/g, "")
+          .trim();
+        stBalance.textContent = "Consultando…";
+        hint.textContent = code
+          ? "Enviando código de login e lendo saldo…"
+          : "Fazendo login na BetBra e lendo clients/balance…";
+        try {
+          let url =
+            "/api/arbishield/exchange-session/balance?provider=betbra";
+          if (code) {
+            url +=
+              "&validationCode=" + encodeURIComponent(code);
+          }
+          const res = await fetch(url, {
+            headers: {
+              Accept: "application/json",
+              Authorization: "Bearer " + (await bearer()),
+            },
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            const needsCode =
+              json.code === "BETBRA_DEVICE_VALIDATION" ||
+              json.validationRequired === true ||
+              /valida[cç][aã]o|c[oó]digo|dispositivo|device/i.test(
+                String(json.error || "")
+              );
+            if (needsCode) showDeviceCodeBox(true);
+            const err = new Error(json.error || "Falha ao ler saldo");
+            err.code = json.code;
+            err.validationRequired = needsCode;
+            throw err;
+          }
+          showDeviceCodeBox(false);
+          const inp = document.getElementById("deviceCode");
+          if (inp) inp.value = "";
+          stBalance.textContent = formatBrl(json.balance);
+          hint.textContent =
+            "Saldo " +
+            formatBrl(json.balance) +
+            (json.source ? " · via " + json.source : "") +
+            (json.fetchedAt
+              ? " · " + new Date(json.fetchedAt).toLocaleString("pt-BR")
+              : "") +
+            (code ? " · dispositivo da VPS aprovado" : "");
+          return json;
+        } catch (ex) {
+          stBalance.textContent = "indisponível";
+          const msg = ex instanceof Error ? ex.message : String(ex);
+          if (ex && ex.validationRequired) {
+            hint.textContent =
+              msg +
+              " — abra o e-mail da BetBra (“Código de Login”), cole o código acima e envie.";
+          } else if (/accountid not found/i.test(msg)) {
+            hint.textContent =
+              msg +
+              " — a API não reconheceu a conta nesta sessão. Tente Atualizar saldo de novo (pode gerar código por e-mail) ou Testar sessão.";
+          } else {
+            hint.textContent =
+              msg + " — confira login/senha e se o IP da VPS é BR.";
+          }
+          throw ex;
+        }
+      }
+
+      async function refreshStatus() {
+        statusLine.textContent = "Consultando…";
+        statusBox.style.display = "none";
+        try {
+          const res = await fetch(
+            "/api/arbishield/exchange-session/status?provider=betbra",
+            {
+              headers: {
+                Accept: "application/json",
+                Authorization: "Bearer " + (await bearer()),
+              },
+            }
+          );
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || "Falha ao ler status");
+          if (!json.connected) {
+            statusLine.textContent =
+              "Nenhuma conta BetBra salva. Preencha login e senha abaixo.";
+            return;
+          }
+          statusLine.textContent =
+            "Conta conectada" +
+            (json.authMode === "external_app" || json.hasExternalAppToken
+              ? " · app externo"
+              : json.authMode
+                ? " · " + json.authMode
+                : "") +
+            (json.connectedAt
+              ? " · desde " + new Date(json.connectedAt).toLocaleString("pt-BR")
+              : "");
+          statusBox.style.display = "grid";
+          document.getElementById("stLogin").textContent =
+            json.loginMasked ||
+            (json.hasExternalAppToken ? "(token do app)" : "(login salvo)");
+          document.getElementById("stPass").textContent = json.hasPassword
+            ? "•••••••• (salva)"
+            : json.hasExternalAppToken
+              ? "token app (salvo)"
+              : "não salva";
+          document.getElementById("stLabel").textContent =
+            json.appLabel || json.accountLabel || "—";
+          document.getElementById("stBalance").textContent =
+            json.lastBalance != null
+              ? formatBrl(json.lastBalance)
+              : "clique em Atualizar saldo";
+        } catch (ex) {
+          statusLine.textContent =
+            (ex instanceof Error ? ex.message : String(ex)) +
+            " — se a API não estiver no ar, rode o hotfix de ordens + BotShield.";
+        }
+      }
+
+      document.getElementById("showPass").addEventListener("change", (e) => {
+        document.getElementById("password").type = e.target.checked
+          ? "text"
+          : "password";
+      });
+
+      document.getElementById("form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        err.classList.remove("show");
+        ok.style.display = "none";
+        const fd = new FormData(e.target);
+        const login = String(fd.get("login") || "").trim();
+        const password = String(fd.get("password") || "");
+        const accountLabel = String(fd.get("accountLabel") || "").trim();
+        if (!login || !password) {
+          err.textContent = "Login e senha obrigatórios";
+          err.classList.add("show");
+          return;
+        }
+        try {
+          const res = await fetch("/api/arbishield/exchange-session/connect", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + (await bearer()),
+            },
+            body: JSON.stringify({
+              provider: "betbra",
+              login,
+              password,
+              accountLabel: accountLabel || login,
+            }),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            const raw = String(
+              json.error || json.message || json.code || "Falha ao salvar"
+            );
+            if (/not_found|schema|exchange_/i.test(raw) || json.code === "EXCHANGE_SCHEMA_MISSING") {
+              throw new Error(
+                "API/tabela ainda não criada. Na VPS rode vps-hotfix-botshield.sh e tente de novo."
+              );
+            }
+            throw new Error(raw);
+          }
+          document.getElementById("password").value = "";
+          document.getElementById("showPass").checked = false;
+          document.getElementById("password").type = "password";
+          ok.style.display = "block";
+          ok.textContent =
+            "Credenciais salvas · login " +
+            (json.loginMasked || "ok") +
+            " · senha criptografada";
+          await refreshStatus();
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+        }
+      });
+
+      document.getElementById("btnBalance").addEventListener("click", async () => {
+        err.classList.remove("show");
+        try {
+          await refreshBalance();
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+        }
+      });
+
+      document.getElementById("btnDeviceCode")?.addEventListener("click", async () => {
+        err.classList.remove("show");
+        const code = String(
+          document.getElementById("deviceCode")?.value || ""
+        )
+          .replace(/\s+/g, "")
+          .trim();
+        if (!/^\d{4,12}$/.test(code)) {
+          err.textContent =
+            "Cole o código numérico do e-mail BetBra (ex.: 6 dígitos).";
+          err.classList.add("show");
+          showDeviceCodeBox(true);
+          return;
+        }
+        try {
+          await refreshBalance(code);
+          ok.style.display = "block";
+          ok.textContent =
+            "Código aceito · saldo atualizado · dispositivo da VPS autorizado.";
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+        }
+      });
+
+      function headerFromHar(headers, name) {
+        const want = String(name).toLowerCase();
+        for (const h of headers || []) {
+          if (String(h.name || "").toLowerCase() === want) {
+            return String(h.value || "").trim();
+          }
+        }
+        return "";
+      }
+
+      function cookieAuthed(c) {
+        return (
+          /(?:^|;\s*)SESSION=/i.test(c) ||
+          /(?:^|;\s*)sb=/i.test(c) ||
+          /(?:^|;\s*)BIAB_CUSTOMER=/i.test(c)
+        );
+      }
+
+      function decodeWindowsCurlEscapes(s) {
+        let out = String(s || "");
+        out = out.replace(/\^%\^/g, "%");
+        out = out.replace(/\^\$/g, "$");
+        out = out.replace(/\^&/g, "&");
+        out = out.replace(/\^"/g, '"');
+        out = out.replace(/\^\^/g, "^");
+        out = out.replace(/\^(.)/g, "$1");
+        return out.trim();
+      }
+
+      function extractCookieFromCurl(text) {
+        const raw = String(text || "").trim();
+        if (!raw) return "";
+        if (!/^curl\b/i.test(raw) && cookieAuthed(raw)) {
+          return decodeWindowsCurlEscapes(raw.replace(/^cookie:\s*/i, ""));
+        }
+        let m = raw.match(/(?:^|\s)(?:-b|--cookie)\s+\^?"([\s\S]*?)\^?"/i);
+        if (!m) m = raw.match(/(?:^|\s)(?:-b|--cookie)\s+'([^']+)'/i);
+        if (!m) m = raw.match(/(?:^|\s)(?:-b|--cookie)\s+"([^"]+)"/i);
+        if (!m) m = raw.match(/-H\s+\^?"[Cc]ookie:\s*([\s\S]*?)\^?"/i);
+        if (!m) m = raw.match(/-H\s+'[Cc]ookie:\s*([^']+)'/i);
+        if (!m) m = raw.match(/-H\s+"[Cc]ookie:\s*([^"]+)"/i);
+        return m ? decodeWindowsCurlEscapes(m[1]) : "";
+      }
+
+      function extractCookieFromHar(har) {
+        const entries = har?.log?.entries || [];
+        const hits = [];
+        for (const entry of entries) {
+          const url = String(entry?.request?.url || "");
+          if (!/mexchange-api\.(?:betbra|fulltbet)\.bet\.br/i.test(url)) continue;
+          let cookie = headerFromHar(entry.request?.headers, "Cookie");
+          if (!cookie && entry.request?.cookies?.length) {
+            cookie = entry.request.cookies
+              .map((c) => c.name + "=" + c.value)
+              .join("; ");
+          }
+          if (!cookie) continue;
+          hits.push({
+            url,
+            cookie,
+            started: entry.startedDateTime || "",
+            hasSession: cookieAuthed(cookie),
+          });
+        }
+        hits.sort((a, b) => {
+          if (a.hasSession !== b.hasSession) return a.hasSession ? -1 : 1;
+          return String(b.started).localeCompare(String(a.started));
+        });
+        return hits[0] || null;
+      }
+
+      document.getElementById("btnParseCurl")?.addEventListener("click", () => {
+        err.classList.remove("show");
+        const curl = document.getElementById("curlPaste").value;
+        const cookie = extractCookieFromCurl(curl);
+        const hint = document.getElementById("cookieHint");
+        if (!cookie || !cookieAuthed(cookie)) {
+          err.textContent =
+            "Não achei Cookie de sessão (sb / BIAB_CUSTOMER / SESSION) no cURL.";
+          err.classList.add("show");
+          return;
+        }
+        document.getElementById("cookieHeader").value = cookie;
+        hint.textContent =
+          "Cookie extraído do cURL" +
+          (/(?:^|;\s*)sb=/i.test(cookie) ? " (sb JWT)" : "") +
+          ". Clique em Salvar sessão.";
+        ok.style.display = "block";
+        ok.textContent = "Cookie preenchido. Agora salve a sessão.";
+      });
+
+      async function ingestHarFile(file) {
+        const hint = document.getElementById("cookieHint");
+        err.classList.remove("show");
+        if (!file) return;
+        hint.textContent = "Lendo HAR…";
+        try {
+          const text = await file.text();
+          const har = JSON.parse(text);
+          const hit = extractCookieFromHar(har);
+          if (!hit) {
+            throw new Error(
+              "Nenhum Cookie de mexchange-api (Fulltbet/BetBra) no HAR. Exporte com a exchange aberta e logada."
+            );
+          }
+          document.getElementById("cookieHeader").value = hit.cookie;
+          hint.textContent =
+            "Cookie capturado" +
+            (hit.hasSession ? " (com SESSION)" : " (sem SESSION — pode falhar)") +
+            " · " +
+            hit.url.slice(0, 80);
+          ok.style.display = "block";
+          ok.textContent =
+            "Cookie preenchido. Clique em “Salvar sessão do navegador”.";
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+          hint.textContent = "Falha ao ler HAR.";
+        }
+      }
+
+      const harDrop = document.getElementById("harDrop");
+      const harFile = document.getElementById("harFile");
+      harDrop?.addEventListener("click", () => harFile?.click());
+      harFile?.addEventListener("change", () => {
+        const f = harFile.files && harFile.files[0];
+        ingestHarFile(f);
+      });
+      harDrop?.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        harDrop.style.borderColor = "var(--accent)";
+      });
+      harDrop?.addEventListener("dragleave", () => {
+        harDrop.style.borderColor = "";
+      });
+      harDrop?.addEventListener("drop", (e) => {
+        e.preventDefault();
+        harDrop.style.borderColor = "";
+        const f = e.dataTransfer?.files?.[0];
+        ingestHarFile(f);
+      });
+
+      document.getElementById("btnCopyCookie")?.addEventListener("click", async () => {
+        const v = String(document.getElementById("cookieHeader").value || "").trim();
+        if (!v) return;
+        try {
+          await navigator.clipboard.writeText(v);
+          document.getElementById("cookieHint").textContent = "Cookie copiado.";
+        } catch {
+          document.getElementById("cookieHint").textContent =
+            "Não foi possível copiar — selecione o texto manualmente.";
+        }
+      });
+
+      document.getElementById("btnSaveCookies").addEventListener("click", async () => {
+        err.classList.remove("show");
+        ok.style.display = "none";
+        const cookieHeader = String(
+          document.getElementById("cookieHeader").value || ""
+        ).trim();
+        const hint = document.getElementById("cookieHint");
+        if (!cookieHeader || cookieHeader.length < 10) {
+          err.textContent =
+            "Exporte o HAR da mexchange-api ou cole o Cookie manualmente";
+          err.classList.add("show");
+          return;
+        }
+        hint.textContent = "Salvando sessão…";
+        try {
+          const res = await fetch("/api/arbishield/exchange-session/connect", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + (await bearer()),
+            },
+            body: JSON.stringify({
+              provider: "betbra",
+              cookieHeader,
+            }),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || "Falha ao salvar cookies");
+          ok.style.display = "block";
+          ok.textContent =
+            "Sessão salva. Clique em Testar sessão antes do place.";
+          hint.textContent =
+            "Cookies salvos · authMode=" + (json.authMode || "browser_session");
+          document.getElementById("cookieHeader").value = "";
+          await refreshStatus();
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+          hint.textContent = "Falha ao salvar cookies.";
+        }
+      });
+
+      async function testMexchangeSession(hintEl) {
+        err.classList.remove("show");
+        ok.style.display = "none";
+        const hint =
+          hintEl ||
+          document.getElementById("appTokenHint") ||
+          document.getElementById("cookieHint");
+        if (hint) {
+          hint.textContent =
+            "Consultando /account/info na Mexchange a partir da VPS…";
+        }
+        try {
+          const res = await fetch(
+            "/api/arbishield/exchange-session/mexchange-account?provider=betbra",
+            {
+              headers: {
+                Accept: "application/json",
+                Authorization: "Bearer " + (await bearer()),
+              },
+            }
+          );
+          const json = await res.json().catch(() => ({}));
+          const id =
+            json.accountId != null && String(json.accountId).trim() !== ""
+              ? String(json.accountId)
+              : "";
+          const names = Array.isArray(json.cookieNames)
+            ? json.cookieNames.filter(Boolean).join(",")
+            : "";
+          // Critério real: accountId. HTTP 200 da Mexchange sem conta ≠ conectado.
+          if (!res.ok || json?.ok === false || json?.authenticated === false || !id) {
+            const msg =
+              (json.error || json.hint || `HTTP ${res.status}`) +
+              (json.hint && json.error ? " — " + json.hint : "");
+            throw new Error(
+              msg ||
+                "accountId vazio — sessão não autenticou. Não tente LAY+BACK."
+            );
+          }
+          const bal =
+            json.balance != null && Number.isFinite(Number(json.balance))
+              ? formatBrl(json.balance)
+              : "—";
+          ok.style.display = "block";
+          ok.textContent =
+            "Sessão OK · accountId=" + id + " · saldo " + bal;
+          if (hint) {
+            hint.textContent =
+              "accountId=" +
+              id +
+              " · cookiesUsados=" +
+              (names || "—") +
+              " · HTTP " +
+              (json.httpStatus || res.status) +
+              ". Pode tentar LAY+BACK em Ordens.";
+          }
+          return json;
+        } catch (ex) {
+          ok.style.display = "none";
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+          if (hint) {
+            hint.textContent =
+              "NÃO conectado — precisa de accountId. Token do app sem valor na tela, " +
+              "Cookie Chrome (IP ≠ VPS) ou device pendente. Use Atualizar saldo → código do e-mail.";
+          }
+          throw ex;
+        }
+      }
+
+      document.getElementById("btnSaveAppToken")?.addEventListener("click", async () => {
+        err.classList.remove("show");
+        ok.style.display = "none";
+        const hint = document.getElementById("appTokenHint");
+        const appToken = String(
+          document.getElementById("appToken")?.value || ""
+        ).trim();
+        const appLabel = String(
+          document.getElementById("appLabel")?.value || ""
+        ).trim();
+        if (!appToken || appToken.length < 8) {
+          err.textContent =
+            "Cole o token do Aplicativo Externo (mín. 8 caracteres).";
+          err.classList.add("show");
+          return;
+        }
+        if (hint) hint.textContent = "Salvando token do aplicativo…";
+        try {
+          const res = await fetch("/api/arbishield/exchange-session/connect", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + (await bearer()),
+            },
+            body: JSON.stringify({
+              provider: "betbra",
+              authMode: "external_app",
+              appToken,
+              houseToken: appToken,
+              appLabel: appLabel || "Aplicativo externo",
+              accountLabel: appLabel || "Aplicativo externo",
+            }),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || "Falha ao salvar token");
+          ok.style.display = "block";
+          ok.textContent =
+            "Token do app salvo · authMode=" +
+            (json.authMode || "external_app") +
+            ". Clique em Testar sessão.";
+          if (hint) {
+            hint.textContent =
+              "Token salvo. Use Testar sessão — precisa ver accountId.";
+          }
+          document.getElementById("appToken").value = "";
+          await refreshStatus();
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+          if (hint) hint.textContent = "Falha ao salvar token do app.";
+        }
+      });
+
+      document.getElementById("btnTestMexchange")?.addEventListener("click", () => {
+        void testMexchangeSession(document.getElementById("cookieHint"));
+      });
+      document.getElementById("btnTestMexchangeApp")?.addEventListener("click", () => {
+        void testMexchangeSession(document.getElementById("appTokenHint"));
+      });
+
+      document.getElementById("btnDisconnect").addEventListener("click", async () => {
+        err.classList.remove("show");
+        ok.style.display = "none";
+        if (!confirm("Remover login/senha BetBra salvos?")) return;
+        try {
+          const res = await fetch("/api/arbishield/exchange-session/disconnect", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + (await bearer()),
+            },
+            body: JSON.stringify({ provider: "betbra" }),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || "Falha ao remover");
+          ok.style.display = "block";
+          ok.textContent = "Conta BetBra removida.";
+          await refreshStatus();
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+          err.classList.add("show");
+        }
+      });
+
+      await refreshStatus();
+      // Se já tem conta salva, tenta ler o saldo automaticamente
+      try {
+        const line = statusLine.textContent || "";
+        if (/Conta conectada/i.test(line)) {
+          await refreshBalance();
+        }
+      } catch {
+        /* erro já aparece no hint */
+      }
+    });
+  </script>
+</body>
+</html>
