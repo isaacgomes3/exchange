@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <meta name="arbishield-build" content="admin-balanco-desafio-v1" />
+  <meta name="arbishield-features" content="admin-balanco-desafio-v1 extrato-eventos-detalhado-v1" />
+  <title>Balanço Desafio — ArbiShield</title>
+  <link rel="icon" type="image/png" href="/brand/favicon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/v2.css?v=balanco-desafio-1" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/finance-admins.js?v=balanco-desafio-1"></script>
+  <script src="/v2.js?v=balanco-desafio-1"></script>
+  <script src="/v2-pages.js?v=balanco-desafio-1"></script>
+  <script src="/v2-shell.js?v=balanco-desafio-1" defer></script>
+  <style>
+    .bd-kpis { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin-bottom: 16px; }
+    @media (max-width: 980px) { .bd-kpis { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+    @media (max-width: 560px) { .bd-kpis { grid-template-columns: 1fr; } }
+    .bd-kpi { border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 14px; background: rgba(4,26,20,0.85); }
+    .bd-kpi span { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+    .bd-kpi strong { font-size: 20px; display: block; margin-top: 4px; font-variant-numeric: tabular-nums; }
+    .bd-kpi em { display: block; margin-top: 4px; font-style: normal; font-size: 11px; color: var(--muted); }
+    .bd-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+    .bd-tab {
+      height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(6,37,29,0.9); color: var(--muted); font: inherit; font-size: 12px; font-weight: 700;
+      letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer;
+    }
+    .bd-tab.active { color: #041a14; background: #c9f223; border-color: #c9f223; }
+    .bd-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
+    .bd-toolbar select, .bd-toolbar input {
+      height: 38px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.12);
+      background: #06251d; color: #fff; padding: 0 12px; font: inherit;
+    }
+    .bd-wrap { border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; overflow: auto; background: rgba(4,26,20,0.75); }
+    .bd-table { width: 100%; min-width: 920px; border-collapse: collapse; }
+    .bd-table th, .bd-table td {
+      text-align: left; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.06);
+      font-size: 13px; vertical-align: middle;
+    }
+    .bd-table th {
+      color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; position: sticky; top: 0;
+      background: #041a14;
+    }
+    .bd-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .bd-table .pos { color: #c9f223; }
+    .bd-table .neg { color: #f87171; }
+    .bd-name { display: block; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
+    .muted { color: var(--muted); font-size: 11px; margin-top: 3px; }
+    .empty { padding: 28px; text-align: center; color: var(--muted); }
+    .tag { display: inline-flex; padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; border: 1px solid rgba(255,255,255,0.12); }
+    .tag.in { color: #c9f223; border-color: rgba(201,242,35,0.4); }
+    .tag.out { color: #f87171; border-color: rgba(248,113,113,0.4); }
+    .tag.live { color: #fbbf24; border-color: rgba(251,191,36,0.4); }
+    .tag.ok { color: #34d399; border-color: rgba(52,211,153,0.4); }
+    .tag.bad { color: #f87171; border-color: rgba(248,113,113,0.4); }
+    .tag.done { color: #94a3b8; border-color: rgba(148,163,184,0.35); }
+    .tag.pending { color: #fbbf24; border-color: rgba(251,191,36,0.4); }
+    .linkish { color: #c9f223; font-weight: 700; cursor: pointer; background: none; border: 0; padding: 0; font: inherit; }
+    .panel { display: none; }
+    .panel.show { display: block; }
+    .drawer-back {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 90;
+      display: none; align-items: stretch; justify-content: flex-end;
+    }
+    .drawer-back.show { display: flex; }
+    .drawer {
+      width: min(560px, 100%); background: #041a14; border-left: 1px solid rgba(201,242,35,0.2);
+      padding: 18px; overflow: auto;
+    }
+    .drawer h2 { margin: 0 0 4px; font-size: 16px; text-transform: uppercase; letter-spacing: 0.06em; }
+    .drawer h3 { margin: 18px 0 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .ud-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .ud-item { border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 10px; background: rgba(6,37,29,0.7); }
+    .ud-item .l { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+    .ud-item .v { margin-top: 4px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .part-card {
+      border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px; margin-bottom: 8px;
+      background: rgba(6,37,29,0.65);
+    }
+    .part-card.is-live { border-color: rgba(251,191,36,0.35); }
+    .part-top { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+    .part-metrics { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+    .part-metrics b { color: var(--text); }
+    .part-entries { margin: 8px 0 0; padding: 0; list-style: none; }
+    .part-entries li {
+      display: grid; grid-template-columns: 1fr auto auto; gap: 8px; padding: 6px 0;
+      border-top: 1px solid rgba(255,255,255,0.06); font-size: 12px;
+    }
+  </style>
+</head>
+<body data-shell="admin" data-active="balanco-desafio">
+  <!-- Marker: admin-balanco-desafio-v1 -->
+  <div class="page-head">
+    <div>
+      <h1>Balanço <span>Desafio</span></h1>
+      <p class="sub">PIX · transferências · movimentação · usuários · eventos cancelados e em andamento</p>
+    </div>
+    <button type="button" class="btn btn-ghost" id="btnRefresh">Atualizar</button>
+  </div>
+  <div id="err" class="err"></div>
+
+  <div class="bd-kpis">
+    <div class="bd-kpi"><span>Saldo Carteira Desafio</span><strong id="kpiSaldo">R$ 0,00</strong><em id="kpiUsers">0 usuários com saldo</em></div>
+    <div class="bd-kpi"><span>Entradas (PIX + transf.)</span><strong id="kpiIn" class="pos">R$ 0,00</strong><em id="kpiInDetail">depósitos e transferências</em></div>
+    <div class="bd-kpi"><span>Saídas / apostas</span><strong id="kpiOut" class="neg">R$ 0,00</strong><em id="kpiOutDetail">participações em eventos</em></div>
+    <div class="bd-kpi"><span>Eventos</span><strong id="kpiEvents">0</strong><em id="kpiEventsDetail">em andamento · cancelados</em></div>
+  </div>
+
+  <div class="bd-tabs" role="tablist">
+    <button type="button" class="bd-tab active" data-tab="deposits">Depósitos PIX</button>
+    <button type="button" class="bd-tab" data-tab="transfers">Transferências</button>
+    <button type="button" class="bd-tab" data-tab="movements">Movimentação</button>
+    <button type="button" class="bd-tab" data-tab="users">Usuários</button>
+    <button type="button" class="bd-tab" data-tab="parts">Desafios / Eventos</button>
+  </div>
+
+  <section class="panel show" id="panel-deposits">
+    <div class="bd-toolbar">
+      <select id="fltDepStatus">
+        <option value="ALL">Todos os status</option>
+        <option value="PENDING">Pendentes</option>
+        <option value="APPROVED">Aprovados</option>
+        <option value="REJECTED">Rejeitados</option>
+      </select>
+      <input id="fltDepQ" type="search" placeholder="Buscar cliente ou id…" style="min-width:220px" />
+    </div>
+    <div class="bd-wrap">
+      <table class="bd-table">
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th class="num">Valor</th>
+            <th>Rede</th>
+            <th>Status</th>
+            <th>Data</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyDeposits"><tr><td colspan="5" class="empty">Carregando…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-transfers">
+    <div class="bd-toolbar">
+      <input id="fltTrQ" type="search" placeholder="Buscar cliente, bucket ou id…" style="min-width:220px" />
+    </div>
+    <div class="bd-wrap">
+      <table class="bd-table">
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th>Transferência</th>
+            <th class="num">Valor</th>
+            <th>Fluxo</th>
+            <th>Data</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyTransfers"><tr><td colspan="5" class="empty">Carregando…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-movements">
+    <div class="bd-toolbar">
+      <select id="fltMvDir">
+        <option value="ALL">Entradas e saídas</option>
+        <option value="IN">Só entradas</option>
+        <option value="OUT">Só saídas</option>
+      </select>
+      <select id="fltMvType">
+        <option value="ALL">Todos os tipos</option>
+        <option value="desafio_deposit">Depósito PIX</option>
+        <option value="internal_transfer">Transferência</option>
+        <option value="desafio_zebra_payout">Lucro zebra</option>
+        <option value="desafio_cancel_refund">Estorno cancelamento</option>
+        <option value="desafio_void_refund">Estorno empate anula</option>
+        <option value="desafio_forfeit_to_provider">Forfeit → provedor</option>
+        <option value="desafio_reregister">Reentrada</option>
+        <option value="admin_adjustment">Ajuste admin</option>
+        <option value="participation">Aposta em evento</option>
+      </select>
+      <input id="fltMvQ" type="search" placeholder="Buscar cliente, tipo, evento…" style="min-width:220px" />
+    </div>
+    <div class="bd-wrap">
+      <table class="bd-table">
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th>Movimentação</th>
+            <th>Fluxo</th>
+            <th class="num">Valor</th>
+            <th>Data</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyMovements"><tr><td colspan="5" class="empty">Carregando…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-users">
+    <div class="bd-toolbar">
+      <select id="fltUserBal">
+        <option value="ALL">Todos com atividade desafio</option>
+        <option value="WITH">Com saldo &gt; 0</option>
+        <option value="ZERO">Saldo zerado</option>
+      </select>
+      <input id="fltUserQ" type="search" placeholder="Buscar nome ou id…" style="min-width:220px" />
+    </div>
+    <div class="bd-wrap">
+      <table class="bd-table">
+        <thead>
+          <tr>
+            <th>Usuário</th>
+            <th class="num">Saldo Desafio</th>
+            <th class="num">Entradas</th>
+            <th class="num">Saídas</th>
+            <th class="num">Desafios</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="tbodyUsers"><tr><td colspan="6" class="empty">Carregando…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-parts">
+    <div class="bd-toolbar">
+      <select id="fltPartStatus">
+        <option value="ALL">Todos</option>
+        <option value="em_andamento">Em andamento</option>
+        <option value="cancelado">Cancelados</option>
+        <option value="sucesso_casa">Sucesso na casa</option>
+        <option value="finalizado">Finalizados</option>
+      </select>
+      <input id="fltPartQ" type="search" placeholder="Buscar usuário, desafio ou jogo…" style="min-width:240px" />
+    </div>
+    <div class="bd-wrap">
+      <table class="bd-table">
+        <thead>
+          <tr>
+            <th>Usuário</th>
+            <th>Desafio / Evento</th>
+            <th>Status</th>
+            <th class="num">Valor</th>
+            <th class="num">Lucro</th>
+            <th>Resultado</th>
+            <th>Data</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyParts"><tr><td colspan="7" class="empty">Carregando…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="drawer-back" id="userDrawer" aria-hidden="true">
+    <div class="drawer">
+      <h2 id="udName">Usuário</h2>
+      <p class="muted" id="udMeta">—</p>
+      <div class="ud-grid" style="margin-top:12px">
+        <div class="ud-item"><div class="l">Saldo Desafio</div><div class="v" id="udSaldo">R$ 0,00</div></div>
+        <div class="ud-item"><div class="l">Entradas</div><div class="v pos" id="udIn">R$ 0,00</div></div>
+        <div class="ud-item"><div class="l">Saídas</div><div class="v neg" id="udOut">R$ 0,00</div></div>
+        <div class="ud-item"><div class="l">Desafios</div><div class="v" id="udDz">0</div></div>
+      </div>
+      <h3>Financeiro Desafio · entradas e saídas</h3>
+      <div id="udFinance" class="bd-wrap" style="max-height:240px"><div class="empty">—</div></div>
+      <h3>Desafios / eventos</h3>
+      <div id="udParts"><div class="empty">—</div></div>
+      <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+        <a class="btn btn-ghost" id="udOpenUsers" href="/admin-users.html">Abrir em Usuários</a>
+        <button type="button" class="btn btn-ghost" id="udClose">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Marker: admin-balanco-desafio-v1
+    (async function () {
+      var money = ArbiV2.money;
+      var esc =
+        (window.ArbiV2Page && typeof ArbiV2Page.esc === "function" && ArbiV2Page.esc) ||
+        function (s) {
+          return String(s == null ? "" : s)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+        };
+      var supa = ArbiV2.client();
+      var user = await ArbiV2.requireUser(supa);
+      if (!user) return;
+      if (!(await ArbiV2.requireFinanceAdmin(supa, user))) {
+        location.replace("/admin.html");
+        return;
+      }
+
+      var DESAFIO_TX_TYPES = {
+        desafio_deposit: 1,
+        desafio_cancel_refund: 1,
+        desafio_void_refund: 1,
+        desafio_forfeit_to_provider: 1,
+        desafio_zebra_payout: 1,
+        desafio_reregister: 1,
+        internal_transfer: 1,
+        admin_adjustment: 1,
+        admin_adjustment_credit: 1,
+      };
+
+      var state = {
+        deposits: [],
+        txs: [],
+        parts: [],
+        steps: {},
+        desafios: {},
+        profiles: {},
+        users: [],
+        movements: [],
+        cycles: [],
+        tab: "deposits",
+      };
+
+      var errEl = document.getElementById("err");
+      function showErr(msg) {
+        errEl.textContent = msg || "";
+        errEl.classList.toggle("show", !!msg);
+      }
+
+      function metaOf(row) {
+        if (window.ArbiV2Page && typeof ArbiV2Page.metaOf === "function") {
+          return ArbiV2Page.metaOf(row);
+        }
+        var m = row && row.metadata;
+        if (!m) return {};
+        if (typeof m === "string") {
+          try { return JSON.parse(m) || {}; } catch (e) { return {}; }
+        }
+        return typeof m === "object" && m ? m : {};
+      }
+
+      function describeTx(row) {
+        if (window.ArbiV2Page && typeof ArbiV2Page.describeWalletTx === "function") {
+          return ArbiV2Page.describeWalletTx(row);
+        }
+        return String((row && row.type) || "—");
+      }
+
+      function isDesafioDeposit(r) {
+        var t = String((r && r.deposit_type) || "").toLowerCase();
+        return t === "desafio" || t === "challenge";
+      }
+
+      function touchesDesafioBucket(meta) {
+        var keys = [
+          meta.from_bucket, meta.to_bucket, meta.from, meta.to,
+          meta.source_bucket, meta.dest_bucket, meta.destination_bucket,
+          meta.wallet, meta.field, meta.credit_bucket, meta.bucket,
+        ];
+        return keys.some(function (k) {
+          var s = String(k || "").toLowerCase();
+          return s === "desafio" || s === "challenge" || s.indexOf("desafio") >= 0;
+        });
+      }
+
+      function isDesafioTx(row) {
+        var t = String((row && row.type) || "").toLowerCase();
+        if (!DESAFIO_TX_TYPES[t] && t.indexOf("desafio") < 0) return false;
+        if (t === "internal_transfer" || t === "admin_adjustment" || t === "admin_adjustment_credit") {
+          return touchesDesafioBucket(metaOf(row));
+        }
+        return true;
+      }
+
+      function normalizeResult(raw) {
+        var r = String(raw || "").toLowerCase().trim();
+        if (!r) return "pending";
+        if (r === "win" || r === "won" || r === "won_platform" || r === "arbishield") return "won";
+        if (r === "lose" || r === "lost" || r === "won_exchange" || r === "casa") return "lost";
+        if (r === "cancelled" || r === "canceled" || r === "void") return "cancelled";
+        if (r === "pending" || r === "active" || r === "open") return "pending";
+        return r;
+      }
+
+      function resultLabel(res) {
+        var r = normalizeResult(res);
+        if (r === "won") return "Vitória Arbi";
+        if (r === "lost") return "Casa";
+        if (r === "pending") return "Pendente";
+        if (r === "cancelled") return "Cancelado";
+        return r || "—";
+      }
+
+      function resultTag(res) {
+        var r = normalizeResult(res);
+        if (r === "won") return "ok";
+        if (r === "lost") return "bad";
+        if (r === "cancelled") return "done";
+        return "pending";
+      }
+
+      function statusLabelDep(st) {
+        st = String(st || "").toUpperCase();
+        if (st === "PENDING" || st === "PROCESSING") return "Pendente";
+        if (st === "APPROVED") return "Aprovado";
+        if (st === "REJECTED") return "Rejeitado";
+        if (st === "AWAITING_PROOF") return "Aguardando comprovante";
+        return st || "—";
+      }
+
+      function statusClassDep(st) {
+        st = String(st || "").toUpperCase();
+        if (st === "PENDING" || st === "PROCESSING" || st === "AWAITING_PROOF") return "pending";
+        if (st === "APPROVED") return "ok";
+        if (st === "REJECTED") return "bad";
+        return "done";
+      }
+
+      function txDirection(row) {
+        var t = String((row && row.type) || "").toLowerCase();
+        var amt = Number((row && row.amount_cents) || 0);
+        var meta = metaOf(row);
+        if (t === "desafio_forfeit_to_provider" || t === "desafio_reregister") return "OUT";
+        if (
+          t === "desafio_deposit" ||
+          t === "desafio_cancel_refund" ||
+          t === "desafio_void_refund" ||
+          t === "desafio_zebra_payout"
+        ) {
+          return "IN";
+        }
+        if (t === "internal_transfer") {
+          var to = String(meta.to_bucket || meta.to || meta.dest_bucket || meta.destination_bucket || "").toLowerCase();
+          var from = String(meta.from_bucket || meta.from || meta.source_bucket || "").toLowerCase();
+          if (to.indexOf("desafio") >= 0) return "IN";
+          if (from.indexOf("desafio") >= 0) return "OUT";
+        }
+        if (t === "admin_adjustment" || t === "admin_adjustment_credit") {
+          if (amt < 0 || meta.mode === "debit") return "OUT";
+          return "IN";
+        }
+        if (amt < 0) return "OUT";
+        if (amt > 0) return "IN";
+        return "IN";
+      }
+
+      function profileName(id) {
+        var p = state.profiles[id];
+        return (p && p.full_name) || "Usuário";
+      }
+
+      function chunk(arr, size) {
+        var out = [];
+        for (var i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+        return out;
+      }
+
+      async function loadProfiles(ids) {
+        var uniq = Array.from(new Set((ids || []).filter(Boolean)));
+        var missing = uniq.filter(function (id) { return !state.profiles[id]; });
+        for (var i = 0; i < missing.length; i += 80) {
+          var slice = missing.slice(i, i + 80);
+          // profiles-sem-coluna-email-v1 — nunca select email
+          var pr = await supa.from("profiles").select("id,full_name,desafio_balance_cents").in("id", slice);
+          if (!pr.error) {
+            (pr.data || []).forEach(function (p) { state.profiles[p.id] = p; });
+          }
+        }
+      }
+
+      function buildCycles() {
+        var byUserDz = {};
+        state.parts.forEach(function (p) {
+          var side = String(p.side || "arbishield").toLowerCase();
+          if (side === "casa" || side === "exchange") return;
+          var did = String(p.desafio_id || "");
+          if (!did && p.step_id && state.steps[String(p.step_id)]) {
+            did = String(state.steps[String(p.step_id)].desafio_id || "");
+          }
+          if (!did || !p.user_id) return;
+          var key = p.user_id + "::" + did;
+          if (!byUserDz[key]) byUserDz[key] = [];
+          byUserDz[key].push(p);
+        });
+
+        var cycles = Object.keys(byUserDz).map(function (key) {
+          var ordered = byUserDz[key].slice().sort(function (a, b) {
+            return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+          });
+          var userId = ordered[0].user_id;
+          var desafioId = String(ordered[0].desafio_id || key.split("::")[1]);
+          var d = state.desafios[desafioId] || {};
+          var maxEntries = Math.min(5, Math.max(1, Number(d.total_steps) || 5));
+          var wagered = 0;
+          var profit = 0;
+          var wonN = 0;
+          var lostN = 0;
+          var pendingN = 0;
+          var cancelledN = 0;
+          var entries = ordered.map(function (p) {
+            var res = normalizeResult(p.result);
+            var amt = Number(p.amount_cents) || 0;
+            var pr = Number(p.profit_cents) || 0;
+            wagered += amt;
+            if (res === "won") { profit += pr; wonN += 1; }
+            else if (res === "lost") lostN += 1;
+            else if (res === "cancelled") cancelledN += 1;
+            else pendingN += 1;
+            var step = state.steps[String(p.step_id || "")] || null;
+            var matchLabel = step
+              ? step.match_label || [step.home_team, step.away_team].filter(Boolean).join(" × ")
+              : null;
+            var stepStatus = String((step && step.status) || "").toLowerCase();
+            return {
+              id: p.id,
+              stepId: p.step_id || null,
+              stepIndex: step ? Number(step.step_index) || null : null,
+              matchLabel: matchLabel || "Entrada",
+              stepStatus: stepStatus,
+              result: res,
+              amountCents: amt,
+              profitCents: res === "won" ? pr : 0,
+              createdAt: p.created_at || null,
+            };
+          });
+          var last = ordered[ordered.length - 1];
+          var lastRes = last ? normalizeResult(last.result) : "";
+          var status = "em_andamento";
+          var statusLabel = "Em andamento";
+          if (lastRes === "lost") {
+            status = "sucesso_casa";
+            statusLabel = "Sucesso na casa";
+          } else if (lastRes === "cancelled" && pendingN === 0) {
+            status = "cancelado";
+            statusLabel = "Cancelado";
+          } else if (wonN >= maxEntries && pendingN === 0) {
+            status = "finalizado";
+            statusLabel = "Finalizado";
+          } else if (pendingN > 0) {
+            statusLabel = "Aguardando resultado";
+          } else if (cancelledN > 0 && pendingN === 0 && wonN === 0 && lostN === 0) {
+            status = "cancelado";
+            statusLabel = "Cancelado";
+          }
+          var hasLiveStep = entries.some(function (e) {
+            return e.stepStatus === "live" || e.stepStatus === "in_progress" || e.stepStatus === "andamento";
+          });
+          if (hasLiveStep && status === "em_andamento") statusLabel = "Em andamento";
+          return {
+            key: key,
+            userId: userId,
+            userName: profileName(userId),
+            desafioId: desafioId,
+            title: d.title || ("Desafio " + String(desafioId).slice(0, 8)),
+            number: d.number != null ? d.number : null,
+            status: status,
+            statusLabel: statusLabel,
+            wageredCents: wagered,
+            profitCents: profit,
+            entriesCount: ordered.length,
+            pendingCount: pendingN,
+            cancelledCount: cancelledN,
+            firstAt: ordered[0] && ordered[0].created_at,
+            lastAt: last && last.created_at,
+            entries: entries,
+          };
+        });
+        cycles.sort(function (a, b) {
+          var rank = function (s) {
+            return s === "em_andamento" ? 0 : s === "cancelado" ? 1 : 2;
+          };
+          if (rank(a.status) !== rank(b.status)) return rank(a.status) - rank(b.status);
+          return new Date(b.lastAt || 0) - new Date(a.lastAt || 0);
+        });
+        state.cycles = cycles;
+      }
+
+      function buildMovements() {
+        var list = [];
+        state.txs.filter(isDesafioTx).forEach(function (tx) {
+          var dir = txDirection(tx);
+          list.push({
+            id: "tx-" + tx.id,
+            kind: "wallet",
+            type: String(tx.type || ""),
+            userId: tx.user_id,
+            userName: profileName(tx.user_id),
+            label: describeTx(tx),
+            dir: dir,
+            amountCents: Math.abs(Number(tx.amount_cents) || 0),
+            createdAt: tx.created_at,
+            search: [
+              profileName(tx.user_id),
+              tx.type,
+              describeTx(tx),
+              tx.id,
+            ].join(" ").toLowerCase(),
+          });
+        });
+        // Saídas de aposta em evento (débito direto da carteira desafio sem wallet_tx)
+        state.parts.forEach(function (p) {
+          var side = String(p.side || "arbishield").toLowerCase();
+          if (side === "casa" || side === "exchange") return;
+          var step = state.steps[String(p.step_id || "")] || null;
+          var d = state.desafios[String(p.desafio_id || (step && step.desafio_id) || "")] || {};
+          var matchLabel = step
+            ? step.match_label || [step.home_team, step.away_team].filter(Boolean).join(" × ")
+            : "Entrada";
+          var label =
+            "Aposta Desafio · " +
+            (d.title || "Desafio") +
+            " · " +
+            matchLabel +
+            " · " +
+            resultLabel(p.result);
+          list.push({
+            id: "part-" + p.id,
+            kind: "participation",
+            type: "participation",
+            userId: p.user_id,
+            userName: profileName(p.user_id),
+            label: label,
+            dir: "OUT",
+            amountCents: Math.abs(Number(p.amount_cents) || 0),
+            createdAt: p.created_at,
+            result: normalizeResult(p.result),
+            search: [
+              profileName(p.user_id),
+              d.title,
+              matchLabel,
+              p.result,
+              "participation",
+              "aposta",
+            ].join(" ").toLowerCase(),
+          });
+        });
+        list.sort(function (a, b) {
+          return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+        });
+        state.movements = list;
+      }
+
+      function buildUsers() {
+        var map = {};
+        Object.keys(state.profiles).forEach(function (id) {
+          var p = state.profiles[id];
+          var bal = Number(p.desafio_balance_cents || 0);
+          if (bal > 0) {
+            map[id] = map[id] || {
+              id: id,
+              full_name: p.full_name || "Usuário",
+              desafio_balance_cents: bal,
+              inCents: 0,
+              outCents: 0,
+              desafios: 0,
+            };
+            map[id].desafio_balance_cents = bal;
+            map[id].full_name = p.full_name || map[id].full_name;
+          }
+        });
+        state.movements.forEach(function (m) {
+          if (!m.userId) return;
+          if (!map[m.userId]) {
+            map[m.userId] = {
+              id: m.userId,
+              full_name: m.userName || "Usuário",
+              desafio_balance_cents: Number((state.profiles[m.userId] && state.profiles[m.userId].desafio_balance_cents) || 0),
+              inCents: 0,
+              outCents: 0,
+              desafios: 0,
+            };
+          }
+          if (m.dir === "IN") map[m.userId].inCents += m.amountCents;
+          else map[m.userId].outCents += m.amountCents;
+        });
+        state.cycles.forEach(function (c) {
+          if (!map[c.userId]) {
+            map[c.userId] = {
+              id: c.userId,
+              full_name: c.userName || "Usuário",
+              desafio_balance_cents: Number((state.profiles[c.userId] && state.profiles[c.userId].desafio_balance_cents) || 0),
+              inCents: 0,
+              outCents: 0,
+              desafios: 0,
+            };
+          }
+          map[c.userId].desafios += 1;
+        });
+        state.users = Object.keys(map)
+          .map(function (id) { return map[id]; })
+          .sort(function (a, b) {
+            return (b.desafio_balance_cents || 0) - (a.desafio_balance_cents || 0);
+          });
+      }
+
+      function updateKpis() {
+        var saldo = state.users.reduce(function (a, u) { return a + (Number(u.desafio_balance_cents) || 0); }, 0);
+        var withBal = state.users.filter(function (u) { return Number(u.desafio_balance_cents) > 0; }).length;
+        var inCents = state.movements
+          .filter(function (m) { return m.dir === "IN" && m.kind === "wallet"; })
+          .reduce(function (a, m) { return a + m.amountCents; }, 0);
+        var outCents = state.movements
+          .filter(function (m) { return m.dir === "OUT"; })
+          .reduce(function (a, m) { return a + m.amountCents; }, 0);
+        var live = state.cycles.filter(function (c) { return c.status === "em_andamento"; }).length;
+        var cancelled = state.cycles.filter(function (c) { return c.status === "cancelado"; }).length;
+        document.getElementById("kpiSaldo").textContent = money(saldo);
+        document.getElementById("kpiUsers").textContent = withBal + " usuários com saldo";
+        document.getElementById("kpiIn").textContent = money(inCents);
+        document.getElementById("kpiInDetail").textContent =
+          state.deposits.filter(function (d) { return String(d.status || "").toUpperCase() === "APPROVED"; }).length +
+          " PIX aprovados · transferências inclusas";
+        document.getElementById("kpiOut").textContent = money(outCents);
+        document.getElementById("kpiOutDetail").textContent =
+          state.parts.filter(function (p) {
+            var s = String(p.side || "").toLowerCase();
+            return s !== "casa" && s !== "exchange";
+          }).length + " apostas em eventos";
+        document.getElementById("kpiEvents").textContent = String(state.cycles.length);
+        document.getElementById("kpiEventsDetail").textContent =
+          live + " em andamento · " + cancelled + " cancelados";
+      }
+
+      function renderDeposits() {
+        var st = document.getElementById("fltDepStatus").value;
+        var qq = String(document.getElementById("fltDepQ").value || "").trim().toLowerCase();
+        var list = state.deposits.filter(function (r) {
+          var rst = String(r.status || "").toUpperCase();
+          if (st === "PENDING") {
+            if (rst !== "PENDING" && rst !== "PROCESSING") return false;
+          } else if (st !== "ALL" && rst !== st) return false;
+          if (qq) {
+            var name = String((r.profiles && r.profiles.full_name) || profileName(r.user_id) || "").toLowerCase();
+            if (name.indexOf(qq) < 0 && String(r.id).toLowerCase().indexOf(qq) < 0 && String(r.user_id).toLowerCase().indexOf(qq) < 0) {
+              return false;
+            }
+          }
+          return true;
+        });
+        var tbody = document.getElementById("tbodyDeposits");
+        if (!list.length) {
+          tbody.innerHTML = '<tr><td colspan="5" class="empty">Sem depósitos PIX Desafio</td></tr>';
+          return;
+        }
+        tbody.innerHTML = list.map(function (r) {
+          return (
+            "<tr>" +
+            "<td><span class=\"bd-name\">" + esc((r.profiles && r.profiles.full_name) || profileName(r.user_id)) + "</span>" +
+            "<div class=\"muted\">" + esc(String(r.user_id || "").slice(0, 8)) + "…</div></td>" +
+            "<td class=\"num pos\">" + esc(money(r.amount_cents)) + "</td>" +
+            "<td>" + esc(r.network || "PIX") + "</td>" +
+            "<td><span class=\"tag " + statusClassDep(r.status) + "\">" + esc(statusLabelDep(r.status)) + "</span></td>" +
+            "<td>" + esc(r.created_at ? new Date(r.created_at).toLocaleString("pt-BR") : "—") + "</td>" +
+            "</tr>"
+          );
+        }).join("");
+      }
+
+      function transferRows() {
+        return state.txs.filter(function (tx) {
+          return String(tx.type || "").toLowerCase() === "internal_transfer" && touchesDesafioBucket(metaOf(tx));
+        });
+      }
+
+      function renderTransfers() {
+        var qq = String(document.getElementById("fltTrQ").value || "").trim().toLowerCase();
+        var list = transferRows().filter(function (tx) {
+          if (!qq) return true;
+          var blob = [
+            profileName(tx.user_id),
+            describeTx(tx),
+            tx.id,
+            JSON.stringify(metaOf(tx)),
+          ].join(" ").toLowerCase();
+          return blob.indexOf(qq) >= 0;
+        });
+        var tbody = document.getElementById("tbodyTransfers");
+        if (!list.length) {
+          tbody.innerHTML = '<tr><td colspan="5" class="empty">Sem transferências para a Carteira Desafio</td></tr>';
+          return;
+        }
+        tbody.innerHTML = list.map(function (tx) {
+          var dir = txDirection(tx);
+          return (
+            "<tr>" +
+            "<td><span class=\"bd-name\">" + esc(profileName(tx.user_id)) + "</span>" +
+            "<div class=\"muted\">" + esc(String(tx.user_id || "").slice(0, 8)) + "…</div></td>" +
+            "<td>" + esc(describeTx(tx)) + "</td>" +
+            "<td class=\"num " + (dir === "IN" ? "pos" : "neg") + "\">" +
+            esc((dir === "IN" ? "+" : "−") + money(Math.abs(Number(tx.amount_cents) || 0))) + "</td>" +
+            "<td><span class=\"tag " + (dir === "IN" ? "in" : "out") + "\">" +
+            (dir === "IN" ? "Entrada" : "Saída") + "</span></td>" +
+            "<td>" + esc(tx.created_at ? new Date(tx.created_at).toLocaleString("pt-BR") : "—") + "</td>" +
+            "</tr>"
+          );
+        }).join("");
+      }
+
+      function renderMovements() {
+        var dir = document.getElementById("fltMvDir").value;
+        var ty = document.getElementById("fltMvType").value;
+        var qq = String(document.getElementById("fltMvQ").value || "").trim().toLowerCase();
+        var list = state.movements.filter(function (m) {
+          if (dir !== "ALL" && m.dir !== dir) return false;
+          if (ty !== "ALL") {
+            if (ty === "admin_adjustment") {
+              if (m.type !== "admin_adjustment" && m.type !== "admin_adjustment_credit") return false;
+            } else if (m.type !== ty) return false;
+          }
+          if (qq && String(m.search || "").indexOf(qq) < 0) return false;
+          return true;
+        });
+        var tbody = document.getElementById("tbodyMovements");
+        if (!list.length) {
+          tbody.innerHTML = '<tr><td colspan="5" class="empty">Sem movimentação da Carteira Desafio</td></tr>';
+          return;
+        }
+        tbody.innerHTML = list.slice(0, 800).map(function (m) {
+          return (
+            "<tr>" +
+            "<td><button type=\"button\" class=\"linkish\" data-user=\"" + esc(m.userId) + "\">" +
+            esc(m.userName) + "</button>" +
+            "<div class=\"muted\">" + esc(String(m.userId || "").slice(0, 8)) + "…</div></td>" +
+            "<td>" + esc(m.label) +
+            "<div class=\"muted\">" + esc(m.type) + "</div></td>" +
+            "<td><span class=\"tag " + (m.dir === "IN" ? "in" : "out") + "\">" +
+            (m.dir === "IN" ? "Entrada" : "Saída") + "</span></td>" +
+            "<td class=\"num " + (m.dir === "IN" ? "pos" : "neg") + "\">" +
+            esc((m.dir === "IN" ? "+" : "−") + money(m.amountCents)) + "</td>" +
+            "<td>" + esc(m.createdAt ? new Date(m.createdAt).toLocaleString("pt-BR") : "—") + "</td>" +
+            "</tr>"
+          );
+        }).join("");
+        tbody.querySelectorAll("[data-user]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            openUser(btn.getAttribute("data-user"));
+          });
+        });
+      }
+
+      function renderUsers() {
+        var bal = document.getElementById("fltUserBal").value;
+        var qq = String(document.getElementById("fltUserQ").value || "").trim().toLowerCase();
+        var list = state.users.filter(function (u) {
+          if (bal === "WITH" && !(Number(u.desafio_balance_cents) > 0)) return false;
+          if (bal === "ZERO" && Number(u.desafio_balance_cents) > 0) return false;
+          if (qq) {
+            var blob = (u.full_name + " " + u.id).toLowerCase();
+            if (blob.indexOf(qq) < 0) return false;
+          }
+          return true;
+        });
+        var tbody = document.getElementById("tbodyUsers");
+        if (!list.length) {
+          tbody.innerHTML = '<tr><td colspan="6" class="empty">Nenhum usuário com atividade Desafio</td></tr>';
+          return;
+        }
+        tbody.innerHTML = list.map(function (u) {
+          return (
+            "<tr>" +
+            "<td><span class=\"bd-name\">" + esc(u.full_name) + "</span>" +
+            "<div class=\"muted\">" + esc(String(u.id).slice(0, 8)) + "…</div></td>" +
+            "<td class=\"num\">" + esc(money(u.desafio_balance_cents)) + "</td>" +
+            "<td class=\"num pos\">+" + esc(money(u.inCents)) + "</td>" +
+            "<td class=\"num neg\">−" + esc(money(u.outCents)) + "</td>" +
+            "<td class=\"num\">" + esc(String(u.desafios || 0)) + "</td>" +
+            "<td><button type=\"button\" class=\"btn btn-ghost\" data-user=\"" + esc(u.id) + "\">Detalhar</button></td>" +
+            "</tr>"
+          );
+        }).join("");
+        tbody.querySelectorAll("[data-user]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            openUser(btn.getAttribute("data-user"));
+          });
+        });
+      }
+
+      function renderParts() {
+        var st = document.getElementById("fltPartStatus").value;
+        var qq = String(document.getElementById("fltPartQ").value || "").trim().toLowerCase();
+        var rows = [];
+        state.cycles.forEach(function (c) {
+          if (st !== "ALL" && c.status !== st) return;
+          c.entries.forEach(function (e) {
+            var blob = [
+              c.userName, c.title, e.matchLabel, e.result, c.statusLabel, c.desafioId,
+            ].join(" ").toLowerCase();
+            if (qq && blob.indexOf(qq) < 0) return;
+            rows.push({
+              userId: c.userId,
+              userName: c.userName,
+              title: c.title,
+              matchLabel: e.matchLabel,
+              cycleStatus: c.status,
+              cycleStatusLabel: c.statusLabel,
+              amountCents: e.amountCents,
+              profitCents: e.profitCents,
+              result: e.result,
+              createdAt: e.createdAt,
+              stepIndex: e.stepIndex,
+            });
+          });
+        });
+        rows.sort(function (a, b) {
+          return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+        });
+        var tbody = document.getElementById("tbodyParts");
+        if (!rows.length) {
+          tbody.innerHTML = '<tr><td colspan="7" class="empty">Sem participações para o filtro</td></tr>';
+          return;
+        }
+        tbody.innerHTML = rows.slice(0, 1000).map(function (r) {
+          var stCls =
+            r.cycleStatus === "em_andamento" ? "live" :
+            r.cycleStatus === "cancelado" ? "done" :
+            r.cycleStatus === "sucesso_casa" ? "ok" : "done";
+          return (
+            "<tr>" +
+            "<td><button type=\"button\" class=\"linkish\" data-user=\"" + esc(r.userId) + "\">" +
+            esc(r.userName) + "</button></td>" +
+            "<td><span class=\"bd-name\">" + esc(r.title) + "</span>" +
+            "<div class=\"muted\">" +
+            esc((r.stepIndex ? "E" + r.stepIndex + " · " : "") + r.matchLabel) +
+            "</div></td>" +
+            "<td><span class=\"tag " + stCls + "\">" + esc(r.cycleStatusLabel) + "</span></td>" +
+            "<td class=\"num\">" + esc(money(r.amountCents)) + "</td>" +
+            "<td class=\"num pos\">" + esc(r.profitCents ? ("+" + money(r.profitCents)) : "—") + "</td>" +
+            "<td><span class=\"tag " + resultTag(r.result) + "\">" + esc(resultLabel(r.result)) + "</span></td>" +
+            "<td>" + esc(r.createdAt ? new Date(r.createdAt).toLocaleString("pt-BR") : "—") + "</td>" +
+            "</tr>"
+          );
+        }).join("");
+        tbody.querySelectorAll("[data-user]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            openUser(btn.getAttribute("data-user"));
+          });
+        });
+      }
+
+      function openUser(userId) {
+        if (!userId) return;
+        var u = state.users.find(function (x) { return x.id === userId; }) || {
+          id: userId,
+          full_name: profileName(userId),
+          desafio_balance_cents: Number((state.profiles[userId] && state.profiles[userId].desafio_balance_cents) || 0),
+          inCents: 0,
+          outCents: 0,
+          desafios: 0,
+        };
+        document.getElementById("udName").textContent = u.full_name || "Usuário";
+        document.getElementById("udMeta").textContent = String(userId);
+        document.getElementById("udSaldo").textContent = money(u.desafio_balance_cents);
+        document.getElementById("udIn").textContent = "+" + money(u.inCents);
+        document.getElementById("udOut").textContent = "−" + money(u.outCents);
+        document.getElementById("udDz").textContent = String(u.desafios || 0);
+        document.getElementById("udOpenUsers").href =
+          "/admin-users.html?q=" + encodeURIComponent(u.full_name || userId);
+
+        var fin = state.movements.filter(function (m) { return m.userId === userId; });
+        var finHost = document.getElementById("udFinance");
+        if (!fin.length) {
+          finHost.innerHTML = '<div class="empty">Sem movimentação Desafio</div>';
+        } else {
+          finHost.innerHTML =
+            '<table class="bd-table" style="min-width:0"><thead><tr><th>Data</th><th>Movimentação</th><th class="num">Valor</th></tr></thead><tbody>' +
+            fin.slice(0, 120).map(function (m) {
+              return (
+                "<tr><td>" + esc(m.createdAt ? new Date(m.createdAt).toLocaleString("pt-BR") : "—") +
+                '<div class="muted">' + esc(m.dir === "IN" ? "Entrada" : "Saída") + "</div></td>" +
+                "<td>" + esc(m.label) + "</td>" +
+                '<td class="num ' + (m.dir === "IN" ? "pos" : "neg") + '">' +
+                esc((m.dir === "IN" ? "+" : "−") + money(m.amountCents)) +
+                "</td></tr>"
+              );
+            }).join("") +
+            "</tbody></table>";
+        }
+
+        var cycles = state.cycles.filter(function (c) { return c.userId === userId; });
+        var partsHost = document.getElementById("udParts");
+        if (!cycles.length) {
+          partsHost.innerHTML = '<div class="empty">Sem desafios participados</div>';
+        } else {
+          partsHost.innerHTML = cycles.map(function (c) {
+            var stCls =
+              c.status === "em_andamento" ? "live" :
+              c.status === "cancelado" ? "done" :
+              c.status === "sucesso_casa" ? "ok" : "done";
+            var entries = (c.entries || []).map(function (e) {
+              return (
+                "<li>" +
+                '<span class="match">' + esc((e.stepIndex ? "E" + e.stepIndex + " · " : "") + e.matchLabel) + "</span>" +
+                "<span>" + esc(money(e.amountCents)) +
+                (e.profitCents ? (" · +" + money(e.profitCents)) : "") +
+                "</span>" +
+                '<span class="tag ' + resultTag(e.result) + '">' + esc(resultLabel(e.result)) + "</span>" +
+                "</li>"
+              );
+            }).join("");
+            return (
+              '<article class="part-card' + (c.status === "em_andamento" ? " is-live" : "") + '">' +
+              '<div class="part-top"><div><strong>' + esc(c.title) + "</strong>" +
+              '<div class="muted">' + esc(c.firstAt ? new Date(c.firstAt).toLocaleString("pt-BR") : "—") + "</div></div>" +
+              '<span class="tag ' + stCls + '">' + esc(c.statusLabel) + "</span></div>" +
+              '<div class="part-metrics">' +
+              "<span>Entradas <b>" + esc(String(c.entriesCount)) + "</b></span>" +
+              "<span>Apostado <b>" + esc(money(c.wageredCents)) + "</b></span>" +
+              "<span>Lucro <b>" + esc(money(c.profitCents)) + "</b></span>" +
+              (c.cancelledCount ? ("<span>Cancelados <b>" + esc(String(c.cancelledCount)) + "</b></span>") : "") +
+              "</div>" +
+              (entries ? '<ul class="part-entries">' + entries + "</ul>" : "") +
+              "</article>"
+            );
+          }).join("");
+        }
+
+        var drawer = document.getElementById("userDrawer");
+        drawer.classList.add("show");
+        drawer.setAttribute("aria-hidden", "false");
+      }
+
+      function closeUser() {
+        var drawer = document.getElementById("userDrawer");
+        drawer.classList.remove("show");
+        drawer.setAttribute("aria-hidden", "true");
+      }
+
+      function setTab(tab) {
+        state.tab = tab;
+        document.querySelectorAll(".bd-tab").forEach(function (btn) {
+          btn.classList.toggle("active", btn.getAttribute("data-tab") === tab);
+        });
+        document.querySelectorAll(".panel").forEach(function (panel) {
+          panel.classList.toggle("show", panel.id === "panel-" + tab);
+        });
+      }
+
+      function renderAll() {
+        updateKpis();
+        renderDeposits();
+        renderTransfers();
+        renderMovements();
+        renderUsers();
+        renderParts();
+      }
+
+      async function load() {
+        showErr("");
+        try {
+          var depQ = await supa
+            .from("manual_deposits")
+            .select("id,user_id,amount_cents,status,proof_url,deposit_type,network,created_at,updated_at,admin_notes")
+            .order("created_at", { ascending: false })
+            .limit(800);
+          if (depQ.error) throw depQ.error;
+          state.deposits = (depQ.data || []).filter(isDesafioDeposit);
+
+          var txQ = await supa
+            .from("wallet_transactions")
+            .select("id,user_id,type,amount_cents,created_at,metadata,ref")
+            .order("created_at", { ascending: false })
+            .limit(2500);
+          if (txQ.error) throw txQ.error;
+          state.txs = (txQ.data || []).filter(isDesafioTx);
+
+          var partQ = await supa
+            .from("desafio_participations")
+            .select("id,user_id,desafio_id,step_id,side,result,amount_cents,profit_cents,created_at")
+            .order("created_at", { ascending: false })
+            .limit(2500);
+          if (partQ.error) throw partQ.error;
+          state.parts = partQ.data || [];
+
+          var stepIds = [];
+          var dzIds = [];
+          var userIds = [];
+          state.deposits.forEach(function (r) { if (r.user_id) userIds.push(r.user_id); });
+          state.txs.forEach(function (r) { if (r.user_id) userIds.push(r.user_id); });
+          state.parts.forEach(function (p) {
+            if (p.user_id) userIds.push(p.user_id);
+            if (p.step_id) stepIds.push(p.step_id);
+            if (p.desafio_id) dzIds.push(p.desafio_id);
+          });
+
+          state.steps = {};
+          for (var si = 0; si < stepIds.length; si += 120) {
+            var sSlice = Array.from(new Set(stepIds.slice(si, si + 120)));
+            if (!sSlice.length) continue;
+            var sr = await supa
+              .from("desafio_steps")
+              .select("id,desafio_id,step_index,home_team,away_team,match_label,starts_at,status,result")
+              .in("id", sSlice);
+            if (!sr.error) {
+              (sr.data || []).forEach(function (s) {
+                state.steps[String(s.id)] = s;
+                if (s.desafio_id) dzIds.push(s.desafio_id);
+              });
+            }
+          }
+
+          state.desafios = {};
+          for (var di = 0; di < dzIds.length; di += 120) {
+            var dSlice = Array.from(new Set(dzIds.slice(di, di + 120)));
+            if (!dSlice.length) continue;
+            var dr = await supa
+              .from("desafios")
+              .select("id,title,number,status,is_active,total_steps,target_profit_pct")
+              .in("id", dSlice);
+            if (!dr.error) {
+              (dr.data || []).forEach(function (d) { state.desafios[String(d.id)] = d; });
+            }
+          }
+
+          // Saldos atuais da carteira desafio (atividade + quem ainda tem saldo)
+          var balQ = await supa
+            .from("profiles")
+            .select("id,full_name,desafio_balance_cents")
+            .gt("desafio_balance_cents", 0)
+            .order("desafio_balance_cents", { ascending: false })
+            .limit(500);
+          if (!balQ.error) {
+            (balQ.data || []).forEach(function (p) {
+              state.profiles[p.id] = p;
+              userIds.push(p.id);
+            });
+          }
+
+          await loadProfiles(userIds);
+          state.deposits.forEach(function (r) {
+            r.profiles = state.profiles[r.user_id] || { full_name: "Usuário" };
+          });
+
+          buildCycles();
+          buildMovements();
+          buildUsers();
+          renderAll();
+        } catch (err) {
+          showErr(err.message || String(err));
+        }
+      }
+
+      document.querySelectorAll(".bd-tab").forEach(function (btn) {
+        btn.addEventListener("click", function () { setTab(btn.getAttribute("data-tab")); });
+      });
+      ["fltDepStatus", "fltDepQ"].forEach(function (id) {
+        document.getElementById(id).addEventListener("input", renderDeposits);
+        document.getElementById(id).addEventListener("change", renderDeposits);
+      });
+      document.getElementById("fltTrQ").addEventListener("input", renderTransfers);
+      ["fltMvDir", "fltMvType", "fltMvQ"].forEach(function (id) {
+        document.getElementById(id).addEventListener("input", renderMovements);
+        document.getElementById(id).addEventListener("change", renderMovements);
+      });
+      ["fltUserBal", "fltUserQ"].forEach(function (id) {
+        document.getElementById(id).addEventListener("input", renderUsers);
+        document.getElementById(id).addEventListener("change", renderUsers);
+      });
+      ["fltPartStatus", "fltPartQ"].forEach(function (id) {
+        document.getElementById(id).addEventListener("input", renderParts);
+        document.getElementById(id).addEventListener("change", renderParts);
+      });
+      document.getElementById("btnRefresh").addEventListener("click", load);
+      document.getElementById("udClose").addEventListener("click", closeUser);
+      document.getElementById("userDrawer").addEventListener("click", function (e) {
+        if (e.target === document.getElementById("userDrawer")) closeUser();
+      });
+
+      await load();
+    })();
+  </script>
+</body>
+</html>

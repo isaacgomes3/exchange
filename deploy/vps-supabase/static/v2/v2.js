@@ -36,6 +36,7 @@
     saques: 1,
     "manual-deposits": 1,
     "depositos-desafio": 1,
+    "balanco-desafio": 1,
     refunds: 1,
     treasury: 1,
     "partners-distribution": 1,
