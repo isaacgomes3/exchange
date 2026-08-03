@@ -34,6 +34,11 @@ describe("Admin Balanço Desafio", () => {
     assert.match(page, /cancelados/i);
     assert.match(page, /Entrada/);
     assert.match(page, /Saída/);
+    // KPI de saída = só stake das apostas ganhas na Exchange (result Casa/lost)
+    assert.match(page, /balanco-desafio-saida-exchange-v1/);
+    assert.match(page, /exchangeWonStakeCents/);
+    assert.match(page, /ganhas na Exchange/);
+    assert.match(page, /normalizeResult\(p\.result\) === "lost"/);
   });
 
   it("consulta depósitos desafio, transferências, participações e saldos", () => {

@@ -106,7 +106,7 @@
   <div class="bd-kpis">
     <div class="bd-kpi"><span>Saldo Carteira Desafio</span><strong id="kpiSaldo">R$ 0,00</strong><em id="kpiUsers">0 usuários com saldo</em></div>
     <div class="bd-kpi"><span>Entradas (PIX + transf.)</span><strong id="kpiIn" class="pos">R$ 0,00</strong><em id="kpiInDetail">depósitos e transferências</em></div>
-    <div class="bd-kpi"><span>Saídas / apostas</span><strong id="kpiOut" class="neg">R$ 0,00</strong><em id="kpiOutDetail">participações em eventos</em></div>
+    <div class="bd-kpi"><span>Saídas · ganhas na Exchange</span><strong id="kpiOut" class="neg">R$ 0,00</strong><em id="kpiOutDetail">só apostas com resultado Casa</em></div>
     <div class="bd-kpi"><span>Eventos</span><strong id="kpiEvents">0</strong><em id="kpiEventsDetail">em andamento · cancelados</em></div>
   </div>
 
@@ -696,15 +696,35 @@
           });
       }
 
+      function desafioPartsArbi() {
+        return state.parts.filter(function (p) {
+          var s = String(p.side || "").toLowerCase();
+          return s !== "casa" && s !== "exchange";
+        });
+      }
+
+      /** Saída de aposta = stake das entradas com resultado Casa (ganhou na Exchange). */
+      function exchangeWonStakeCents() {
+        return desafioPartsArbi()
+          .filter(function (p) {
+            return normalizeResult(p.result) === "lost";
+          })
+          .reduce(function (a, p) {
+            return a + (Math.abs(Number(p.amount_cents) || 0));
+          }, 0);
+      }
+
       function updateKpis() {
         var saldo = state.users.reduce(function (a, u) { return a + (Number(u.desafio_balance_cents) || 0); }, 0);
         var withBal = state.users.filter(function (u) { return Number(u.desafio_balance_cents) > 0; }).length;
         var inCents = state.movements
           .filter(function (m) { return m.dir === "IN" && m.kind === "wallet"; })
           .reduce(function (a, m) { return a + m.amountCents; }, 0);
-        var outCents = state.movements
-          .filter(function (m) { return m.dir === "OUT"; })
-          .reduce(function (a, m) { return a + m.amountCents; }, 0);
+        // Marker: balanco-desafio-saida-exchange-v1
+        var outCents = exchangeWonStakeCents();
+        var exchangeWonN = desafioPartsArbi().filter(function (p) {
+          return normalizeResult(p.result) === "lost";
+        }).length;
         var live = state.cycles.filter(function (c) { return c.status === "em_andamento"; }).length;
         var cancelled = state.cycles.filter(function (c) { return c.status === "cancelado"; }).length;
         document.getElementById("kpiSaldo").textContent = money(saldo);
@@ -715,10 +735,7 @@
           " PIX aprovados · transferências inclusas";
         document.getElementById("kpiOut").textContent = money(outCents);
         document.getElementById("kpiOutDetail").textContent =
-          state.parts.filter(function (p) {
-            var s = String(p.side || "").toLowerCase();
-            return s !== "casa" && s !== "exchange";
-          }).length + " apostas em eventos";
+          exchangeWonN + " apostas ganhas na Exchange";
         document.getElementById("kpiEvents").textContent = String(state.cycles.length);
         document.getElementById("kpiEventsDetail").textContent =
           live + " em andamento · " + cancelled + " cancelados";
