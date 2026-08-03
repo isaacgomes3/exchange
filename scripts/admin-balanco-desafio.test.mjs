@@ -1,6 +1,8 @@
 /**
  * Admin — Balanço Desafio (financeiro da Carteira Desafio).
  * Marker: admin-balanco-desafio-v1
+ *
+ * Visível para TODOS os admins (Operação), não só allowlist Financeiro.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -17,11 +19,12 @@ describe("Admin Balanço Desafio", () => {
   const shell = read("deploy/vps-supabase/static/v2/v2-shell.js");
   const v2 = read("deploy/vps-supabase/static/v2/v2.js");
 
-  it("página carrega marker, ACL financeiro e abas pedidas", () => {
+  it("página carrega marker, gate de admin geral e abas pedidas", () => {
     assert.match(page, new RegExp(MARKER));
     assert.match(page, /arbishield-build" content="admin-balanco-desafio-v1"/);
     assert.match(page, /data-active="balanco-desafio"/);
-    assert.match(page, /requireFinanceAdmin/);
+    assert.match(page, /requireAdmin/);
+    assert.doesNotMatch(page, /requireFinanceAdmin/);
     assert.match(page, /Depósitos PIX/);
     assert.match(page, /Transferências/);
     assert.match(page, /Movimentação/);
@@ -49,12 +52,19 @@ describe("Admin Balanço Desafio", () => {
     assert.doesNotMatch(page, /\.select\([^)]*email/);
   });
 
-  it("menu Financeiro aponta para a página e ACL inclui o id", () => {
-    assert.match(
-      shell,
-      /balanco-desafio["'].*Balanço Desafio.*admin-balanco-desafio\.html|Balanço Desafio.*balanco-desafio/
-    );
+  it("menu Operação aponta para a página e NÃO exige ACL Financeiro", () => {
+    assert.match(shell, /"balanco-desafio"/);
+    assert.match(shell, /Balanço Desafio/);
     assert.match(shell, /"\/admin-balanco-desafio\.html"/);
-    assert.match(v2, /"balanco-desafio"\s*:\s*1/);
+    // Item fica na seção Operação (antes do bloco Financeiro).
+    const opIdx = shell.indexOf('title: "Operação"');
+    const finIdx = shell.indexOf('title: "Financeiro"');
+    const itemIdx = shell.indexOf('"balanco-desafio"');
+    assert.ok(opIdx >= 0 && finIdx > opIdx, "seções Operação/Financeiro presentes");
+    assert.ok(
+      itemIdx > opIdx && itemIdx < finIdx,
+      "Balanço Desafio deve ficar em Operação (visível a todos os admins)"
+    );
+    assert.doesNotMatch(v2, /"balanco-desafio"\s*:\s*1/);
   });
 });

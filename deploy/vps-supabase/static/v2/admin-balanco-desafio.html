@@ -293,8 +293,9 @@
       var supa = ArbiV2.client();
       var user = await ArbiV2.requireUser(supa);
       if (!user) return;
-      if (!(await ArbiV2.requireFinanceAdmin(supa, user))) {
-        location.replace("/admin.html");
+      // Visível para todos os admins (não só allowlist Financeiro).
+      if (!(await ArbiV2.requireAdmin(supa, user))) {
+        location.replace("/auth.html");
         return;
       }
 
