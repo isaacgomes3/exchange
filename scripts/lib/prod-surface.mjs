@@ -24,6 +24,7 @@ export const PROD_SURFACE = [
   ["/admin-users.html", `${V2}/admin-users.html`],
   ["/admin-manual-deposits.html", `${V2}/admin-manual-deposits.html`],
   ["/admin-balanco-desafio.html", `${V2}/admin-balanco-desafio.html`],
+  ["/admin-balanco-protecao.html", `${V2}/admin-balanco-protecao.html`],
   ["/v2.js", `${V2}/v2.js`],
   ["/v2-shell.js", `${V2}/v2-shell.js`],
   ["/v2-financeiro.js", `${V2}/v2-financeiro.js`],
