@@ -101,7 +101,7 @@
   <div class="bd-kpis">
     <div class="bd-kpi"><span>Saldo Real disponível</span><strong id="kpiSaldo">R$ 0,00</strong><em id="kpiUsers">0 usuários · travado à parte</em></div>
     <div class="bd-kpi"><span>Entradas (PIX + transf.)</span><strong id="kpiIn" class="pos">R$ 0,00</strong><em id="kpiInDetail">depósitos e transferências</em></div>
-    <div class="bd-kpi"><span>Saídas · ganhas na Exchange</span><strong id="kpiOut" class="neg">R$ 0,00</strong><em id="kpiOutDetail">só dedução das liquidações Exchange</em></div>
+    <div class="bd-kpi"><span>Saídas · ganhas na Exchange</span><strong id="kpiOut" class="neg">R$ 0,00</strong><em id="kpiOutDetail">valor deduzido nas liquidações Exchange</em></div>
     <div class="bd-kpi"><span>Proteções</span><strong id="kpiEvents">0</strong><em id="kpiEventsDetail">em andamento · canceladas</em></div>
   </div>
 
@@ -338,6 +338,7 @@
         profiles: {},
         users: [],
         movements: [],
+        exchangeFeeByProt: {},
         tab: "deposits",
       };
 
@@ -419,16 +420,33 @@
         return Math.abs(Number(p.responsibility_cents || p.amount_cents || 0));
       }
 
+      /** Dedução ArbiShield cobrada no evento (nunca stake). */
       function feeOf(p) {
         var meta = metaOf(p);
-        var fee = Number(
-          p.platform_deduction_cents ||
-          p.locked_deduction_cents ||
-          meta.fee_charged_cents ||
-          meta.fee_cents ||
-          0
-        );
-        return Math.abs(fee);
+        var candidates = [
+          meta.fee_charged_cents,
+          meta.fee_charged_now_cents,
+          p.platform_deduction_cents,
+          meta.fee_cents,
+          meta.arbi_shield_deduction_cents,
+        ];
+        for (var i = 0; i < candidates.length; i += 1) {
+          var n = Number(candidates[i]);
+          if (Number.isFinite(n) && n > 0) return Math.round(n);
+        }
+        // Fallback: tx de liquidação Exchange desta proteção
+        var pid = String(p.id || "");
+        if (pid && state.exchangeFeeByProt[pid] > 0) {
+          return state.exchangeFeeByProt[pid];
+        }
+        return 0;
+      }
+
+      function isExchangeOutcomeMeta(meta) {
+        var o = String(
+          (meta && (meta.outcome || meta.settled_outcome)) || ""
+        ).toLowerCase();
+        return o === "exchange" || o === "won_exchange";
       }
 
       function normalizeOutcome(p) {
@@ -636,11 +654,53 @@
           });
       }
 
-      // Marker: balanco-protecao-saida-exchange-v1
-      function exchangeWonFeeCents() {
-        return state.prots
-          .filter(function (p) { return normalizeOutcome(p) === "exchange"; })
-          .reduce(function (a, p) { return a + feeOf(p); }, 0);
+      /**
+       * Marker: balanco-protecao-saida-exchange-v1
+       * KPI = soma da dedução cobrada nos eventos ganhos na Exchange.
+       * Fonte preferida: wallet_transactions protection_settlement (amount/fee_charged).
+       * Não soma stake devolvido nem exchange_commission (já entra na dedução).
+       */
+      function buildExchangeFeeIndex() {
+        var byProt = {};
+        state.txs.forEach(function (tx) {
+          var t = String(tx.type || "").toLowerCase();
+          if (t !== "protection_settlement" && t !== "protection_fee") return;
+          var meta = metaOf(tx);
+          if (!isExchangeOutcomeMeta(meta)) return;
+          var pid = String(meta.protection_id || tx.ref || "");
+          if (!pid) return;
+          var fee = Number(meta.fee_charged_now_cents);
+          if (!(fee > 0)) fee = Number(meta.fee_charged_cents);
+          if (!(fee > 0)) fee = Number(meta.fee_cents);
+          if (!(fee > 0)) fee = Math.abs(Number(tx.amount_cents) || 0);
+          if (!(fee > 0)) return;
+          // Uma dedução por proteção (evita somar heal/reprocesso).
+          if (!byProt[pid] || fee > byProt[pid]) byProt[pid] = Math.round(fee);
+        });
+        state.exchangeFeeByProt = byProt;
+      }
+
+      function exchangeWonDeduction() {
+        buildExchangeFeeIndex();
+        var fromTx = 0;
+        var txIds = Object.keys(state.exchangeFeeByProt);
+        txIds.forEach(function (pid) {
+          fromTx += state.exchangeFeeByProt[pid];
+        });
+        if (txIds.length) {
+          return { cents: fromTx, count: txIds.length, source: "wallet_tx" };
+        }
+        // Fallback: coluna platform_deduction_cents nas proteções Exchange
+        var cents = 0;
+        var count = 0;
+        state.prots.forEach(function (p) {
+          if (normalizeOutcome(p) !== "exchange") return;
+          var fee = feeOf(p);
+          if (!(fee > 0)) return;
+          cents += fee;
+          count += 1;
+        });
+        return { cents: cents, count: count, source: "protection_row" };
       }
 
       function updateKpis() {
@@ -657,7 +717,7 @@
             );
           })
           .reduce(function (a, m) { return a + m.amountCents; }, 0);
-        var outCents = exchangeWonFeeCents();
+        var out = exchangeWonDeduction();
         var exchangeN = state.prots.filter(function (p) { return normalizeOutcome(p) === "exchange"; }).length;
         var live = state.prots.filter(function (p) { return normalizeOutcome(p) === "em_andamento"; }).length;
         var cancelled = state.prots.filter(function (p) { return normalizeOutcome(p) === "cancelado"; }).length;
@@ -668,9 +728,10 @@
         document.getElementById("kpiInDetail").textContent =
           state.deposits.filter(function (d) { return String(d.status || "").toUpperCase() === "APPROVED"; }).length +
           " PIX aprovados · transferências inclusas";
-        document.getElementById("kpiOut").textContent = money(outCents);
+        document.getElementById("kpiOut").textContent = money(out.cents);
         document.getElementById("kpiOutDetail").textContent =
-          exchangeN + " proteções ganhas na Exchange";
+          (out.count || exchangeN) +
+          " eventos · dedução cobrada na Exchange";
         document.getElementById("kpiEvents").textContent = String(state.prots.length);
         document.getElementById("kpiEventsDetail").textContent =
           live + " em andamento · " + cancelled + " canceladas";

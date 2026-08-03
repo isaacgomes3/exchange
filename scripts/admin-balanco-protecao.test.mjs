@@ -35,8 +35,13 @@ describe("Admin Balanço Proteção", () => {
     assert.match(page, /Entrada/);
     assert.match(page, /Saída/);
     assert.match(page, /balanco-protecao-saida-exchange-v1/);
-    assert.match(page, /exchangeWonFeeCents/);
+    assert.match(page, /exchangeWonDeduction/);
+    assert.match(page, /buildExchangeFeeIndex/);
+    assert.match(page, /fee_charged_cents/);
+    assert.match(page, /valor deduzido/);
     assert.match(page, /ganhas na Exchange/);
+    // Não usa stake nem comissão Exchange no KPI de saída
+    assert.match(page, /Não soma stake devolvido nem exchange_commission/);
   });
 
   it("consulta depósitos reais, txs de proteção, lay/back e matches", () => {
