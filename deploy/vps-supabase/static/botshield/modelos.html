@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Modelos — BotShield</title>
+  <link rel="stylesheet" href="/botshield.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="/botshield.js"></script>
+  <script src="/botshield-shell.js" defer></script>
+</head>
+<body data-active="modelos">
+  <div id="page" hidden>
+    <div class="page-head">
+      <div>
+        <h1>Modelos de Bots</h1>
+        <p class="sub">Templates prontos para clonar em Meus bots.</p>
+      </div>
+    </div>
+    <div class="bots-grid" id="grid"></div>
+  </div>
+  <script>
+    const MODELS = [
+      {
+        name: "Lay placar 3x3",
+        description: "Contra placar exato 3-3 em jogos equilibrados",
+        tags: ["Punter", "Lay", "Placar Exato 3-3"],
+      },
+      {
+        name: "Lay goleada",
+        description: "Contra goleada do favorito em pré-live",
+        tags: ["Trader", "Lay", "Goleada"],
+      },
+      {
+        name: "Back under 2.5",
+        description: "Back under 2.5 com filtro de liquidez",
+        tags: ["Punter", "Back", "Under 2.5"],
+      },
+    ];
+
+    document.addEventListener("botshield:ready", () => {
+      const grid = document.getElementById("grid");
+      grid.innerHTML = MODELS.map((m, i) => {
+        const tags = m.tags
+          .map((t) => {
+            const cls =
+              String(t).toLowerCase() === "lay"
+                ? "tag lay"
+                : String(t).toLowerCase() === "back"
+                  ? "tag back"
+                  : "tag";
+            return '<span class="' + cls + '">' + t + "</span>";
+          })
+          .join("");
+        return (
+          '<article class="bot-card">' +
+          "<h2>" +
+          m.name +
+          "</h2>" +
+          '<p class="desc">' +
+          m.description +
+          "</p>" +
+          '<div class="tags">' +
+          tags +
+          "</div>" +
+          '<button type="button" class="btn btn-primary" data-i="' +
+          i +
+          '">Usar modelo</button>' +
+          "</article>"
+        );
+      }).join("");
+
+      grid.querySelectorAll("button[data-i]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const m = MODELS[Number(btn.getAttribute("data-i"))];
+          BotShield.upsertBot({
+            id: "b_" + Date.now().toString(36),
+            name: m.name,
+            description: m.description,
+            tags: m.tags,
+            active: false,
+            wins: 0,
+            losses: 0,
+            pnlCents: 0,
+            roi: 0,
+            flatRoi: 0,
+            winRate: 0,
+            integrations: 0,
+          });
+          location.href = "/bots.html";
+        });
+      });
+    });
+  </script>
+</body>
+</html>
