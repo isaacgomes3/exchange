@@ -6,6 +6,9 @@
 **Espelho:** `AGENTS.md` (`<!-- BEGIN:system-non-regression -->`)  
 **CI:** `npm test` (contratos abaixo)
 
+**Guia operacional (Desafio + proteção + financeiro + admin + APIs):**
+[`docs/FUNCIONAMENTO_DESAFIO_E_PROTECAO.md`](./FUNCIONAMENTO_DESAFIO_E_PROTECAO.md)
+
 Pedido explícito (2026-07-30): o sistema inteiro (funcionamento, layout e
 banco) fica em **modo não-regressão**. Alterações só com solicitação clara
 do dono + bump de versão + sync docs/testes.

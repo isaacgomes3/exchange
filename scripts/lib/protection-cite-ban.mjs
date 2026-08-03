@@ -25,6 +25,7 @@ export const PROTECTION_CITE_BAN_PATHS = Object.freeze([
   "docs/PROTECTION_FLOW_LOCKED.md",
   "docs/PROTECTION_FLOW_COMPARISON_OLD_VS_NEW.md",
   "docs/FLUXO_PROTECAO_1_PAGINA.html",
+  "docs/FUNCIONAMENTO_DESAFIO_E_PROTECAO.md",
   "deploy/vps-supabase/static/v2/app-proteger.html",
   "deploy/vps-supabase/static/v2/app-protecoes.html",
   "deploy/vps-supabase/static/v2/admin-jogos.html",
