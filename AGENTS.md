@@ -131,3 +131,26 @@ Desafios. Não reverter **Modo usuário / Modo ADM** nem **espelho de conta**.
 
 Mudança em qualquer item exige pedido explícito + bump + sync AGENTS/docs + testes verdes.
 <!-- END:system-non-regression -->
+
+## Cursor Cloud specific instructions
+
+Ambiente: Node 22 (CI usa `node-version: "22"`). Gerenciador de pacotes é **npm** (`package-lock.json`); o update script roda `npm ci`.
+
+Comandos padrão (definidos em `package.json`, não duplicar aqui):
+- Lint: `npm run lint` (0 erros; há apenas warnings de `no-unused-vars`).
+- Testes de contrato: `npm test` (rápido, ~230 asserts, não sobe nenhum serviço — é a validação da engine de proteção `stake_lock_v1`).
+- Release do frontend estático: `npm run release:build -- --out <dir>` + `node scripts/release-cli.mjs verify --dir <dir>`.
+- Build Next: `npm run build`.
+
+App de desenvolvimento (surface documentada): `npm run dev` → Next.js em `:3000`.
+- Copie `.env.example` para `.env.local` antes de rodar. Sem `.env.local`, o `npm run build` precisa de placeholders `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` (igual ao CI).
+- As chaves Supabase apontam para o Supabase **self-hosted na VPS** (same-origin via nginx). Elas **não** são reproduzíveis localmente: fluxos que dependem do banco (login real, persistência de proteções) não funcionam em dev local sem o Supabase da VPS. As páginas Next renderizam normalmente (hub, `/v2/auth`, `/arbishield`) mesmo sem Supabase.
+
+Workers de backend (engine de proteção/settlement, rodam via systemd na VPS):
+- Prelive/admin API: `node scripts/arbishield-prelive-events.mjs --serve` → `:3098` (`PRELIVE_LISTEN`).
+- ServerFn shim: `node scripts/arbishield-serverfn-shim.mjs` → `:3101` (`SERVERFN_LISTEN`).
+- `GET /health` deve expor `createProtectionModel=stake_lock_v1` (fail-hard 503 caso contrário). Os workers leem `.env.local`/`.env` para `ARBISHIELD_SUPABASE_URL` + `SERVICE_ROLE_KEY`; sem essas chaves, ops de banco falham, mas `/health` e endpoints de integração externa funcionam (ex.: `GET /api/arbishield/football-teams?q=<time>` busca times+escudos no TheSportsDB, API pública).
+
+Notas não óbvias:
+- O schema base (`profiles`, `matches`, `protections`) **não** está em `supabase/migrations/` — os arquivos ali são apenas `ALTER`s incrementais. Não dá para subir um Supabase local completo só a partir do repo.
+- O produto real (UI estática em `deploy/vps-supabase/static/v2/`) tem o anon JWT de produção hardcoded em `v2.js` e usa `location.origin`, esperando o proxy same-origin do nginx; não roda isolado localmente.
